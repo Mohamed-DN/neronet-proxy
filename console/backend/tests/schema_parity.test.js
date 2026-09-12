@@ -96,7 +96,12 @@ const EXPECTED_ONLY_IN_POSTGRES = new Set([
   'warrant_canaries'
 ]);
 
-const EXPECTED_ONLY_IN_SQLITE = new Set([]);
+const EXPECTED_ONLY_IN_SQLITE = new Set([
+  // PostgreSQL allocates overlay addresses from a SEQUENCE, which is not a table and
+  // so cannot appear on both sides. SQLite has no sequences, so the same counter is
+  // a single-row table there. The asymmetry is in the mechanism, not the schema.
+  'vip_allocator'
+]);
 
 describe('SQLite and PostgreSQL schemas stay in step', () => {
   let sqlite;

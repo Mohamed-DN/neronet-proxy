@@ -1,4 +1,5 @@
 const express = require('express');
+const { loginLimiter, registerLimiter } = require('../middleware/rateLimit');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
@@ -11,7 +12,7 @@ const { logAuditEvent } = require('../utils/audit');
 const DUMMY_BCRYPT_HASH = '$2a$10$wN3t8gX1ZkGkR0e2M8t0y.9gZ0n4p7s2e6u1v8w5x9y2z3a4b5c6d';
 
 // 1. Register User (Public)
-router.post('/register', async (req, res, next) => {
+router.post('/register', registerLimiter, async (req, res, next) => {
   try {
     const { username, password, email, role, tier } = req.body || {};
 
@@ -97,7 +98,7 @@ router.post('/register', async (req, res, next) => {
 });
 
 // 2. Login User (Public - Strict bcrypt + constant-time dummy verification)
-router.post('/login', async (req, res, next) => {
+router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { username, password } = req.body || {};
 

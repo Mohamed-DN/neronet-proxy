@@ -8,7 +8,7 @@
     "dev": "node --watch server.js",
     "migrate": "node -e 'require(\"./db/migrator\").runMigrations(require(\"./db/index\").getDatabase())'",
     "seed": "node -e 'const { getDatabase } = require(\"./db/index\"); const { runMigrations } = require(\"./db/migrator\"); const { seedDatabase } = require(\"./db/seed\"); const db = getDatabase(); runMigrations(db); seedDatabase(db);'",
-    "test": "node --test --test-concurrency=1 tests/**/*.test.js"
+    "test": "SOVEREIGN_RATE_LIMIT_DISABLED=true SOVEREIGN_VALKEY_NAMESPACE=test-{pid} node --test --test-concurrency=1 tests/**/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

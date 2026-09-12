@@ -1,4 +1,5 @@
 const express = require('express');
+const { readPageParams, pageEnvelope } = require('../utils/pagination');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
@@ -39,17 +40,29 @@ function formatUser(row) {
 // 1. List Users (Super-Admin only)
 router.get('/', requireRole('super-admin'), async (req, res, next) => {
   try {
+    const { limit, offset } = readPageParams(req);
+
     let rows = [];
+    let total = 0;
+
     if (isPostgres()) {
       const pool = getPgPool();
-      const result = await pool.query('SELECT * FROM users ORDER BY created_at ASC');
+      total = (await pool.query('SELECT count(*)::int AS n FROM users')).rows[0].n;
+      const result = await pool.query(
+        'SELECT * FROM users ORDER BY created_at ASC, id ASC LIMIT $1 OFFSET $2',
+        [limit, offset]
+      );
       rows = result.rows;
     } else {
       const db = getDatabase();
-      rows = db.prepare('SELECT * FROM users ORDER BY created_at ASC').all();
+      total = db.prepare('SELECT count(*) AS n FROM users').get().n;
+      rows = db
+        .prepare('SELECT * FROM users ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?')
+        .all(limit, offset);
     }
+
     const users = rows.map(formatUser);
-    return res.status(200).json({ users, total: users.length });
+    return res.status(200).json({ users, ...pageEnvelope({ items: users, total, limit, offset }) });
   } catch (err) {
     next(err);
   }

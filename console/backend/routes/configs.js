@@ -81,7 +81,7 @@ router.post('/generate', async (req, res, next) => {
       ]);
     } else {
       const db = getDatabase();
-      const vips = allocateNextVip(db);
+      const vips = await allocateNextVip(db);
       overlayIpv4 = vips.overlayIpv4;
       overlayIpv6 = vips.overlayIpv6;
 

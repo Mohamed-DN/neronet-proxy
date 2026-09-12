@@ -28,20 +28,41 @@ const riskRoutes = require('./routes/risk');
 const geofencingRoutes = require('./routes/geofencing');
 const cloudPcRoutes = require('./routes/cloudPc');
 const nukeRoutes = require('./routes/nuke');
+const securityHeaders = require('./middleware/securityHeaders');
+const { apiLimiter, enrolmentLimiter } = require('./middleware/rateLimit');
 
 function createApp() {
   const app = express();
 
+  // Trust exactly one proxy hop: the nginx container in front of this service.
+  //
+  // Without this every request reports nginx's address as req.ip. Rate limiting by
+  // address would then put the whole world in one bucket, so a single attacker
+  // locks everybody out, and every audit event records the wrong origin. `true`
+  // would be worse than nothing: it makes Express believe whatever X-Forwarded-For
+  // a client sends, which lets an attacker forge a fresh identity per request and
+  // bypass the limiter entirely.
+  app.set('trust proxy', Number(process.env.SOVEREIGN_TRUST_PROXY_HOPS || '1'));
+
+  app.disable('x-powered-by');
+
   // Core Middleware
+  app.use(securityHeaders);
   app.use(corsMiddleware);
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   app.use(requestLogger);
 
   // Mount API Sub-Routers
-  
+
   // Go mesh data-plane bridge. See routes/goBridge.js for the wire contract.
-  app.use('/v4/control', goBridgeRoutes);
+  // Enrolment allocates an overlay address from a finite pool, so it is metered
+  // separately and more tightly than ordinary API traffic.
+  app.use('/v4/control', enrolmentLimiter, goBridgeRoutes);
+
+  // Baseline budget for every API caller. Endpoint-specific limiters (sign-in,
+  // registration) are mounted inside their routers and apply on top of this.
+  app.use('/api', apiLimiter);
 
   app.use('/api', healthRoutes);
   app.use('/api/auth', authRoutes);

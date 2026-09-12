@@ -4,7 +4,29 @@ const EventEmitter = require('events');
 const dbConfig = require('../config/database');
 const logger = require('../utils/logger');
 
-const TOPOLOGY_CHANNEL = 'neronet:topology:events';
+/**
+ * Optional prefix isolating this process's keys and channels from others sharing the
+ * same Valkey instance.
+ *
+ * Without it every test process talked to one namespace: a topology event published
+ * by one test file arrived at a subscriber in another, and token blacklist entries
+ * outlived the suite that wrote them. The result was a suite that passed alone and
+ * failed intermittently together -- which is worse than failing outright, because it
+ * teaches everyone to re-run until green.
+ *
+ * It also matters in production: several deployments sharing one Valkey (a common
+ * homelab shortcut) would otherwise cross-talk in exactly the same way.
+ */
+// The literal {pid} is substituted with this process's id. Node's test runner gives
+// each test file its own process but one shared environment, so a namespace fixed
+// for the whole run still lets files cross-talk; only a per-process value isolates
+// them. In production the token is simply absent and the namespace is used verbatim.
+const NAMESPACE = (process.env.SOVEREIGN_VALKEY_NAMESPACE || '')
+  .trim()
+  .replace('{pid}', String(process.pid));
+const prefix = NAMESPACE ? `${NAMESPACE}:` : '';
+
+const TOPOLOGY_CHANNEL = `${prefix}neronet:topology:events`;
 
 let valkeyClient = null;
 let valkeySubscriber = null;
@@ -119,7 +141,7 @@ function subscribeTopologyEvents(handler) {
 async function blacklistToken(token, ttlSeconds = 900) {
   if (!token) return;
   const th = hashToken(token);
-  const key = `blacklist:token:${th}`;
+  const key = `${prefix}blacklist:token:${th}`;
   const now = Date.now();
   const expiresAt = now + ttlSeconds * 1000;
 
@@ -149,7 +171,7 @@ async function isTokenBlacklisted(token) {
 
   if (valkeyClient && isConnected) {
     try {
-      const exists = await valkeyClient.get(`blacklist:token:${th}`);
+      const exists = await valkeyClient.get(`${prefix}blacklist:token:${th}`);
       if (exists) return true;
     } catch (err) {
       // Fallback
@@ -189,8 +211,20 @@ function closeValkey() {
   isConnected = false;
 }
 
+/**
+ * The connected Valkey client, or null when it is unavailable.
+ *
+ * Callers that need to degrade gracefully (the rate limiter, for one) check this
+ * rather than letting every call throw.
+ */
+function getValkeyClient() {
+  return isConnected && valkeyClient ? valkeyClient : null;
+}
+
 module.exports = {
   TOPOLOGY_CHANNEL,
+  NAMESPACE,
+  getValkeyClient,
   initValkey,
   publishTopologyEvent,
   subscribeTopologyEvents,

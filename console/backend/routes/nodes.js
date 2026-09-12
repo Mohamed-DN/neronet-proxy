@@ -1,4 +1,5 @@
 const express = require('express');
+const { readPageParams, pageEnvelope } = require('../utils/pagination');
 const router = express.Router();
 const crypto = require('crypto');
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
@@ -74,26 +75,51 @@ function formatNode(row) {
 // 1. List Nodes (Scoped by Super-Admin vs Regular User)
 router.get('/', async (req, res, next) => {
   try {
+    const { limit, offset } = readPageParams(req);
+    const scoped = req.user.role !== 'super-admin';
+
+    // ORDER BY created_at alone is not a stable sort: rows sharing a timestamp can
+    // come back in any order between pages, so a client paging through the fleet
+    // would see some nodes twice and miss others. The primary key breaks the tie.
     let rows = [];
+    let total = 0;
+
     if (isPostgres()) {
       const pool = getPgPool();
-      if (req.user.role === 'super-admin') {
-        const result = await pool.query('SELECT * FROM nodes ORDER BY created_at ASC');
+      if (scoped) {
+        const countRes = await pool.query('SELECT count(*)::int AS n FROM nodes WHERE user_id = $1', [req.user.id]);
+        total = countRes.rows[0].n;
+        const result = await pool.query(
+          'SELECT * FROM nodes WHERE user_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3',
+          [req.user.id, limit, offset]
+        );
         rows = result.rows;
       } else {
-        const result = await pool.query('SELECT * FROM nodes WHERE user_id = $1 ORDER BY created_at ASC', [req.user.id]);
+        const countRes = await pool.query('SELECT count(*)::int AS n FROM nodes');
+        total = countRes.rows[0].n;
+        const result = await pool.query(
+          'SELECT * FROM nodes ORDER BY created_at ASC, id ASC LIMIT $1 OFFSET $2',
+          [limit, offset]
+        );
         rows = result.rows;
       }
     } else {
       const db = getDatabase();
-      if (req.user.role === 'super-admin') {
-        rows = db.prepare('SELECT * FROM nodes ORDER BY created_at ASC').all();
+      if (scoped) {
+        total = db.prepare('SELECT count(*) AS n FROM nodes WHERE user_id = ?').get(req.user.id).n;
+        rows = db
+          .prepare('SELECT * FROM nodes WHERE user_id = ? ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?')
+          .all(req.user.id, limit, offset);
       } else {
-        rows = db.prepare('SELECT * FROM nodes WHERE user_id = ? ORDER BY created_at ASC').all(req.user.id);
+        total = db.prepare('SELECT count(*) AS n FROM nodes').get().n;
+        rows = db
+          .prepare('SELECT * FROM nodes ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?')
+          .all(limit, offset);
       }
     }
+
     const nodes = rows.map(formatNode);
-    return res.status(200).json({ nodes, total: nodes.length });
+    return res.status(200).json({ nodes, ...pageEnvelope({ items: nodes, total, limit, offset }) });
   } catch (err) {
     next(err);
   }
@@ -193,7 +219,7 @@ router.post('/', async (req, res, next) => {
         return res.status(409).json({ error: 'Public key already registered' });
       }
 
-      const { overlayIpv4, overlayIpv6 } = allocateNextVip(db);
+      const { overlayIpv4, overlayIpv6 } = await allocateNextVip(db);
 
       db.prepare(`
         INSERT INTO nodes (

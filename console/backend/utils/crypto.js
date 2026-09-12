@@ -216,26 +216,106 @@ function allocateVipFromRows(existingVips = []) {
   throw err;
 }
 
+/** Map an allocation offset onto the overlay address pair it represents. */
+function vipFromOffset(offset) {
+  const o2 = 64 + Math.floor(offset / 65536);
+  const o3 = Math.floor((offset % 65536) / 256);
+  const o4 = offset % 256;
+
+  return {
+    usable: o4 !== 0 && o4 !== 255 && o2 < 128,
+    exhausted: o2 >= 128,
+    overlayIpv4: `100.${o2}.${o3}.${o4}`,
+    overlayIpv6: `fd7a:115c:a1e0::${offset.toString(16).toLowerCase()}`
+  };
+}
+
+// A counter value can be unusable (.0 / .255 are network and broadcast) or already
+// assigned to a node that did not come through this allocator. Both are skipped.
+const MAX_OFFSET_PROBES = 256;
+
+/** Is either half of this address pair already assigned? One indexed probe. */
+async function isVipTaken(dbOrPool, isPool, candidate) {
+  if (isPool) {
+    const res = await dbOrPool.query(
+      'SELECT 1 FROM nodes WHERE overlay_ipv4 = $1 OR overlay_ipv6 = $2 LIMIT 1',
+      [candidate.overlayIpv4, candidate.overlayIpv6]
+    );
+    return res.rowCount > 0;
+  }
+
+  const row = dbOrPool
+    .prepare('SELECT 1 AS hit FROM nodes WHERE overlay_ipv4 = ? OR overlay_ipv6 = ? LIMIT 1')
+    .get(candidate.overlayIpv4, candidate.overlayIpv6);
+
+  return Boolean(row);
+}
+
 /**
- * Allocates next unique VIP in overlay range (100.64.0.0/10 and fd7a:115c:a1e0::/64).
+ * Allocate the next overlay address pair.
+ *
+ * Backed by a database counter -- a PostgreSQL sequence, or a single-row table in
+ * SQLite -- rather than by reading the nodes table and scanning for a gap. The scan
+ * cost 71 ms of blocking CPU per registration at 100,000 nodes on a single-threaded
+ * runtime, and two concurrent callers could read the same set of used addresses and
+ * choose the same one.
  */
-function allocateNextVip(dbOrPool) {
+async function allocateNextVip(dbOrPool) {
   if (!dbOrPool) {
     return allocateVipFromRows([]);
   }
-  if (typeof dbOrPool.query === 'function' && typeof dbOrPool.prepare !== 'function') {
-    return dbOrPool.query('SELECT overlay_ipv4, overlay_ipv6 FROM nodes').then(res => {
-      return allocateVipFromRows(res.rows || []);
-    });
+
+  const isPool = typeof dbOrPool.query === 'function' && typeof dbOrPool.prepare !== 'function';
+
+  for (let probe = 0; probe < MAX_OFFSET_PROBES; probe++) {
+    let offset;
+
+    if (isPool) {
+      // nextval is atomic and never blocks another caller, which is the whole point.
+      const res = await dbOrPool.query("SELECT nextval('overlay_vip_seq')::bigint AS offset");
+      offset = Number(res.rows[0].offset);
+    } else if (typeof dbOrPool.prepare === 'function') {
+      offset = dbOrPool.transaction(() => {
+        const row = dbOrPool.prepare('SELECT next_offset FROM vip_allocator WHERE id = 1').get();
+        const current = row ? row.next_offset : 1;
+        dbOrPool.prepare('UPDATE vip_allocator SET next_offset = ? WHERE id = 1').run(current + 1);
+        return current;
+      })();
+    } else {
+      return allocateVipFromRows([]);
+    }
+
+    const candidate = vipFromOffset(offset);
+
+    if (candidate.exhausted) {
+      const err = new Error('overlay VIP pool exhausted: no free address in 100.64.0.0/10');
+      err.status = 503;
+      throw err;
+    }
+
+    if (!candidate.usable) {
+      continue;
+    }
+
+    // One indexed lookup, not a scan. The counter alone is not sufficient: seed data
+    // and imported nodes get addresses without going through it, and the counter is
+    // positioned at migration time, before any of that exists. Both overlay columns
+    // are UNIQUE, so an unchecked collision surfaces as a constraint violation the
+    // caller cannot act on. This costs a single index probe and makes the allocator
+    // correct regardless of how an address came to be in use.
+    const taken = await isVipTaken(dbOrPool, isPool, candidate);
+    if (!taken) {
+      return { overlayIpv4: candidate.overlayIpv4, overlayIpv6: candidate.overlayIpv6 };
+    }
   }
-  if (typeof dbOrPool.prepare === 'function') {
-    const existingVips = dbOrPool.prepare('SELECT overlay_ipv4, overlay_ipv6 FROM nodes').all();
-    return allocateVipFromRows(existingVips);
-  }
-  return allocateVipFromRows([]);
+
+  const err = new Error('overlay VIP allocator could not find a usable address');
+  err.status = 500;
+  throw err;
 }
 
 module.exports = {
+  vipFromOffset,
   generateCurve25519Keypair,
   buildWireGuardConfig,
   buildNoiseJsonProfile,

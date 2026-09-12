@@ -331,6 +331,42 @@ const SQLITE_MIGRATIONS = [
   }
 ];
 
+const SQLITE_MIGRATION_006 = {
+  name: '006_vip_counter',
+  sql: `
+      -- SQLite has no sequences, so the counter is a single row updated inside a
+      -- transaction. Mirrors migration 006 on the PostgreSQL side; see that file for
+      -- why allocation stopped scanning the nodes table.
+      CREATE TABLE IF NOT EXISTS vip_allocator (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          next_offset INTEGER NOT NULL
+      );
+  `,
+  run(db) {
+    const existing = db.prepare('SELECT next_offset FROM vip_allocator WHERE id = 1').get();
+    if (existing) {
+      return;
+    }
+
+    // Position the counter past every address already handed out.
+    const rows = db.prepare("SELECT overlay_ipv4 FROM nodes WHERE overlay_ipv4 LIKE '100.%'").all();
+
+    let highest = 0;
+    for (const row of rows) {
+      const parts = String(row.overlay_ipv4).split('.');
+      if (parts.length !== 4) continue;
+
+      const [, o2, o3, o4] = parts.map(Number);
+      if (!Number.isInteger(o2) || o2 < 64 || o2 > 127) continue;
+
+      const offset = (o2 - 64) * 65536 + o3 * 256 + o4;
+      if (offset > highest) highest = offset;
+    }
+
+    db.prepare('INSERT INTO vip_allocator (id, next_offset) VALUES (1, ?)').run(highest + 1);
+  }
+};
+
 const SQLITE_MIGRATION_005 = {
   name: '005_schema_parity',
   sql: `
@@ -465,7 +501,12 @@ function runSQLiteMigrations(db) {
   const appliedRows = db.prepare('SELECT name FROM _migrations').all();
   const appliedSet = new Set(appliedRows.map(r => r.name));
 
-  const migrations = [...SQLITE_MIGRATIONS, SQLITE_MIGRATION_004, SQLITE_MIGRATION_005];
+  const migrations = [
+    ...SQLITE_MIGRATIONS,
+    SQLITE_MIGRATION_004,
+    SQLITE_MIGRATION_005,
+    SQLITE_MIGRATION_006
+  ];
 
   for (const migration of migrations) {
     if (!appliedSet.has(migration.name)) {
@@ -504,6 +545,7 @@ function runMigrations(dbOrPool) {
 module.exports = {
   SQLITE_MIGRATION_004,
   SQLITE_MIGRATION_005,
+  SQLITE_MIGRATION_006,
   runMigrations,
   runPostgresMigrations,
   runSQLiteMigrations,

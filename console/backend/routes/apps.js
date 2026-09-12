@@ -1,4 +1,5 @@
 const express = require('express');
+const { readPageParams, pageEnvelope } = require('../utils/pagination');
 const router = express.Router();
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
@@ -124,14 +125,23 @@ function formatApp(row) {
 // 1. List Apps
 router.get('/', (req, res) => {
   const db = getDatabase();
-  let rows;
-  if (req.user.role === 'super-admin') {
-    rows = db.prepare('SELECT * FROM app_bundles ORDER BY created_at ASC').all();
-  } else {
-    rows = db.prepare('SELECT * FROM app_bundles WHERE user_id = ? ORDER BY created_at ASC').all(req.user.id);
-  }
+  const { limit, offset } = readPageParams(req);
+  const scoped = req.user.role !== 'super-admin';
+
+  const total = scoped
+    ? db.prepare('SELECT count(*) AS n FROM app_bundles WHERE user_id = ?').get(req.user.id).n
+    : db.prepare('SELECT count(*) AS n FROM app_bundles').get().n;
+
+  const rows = scoped
+    ? db
+        .prepare('SELECT * FROM app_bundles WHERE user_id = ? ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?')
+        .all(req.user.id, limit, offset)
+    : db
+        .prepare('SELECT * FROM app_bundles ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?')
+        .all(limit, offset);
+
   const apps = rows.map(formatApp);
-  return res.status(200).json({ apps, total: apps.length });
+  return res.status(200).json({ apps, ...pageEnvelope({ items: apps, total, limit, offset }) });
 });
 
 // 2. Create App Bundle
