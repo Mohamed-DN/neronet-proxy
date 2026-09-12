@@ -16,10 +16,14 @@ import (
 	"github.com/sovereign/proxy/v4/pkg/routes"
 )
 
+// ClientVersion is reported to the control plane on registration.
+const ClientVersion = "v4.0.0"
+
 // Client interacts with the SovereignMesh Control Plane Service
 type Client struct {
 	serverURL  string
 	httpClient *http.Client
+	authToken  string
 }
 
 // NewClient creates a new control plane API client
@@ -32,6 +36,15 @@ func NewClient(serverURL string) *Client {
 	}
 }
 
+// SetAuthToken sets the shared enrolment token sent with registration requests.
+//
+// RegisterRequest has always carried an AuthToken field, but nothing ever populated
+// it, so the control plane had no way to tell an authorised node from any process
+// that could reach the port.
+func (c *Client) SetAuthToken(token string) {
+	c.authToken = token
+}
+
 // Register registers a local node with the control plane
 func (c *Client) Register(
 	ctx context.Context,
@@ -41,10 +54,12 @@ func (c *Client) Register(
 	capability CapabilityDesc,
 ) (*RegisterResponse, error) {
 	reqBody := RegisterRequest{
-		PublicKeyHex: hex.EncodeToString(pubKey[:]),
-		Role:         role,
-		Endpoints:    endpoints,
-		Capability:   capability,
+		PublicKeyHex:  hex.EncodeToString(pubKey[:]),
+		Role:          role,
+		Endpoints:     endpoints,
+		AuthToken:     c.authToken,
+		ClientVersion: ClientVersion,
+		Capability:    capability,
 	}
 
 	data, _ := json.Marshal(reqBody)

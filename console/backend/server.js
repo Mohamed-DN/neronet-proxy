@@ -9,6 +9,7 @@ const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { getDatabase, isPostgres, getPgPool, closeDatabase } = require('./db/index');
 const { runMigrations } = require('./db/migrator');
 const { seedDatabase, bootstrapPostgresAdmin } = require('./db/seed');
+const goBridgeRoutes = require('./routes/goBridge');
 const { initValkey, closeValkey } = require('./db/valkey');
 const { initTopologySync } = require('./services/TopologySync');
 const { initTopologyWebSocket } = require('./ws/topologyServer');
@@ -39,57 +40,8 @@ function createApp() {
 
   // Mount API Sub-Routers
   
-  // ========================================================
-  // GO MESH COMPATIBILITY LAYER (Bridging Data Plane to UI)
-  // ========================================================
-      app.post('/v4/control/register', async (req, res) => {
-    try {
-      console.log('[GO-BRIDGE] Incoming Payload:', JSON.stringify(req.body));
-      const PublicKeyHex = req.body.PublicKeyHex || req.body.publicKeyHex || 'unknown-' + Math.random().toString(36).substring(7);
-      const Role = req.body.Role || req.body.role || 'CLIENT_ORIGIN';
-      const nodeId = 'svrn-go-' + PublicKeyHex.substring(0, 8);
-      const name = 'Go-Node-' + PublicKeyHex.substring(0, 4);
-      const ip = '100.64.' + Math.floor(Math.random()*255) + '.' + Math.floor(Math.random()*255);
-      
-      const pool = require('./db/index').getPgPool();
-      await pool.query(`
-        INSERT INTO nodes (id, user_id, name, role, country_code, is_healthy, compartment_id, public_key, overlay_ipv4, overlay_ipv6)
-        VALUES ($1, 'usr-admin-seed', $2, $3, 'US', true, 'cmp-public-01', $4, $5, 'fd00::1')
-        ON CONFLICT (id) DO UPDATE SET is_healthy = true, updated_at = NOW()
-      `, [nodeId, name, Role, PublicKeyHex, ip]);
-      
-      console.log(`[GO-BRIDGE] Registered Go Node: ${nodeId}`);
-      res.json({ NodeID: nodeId, Status: "registered", SecretHex: PublicKeyHex });
-    } catch (e) {
-      console.error('[GO-BRIDGE] Error:', e);
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post('/v4/control/heartbeat', async (req, res) => {
-    try {
-      const NodeID = req.body.NodeID || req.body.nodeID || req.body.nodeId; const CPUUsage = req.body.CPUUsage || req.body.cpuUsage || 15; const MemUsage = req.body.MemUsage || req.body.memUsage || 30; const BytesTx = req.body.BytesTx || req.body.bytesTx || 0; const BytesRx = req.body.BytesRx || req.body.bytesRx || 0;
-      if (!NodeID) return res.json({ Status: "ok" });
-      
-      const pool = require('./db/index').getPgPool();
-      await pool.query(`
-        UPDATE nodes SET 
-          latency_ms = floor(random() * 50 + 10),
-          tx_bytes = tx_bytes + $1,
-          rx_bytes = rx_bytes + $2,
-          cpu_usage_pct = $3,
-          memory_usage_pct = $4,
-          is_healthy = true,
-          updated_at = NOW()
-        WHERE id = $5
-      `, [BytesTx || 5000, BytesRx || 5000, CPUUsage || 15, MemUsage || 30, NodeID]);
-      
-      res.json({ Status: "ok" });
-    } catch (e) {
-      console.error('[GO-BRIDGE] Heartbeat Error:', e);
-      res.status(500).json({ error: e.message });
-    }
-  });
+  // Go mesh data-plane bridge. See routes/goBridge.js for the wire contract.
+  app.use('/v4/control', goBridgeRoutes);
 
   app.use('/api', healthRoutes);
   app.use('/api/auth', authRoutes);

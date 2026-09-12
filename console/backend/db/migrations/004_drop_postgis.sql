@@ -24,20 +24,52 @@
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS latitude REAL;
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS longitude REAL;
 
--- 2. Carry over any coordinates that were written to the geometry column
+-- 2. Carry over any coordinates that were written to the geometry column.
+--
+--    Reading them needs ST_X/ST_Y, which need the PostGIS library to be loadable.
+--    If it is not -- for example because the image was switched to plain postgres
+--    before this migration ran -- the copy CANNOT be done, and this migration must
+--    stop rather than continue to step 3 and drop the column.
+--
+--    An earlier version of this file caught the failure and carried on with a
+--    RAISE NOTICE. The notice went to a log nobody was reading, the column was
+--    dropped, and the coordinates were destroyed. Swallowing an error and then
+--    performing the irreversible step is the worst possible ordering.
 DO $$
+DECLARE
+  rows_with_location bigint := 0;
 BEGIN
-  IF EXISTS (
+  IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'nodes' AND column_name = 'location'
   ) THEN
+    RAISE NOTICE 'No legacy location column present; nothing to carry over.';
+    RETURN;
+  END IF;
+
+  EXECUTE 'SELECT count(*) FROM nodes WHERE location IS NOT NULL'
+    INTO rows_with_location;
+
+  IF rows_with_location = 0 THEN
+    RAISE NOTICE 'Legacy location column is present but empty; nothing to carry over.';
+    RETURN;
+  END IF;
+
+  BEGIN
     EXECUTE 'UPDATE nodes
                SET latitude  = COALESCE(latitude,  ST_Y(location::geometry)),
                    longitude = COALESCE(longitude, ST_X(location::geometry))
              WHERE location IS NOT NULL';
-  END IF;
-EXCEPTION WHEN OTHERS THEN
-  RAISE NOTICE 'Could not copy coordinates from the legacy location column: %', SQLERRM;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION
+      'Cannot migrate % node coordinates out of the PostGIS location column: %. '
+      'Run this migration while PostgreSQL still has a working PostGIS library '
+      '(image postgis/postgis:16-3.4-alpine), then switch to plain postgres. '
+      'Refusing to drop the column, because doing so would destroy the coordinates.',
+      rows_with_location, SQLERRM;
+  END;
+
+  RAISE NOTICE 'Carried % node coordinates over to latitude/longitude.', rows_with_location;
 END;
 $$;
 

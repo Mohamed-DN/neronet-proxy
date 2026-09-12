@@ -207,11 +207,13 @@ function allocateVipFromRows(existingVips = []) {
     offset++;
   }
 
-  const randOffset = 100000 + Math.floor(Math.random() * 10000);
-  return {
-    overlayIpv4: `100.64.1.${randOffset % 250 + 1}`,
-    overlayIpv6: `fd7a:115c:a1e0::${randOffset.toString(16)}`
-  };
+  // Pool exhausted. Returning a random address here handed out a VIP that was very
+  // likely already assigned -- and overlay_ipv4 and overlay_ipv6 are both UNIQUE, so
+  // the caller got an opaque constraint violation instead of a clear failure. Nothing
+  // useful can be allocated at this point; say so.
+  const err = new Error('overlay VIP pool exhausted: no free address in 100.64.0.0/10');
+  err.status = 503;
+  throw err;
 }
 
 /**

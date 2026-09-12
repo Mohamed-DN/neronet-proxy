@@ -1,0 +1,327 @@
+/**
+ * Go mesh data-plane bridge.
+ *
+ * Implements the wire contract the Go node speaks, defined by the typed structs in
+ * pkg/control/server.go. The previous inline implementation in server.js invented its
+ * own field names on both sides of both endpoints, which meant nothing crossed:
+ *
+ *   - It read `PublicKeyHex`; the node sends `public_key_hex`. Every registration
+ *     stored a node with no public key, under the id `svrn-go-unknown-`.
+ *   - It answered with `{NodeID, Status, SecretHex}`; the node decodes
+ *     `RegisterResponse` (`assigned_node_id`, `overlay_ipv4`, ...). Every field came
+ *     back as its zero value, which is why the node logged an empty Overlay VIP.
+ *   - It read `NodeID` on heartbeat; the node sends `node_id`. The handler then hit
+ *     `if (!NodeID) return res.json({Status: "ok"})` and discarded the heartbeat
+ *     while answering 200, so neither side ever reported a problem.
+ *   - It hardcoded `overlay_ipv6` to 'fd00::1' on a UNIQUE column, so the second node
+ *     to register got a constraint violation and a 500. Only one Go node could ever
+ *     exist.
+ *
+ * The net effect was 47 node rows against 7 telemetry rows, and a fleet that looked
+ * registered without a single node holding an overlay address.
+ */
+
+const express = require('express');
+const crypto = require('crypto');
+
+const { getDatabase, isPostgres, getPgPool } = require('../db/index');
+const { allocateNextVip } = require('../utils/crypto');
+const config = require('../config/env');
+const logger = require('../utils/logger');
+
+const router = express.Router();
+
+// The node derives its own id as pk_<first 8 bytes of the public key, hex>
+// (control.GenerateNodeID). The control plane assigns the same value so that both
+// sides agree on one identifier: the previous bridge minted `svrn-go-<...>` while the
+// node kept calling itself `pk_<...>`, so even a correctly parsed heartbeat would have
+// updated zero rows.
+function deriveNodeId(publicKeyHex) {
+  return `pk_${publicKeyHex.slice(0, 16).toLowerCase()}`;
+}
+
+const PUBLIC_KEY_RE = /^[0-9a-f]{64}$/i;
+
+/**
+ * Resolve the account that owns bridge-enrolled nodes.
+ *
+ * nodes.user_id is a foreign key. The previous bridge hardcoded 'usr-admin-seed',
+ * which exists on the staging PostgreSQL database and nowhere else -- on SQLite the
+ * insert fails with an opaque FOREIGN KEY constraint error. Looking up the
+ * super-admin works on any deployment; the env override is for installations that
+ * want enrolled nodes attributed elsewhere.
+ */
+async function resolveOwnerId() {
+  const configured = process.env.SOVEREIGN_GO_BRIDGE_OWNER_ID;
+
+  if (configured) {
+    const rows = await runQuery(
+      'SELECT id FROM users WHERE id = $1',
+      [configured],
+      'SELECT id FROM users WHERE id = ?',
+      [configured]
+    );
+    if (rows.length > 0) {
+      return rows[0].id;
+    }
+    logger.warn(`SOVEREIGN_GO_BRIDGE_OWNER_ID='${configured}' does not exist; falling back to the super-admin account.`);
+  }
+
+  const admins = await runQuery(
+    "SELECT id FROM users WHERE role = 'super-admin' ORDER BY created_at LIMIT 1",
+    [],
+    "SELECT id FROM users WHERE role = 'super-admin' ORDER BY created_at LIMIT 1",
+    []
+  );
+
+  if (admins.length === 0) {
+    const err = new Error('no super-admin account exists to own enrolled nodes');
+    err.status = 503;
+    throw err;
+  }
+
+  return admins[0].id;
+}
+
+/**
+ * Reject registrations that do not carry the shared enrolment token.
+ *
+ * This endpoint writes to the node table and hands out overlay addresses. It had no
+ * authentication of any kind, so anyone able to reach the port could enrol nodes into
+ * the mesh and exhaust the address pool.
+ */
+function checkRegistrationToken(req) {
+  const expected = process.env.SOVEREIGN_REGISTRATION_TOKEN;
+
+  if (!expected) {
+    if (config.IS_PRODUCTION) {
+      return { ok: false, status: 503, error: 'node enrolment is disabled: SOVEREIGN_REGISTRATION_TOKEN is not set' };
+    }
+    // Development convenience only, and noisy on purpose.
+    logger.warn('SOVEREIGN_REGISTRATION_TOKEN is not set - node enrolment is unauthenticated.');
+    return { ok: true };
+  }
+
+  const provided = req.body.auth_token || '';
+  const a = Buffer.from(String(provided), 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return { ok: false, status: 401, error: 'invalid enrolment token' };
+  }
+
+  return { ok: true };
+}
+
+/** Run a query against whichever backend is configured. */
+async function runQuery(pgSql, pgParams, sqliteSql, sqliteParams) {
+  if (isPostgres()) {
+    const pool = getPgPool();
+    const res = await pool.query(pgSql, pgParams);
+    return res.rows;
+  }
+
+  const db = getDatabase();
+  const statement = db.prepare(sqliteSql);
+  if (/^\s*select/i.test(sqliteSql)) {
+    return statement.all(...sqliteParams);
+  }
+  statement.run(...sqliteParams);
+  return [];
+}
+
+// POST /v4/control/register
+router.post('/register', async (req, res) => {
+  try {
+    const auth = checkRegistrationToken(req);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    const publicKeyHex = String(req.body.public_key_hex || '').trim();
+    if (!PUBLIC_KEY_RE.test(publicKeyHex)) {
+      // A registration without a usable public key has no stable identity. The old
+      // handler substituted a random string here and stored the result anyway.
+      return res.status(400).json({ error: 'public_key_hex must be 64 hex characters' });
+    }
+
+    const role = String(req.body.role || 'CLIENT_ORIGIN');
+    const capability = req.body.capability || {};
+    const countryCode = String(capability.country_code || 'US').slice(0, 2).toUpperCase();
+    const ipClass = String(capability.ip_class || 'RESIDENTIAL');
+    const city = String(capability.city || '');
+    const asn = Number.isFinite(capability.asn) ? capability.asn : 0;
+    const endpoints = Array.isArray(req.body.endpoints) ? req.body.endpoints : [];
+
+    const nodeId = deriveNodeId(publicKeyHex);
+    const name = `Go-Node-${publicKeyHex.slice(0, 8)}`;
+    const ownerId = await resolveOwnerId();
+
+    // Re-registration must return the addresses the node already holds rather than
+    // allocating new ones, otherwise every restart burns an address and orphans the
+    // previous lease.
+    const existing = await runQuery(
+      'SELECT overlay_ipv4, overlay_ipv6 FROM nodes WHERE id = $1',
+      [nodeId],
+      'SELECT overlay_ipv4, overlay_ipv6 FROM nodes WHERE id = ?',
+      [nodeId]
+    );
+
+    let overlayIpv4;
+    let overlayIpv6;
+
+    if (existing.length > 0) {
+      overlayIpv4 = existing[0].overlay_ipv4;
+      overlayIpv6 = existing[0].overlay_ipv6;
+    } else {
+      const vip = await allocateNextVip(isPostgres() ? getPgPool() : getDatabase());
+      overlayIpv4 = vip.overlayIpv4;
+      overlayIpv6 = vip.overlayIpv6;
+    }
+
+    const endpointsJson = JSON.stringify(endpoints);
+
+    if (isPostgres()) {
+      const pool = getPgPool();
+      await pool.query(
+        `INSERT INTO nodes (
+           id, user_id, name, role, ip_class, country_code, city, asn,
+           is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb)
+         ON CONFLICT (id) DO UPDATE SET
+           is_healthy = TRUE,
+           role = EXCLUDED.role,
+           ip_class = EXCLUDED.ip_class,
+           country_code = EXCLUDED.country_code,
+           endpoints = EXCLUDED.endpoints,
+           updated_at = NOW()`,
+        [nodeId, ownerId, name, role, ipClass, countryCode, city, asn,
+         publicKeyHex, overlayIpv4, overlayIpv6, endpointsJson]
+      );
+    } else {
+      const db = getDatabase();
+      db.prepare(
+        `INSERT INTO nodes (
+           id, user_id, name, role, ip_class, country_code, city, asn,
+           is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET
+           is_healthy = 1,
+           role = excluded.role,
+           ip_class = excluded.ip_class,
+           country_code = excluded.country_code,
+           endpoints = excluded.endpoints,
+           updated_at = CURRENT_TIMESTAMP`
+      ).run(nodeId, ownerId, name, role, ipClass, countryCode, city, asn,
+            publicKeyHex, overlayIpv4, overlayIpv6, endpointsJson);
+    }
+
+    logger.info(`[GO-BRIDGE] Registered ${nodeId} (${role}) with overlay ${overlayIpv4} / ${overlayIpv6}`);
+
+    // Field names and shape must match control.RegisterResponse exactly.
+    return res.json({
+      assigned_node_id: nodeId,
+      overlay_ipv4: overlayIpv4,
+      overlay_ipv6: overlayIpv6,
+      relays: [],
+      lease_expiry_utc: Math.floor(Date.now() / 1000) + 86400,
+      network_psk_hex: '',
+      policy_epoch: 0,
+      route_epoch: 0
+    });
+  } catch (err) {
+    logger.error(`[GO-BRIDGE] Registration failed: ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /v4/control/heartbeat
+router.post('/heartbeat', async (req, res) => {
+  try {
+    const nodeId = String(req.body.node_id || '').trim();
+    if (!nodeId) {
+      // Answering 200 to a heartbeat that was thrown away is how this went unnoticed
+      // for so long: neither side logged anything.
+      return res.status(400).json({ error: 'node_id is required' });
+    }
+
+    const cpuPct = clampNumber(req.body.cpu_usage_pct, 0, 100, 0);
+    const memMb = clampNumber(req.body.memory_usage_mb, 0, Number.MAX_SAFE_INTEGER, 0);
+    const batteryPct = clampNumber(req.body.battery_level_pct, 0, 100, 100);
+    const txBytes = clampNumber(req.body.tx_bytes_sec, 0, Number.MAX_SAFE_INTEGER, 0);
+    const rxBytes = clampNumber(req.body.rx_bytes_sec, 0, Number.MAX_SAFE_INTEGER, 0);
+
+    // latency_ms is deliberately not written here. The previous handler set it to
+    // `floor(random() * 50 + 10)` on every heartbeat, so the console displayed an
+    // invented round-trip time for every node in the fleet. The node does not measure
+    // RTT yet; showing nothing is correct until it does.
+    const rows = await runQuery(
+      `UPDATE nodes SET
+         tx_bytes = tx_bytes + $1,
+         rx_bytes = rx_bytes + $2,
+         cpu_usage_pct = $3,
+         memory_usage_pct = $4,
+         battery_pct = $5,
+         is_healthy = TRUE,
+         last_heartbeat = NOW(),
+         updated_at = NOW()
+       WHERE id = $6
+       RETURNING is_quarantined, quarantine_reason`,
+      [txBytes, rxBytes, cpuPct, memMb, batteryPct, nodeId],
+      `UPDATE nodes SET
+         tx_bytes = tx_bytes + ?,
+         rx_bytes = rx_bytes + ?,
+         cpu_usage_pct = ?,
+         memory_usage_pct = ?,
+         battery_pct = ?,
+         is_healthy = 1,
+         last_heartbeat = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [txBytes, rxBytes, cpuPct, memMb, batteryPct, nodeId]
+    );
+
+    let quarantined = false;
+    let quarantineReason = '';
+
+    if (isPostgres()) {
+      if (rows.length === 0) {
+        return res.status(404).json({ error: `unknown node_id ${nodeId}` });
+      }
+      quarantined = Boolean(rows[0].is_quarantined);
+      quarantineReason = rows[0].quarantine_reason || '';
+    } else {
+      const db = getDatabase();
+      const row = db.prepare('SELECT is_quarantined, quarantine_reason FROM nodes WHERE id = ?').get(nodeId);
+      if (!row) {
+        return res.status(404).json({ error: `unknown node_id ${nodeId}` });
+      }
+      quarantined = Boolean(row.is_quarantined);
+      quarantineReason = row.quarantine_reason || '';
+    }
+
+    // Shape must match control.HeartbeatResponse.
+    return res.json({
+      acknowledged: true,
+      force_rekey: false,
+      drain_and_exit: false,
+      revoked_keys: [],
+      is_quarantined: quarantined,
+      quarantine_reason: quarantineReason,
+      policy_epoch: 0,
+      route_epoch: 0
+    });
+  } catch (err) {
+    logger.error(`[GO-BRIDGE] Heartbeat failed: ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+
+module.exports = router;
+module.exports.deriveNodeId = deriveNodeId;

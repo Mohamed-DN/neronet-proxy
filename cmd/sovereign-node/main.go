@@ -71,6 +71,7 @@ func main() {
 
 	// Register with Control Plane
 	ctrlClient := control.NewClient(*controlURL)
+	ctrlClient.SetAuthToken(os.Getenv("SOVEREIGN_REGISTRATION_TOKEN"))
 	role := "CLIENT_ORIGIN"
 	if *enableExit {
 		role = "EXIT_BRIDGE"
@@ -91,15 +92,30 @@ func main() {
 	if err != nil {
 		log.Printf("[SOVEREIGN-NODE] Warning: Initial control plane registration failed: %v (operating in local standalone mode)", err)
 	} else {
-		log.Printf("[SOVEREIGN-NODE] Registered with control plane. Assigned Overlay VIP: %s", regResp.OverlayIPv4)
-		
+		// Adopt the identifier the control plane assigned. Keeping the locally derived
+		// one meant heartbeats were addressed to a node id the control plane had never
+		// stored, so every update matched zero rows while still returning success.
+		if regResp.AssignedNodeID != "" && regResp.AssignedNodeID != nodeID {
+			log.Printf("[SOVEREIGN-NODE] Control plane assigned node ID %s (local was %s)", regResp.AssignedNodeID, nodeID)
+			nodeID = regResp.AssignedNodeID
+		}
+
+		if regResp.OverlayIPv4 == "" {
+			// A registration that returns no overlay address has not enrolled this node
+			// into the mesh, whatever the HTTP status said. Failing loudly here is the
+			// difference between a broken deployment and a silently useless one.
+			log.Printf("[SOVEREIGN-NODE] ERROR: control plane accepted registration but assigned no overlay VIP; node cannot join the mesh")
+		} else {
+			log.Printf("[SOVEREIGN-NODE] Registered with control plane as %s. Assigned Overlay VIP: %s / %s", nodeID, regResp.OverlayIPv4, regResp.OverlayIPv6)
+		}
+
 		// Initial ACL and Route Sync
 		policy, _, syncErr := ctrlClient.SyncACLs(ctx, nodeID, 0)
 		if syncErr == nil && policy != nil {
 			netfilter.UpdatePolicy(policy)
 			log.Printf("[SOVEREIGN-NODE] Zero Trust ACL policy loaded (epoch: %d, outbound rules: %d)", policy.Epoch, len(policy.OutboundRules))
 		}
-		
+
 		routesList, routeEpoch, routeErr := ctrlClient.SyncRoutes(ctx, nodeID, 0)
 		if routeErr == nil {
 			log.Printf("[SOVEREIGN-NODE] Subnet routes synced (epoch: %d, count: %d)", routeEpoch, len(routesList))
@@ -130,13 +146,32 @@ func main() {
 						TimestampUTC:   time.Now().UTC(),
 					}
 
+					// Report measured memory rather than a constant. The previous call
+					// passed cpu=5, mem=32, battery=100 on every beat for every node, so
+					// the console's resource graphs were drawing the same invented
+					// numbers regardless of what the machine was doing.
+					var memStats runtime.MemStats
+					runtime.ReadMemStats(&memStats)
+					memoryMB := uint32(memStats.Sys / (1024 * 1024))
+
+					// CPU and battery are not measured yet. Zero says "unknown"; a
+					// plausible-looking constant would not.
+					const cpuPctUnmeasured = 0
+					const batteryPctUnmeasured = 0
+
 					hbCtx, hbCancel := context.WithTimeout(ctx, 5*time.Second)
-					hbResp, hbErr := ctrlClient.SendHeartbeatWithPosture(hbCtx, nodeID, nil, 0, 5, 32, 100, false, att)
+					hbResp, hbErr := ctrlClient.SendHeartbeatWithPosture(
+						hbCtx, nodeID, nil, 0, cpuPctUnmeasured, memoryMB, batteryPctUnmeasured, false, att,
+					)
 					hbCancel()
 
 					if hbErr != nil {
 						log.Printf("[SOVEREIGN-NODE] Heartbeat failed: %v", hbErr)
 						continue
+					}
+
+					if !hbResp.Acknowledged {
+						log.Printf("[SOVEREIGN-NODE] WARNING: control plane did not acknowledge heartbeat for %s", nodeID)
 					}
 
 					if hbResp.IsQuarantined {
