@@ -5,7 +5,18 @@
 
 -- 1. Enable Required Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "postgis";
+
+-- PostGIS was removed in migration 004. It declared a GEOMETRY column and a GiST
+-- index that no query ever touched: geo-fencing compares country_code strings, and
+-- distance is computed with Haversine in RiskEngine. The extension cost a second
+-- schema to maintain, a PostGIS-specific base image, and a set of tests that
+-- asserted the DDL text rather than any behaviour -- while buying nothing, because
+-- spatial indexing only starts to pay at a scale this fleet does not reach.
+--
+-- If spatial querying is ever needed, a bounding-box prefilter over the latitude
+-- and longitude columns followed by Haversine gives the same answers, works
+-- identically on SQLite and PostgreSQL, and needs no extension.
+
 -- pgvector is optional (reserved for future AI anomaly detection).
 -- Silently skip if not installed on this PostgreSQL image.
 DO $$
@@ -54,7 +65,8 @@ CREATE TABLE IF NOT EXISTS nodes (
     city VARCHAR(128) DEFAULT '',
     asn INTEGER DEFAULT 0,
     endpoints JSONB NOT NULL DEFAULT '[]'::jsonb,
-    location GEOMETRY(Point, 4326),
+    latitude REAL,
+    longitude REAL,
     onion_routing_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     onion_hops INTEGER NOT NULL DEFAULT 0,
     kill_switch_enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -80,7 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_nodes_user_id ON nodes(user_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_public_key ON nodes(public_key);
 CREATE INDEX IF NOT EXISTS idx_nodes_overlay_ipv4 ON nodes(overlay_ipv4);
 CREATE INDEX IF NOT EXISTS idx_nodes_role ON nodes(role);
-CREATE INDEX IF NOT EXISTS idx_nodes_location_gix ON nodes USING GIST(location);
+CREATE INDEX IF NOT EXISTS idx_nodes_latlng ON nodes(latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_nodes_risk_score ON nodes(risk_score);
 CREATE INDEX IF NOT EXISTS idx_nodes_is_quarantined ON nodes(is_quarantined);
 
@@ -122,7 +134,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
     message TEXT NOT NULL,
     ip_address VARCHAR(45),
     user_agent TEXT,
-    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -177,7 +189,7 @@ CREATE TABLE IF NOT EXISTS nerodrop_sessions (
     transferred_chunks INTEGER NOT NULL DEFAULT 0,
     bytes_transferred BIGINT NOT NULL DEFAULT 0,
     status VARCHAR(32) NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'pending', 'transferring', 'completed', 'failed', 'cancelled')),
-    webrtc_signal JSONB NOT NULL DEFAULT '{}'::jsonb,
+    webrtc_signal_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

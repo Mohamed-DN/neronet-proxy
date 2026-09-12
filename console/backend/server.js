@@ -8,7 +8,7 @@ const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
 const { getDatabase, isPostgres, getPgPool, closeDatabase } = require('./db/index');
 const { runMigrations } = require('./db/migrator');
-const { seedDatabase } = require('./db/seed');
+const { seedDatabase, bootstrapPostgresAdmin } = require('./db/seed');
 const { initValkey, closeValkey } = require('./db/valkey');
 const { initTopologySync } = require('./services/TopologySync');
 const { initTopologyWebSocket } = require('./ws/topologyServer');
@@ -124,6 +124,9 @@ async function initDatabase() {
     if (isPostgres()) {
       const pool = getPgPool();
       await runMigrations(pool);
+      // Without this a PostgreSQL deployment migrates cleanly and then has no
+      // account anyone can log in with: seedDatabase is SQLite-only.
+      await bootstrapPostgresAdmin(pool);
     } else {
       const db = getDatabase();
       runMigrations(db);

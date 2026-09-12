@@ -15,6 +15,39 @@ const { logAuditEvent } = require('../utils/audit');
 const logger = require('../utils/logger');
 
 const DEFAULT_SIGNALING_URL = 'wss://signal.internal.darknero.com/ws/selkies';
+
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+/**
+ * Generate a per-domain OTP secret.
+ *
+ * Every custom domain previously shared the literal 'OTP123456', written into the
+ * schema as a column default and again into both INSERT statements. One secret
+ * across every tenant is not a secret.
+ */
+function generateOtpSecret() {
+  const bytes = crypto.randomBytes(20); // 160 bits, the RFC 4226 recommendation
+  let secret = '';
+  for (const byte of bytes) {
+    secret += BASE32_ALPHABET[byte % BASE32_ALPHABET.length];
+  }
+  return secret;
+}
+
+/** Compare two secrets without leaking their contents through timing. */
+function secretsMatch(provided, expected) {
+  if (typeof provided !== 'string' || typeof expected !== 'string' || expected.length === 0) {
+    return false;
+  }
+
+  const a = Buffer.from(provided, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(a, b);
+}
 const DEFAULT_ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'turn:turn.internal.darknero.com:3478', username: 'neronet', credential: 'turn_secret_token' }
@@ -53,7 +86,7 @@ function ensureCloudPcSchema(db) {
         cloud_pc_id TEXT NOT NULL,
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         sso_gateway_enabled INTEGER NOT NULL DEFAULT 1,
-        otp_secret TEXT NOT NULL DEFAULT 'OTP123456',
+        otp_secret TEXT,
         webrtc_signaling_endpoint TEXT,
         status TEXT NOT NULL DEFAULT 'active',
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -75,10 +108,12 @@ function ensureCloudPcSchema(db) {
         VALUES ('cpc-0001', 'Admin GPU Workstation', ?, ?, '{"vcpus": 8, "ram_gb": 32, "gpu": "RTX 4090"}', 'active', 'wss://signal.internal.darknero.com/ws/selkies', 'desktop.admin.darknero.com')
       `).run(adminId, nodeId);
 
+      // Random even for the demo row: a seeded domain with a known OTP secret is a
+      // live bypass on any database that was ever seeded, development or not.
       db.prepare(`
         INSERT OR IGNORE INTO custom_domains (id, domain_name, cloud_pc_id, user_id, sso_gateway_enabled, otp_secret)
-        VALUES ('cdom-0001', 'desktop.admin.darknero.com', 'cpc-0001', ?, 1, 'OTP123456')
-      `).run(adminId);
+        VALUES ('cdom-0001', 'desktop.admin.darknero.com', 'cpc-0001', ?, 1, ?)
+      `).run(adminId, generateOtpSecret());
     }
   }
 }
@@ -330,17 +365,18 @@ async function registerCustomDomain({ domain, cloud_pc_id, actor }) {
     throw err;
   }
 
-  const cdomId = `cdom-${Math.random().toString(36).substring(2, 8)}`;
+  const cdomId = `cdom-${crypto.randomBytes(4).toString('hex')}`;
   const userId = actor ? actor.id : 'usr-admin';
   const nowIso = new Date().toISOString();
+  const otpSecret = generateOtpSecret();
 
   if (isPostgres()) {
     const pool = getPgPool();
     await pool.query(
       `INSERT INTO custom_domains
        (id, domain_name, cloud_pc_id, user_id, sso_gateway_enabled, otp_secret, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, TRUE, 'OTP123456', $5, $5)`,
-      [cdomId, normDomain, cloud_pc_id, userId, nowIso]
+       VALUES ($1, $2, $3, $4, TRUE, $5, $6, $6)`,
+      [cdomId, normDomain, cloud_pc_id, userId, otpSecret, nowIso]
     );
   } else {
     const db = getDatabase();
@@ -348,8 +384,8 @@ async function registerCustomDomain({ domain, cloud_pc_id, actor }) {
     db.prepare(
       `INSERT INTO custom_domains
        (id, domain_name, cloud_pc_id, user_id, sso_gateway_enabled, otp_secret, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 1, 'OTP123456', ?, ?)`
-    ).run(cdomId, normDomain, cloud_pc_id, userId, nowIso, nowIso);
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?)`
+    ).run(cdomId, normDomain, cloud_pc_id, userId, otpSecret, nowIso, nowIso);
   }
 
   return {
@@ -359,7 +395,8 @@ async function registerCustomDomain({ domain, cloud_pc_id, actor }) {
     cloud_pc_id,
     user_id: userId,
     sso_enabled: true,
-    otp_secret: 'OTP123456',
+    // Returned once, at creation, so the caller can enrol it in an authenticator.
+    otp_secret: otpSecret,
     created_at: nowIso
   };
 }
@@ -376,7 +413,10 @@ async function authenticateGateway(domain, otpCode) {
     throw err;
   }
 
-  if (otpCode !== '123456' && otpCode !== domObj.otp_secret) {
+  // The literal '123456' used to be accepted here for any domain, unconditionally
+  // and regardless of the stored secret -- an authentication bypass on every custom
+  // domain gateway, not a weak default. Only the domain's own secret is accepted now.
+  if (!secretsMatch(otpCode, domObj.otp_secret)) {
     const err = new Error('Invalid OTP code for custom domain gateway');
     err.status = 401;
     throw err;

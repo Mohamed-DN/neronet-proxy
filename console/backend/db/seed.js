@@ -193,8 +193,8 @@ function seedDatabase(db) {
       if (domCount === 0) {
         db.prepare(`
           INSERT OR IGNORE INTO custom_domains (id, domain_name, cloud_pc_id, user_id, sso_gateway_enabled, otp_secret)
-          VALUES ('cdom-0001', 'desktop.admin.darknero.com', 'cpc-0001', 'usr-admin', 1, 'OTP123456')
-        `).run();
+          VALUES ('cdom-0001', 'desktop.admin.darknero.com', 'cpc-0001', 'usr-admin', 1, ?)
+        `).run(require('crypto').randomBytes(20).toString('hex'));
       }
     }
 
@@ -233,3 +233,44 @@ function seedDatabase(db) {
 }
 
 module.exports = { seedDatabase };
+
+/**
+ * Create the super-admin account on a PostgreSQL deployment.
+ *
+ * seedDatabase() is SQLite-only -- it uses better-sqlite3 prepared statements -- and
+ * server.js only called it on the SQLite branch. A PostgreSQL deployment therefore
+ * migrated cleanly and then had no account anyone could log in with.
+ *
+ * This deliberately does NOT create the demo users that seedDatabase() adds. Those
+ * exist to make a development database useful and share one hardcoded password;
+ * PostgreSQL is the production path, and provisioning known-credential accounts
+ * there would undo the secret handling the rest of the config enforces.
+ *
+ * Idempotent: safe to run on every boot.
+ */
+async function bootstrapPostgresAdmin(pool) {
+  const bcryptLib = require('bcryptjs');
+  const appConfig = require('../config/env');
+
+  const existing = await pool.query('SELECT id FROM users WHERE role = $1 LIMIT 1', ['super-admin']);
+  if (existing.rowCount > 0) {
+    logger.info('Super-admin account already present, skipping bootstrap.');
+    return false;
+  }
+
+  const passwordHash = bcryptLib.hashSync(appConfig.ADMIN_PASSWORD, bcryptLib.genSaltSync(10));
+
+  await pool.query(
+    `INSERT INTO users (
+       id, username, email, password_hash, role, tier, status,
+       bandwidth_quota_gb, bandwidth_used_bytes, max_nodes
+     ) VALUES ($1, $2, $3, $4, 'super-admin', 'managed_cloud', 'active', 1000, 0, 50)
+     ON CONFLICT (username) DO NOTHING`,
+    ['usr-admin', appConfig.ADMIN_USERNAME, appConfig.ADMIN_EMAIL, passwordHash]
+  );
+
+  logger.info(`Bootstrapped super-admin account '${appConfig.ADMIN_USERNAME}'.`);
+  return true;
+}
+
+module.exports.bootstrapPostgresAdmin = bootstrapPostgresAdmin;

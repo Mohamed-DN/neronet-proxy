@@ -236,7 +236,8 @@ async function ingestTelemetry(nodeId, telemetry) {
         latency_ms = $5,
         last_geo_drift_at = CASE WHEN $6 = true THEN $7::timestamptz ELSE last_geo_drift_at END,
         last_heartbeat = $7,
-        location = ST_SetSRID(ST_MakePoint($8, $9), 4326),
+        longitude = $8,
+        latitude = $9,
         updated_at = $7
        WHERE id = $10`,
       [

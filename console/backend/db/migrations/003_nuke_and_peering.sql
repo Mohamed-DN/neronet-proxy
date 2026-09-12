@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS custom_domains (
     device_id VARCHAR(64) REFERENCES nodes(id) ON DELETE CASCADE,
     domain_name VARCHAR(255) NOT NULL UNIQUE,
     sso_gateway_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    otp_secret VARCHAR(128) DEFAULT 'OTP123456',
+    otp_secret VARCHAR(128),
     webrtc_signaling_endpoint VARCHAR(255),
     status VARCHAR(32) NOT NULL DEFAULT 'active' CHECK (status IN ('provisioning', 'active', 'suspended', 'error')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

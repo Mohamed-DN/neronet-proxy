@@ -3,7 +3,7 @@
  * 
  * Verifies Milestone 1:
  * 1. PostgreSQL 16 Migration DDL Syntax & Completeness:
- *    - PostGIS extensions, geometry point columns, spatial GiST indexing
+ *    - Plain latitude/longitude columns (PostGIS removed in migration 004)
  *    - pgvector extension declarations
  *    - JSONB column types, defaults, and constraints
  *    - Foreign key cascading rules and check constraints
@@ -44,11 +44,11 @@ function assert(condition, message) {
 }
 
 // ============================================================================
-// TEST SUITE 1: Migration DDL Analysis (PostGIS, pgvector, JSONB)
+// TEST SUITE 1: Migration DDL Analysis (coordinates, pgvector, JSONB)
 // ============================================================================
 async function testMigrationDDL() {
   console.log('\n================================================================================');
-  console.log('📦 TEST SUITE 1: PostgreSQL 16 DDL Schema, PostGIS, pgvector & JSONB Analysis');
+  console.log('📦 TEST SUITE 1: PostgreSQL 16 DDL Schema, Coordinates, pgvector & JSONB Analysis');
   console.log('================================================================================');
 
   const mig1Path = path.join(MIGRATIONS_DIR, '001_initial_pg_schema.sql');
@@ -64,10 +64,18 @@ async function testMigrationDDL() {
   const ddl3 = fs.readFileSync(mig3Path, 'utf8');
   const allDDL = `${ddl1}\n${ddl2}\n${ddl3}`;
 
-  // 1. PostGIS Extension & Geometry Columns
-  assert(ddl1.includes('CREATE EXTENSION IF NOT EXISTS "postgis"'), 'PostGIS extension enabled in 001');
-  assert(ddl1.includes('location GEOMETRY(Point, 4326)'), 'PostGIS Point geometry column defined on nodes table with SRID 4326');
-  assert(ddl1.includes('CREATE INDEX IF NOT EXISTS idx_nodes_location_gix ON nodes USING GIST(location)'), 'GiST spatial index defined on nodes.location');
+  // 1. PostGIS removed (migration 004).
+  //    The geometry column and its GiST index were never written and never read:
+  //    geo-fencing matches country_code, and distance is Haversine in RiskEngine.
+  //    Note what these assertions are: text matching over a .sql file. They pass
+  //    with PostgreSQL never started, which is how a spatial index on an unused
+  //    column stayed "verified" for so long. The check that compares the two
+  //    schemas for real lives in console/backend/tests/schema_parity.test.js.
+  assert(!ddl1.includes('CREATE EXTENSION IF NOT EXISTS "postgis"'), 'PostGIS extension removed from 001');
+  assert(!ddl1.includes('GEOMETRY(Point, 4326)'), 'PostGIS geometry column removed from nodes');
+  assert(!ddl1.includes('USING GIST'), 'GiST spatial index removed');
+  assert(ddl1.includes('latitude REAL'), 'nodes.latitude declared as a plain column');
+  assert(ddl1.includes('longitude REAL'), 'nodes.longitude declared as a plain column');
 
   // 2. pgvector Extension
   assert(ddl1.includes('CREATE EXTENSION IF NOT EXISTS "vector"'), 'pgvector extension enabled in 001');
@@ -79,8 +87,11 @@ async function testMigrationDDL() {
     { table: 'nodes', column: 'posture_checks', default: '\'{"compliant": true, "disk_encrypted": true, "os": "Linux"}\'::jsonb' },
     { table: 'nodes', column: 'metadata', default: "'{}'::jsonb" },
     { table: 'app_bundles', column: 'config_json', default: "'{}'::jsonb" },
-    { table: 'audit_events', column: 'metadata', default: "'{}'::jsonb" },
-    { table: 'nerodrop_sessions', column: 'webrtc_signal', default: "'{}'::jsonb" },
+    // Renamed in migration 005 to match what the application actually reads. The
+    // PostgreSQL spellings 'metadata' and 'webrtc_signal' were unreachable from the
+    // code, which uses the SQLite names on both backends.
+    { table: 'audit_events', column: 'metadata_json', default: "'{}'::jsonb" },
+    { table: 'nerodrop_sessions', column: 'webrtc_signal_json', default: "'{}'::jsonb" },
     { table: 'peering_agreements', column: 'shared_device_ids', default: "'[]'::jsonb" },
     { table: 'peering_agreements', column: 'shared_subnets', default: "'[]'::jsonb" },
     { table: 'peering_agreements', column: 'imported_nodes', default: "'[]'::jsonb" }

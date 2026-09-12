@@ -640,10 +640,19 @@ export default function GeoFencingMap() {
               </div>
 
               <div className="space-y-2.5 text-xs font-mono">
+                {/* This panel used to display a PostGIS ST_Contains clause as the
+                    "filter" behind the policy. No such query existed: the string was
+                    decorative, and the engine matches on country_code. Showing an
+                    operator a predicate the system never evaluates is worse than
+                    showing nothing, because it invites trust in a boundary check that
+                    is not happening. */}
                 <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border space-y-1">
-                  <div className="text-slate-400">PostGIS Filter Clause:</div>
+                  <div className="text-slate-400">Policy match:</div>
                   <div className="text-accent-primary font-bold text-[11px]">
-                    ST_Contains(country_boundary, ST_SetSRID(ST_Point(lon, lat), 4326))
+                    node.country_code = '{selectedCountry.country_code}'
+                  </div>
+                  <div className="text-slate-500 text-[10px] leading-relaxed">
+                    Matched on the country reported by the node, not on its coordinates.
                   </div>
                 </div>
 

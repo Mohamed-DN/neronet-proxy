@@ -300,7 +300,7 @@ const SQLITE_MIGRATIONS = [
           cloud_pc_id TEXT NOT NULL,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           sso_gateway_enabled INTEGER NOT NULL DEFAULT 1,
-          otp_secret TEXT NOT NULL DEFAULT 'OTP123456',
+          otp_secret TEXT,
           webrtc_signaling_endpoint TEXT,
           status TEXT NOT NULL DEFAULT 'active',
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -319,15 +319,82 @@ const SQLITE_MIGRATIONS = [
             VALUES ('cpc-0001', 'Admin GPU Workstation', ?, ?, '{"vcpus": 8, "ram_gb": 32, "gpu": "RTX 4090"}', 'active', 'wss://signal.internal.darknero.com/ws/selkies', 'desktop.admin.darknero.com')
           `).run(adminUser.id, node.id);
 
+          // Random even for the demo row: a seeded domain with a known OTP secret is
+          // a live bypass on any database that was ever seeded.
           db.prepare(`
             INSERT OR IGNORE INTO custom_domains (id, domain_name, cloud_pc_id, user_id, sso_gateway_enabled, otp_secret)
-            VALUES ('cdom-0001', 'desktop.admin.darknero.com', 'cpc-0001', ?, 1, 'OTP123456')
-          `).run(adminUser.id);
+            VALUES ('cdom-0001', 'desktop.admin.darknero.com', 'cpc-0001', ?, 1, ?)
+          `).run(adminUser.id, require('crypto').randomBytes(20).toString('hex'));
         }
       }
     }
   }
 ];
+
+const SQLITE_MIGRATION_005 = {
+  name: '005_schema_parity',
+  sql: `
+      -- Mirrors migration 005 on the PostgreSQL side.
+      --
+      -- custom_domains.device_id was declared for PostgreSQL only, so any code path
+      -- writing it worked on one backend and failed on the other.
+      ALTER TABLE custom_domains ADD COLUMN device_id TEXT REFERENCES nodes(id) ON DELETE CASCADE;
+  `,
+  run(db) {
+    // SQLite cannot drop a column default in place, so the table is rebuilt without
+    // it. A shared default OTP secret means every row created without an explicit
+    // value carries the same credential, committed in the schema itself.
+    const columns = db.pragma('table_info(custom_domains)');
+    const hasSharedDefault = columns.some(
+      (c) => c.name === 'otp_secret' && c.dflt_value !== null
+    );
+    if (!hasSharedDefault) {
+      return;
+    }
+
+    db.exec(`
+      CREATE TABLE custom_domains_rebuilt (
+          id TEXT PRIMARY KEY,
+          domain_name TEXT NOT NULL UNIQUE,
+          cloud_pc_id TEXT NOT NULL,
+          device_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          sso_gateway_enabled INTEGER NOT NULL DEFAULT 1,
+          otp_secret TEXT,
+          webrtc_signaling_endpoint TEXT,
+          status TEXT NOT NULL DEFAULT 'active',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      INSERT INTO custom_domains_rebuilt (
+          id, domain_name, cloud_pc_id, device_id, user_id, sso_gateway_enabled,
+          otp_secret, webrtc_signaling_endpoint, status, created_at, updated_at
+      )
+      SELECT id, domain_name, cloud_pc_id, device_id, user_id, sso_gateway_enabled,
+             otp_secret, webrtc_signaling_endpoint, status, created_at, updated_at
+      FROM custom_domains;
+
+      DROP TABLE custom_domains;
+      ALTER TABLE custom_domains_rebuilt RENAME TO custom_domains;
+      CREATE INDEX IF NOT EXISTS idx_custom_domains_name ON custom_domains(domain_name);
+    `);
+  }
+};
+
+const SQLITE_MIGRATION_004 = {
+  name: '004_node_latlng',
+  sql: `
+      -- Mirrors migration 004 on the PostgreSQL side, which replaced a PostGIS
+      -- GEOMETRY column with plain coordinates. Both backends now declare the same
+      -- logical schema, which is what makes the drift check in the test suite
+      -- meaningful: the two schemas are maintained by hand in separate files and
+      -- had already diverged before this.
+      ALTER TABLE nodes ADD COLUMN latitude REAL;
+      ALTER TABLE nodes ADD COLUMN longitude REAL;
+      CREATE INDEX IF NOT EXISTS idx_nodes_latlng ON nodes(latitude, longitude);
+  `
+};
 
 function ensureSchemaIntegrity(db) {
   if (typeof db.prepare !== 'function') return;
@@ -398,7 +465,9 @@ function runSQLiteMigrations(db) {
   const appliedRows = db.prepare('SELECT name FROM _migrations').all();
   const appliedSet = new Set(appliedRows.map(r => r.name));
 
-  for (const migration of SQLITE_MIGRATIONS) {
+  const migrations = [...SQLITE_MIGRATIONS, SQLITE_MIGRATION_004, SQLITE_MIGRATION_005];
+
+  for (const migration of migrations) {
     if (!appliedSet.has(migration.name)) {
       logger.info(`Applying SQLite migration: ${migration.name}...`);
       db.transaction(() => {
@@ -433,6 +502,8 @@ function runMigrations(dbOrPool) {
 }
 
 module.exports = {
+  SQLITE_MIGRATION_004,
+  SQLITE_MIGRATION_005,
   runMigrations,
   runPostgresMigrations,
   runSQLiteMigrations,

@@ -171,12 +171,12 @@ router.post('/', async (req, res, next) => {
           id, user_id, name, public_key, overlay_ipv4, overlay_ipv6,
           role, ip_class, country_code, city, asn, endpoints,
           onion_routing_enabled, onion_hops, kill_switch_enabled, is_healthy, is_quarantined, latency_ms,
-          location, metadata
+          longitude, latitude, metadata
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
           $7, $8, $9, $10, $11, $12::jsonb,
           $13, $14, $15, TRUE, FALSE, 15.0,
-          ST_SetSRID(ST_MakePoint($16, $17), 4326), $18::jsonb
+          $16, $17, $18::jsonb
         )
       `, [
         nodeId, req.user.id, name.trim(), finalPubKey, overlayIpv4, overlayIpv6,

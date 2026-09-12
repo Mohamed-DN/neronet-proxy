@@ -68,11 +68,11 @@ router.post('/generate', async (req, res, next) => {
         INSERT INTO nodes (
           id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6,
           role, ip_class, country_code, onion_routing_enabled, onion_hops, kill_switch_enabled,
-          is_healthy, is_quarantined, latency_ms, location
+          is_healthy, is_quarantined, latency_ms, longitude, latitude
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7,
           $8, 'RESIDENTIAL', $9, $10, $11, $12,
-          TRUE, FALSE, 10.0, ST_SetSRID(ST_MakePoint($13, $14), 4326)
+          TRUE, FALSE, 10.0, $13, $14
         )
       `, [
         kp.nodeId, req.user.id, name.trim(), kp.publicKeyBase64, kp.presharedKeyBase64,

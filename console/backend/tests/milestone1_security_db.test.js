@@ -349,16 +349,28 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
   });
 
   describe('6. PostgreSQL 16 Migration DDL Validation', () => {
-    it('should verify migration files exist with PostGIS, pgvector, and JSONB definitions', () => {
+    // These are text assertions over the migration files. They confirm the files say
+    // what they are supposed to say -- nothing more. They pass with PostgreSQL never
+    // started, which is exactly how a GiST index on a column no query touched
+    // survived review as a verified feature. Treat them as a spelling check, and see
+    // schema_parity.test.js for the check that actually compares the two schemas.
+    it('should verify migration files exist with the expected table definitions', () => {
       const migDir = path.resolve(__dirname, '../db/migrations');
       assert.ok(fs.existsSync(migDir));
       const files = fs.readdirSync(migDir).filter(f => f.endsWith('.sql'));
-      assert.ok(files.length >= 3);
+      assert.ok(files.length >= 4);
 
       const sql001 = fs.readFileSync(path.join(migDir, '001_initial_pg_schema.sql'), 'utf8');
-      assert.ok(sql001.includes('CREATE EXTENSION IF NOT EXISTS "postgis"'));
       assert.ok(sql001.includes('CREATE EXTENSION IF NOT EXISTS "vector"'));
-      assert.ok(sql001.includes('location GEOMETRY(Point, 4326)'));
+
+      // PostGIS was removed in migration 004: the geometry column was never written
+      // and never read, while costing a second schema and a PostGIS-only base image.
+      assert.ok(!sql001.includes('CREATE EXTENSION IF NOT EXISTS "postgis"'));
+      assert.ok(!sql001.includes('GEOMETRY(Point, 4326)'));
+      assert.ok(!sql001.includes('USING GIST'));
+      assert.ok(sql001.includes('latitude REAL'));
+      assert.ok(sql001.includes('longitude REAL'));
+
       assert.ok(sql001.includes('endpoints JSONB'));
       assert.ok(sql001.includes('bypass_apps JSONB'));
       assert.ok(sql001.includes('CREATE TABLE IF NOT EXISTS audit_events'));
@@ -373,6 +385,10 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
       assert.ok(sql003.includes('CREATE TABLE IF NOT EXISTS dead_man_switch'));
       assert.ok(sql003.includes('CREATE TABLE IF NOT EXISTS warrant_canaries'));
       assert.ok(sql003.includes('CREATE TABLE IF NOT EXISTS custom_domains'));
+
+      const sql004 = fs.readFileSync(path.join(migDir, '004_drop_postgis.sql'), 'utf8');
+      assert.ok(sql004.includes('DROP COLUMN IF EXISTS location'));
+      assert.ok(sql004.includes('DROP INDEX IF EXISTS idx_nodes_location_gix'));
     });
   });
 });

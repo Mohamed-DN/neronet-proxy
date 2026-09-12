@@ -583,6 +583,7 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
   describe('4. Sovereign Cloud PC (WebRTC Native / Selkies-GStreamer)', () => {
     let createdCpcId;
     let customDomainName;
+    let registeredOtpSecret;
 
     it('should reject Cloud PC provisioning with missing required fields (400)', async () => {
       const badReq = await request(app)
@@ -655,6 +656,12 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       assert.strictEqual(regRes.status, 201);
       assert.strictEqual(regRes.body.custom_domain.domain, customDomainName);
 
+      // The OTP secret is issued per domain and returned once, at registration.
+      registeredOtpSecret = regRes.body.custom_domain.otp_secret;
+      assert.ok(registeredOtpSecret, 'registration must issue an OTP secret');
+      assert.notStrictEqual(registeredOtpSecret, 'OTP123456', 'the shared literal secret is back');
+      assert.ok(registeredOtpSecret.length >= 16, 'OTP secret is too short to be meaningful');
+
       // Duplicate Registration Conflict (409)
       const dupRes = await request(app)
         .post('/api/cloud-pc/custom-domains')
@@ -673,13 +680,21 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       // 2. Non-existent domain (404)
       const badDomain = await request(app)
         .post('/api/cloud-pc/custom-domains/nonexistent.domain.com/auth-gateway')
-        .send({ otp_code: '123456' });
+        .send({ otp_code: '000000' });
       assert.strictEqual(badDomain.status, 404);
 
-      // 3. Valid OTP (200)
-      const authRes = await request(app)
+      // 3. The former master OTP must no longer open any gateway. It was accepted
+      //    for every domain regardless of the stored secret, which made every custom
+      //    domain gateway bypassable by anyone who knew the domain name.
+      const backdoor = await request(app)
         .post(`/api/cloud-pc/custom-domains/${customDomainName}/auth-gateway`)
         .send({ otp_code: '123456' });
+      assert.strictEqual(backdoor.status, 401, 'the hardcoded master OTP still authenticates');
+
+      // 4. Valid OTP (200), using the secret issued when the domain was registered
+      const authRes = await request(app)
+        .post(`/api/cloud-pc/custom-domains/${customDomainName}/auth-gateway`)
+        .send({ otp_code: registeredOtpSecret });
       assert.strictEqual(authRes.status, 200);
       assert.strictEqual(authRes.body.authenticated, true);
       assert.ok(authRes.body.stream_token.startsWith('stream_auth_'));
