@@ -5,6 +5,12 @@
 
 import QRCode from 'qrcode';
 import {
+  markReachable,
+  markUnreachable,
+  resolveList,
+  resolveOne
+} from './dataSource.js';
+import {
   MOCK_USERS,
   MOCK_NODES,
   MOCK_APP_BUNDLES,
@@ -131,12 +137,17 @@ async function request(endpoint, options = {}) {
       err.data = errorData;
       throw err;
     }
-    return await res.json();
+    const body = await res.json();
+    markReachable();
+    return body;
   } catch (err) {
     if (endpoint.startsWith('/auth/')) {
       throw err;
     }
-    // Non-auth fallback mode for UI preview if API is disconnected
+    // Returning null means "the control plane did not answer", and nothing else.
+    // An endpoint that answers with an empty list returns that empty list, because
+    // "no nodes are registered" is an answer the operator needs to be able to see.
+    markUnreachable(err?.message || 'control plane unreachable');
     return null;
   }
 }
@@ -213,7 +224,7 @@ export const api = {
 
     async get(id) {
       const live = await request(`/nodes/${id}`);
-      return live?.node || inMemoryNodes.find(n => n.id === id);
+      return resolveOne(`/nodes/${id}`, live?.node ?? null, inMemoryNodes.find(n => n.id === id) ?? null);
     },
 
     async action(id, actionType, params = {}) {
@@ -323,7 +334,7 @@ export const api = {
   users: {
     async list() {
       const live = await request('/users');
-      return (live?.users && Array.isArray(live.users) && live.users.length > 0) ? live.users : inMemoryUsers;
+      return resolveList('/users', Array.isArray(live?.users) ? live.users : null, inMemoryUsers);
     },
 
     async create(userData) {
@@ -454,7 +465,7 @@ PersistentKeepalive = 25
   apps: {
     async list() {
       const live = await request('/apps');
-      return (live?.apps && Array.isArray(live.apps) && live.apps.length > 0) ? live.apps : inMemoryApps;
+      return resolveList('/apps', Array.isArray(live?.apps) ? live.apps : null, inMemoryApps);
     },
 
     async create(appData) {
@@ -866,7 +877,7 @@ PersistentKeepalive = 25
   audit: {
     async list() {
       const live = await request('/audit');
-      return (live?.events && Array.isArray(live.events) && live.events.length > 0) ? live.events : inMemoryAuditLogs;
+      return resolveList('/audit', Array.isArray(live?.events) ? live.events : null, inMemoryAuditLogs);
     }
   },
 
@@ -901,7 +912,7 @@ PersistentKeepalive = 25
   peering: {
     async list() {
       const live = await request('/peering');
-      return (live?.agreements && Array.isArray(live.agreements) && live.agreements.length > 0) ? live.agreements : inMemoryPeering;
+      return resolveList('/peering', Array.isArray(live?.agreements) ? live.agreements : null, inMemoryPeering);
     },
 
     async create(data) {
@@ -1001,14 +1012,16 @@ PersistentKeepalive = 25
 
     async listEvents() {
       const live = await request('/risk/events');
-      return (live?.events && Array.isArray(live.events) && live.events.length > 0) ? live.events : inMemoryRiskEvents;
+      return resolveList('/risk/events', Array.isArray(live?.events) ? live.events : null, inMemoryRiskEvents);
     },
 
     async getLeaderboard() {
       const live = await request('/risk/leaderboard');
-      if (live && live.nodes && Array.isArray(live.nodes) && live.nodes.length > 0) return live.nodes;
-
-      return [...inMemoryNodes].sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0));
+      return resolveList(
+        '/risk/leaderboard',
+        Array.isArray(live?.nodes) ? live.nodes : null,
+        [...inMemoryNodes].sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0))
+      );
     },
 
     async quarantine(nodeId, reason) {
@@ -1104,7 +1117,7 @@ PersistentKeepalive = 25
   cloudPc: {
     async list() {
       const live = await request('/cloud-pc');
-      return (live?.instances && Array.isArray(live.instances) && live.instances.length > 0) ? live.instances : inMemoryCloudPc;
+      return resolveList('/cloud-pc', Array.isArray(live?.instances) ? live.instances : null, inMemoryCloudPc);
     },
 
     async project(id) {
@@ -1129,7 +1142,7 @@ PersistentKeepalive = 25
 
     async listCustomDomains() {
       const live = await request('/cloud-pc/custom-domains');
-      return (live?.custom_domains && Array.isArray(live.custom_domains) && live.custom_domains.length > 0) ? live.custom_domains : inMemoryCustomDomains;
+      return resolveList('/custom-domains', Array.isArray(live?.custom_domains) ? live.custom_domains : null, inMemoryCustomDomains);
     },
 
     async addCustomDomain(domainData) {

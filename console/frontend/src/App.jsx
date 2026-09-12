@@ -19,6 +19,7 @@ import CryptoConfigModal from './components/CryptoConfigModal';
 import SettingsACL from './components/SettingsACL';
 import AuditLogs from './components/AuditLogs';
 import OnionObfuscationPanel from './components/OnionObfuscationPanel';
+import DataSourceBanner from './components/DataSourceBanner';
 import { Settings, Shield, Terminal, Cpu, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 class ErrorBoundary extends React.Component {
@@ -317,7 +318,7 @@ function MainConsole() {
           <NeroNukePanel
             nukeArmed={nukeArmed}
             nukeScheduledAt={nukeScheduledAt}
-            onArmNuke={() => setNukeArmed(true)} onDisarmNuke={() => setNukeArmed(false)}
+            onArmNuke={() => setNukeArmed(true)}
             onDisarmNuke={handleDisarmNuke}
             onOpenSecretModal={() => setIsSecretModalOpen(true)}
           />
@@ -352,6 +353,9 @@ function MainConsole() {
 
         {/* Dynamic Tab Body */}
         <main className="p-6 flex-1 max-w-7xl w-full mx-auto">
+          <div className="mb-4">
+            <DataSourceBanner />
+          </div>
           <ErrorBoundary>
             {renderActiveView()}
           </ErrorBoundary>
