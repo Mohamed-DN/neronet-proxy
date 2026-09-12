@@ -121,7 +121,6 @@ func TestFlowTableCRUDAndExpiration(t *testing.T) {
 	entry := FlowEntry{
 		TargetPort: 8080,
 		TTL:        50 * time.Millisecond,
-		LastSeen:   time.Now(),
 	}
 
 	table.Set(key, entry)

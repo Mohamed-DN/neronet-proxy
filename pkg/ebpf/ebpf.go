@@ -85,8 +85,32 @@ type FlowEntry struct {
 	Flags          uint32 // e.g., 0x1 = DirectBypass, 0x2 = Encrypted, 0x4 = DecoyPass
 	PacketsCount   uint64
 	BytesCount     uint64
-	LastSeen       time.Time
 	TTL            time.Duration
+
+	// lastSeenNano is the Unix-nanosecond time of the most recent packet on this
+	// flow, read and written atomically.
+	//
+	// Get hands out a pointer into the table, so every field the fast path mutates
+	// is shared across goroutines. PacketsCount and BytesCount already use atomic
+	// adds; LastSeen was a multi-word time.Time written with a plain assignment
+	// while Get concurrently read it to evaluate the TTL, which the race detector
+	// flags and which can tear on a 32-bit word split.
+	lastSeenNano int64
+}
+
+// LastSeen reports when this flow last carried a packet.
+func (e *FlowEntry) LastSeen() time.Time {
+	return time.Unix(0, atomic.LoadInt64(&e.lastSeenNano))
+}
+
+// Touch records that this flow has just carried a packet.
+func (e *FlowEntry) Touch(now time.Time) {
+	atomic.StoreInt64(&e.lastSeenNano, now.UnixNano())
+}
+
+// age reports how long it has been since this flow last carried a packet.
+func (e *FlowEntry) age(now time.Time) time.Duration {
+	return now.Sub(e.LastSeen())
 }
 
 // PacketInfo holds parsed metadata from an inbound Ethernet/IP/Transport frame
@@ -133,10 +157,11 @@ func NewFlowTable() *FlowTable {
 func (t *FlowTable) Set(key FlowKey, entry FlowEntry) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if entry.LastSeen.IsZero() {
-		entry.LastSeen = time.Now()
+	stored := &entry
+	if stored.lastSeenNano == 0 {
+		stored.Touch(time.Now())
 	}
-	t.flows[key] = &entry
+	t.flows[key] = stored
 }
 
 // Get looks up a flow entry
@@ -148,7 +173,7 @@ func (t *FlowTable) Get(key FlowKey) (*FlowEntry, bool) {
 		return nil, false
 	}
 	// Check expiration if TTL is set
-	if entry.TTL > 0 && time.Since(entry.LastSeen) > entry.TTL {
+	if entry.TTL > 0 && entry.age(time.Now()) > entry.TTL {
 		return nil, false
 	}
 	return entry, true
@@ -175,7 +200,7 @@ func (t *FlowTable) FlushExpired(maxAge time.Duration) int {
 	now := time.Now()
 	purged := 0
 	for k, v := range t.flows {
-		age := now.Sub(v.LastSeen)
+		age := v.age(now)
 		if (v.TTL > 0 && age > v.TTL) || (maxAge > 0 && age > maxAge) {
 			delete(t.flows, k)
 			purged++
@@ -334,7 +359,7 @@ func (c *PacketClassifier) ClassifyAndFilter(raw []byte) (XDPAction, *FlowEntry,
 		atomic.AddUint64(&c.stats.FastPathHits, 1)
 		atomic.AddUint64(&entry.PacketsCount, 1)
 		atomic.AddUint64(&entry.BytesCount, uint64(len(raw)))
-		entry.LastSeen = time.Now()
+		entry.Touch(time.Now())
 
 		if (entry.Flags & 0x1) != 0 {
 			// Direct fast-path XDP_TX line rate forward

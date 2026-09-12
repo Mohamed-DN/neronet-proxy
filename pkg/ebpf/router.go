@@ -96,7 +96,6 @@ func (r *KernelRouter) AddRoute(rule RouteRule) error {
 			TargetMAC:      rule.TargetMAC,
 			OutInterfaceID: rule.InterfaceIndex,
 			Flags:          0x1, // DirectBypass
-			LastSeen:       time.Now(),
 		})
 	}
 
@@ -165,7 +164,6 @@ func (r *KernelRouter) RegisterPeerSession(sessionID uint64, peerPublicAddr *net
 		TargetMAC:      peerMAC,
 		OutInterfaceID: ifIndex,
 		Flags:          0x1, // Direct fast-path bypass
-		LastSeen:       time.Now(),
 		TTL:            10 * time.Minute,
 	}
 
