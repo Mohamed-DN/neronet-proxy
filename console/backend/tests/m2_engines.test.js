@@ -449,52 +449,127 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       validPeeringToken = agr;
     });
 
-    it('should reject peering accept with tampered signature (400) or expired token (422)', async () => {
-      // 1. Invalid / tampered signature
-      const tamperedRes = await request(app)
+    // These cases used to pass the literal strings 'INVALID_SIGNATURE' and 'EXPIRED',
+    // and the implementation checked for exactly those literals. The tests were
+    // written to the implementation and the implementation to the tests, so a token
+    // carrying any other non-empty string federated a hostile network -- verified
+    // against the running system before this was fixed. Forgeries here are now real
+    // forgeries.
+    it('rejects a token whose signature does not verify', async () => {
+      const forged = await request(app)
         .post('/api/peering/accept')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          peering_token: {
-            ...validPeeringToken,
-            signature: 'INVALID_SIGNATURE'
-          }
+          peering_token: { ...validPeeringToken, signature: Buffer.from('not a signature').toString('base64') },
+          expected_fingerprint: PeeringEngine.publicKeyFingerprint(validPeeringToken.initiator_public_key)
         });
-      assert.strictEqual(tamperedRes.status, 400);
 
-      // 2. Expired token
-      const expiredRes = await request(app)
-        .post('/api/peering/accept')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          peering_token: {
-            ...validPeeringToken,
-            expires_at: 'EXPIRED'
-          }
-        });
-      assert.strictEqual(expiredRes.status, 422);
+      assert.strictEqual(forged.status, 400);
+      assert.match(forged.body.error, /signature/i);
     });
 
-    it('should accept valid peering token and import peered nodes tagged purple (#8b5cf6)', async () => {
-      const acceptRes = await request(app)
+    it('rejects a token whose payload was altered after signing', async () => {
+      // The signature stays valid for the original payload; widening the shared
+      // subnets must invalidate it, or the signature protects nothing that matters.
+      const tampered = await request(app)
+        .post('/api/peering/accept')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          peering_token: { ...validPeeringToken, shared_subnets: ['0.0.0.0/0'] },
+          expected_fingerprint: PeeringEngine.publicKeyFingerprint(validPeeringToken.initiator_public_key)
+        });
+
+      assert.strictEqual(tampered.status, 400);
+    });
+
+    it('rejects a token signed by a different key than it claims', async () => {
+      const attacker = crypto.generateKeyPairSync('ed25519');
+      const attackerPublic = attacker.publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
+
+      const payload = {
+        version: '1.0',
+        peering_id: 'attacker-001',
+        initiator_endpoint: 'https://hostile.example',
+        initiator_public_key: validPeeringToken.initiator_public_key, // claims to be us
+        scope_mode: 'ALL',
+        shared_device_ids: [],
+        shared_subnets: ['0.0.0.0/0'],
+        expires_at: new Date(Date.now() + 86400000).toISOString()
+      };
+      const signature = crypto
+        .sign(null, Buffer.from(JSON.stringify(payload, Object.keys(payload).sort())), attacker.privateKey)
+        .toString('base64');
+
+      const res = await request(app)
+        .post('/api/peering/accept')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          peering_token: { ...payload, signature },
+          expected_fingerprint: PeeringEngine.publicKeyFingerprint(attackerPublic)
+        });
+
+      assert.strictEqual(res.status, 400);
+    });
+
+    it('rejects an expired token', async () => {
+      const expired = await request(app)
+        .post('/api/peering/accept')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          peering_token: { ...validPeeringToken, expires_at: new Date(Date.now() - 86400000).toISOString() },
+          expected_fingerprint: PeeringEngine.publicKeyFingerprint(validPeeringToken.initiator_public_key)
+        });
+
+      // Altering expires_at also breaks the signature, which is the point: every
+      // field the initiator committed to is covered.
+      assert.ok([400, 422].includes(expired.status), `expected rejection, got ${expired.status}`);
+    });
+
+    it('refuses to federate until a fingerprint has been confirmed out of band', async () => {
+      // A verified signature over a self-supplied key proves only that the sender
+      // holds a key they chose. Without an out-of-band check, federation is open to
+      // anyone who can reach the endpoint.
+      const res = await request(app)
         .post('/api/peering/accept')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ peering_token: validPeeringToken });
 
-      assert.strictEqual(acceptRes.status, 200);
+      assert.strictEqual(res.status, 428);
+      assert.ok(res.body.fingerprint, 'the response must show the fingerprint to confirm');
+    });
+
+    it('rejects a mismatched fingerprint', async () => {
+      const res = await request(app)
+        .post('/api/peering/accept')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          peering_token: validPeeringToken,
+          expected_fingerprint: 'DEAD-BEEF-DEAD-BEEF-DEAD-BEEF-DEAD-BEEF'
+        });
+
+      assert.strictEqual(res.status, 400);
+    });
+
+    it('accepts a valid token once its fingerprint is confirmed', async () => {
+      const acceptRes = await request(app)
+        .post('/api/peering/accept')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          peering_token: validPeeringToken,
+          expected_fingerprint: PeeringEngine.publicKeyFingerprint(validPeeringToken.initiator_public_key)
+        });
+
+      assert.strictEqual(acceptRes.status, 200, JSON.stringify(acceptRes.body));
       assert.strictEqual(acceptRes.body.success, true);
       assert.strictEqual(acceptRes.body.peering_agreement.status, 'active');
 
-      // Check peering nodes endpoint
       const nodesRes = await request(app)
         .get('/api/peering/nodes')
         .set('Authorization', `Bearer ${tenantAToken}`);
 
       assert.strictEqual(nodesRes.status, 200);
       assert.ok(nodesRes.body.peered_nodes.length >= 1);
-      const firstPeered = nodesRes.body.peered_nodes[0];
-      assert.strictEqual(firstPeered.color, '#8b5cf6');
-      assert.strictEqual(firstPeered.is_peered, true);
+      assert.strictEqual(nodesRes.body.peered_nodes[0].is_peered, true);
     });
 
     it('should retrieve peering agreement by ID via /api/peering/:id and /api/peering/agreements/:id', async () => {

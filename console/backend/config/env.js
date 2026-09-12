@@ -74,8 +74,20 @@ const config = {
   HOST: process.env.SOVEREIGN_API_HOST || process.env.HOST || '127.0.0.1',
   PORT: parseInt(process.env.SOVEREIGN_API_PORT || process.env.PORT || '8082', 10),
 
+  // Directory for state this service writes to disk: the SQLite file and the mesh's
+  // peering identity.
+  //
+  // Explicit rather than derived from __dirname. The repository nests this service
+  // under console/backend while the image flattens it to /app, so the same relative
+  // path resolves inside the repo and outside the image -- which put the federation
+  // identity key at /data, beyond any volume, where a container recreation would
+  // destroy it.
+  DATA_DIR: process.env.SOVEREIGN_DATA_DIR || path.resolve(__dirname, '../../data'),
+
   // Database Configuration
-  DB_PATH: process.env.SOVEREIGN_DB_PATH || path.resolve(__dirname, '../../data/neronet.db'),
+  DB_PATH:
+    process.env.SOVEREIGN_DB_PATH ||
+    path.join(process.env.SOVEREIGN_DATA_DIR || path.resolve(__dirname, '../../data'), 'neronet.db'),
 
   // JWT & Authentication Configuration
   JWT_SECRET: requireSecret('SOVEREIGN_JWT_SECRET', 'dev-only-jwt-secret-do-not-deploy'),

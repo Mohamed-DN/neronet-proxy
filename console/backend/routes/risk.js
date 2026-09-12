@@ -1,4 +1,5 @@
 const express = require('express');
+const { requireNodeOwnership } = require('../middleware/ownership');
 const router = express.Router();
 const RiskEngine = require('../services/RiskEngine');
 const { authenticateToken } = require('../middleware/auth');
@@ -102,7 +103,9 @@ async function handleGetNodeRisk(req, res, next) {
   }
 }
 
-router.get('/:id/risk', handleGetNodeRisk);
-router.get('/:id', handleGetNodeRisk);
+// Risk score, name and quarantine reason are tenant data: without this any
+// authenticated user could read them for any node in the system.
+router.get('/:id/risk', requireNodeOwnership, handleGetNodeRisk);
+router.get('/:id', requireNodeOwnership, handleGetNodeRisk);
 
 module.exports = router;

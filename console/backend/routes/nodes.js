@@ -1,5 +1,6 @@
 const express = require('express');
 const { readPageParams, pageEnvelope } = require('../utils/pagination');
+const { requireNodeOwnership } = require('../middleware/ownership');
 const router = express.Router();
 const crypto = require('crypto');
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
@@ -478,7 +479,8 @@ router.delete('/:id', async (req, res, next) => {
 });
 
 // 6. Node Heartbeat
-router.post('/:id/heartbeat', async (req, res, next) => {
+// Without this any tenant could write fabricated telemetry onto another's device.
+router.post('/:id/heartbeat', requireNodeOwnership, async (req, res, next) => {
   try {
     const { latency_ms, rx_bytes, tx_bytes, cpu_usage_pct, memory_usage_pct, battery_pct } = req.body || {};
 

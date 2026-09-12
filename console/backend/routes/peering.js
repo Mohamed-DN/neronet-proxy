@@ -31,16 +31,23 @@ router.post('/request', requireSuperAdmin, async (req, res, next) => {
 // 2. Accept Incoming Peering Agreement (Super-Admin only)
 router.post('/accept', requireSuperAdmin, async (req, res, next) => {
   try {
-    const { peering_token } = req.body || {};
+    const { peering_token, expected_fingerprint } = req.body || {};
     if (!peering_token) {
       return res.status(400).json({ error: 'Missing peering_token payload' });
     }
 
-    const agreement = await PeeringEngine.acceptPeeringAgreement(peering_token, req.user);
+    const agreement = await PeeringEngine.acceptPeeringAgreement(
+      peering_token,
+      req.user,
+      expected_fingerprint
+    );
     return res.status(200).json({ success: true, peering_agreement: agreement });
   } catch (err) {
     if (err.status) {
-      return res.status(err.status).json({ error: err.message });
+      // 428 carries the fingerprint the operator has to confirm out of band.
+      const body = { error: err.message };
+      if (err.fingerprint) body.fingerprint = err.fingerprint;
+      return res.status(err.status).json(body);
     }
     next(err);
   }
