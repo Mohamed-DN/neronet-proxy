@@ -1,7 +1,12 @@
 const jwt = require('jsonwebtoken');
 
 const API_URL = 'http://127.0.0.1:8081/api';
-const SECRET = process.env.SOVEREIGN_JWT_SECRET || 'svrn_dev_secret_key_change_in_production_9918237192';
+const config = require('./config/env');
+
+// Sign with the same secret the API verifies with. A second copy of the literal here
+// is how the two drift apart, and how a published default outlives the config that
+// was meant to replace it.
+const SECRET = config.JWT_SECRET;
 
 const adminToken = jwt.sign({ id: 'usr-admin-seed', username: 'admin', role: 'super-admin' }, SECRET, { expiresIn: '1d' });
 

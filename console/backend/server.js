@@ -117,6 +117,7 @@ function createApp() {
 
 async function initDatabase() {
   try {
+    config.assertProductionSecrets();
     initValkey();
     initTopologySync();
 
