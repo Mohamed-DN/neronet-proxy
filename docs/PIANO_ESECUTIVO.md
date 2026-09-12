@@ -189,6 +189,41 @@ Ordine suggerito, per rapporto sforzo/valore:
 
 ---
 
+## 3-bis. Federazione fra reti: stato e decisioni
+
+Collegarsi ad altre reti — dispositivi singoli, porzioni di rete, exit node condivisi —
+esiste già come `peering_agreements` + `PeeringEngine`. Il 12 settembre vi è stato
+trovato un bypass completo: la firma Ed25519 non veniva mai verificata, e un token con
+una stringa qualsiasi federava una rete ostile con `0.0.0.0/0` come subnet condivise.
+Corretto in `460eb6f`.
+
+Il modello di fiducia ora è esplicito, e vale la pena capirlo perché è controintuitivo:
+
+- **Verificare la firma è necessario ma non sufficiente.** Il token porta la chiave
+  pubblica del mittente, quindi una firma valida dimostra solo che chi l'ha prodotta
+  possiede una chiave che si è scelto da solo. Chiunque può farlo.
+- **Serve un canale fuori banda.** L'accettazione richiede che l'operatore reinvii
+  l'impronta della chiave, che deve aver ottenuto altrove — letta al telefono, su un
+  collegamento già sicuro. Al primo tentativo l'API risponde 428 mostrando l'impronta
+  da confermare, invece di federare e fare domande dopo.
+- **L'identità del mesh è persistente.** Prima veniva rigenerata a ogni avvio, il che
+  invalidava in silenzio ogni token già consegnato a un partner.
+
+### Cosa manca per una federazione utile
+
+| Livello di condivisione | Schema | Applicazione reale |
+|---|---|---|
+| Rete intera (`scope_mode: ALL`) | ✅ | ⬜ i nodi importati sono hardcoded |
+| Sottoreti specifiche | ✅ | ⬜ |
+| Dispositivi singoli | ✅ `shared_device_ids` | ⬜ |
+| Exit node condivisi | ⬜ | ⬜ |
+
+Lo schema c'è, l'applicazione no: `acceptPeeringAgreement` genera due nodi finti con
+IP fissi invece di importare quelli reali del peer. Serve un protocollo di scambio
+nodi fra i due control plane — è la Fase 3, dopo OIDC.
+
+---
+
 ## 4. Rimozione della monetizzazione
 
 Obiettivo: nessuna funzione a pagamento, nessun tier, nessuna quota.
@@ -245,6 +280,7 @@ nel 2040 e il crypto-shredding non è servito a niente.
 | Fase | Durata | Contenuto | Stato |
 |---|---|---|---|
 | **0** | 2–3 sett. | Rate limiting, header di sicurezza, liste limitate, allocazione VIP O(1) | ✅ `71cb108` |
+| **0-bis** | — | Verifica firme peering, isolamento tenant, container non privilegiato | ✅ `460eb6f` |
 | **1** | 1–2 mesi | Stato fuori dai processi, HA con quorum e fencing, un solo backend database | ⬜ |
 | **2** | 2–3 mesi | Rosenpass, audit esterno, build riproducibili, threat model | ⬜ |
 | **3** | 3–4 mesi | OIDC, installazione in un comando, un client mobile, DNS interno | ⬜ |

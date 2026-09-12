@@ -187,13 +187,30 @@ Get a complete local Sovereign Mesh cluster running in under 5 minutes with zero
 ### Step 1: Clone & Configure
 
 ```bash
-git clone https://github.com/Mohamed-DN/sovereign-oci-proxy.git
-cd sovereign-oci-proxy
+git clone https://github.com/Mohamed-DN/neronet-proxy.git
+cd neronet-proxy
 
 # Copy master environment template
 cp .env.example .env
 chmod 600 .env
 ```
+
+Then fill in the secrets the template leaves blank. Under `NODE_ENV=production` the
+API refuses to start without them, and refuses any value that has ever appeared in a
+committed file here — a presence check cannot tell a real secret from the example
+one, and the example used to ship with working values.
+
+```bash
+for key in SOVEREIGN_JWT_SECRET SOVEREIGN_REFRESH_SECRET SOVEREIGN_ADMIN_PASS POSTGRES_PASSWORD; do
+  printf '%s=%s\n' "$key" "$(openssl rand -base64 48)"
+done >> .env
+
+printf 'SOVEREIGN_REGISTRATION_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
+```
+
+`SOVEREIGN_REGISTRATION_TOKEN` is what a Go node presents to enrol. Without it the
+control plane accepts no nodes at all in production: `/v4/control/register` writes to
+the node table and hands out overlay addresses.
 
 ### Step 2: Build Binaries
 
@@ -322,15 +339,42 @@ NeroNet integrates 1-click sovereign private cloud applications with automated O
 - 🔮 **[NeroNet v5.0 Next-Generation Roadmap](FUTURE_PLANS.md)**: Post-quantum ML-KEM-768, eBPF/XDP line-rate relays, and native mobile apps.
 - ⚙️ **[Environment Configuration Template](.env.example)**: Comprehensive configuration matrix and reference guide.
 - 🧪 **[Test Infrastructure & E2E Verification](TEST_INFRA.md)**: 5-Tier test methodology covering 330+ test cases.
+- 🗺️ **[Execution Plan](docs/PIANO_ESECUTIVO.md)**: measured load ceilings, the high-availability design and why multi-master PostgreSQL is refused, competitor feature harvest, and the code rules. Start here.
 
 ---
 
 ## 🛡️ Security, Privacy & Audit
 
-- **Zero Hardcoded Secrets**: Fully audited configuration model with environment isolation.
-- **Rootless Container Execution**: All services run strictly under unprivileged UID `10001:10001` with `read_only: true` root filesystems.
-- **Zero-Trust Egress**: Userspace socket netstack enforces strict RFC 1918/Bogon filtering and anti-abuse port blocking.
-- **Continuous Defense**: Dynamic honeypots monitor port scans and trigger automated firewall quarantines.
+What is true today, verified against a running deployment rather than asserted:
+
+- **No usable secret in any committed file.** Under `NODE_ENV=production` the API
+  refuses to start on a missing secret, and refuses any value that has ever shipped
+  in a committed file here. Both example env files and both compose files take every
+  secret from the environment.
+- **Unprivileged backend**: uid `10001:10001`, read-only root filesystem, all Linux
+  capabilities dropped, `no-new-privileges`. Only `/app/data` is writable, because
+  the SQLite file and the mesh's Ed25519 federation identity live there.
+- **Rate limiting** on sign-in, registration and node enrolment, shared across
+  instances through Valkey so N replicas do not multiply every limit by N.
+- **Security headers**: CSP with `frame-ancestors 'none'`, HSTS in production,
+  `nosniff`, a restrictive `Permissions-Policy`.
+- **Tenant isolation** enforced by one middleware and probed by a test that
+  enumerates every node-addressed route as the wrong tenant.
+- **Hybrid post-quantum TLS** (`X25519MLKEM768`) on the control plane, with two tests
+  that fail if a future change silently turns it off.
+- **Federation** requires a real Ed25519 signature *and* a fingerprint the operator
+  confirmed out of band.
+
+Known gaps, stated rather than omitted:
+
+- The tunnel and per-hop onion key exchange are still classical X25519. Post-quantum
+  there is planned via Rosenpass.
+- `pkg/crypto` and `pkg/routing` have had no external audit. A nonce-reuse defect was
+  found and fixed in the onion layer on 2026-09-12; treat the rest accordingly.
+- NeroDrop, Cloud PC and App Bundles are interface without implementation. See
+  [the execution plan](docs/PIANO_ESECUTIVO.md) § 3.
+- Honeypot and zero-trust egress filtering exist as Go code but have not been
+  exercised against a real deployment.
 
 ---
 

@@ -58,7 +58,19 @@ function getLocalEd25519KeyPair() {
       return localEd25519KeyPair;
     }
   } catch (err) {
-    logger.error(`Could not read the peering identity at ${keyPath}: ${err.message}`);
+    if (err.code === 'EACCES') {
+      // Upgrading from an image that ran as root leaves the key owned by root in a
+      // volume the unprivileged service can no longer read. Say what to do, rather
+      // than leaving an operator to work it out from an errno.
+      logger.error(
+        `Cannot read the peering identity at ${keyPath}: permission denied. ` +
+        'This usually means the data volume still holds files written by an earlier ' +
+        'root container. Fix the ownership once:  ' +
+        'docker run --rm -v <volume>:/data alpine chown -R 10001:10001 /data'
+      );
+    } else {
+      logger.error(`Could not read the peering identity at ${keyPath}: ${err.message}`);
+    }
     throw err;
   }
 
