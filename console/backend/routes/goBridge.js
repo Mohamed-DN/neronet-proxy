@@ -271,6 +271,9 @@ router.post('/heartbeat', async (req, res) => {
     const batteryPct = clampNumber(req.body.battery_level_pct, 0, 100, 100);
     const txBytes = clampNumber(req.body.tx_bytes_sec, 0, Number.MAX_SAFE_INTEGER, 0);
     const rxBytes = clampNumber(req.body.rx_bytes_sec, 0, Number.MAX_SAFE_INTEGER, 0);
+    // Capped at a minute: a larger value is a broken clock or a forged body, not a
+    // round trip, and it would drag every average that reads this column.
+    const rttMs = clampNumber(req.body.rtt_ms, 0, 60000, 0);
 
     // The node must exist before its heartbeat is buffered, otherwise an unknown id
     // accumulates state that no flush can ever apply.
@@ -289,16 +292,18 @@ router.post('/heartbeat', async (req, res) => {
     // 15 seconds this endpoint alone would be 6,667 UPDATEs per second against a
     // table with 11 indexes. See services/HeartbeatBuffer.js.
     //
-    // latency_ms is deliberately never written. The previous handler set it to
-    // `floor(random() * 50 + 10)` on every heartbeat, so the console displayed an
-    // invented round-trip time for every node in the fleet. The node does not measure
-    // RTT yet; showing nothing is correct until it does.
+    // latency_ms carries the round trip the node measured on its previous heartbeat.
+    // An earlier handler filled this column with `floor(random() * 50 + 10)`, so the
+    // console showed an invented figure for every node; it was then left unwritten
+    // until the node could measure something real, which pkg/control/client.go now
+    // does. A node that has not measured one yet sends 0 and the column stays empty.
     const buffered = await HeartbeatBuffer.record(nodeId, {
       txBytes,
       rxBytes,
       cpuPct,
       memMb,
-      batteryPct
+      batteryPct,
+      rttMs
     });
 
     if (!buffered) {
@@ -311,22 +316,24 @@ router.post('/heartbeat', async (req, res) => {
          cpu_usage_pct = $3,
          memory_usage_pct = $4,
          battery_pct = $5,
+         latency_ms = $6,
          is_healthy = TRUE,
          last_heartbeat = NOW(),
          updated_at = NOW()
-       WHERE id = $6`,
-        [txBytes, rxBytes, cpuPct, memMb, batteryPct, nodeId],
+       WHERE id = $7`,
+        [txBytes, rxBytes, cpuPct, memMb, batteryPct, rttMs, nodeId],
         `UPDATE nodes SET
          tx_bytes = tx_bytes + ?,
          rx_bytes = rx_bytes + ?,
          cpu_usage_pct = ?,
          memory_usage_pct = ?,
          battery_pct = ?,
+         latency_ms = ?,
          is_healthy = 1,
          last_heartbeat = CURRENT_TIMESTAMP,
          updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-        [txBytes, rxBytes, cpuPct, memMb, batteryPct, nodeId]
+        [txBytes, rxBytes, cpuPct, memMb, batteryPct, rttMs, nodeId]
       );
     }
 

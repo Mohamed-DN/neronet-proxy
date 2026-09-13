@@ -200,17 +200,25 @@ type RegisterResponse struct {
 }
 
 type HeartbeatRequest struct {
-	NodeID          string                   `json:"node_id"`
-	SequenceNum     uint64                   `json:"sequence_num"`
-	Endpoints       []EndpointDesc           `json:"endpoints"`
-	ActiveCircuits  uint32                   `json:"active_circuits"`
-	TxBytesSec      uint32                   `json:"tx_bytes_sec"`
-	RxBytesSec      uint32                   `json:"rx_bytes_sec"`
-	CPUUsagePct     uint32                   `json:"cpu_usage_pct"`
-	MemoryUsageMB   uint32                   `json:"memory_usage_mb"`
-	BatteryLevelPct uint32                   `json:"battery_level_pct"`
-	OnBatteryPower  bool                     `json:"on_battery_power"`
-	Posture         *posture.PeerAttestation `json:"posture,omitempty"`
+	NodeID          string         `json:"node_id"`
+	SequenceNum     uint64         `json:"sequence_num"`
+	Endpoints       []EndpointDesc `json:"endpoints"`
+	ActiveCircuits  uint32         `json:"active_circuits"`
+	TxBytesSec      uint32         `json:"tx_bytes_sec"`
+	RxBytesSec      uint32         `json:"rx_bytes_sec"`
+	CPUUsagePct     uint32         `json:"cpu_usage_pct"`
+	MemoryUsageMB   uint32         `json:"memory_usage_mb"`
+	BatteryLevelPct uint32         `json:"battery_level_pct"`
+	OnBatteryPower  bool           `json:"on_battery_power"`
+
+	// RTTMillis is the round trip the node measured on its previous heartbeat.
+	// It is the one latency figure a node can obtain without extra traffic, and it
+	// is what the console's per-country latency column reports; before this existed
+	// the column had nothing behind it and the control plane substituted a constant.
+	// Zero means not yet measured, which is the case on the first heartbeat.
+	RTTMillis uint32 `json:"rtt_ms"`
+
+	Posture *posture.PeerAttestation `json:"posture,omitempty"`
 }
 
 type HeartbeatResponse struct {

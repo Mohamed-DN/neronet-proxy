@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/sovereign/proxy/v4/pkg/acl"
@@ -24,6 +25,37 @@ type Client struct {
 	serverURL  string
 	httpClient *http.Client
 	authToken  string
+
+	// The heartbeat loop and any caller that issues requests concurrently both
+	// touch this, so it is guarded. Heartbeats are sent from one goroutine today,
+	// which is exactly the kind of assumption that stops being true quietly.
+	rttMu   sync.RWMutex
+	lastRTT time.Duration
+}
+
+func (c *Client) recordRTT(d time.Duration) {
+	c.rttMu.Lock()
+	c.lastRTT = d
+	c.rttMu.Unlock()
+}
+
+// lastRTTMillis returns the previous round trip in whole milliseconds, rounded up
+// so a sub-millisecond local round trip reports 1 rather than 0, which is the
+// value reserved for "not measured yet".
+func (c *Client) lastRTTMillis() uint32 {
+	c.rttMu.RLock()
+	d := c.lastRTT
+	c.rttMu.RUnlock()
+
+	if d <= 0 {
+		return 0
+	}
+
+	ms := (d + time.Millisecond - 1) / time.Millisecond
+	if ms > 60000 {
+		return 60000
+	}
+	return uint32(ms)
 }
 
 // NewClient creates a new control plane API client
@@ -144,6 +176,7 @@ func (c *Client) SendHeartbeatWithPosture(
 		MemoryUsageMB:   mem,
 		BatteryLevelPct: bat,
 		OnBatteryPower:  onBat,
+		RTTMillis:       c.lastRTTMillis(),
 		Posture:         post,
 	}
 
@@ -152,10 +185,15 @@ func (c *Client) SendHeartbeatWithPosture(
 		return nil, err
 	}
 
+	// Measured around the request itself, so it covers the network path plus the
+	// control plane's own handling. The result is carried on the next heartbeat:
+	// this one's body is already sealed.
+	sentAt := time.Now()
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
+	c.recordRTT(time.Since(sentAt))
 	defer resp.Body.Close()
 
 	var hbResp HeartbeatResponse

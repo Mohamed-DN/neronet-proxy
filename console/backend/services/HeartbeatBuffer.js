@@ -60,6 +60,10 @@ async function record(nodeId, metrics) {
         cpu_usage_pct: String(metrics.cpuPct ?? 0),
         memory_usage_pct: String(metrics.memMb ?? 0),
         battery_pct: String(metrics.batteryPct ?? 0),
+        // 0 means the node has not measured a round trip yet. It is stored as-is and
+        // filtered at the point of use, so an unmeasured node is distinguishable
+        // from one with a genuinely sub-millisecond path.
+        latency_ms: String(metrics.rttMs ?? 0),
         last_heartbeat: new Date().toISOString()
       })
       .expire(key, ENTRY_TTL_SECONDS)
@@ -118,6 +122,7 @@ function applyLive(row, live) {
     cpu_usage_pct: live.cpu_usage_pct !== undefined ? Number(live.cpu_usage_pct) : row.cpu_usage_pct,
     memory_usage_pct: live.memory_usage_pct !== undefined ? Number(live.memory_usage_pct) : row.memory_usage_pct,
     battery_pct: live.battery_pct !== undefined ? Number(live.battery_pct) : row.battery_pct,
+    latency_ms: live.latency_ms !== undefined ? Number(live.latency_ms) : row.latency_ms,
     last_heartbeat: live.last_heartbeat || row.last_heartbeat
   };
 }
@@ -209,16 +214,18 @@ async function persist(updates) {
              cpu_usage_pct = $3,
              memory_usage_pct = $4,
              battery_pct = $5,
+             latency_ms = $6,
              is_healthy = TRUE,
-             last_heartbeat = $6,
+             last_heartbeat = $7,
              updated_at = NOW()
-           WHERE id = $7`,
+           WHERE id = $8`,
           [
             Number(metrics.tx_bytes || 0),
             Number(metrics.rx_bytes || 0),
             Number(metrics.cpu_usage_pct || 0),
             Number(metrics.memory_usage_pct || 0),
             Number(metrics.battery_pct || 0),
+            Number(metrics.latency_ms || 0),
             metrics.last_heartbeat || new Date().toISOString(),
             nodeId
           ]
@@ -242,6 +249,7 @@ async function persist(updates) {
        cpu_usage_pct = ?,
        memory_usage_pct = ?,
        battery_pct = ?,
+       latency_ms = ?,
        is_healthy = 1,
        last_heartbeat = ?,
        updated_at = CURRENT_TIMESTAMP
@@ -256,6 +264,7 @@ async function persist(updates) {
         Number(metrics.cpu_usage_pct || 0),
         Number(metrics.memory_usage_pct || 0),
         Number(metrics.battery_pct || 0),
+        Number(metrics.latency_ms || 0),
         metrics.last_heartbeat || new Date().toISOString(),
         nodeId
       );
