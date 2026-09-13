@@ -59,6 +59,7 @@ func main() {
 
 	command := cmdArgs[0]
 	client := control.NewClient(controlURL)
+	client.SetAuthToken(os.Getenv("SOVEREIGN_REGISTRATION_TOKEN"))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

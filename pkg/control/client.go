@@ -36,6 +36,31 @@ func NewClient(serverURL string) *Client {
 	}
 }
 
+// newRequest builds a POST carrying the enrolment token.
+//
+// The token travels in an Authorization header rather than in each request struct.
+// Only RegisterRequest has an AuthToken field, so a body-only scheme would leave
+// every other endpoint unauthenticated -- which is what left discovery open to any
+// caller that could reach the port.
+func (c *Client) newRequest(ctx context.Context, path string, body any) (*http.Request, error) {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s%s", c.serverURL, path), bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
+
+	return req, nil
+}
+
 // SetAuthToken sets the shared enrolment token sent with registration requests.
 //
 // RegisterRequest has always carried an AuthToken field, but nothing ever populated
@@ -62,14 +87,10 @@ func (c *Client) Register(
 		Capability:    capability,
 	}
 
-	data, _ := json.Marshal(reqBody)
-	url := fmt.Sprintf("%s/v4/control/register", c.serverURL)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	req, err := c.newRequest(ctx, "/v4/control/register", reqBody)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -126,14 +147,10 @@ func (c *Client) SendHeartbeatWithPosture(
 		Posture:         post,
 	}
 
-	data, _ := json.Marshal(reqBody)
-	url := fmt.Sprintf("%s/v4/control/heartbeat", c.serverURL)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	req, err := c.newRequest(ctx, "/v4/control/heartbeat", reqBody)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -164,14 +181,10 @@ func (c *Client) DiscoverExitBridges(
 		Limit:         limit,
 	}
 
-	data, _ := json.Marshal(reqBody)
-	url := fmt.Sprintf("%s/v4/control/discover", c.serverURL)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	req, err := c.newRequest(ctx, "/v4/control/discover", reqBody)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -194,14 +207,10 @@ func (c *Client) RequestCircuitPath(ctx context.Context, country string) (*Circu
 		HopCount:      3,
 	}
 
-	data, _ := json.Marshal(reqBody)
-	url := fmt.Sprintf("%s/v4/control/circuit", c.serverURL)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	req, err := c.newRequest(ctx, "/v4/control/circuit", reqBody)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -228,14 +237,10 @@ func (c *Client) SyncACLs(ctx context.Context, nodeID string, currentEpoch uint6
 		PolicyEpoch: currentEpoch,
 	}
 
-	data, _ := json.Marshal(reqBody)
-	url := fmt.Sprintf("%s/v4/control/sync-acls", c.serverURL)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	req, err := c.newRequest(ctx, "/v4/control/sync-acls", reqBody)
 	if err != nil {
 		return nil, 0, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -262,14 +267,10 @@ func (c *Client) SyncRoutes(ctx context.Context, nodeID string, currentEpoch uin
 		RouteEpoch: currentEpoch,
 	}
 
-	data, _ := json.Marshal(reqBody)
-	url := fmt.Sprintf("%s/v4/control/sync-routes", c.serverURL)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	req, err := c.newRequest(ctx, "/v4/control/sync-routes", reqBody)
 	if err != nil {
 		return nil, 0, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

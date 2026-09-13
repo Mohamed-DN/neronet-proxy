@@ -206,6 +206,94 @@ describe('Go data-plane bridge', () => {
     });
   });
 
+  describe('discovery', () => {
+    // Until this endpoint existed a node enrolled, received an overlay address, and
+    // had no way to learn that any other node existed. There was no mesh, only a
+    // registration table that the console drew as a topology.
+    let bridgeId;
+
+    before(async () => {
+      const bridgeKey = 'c'.repeat(64);
+      const res = await request(app)
+        .post('/v4/control/register')
+        .send(registerBody(bridgeKey, { role: 'EXIT_BRIDGE', capability: { country_code: 'DE', ip_class: 'DATACENTER' } }));
+      bridgeId = res.body.assigned_node_id;
+
+      await request(app).post('/v4/control/heartbeat').send({ node_id: bridgeId, cpu_usage_pct: 5 });
+    });
+
+    it('returns bridges in the shape the Go client decodes', async () => {
+      const res = await request(app).post('/v4/control/discover').send({ limit: 10 });
+
+      assert.strictEqual(res.status, 200);
+      // control.DiscoverResponse / DiscoveredBridgeInfo field names.
+      assert.ok(Array.isArray(res.body.bridges));
+
+      const bridge = res.body.bridges.find((b) => b.node_id === bridgeId);
+      assert.ok(bridge, 'the registered exit bridge was not discoverable');
+      assert.ok(bridge.public_key_hex, 'public_key_hex missing');
+      assert.ok(bridge.overlay_ipv4, 'overlay_ipv4 missing');
+      assert.ok(Array.isArray(bridge.endpoints));
+      assert.strictEqual(typeof bridge.capability.country_code, 'string');
+      assert.strictEqual(typeof bridge.score, 'number');
+    });
+
+    it('filters by country', async () => {
+      const de = await request(app).post('/v4/control/discover').send({ target_country: 'DE' });
+      const jp = await request(app).post('/v4/control/discover').send({ target_country: 'JP' });
+
+      assert.ok(de.body.bridges.some((b) => b.node_id === bridgeId));
+      assert.ok(de.body.bridges.every((b) => b.capability.country_code === 'DE'));
+      assert.strictEqual(jp.body.bridges.length, 0);
+    });
+
+    it('honours the limit', async () => {
+      const res = await request(app).post('/v4/control/discover').send({ limit: 1 });
+      assert.strictEqual(res.body.bridges.length, 1);
+    });
+
+    it('does not offer client origins as bridges', async () => {
+      const clientKey = 'd'.repeat(64);
+      const reg = await request(app)
+        .post('/v4/control/register')
+        .send(registerBody(clientKey, { role: 'CLIENT_ORIGIN' }));
+
+      const res = await request(app).post('/v4/control/discover').send({ limit: 100 });
+
+      // A client origin has nothing to offer another node; listing one would send
+      // traffic to a dead end.
+      assert.ok(!res.body.bridges.some((b) => b.node_id === reg.body.assigned_node_id));
+    });
+
+    it('does not offer quarantined nodes', async () => {
+      const db = getDatabase();
+      db.prepare('UPDATE nodes SET is_quarantined = 1 WHERE id = ?').run(bridgeId);
+
+      const res = await request(app).post('/v4/control/discover').send({ limit: 100 });
+      assert.ok(!res.body.bridges.some((b) => b.node_id === bridgeId), 'a quarantined node was offered as a bridge');
+
+      db.prepare('UPDATE nodes SET is_quarantined = 0 WHERE id = ?').run(bridgeId);
+    });
+
+    it('requires the enrolment token when one is configured', async () => {
+      process.env.SOVEREIGN_REGISTRATION_TOKEN = 'discovery-token';
+      try {
+        const denied = await request(app).post('/v4/control/discover').send({ limit: 5 });
+        assert.strictEqual(denied.status, 401, 'discovery enumerated the node inventory without a token');
+
+        // The Go client sends it as a bearer header; only RegisterRequest has a body
+        // field for it.
+        const allowed = await request(app)
+          .post('/v4/control/discover')
+          .set('Authorization', 'Bearer discovery-token')
+          .send({ limit: 5 });
+        assert.strictEqual(allowed.status, 200);
+      } finally {
+        delete process.env.SOVEREIGN_REGISTRATION_TOKEN;
+      }
+    });
+  });
+
   describe('enrolment authentication', () => {
     it('rejects a wrong token when one is configured', async () => {
       process.env.SOVEREIGN_REGISTRATION_TOKEN = 'the-real-token';

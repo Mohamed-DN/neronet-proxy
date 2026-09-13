@@ -103,7 +103,12 @@ function checkRegistrationToken(req) {
     return { ok: true };
   }
 
-  const provided = req.body.auth_token || '';
+  // Accept the token from the Authorization header or the request body. Only
+  // RegisterRequest carries an auth_token field, so every other endpoint has to use
+  // the header; register keeps working either way.
+  const header = String(req.get('authorization') || '');
+  const bearer = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
+  const provided = bearer || req.body.auth_token || '';
   const a = Buffer.from(String(provided), 'utf8');
   const b = Buffer.from(expected, 'utf8');
 
@@ -329,6 +334,102 @@ router.post('/heartbeat', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+// POST /v4/control/discover
+//
+// Peer and bridge discovery. Until this existed a node enrolled, received an overlay
+// address, and then had no way to learn that any other node existed -- so there was
+// no mesh, only a registration table that the console drew as a topology.
+//
+// Requires the enrolment token: this returns the node inventory, including public
+// keys and endpoints, which is not something an unauthenticated caller should be able
+// to enumerate.
+router.post('/discover', async (req, res) => {
+  try {
+    const auth = checkRegistrationToken(req);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    const targetCountry = String(req.body.target_country || '').slice(0, 2).toUpperCase();
+    const targetAsn = Number(req.body.target_asn) || 0;
+    const ipClass = String(req.body.ip_class || '').toUpperCase();
+    const explicitHostId = String(req.body.explicit_host_id || '').trim();
+    const limit = clampNumber(req.body.limit, 1, 100, 20);
+
+    // Only healthy, unquarantined relays and exit bridges are routable. A client
+    // origin has nothing to offer another node.
+    const filters = ["role IN ('EXIT_BRIDGE', 'RELAY', 'HYBRID')", 'is_healthy = TRUE', 'is_quarantined = FALSE'];
+    const params = [];
+
+    const add = (clause, value) => {
+      params.push(value);
+      filters.push(clause.replace('$$', `$${params.length}`));
+    };
+
+    if (explicitHostId) add('id = $$', explicitHostId);
+    if (targetCountry) add('country_code = $$', targetCountry);
+    if (targetAsn) add('asn = $$', targetAsn);
+    if (ipClass) add('ip_class = $$', ipClass);
+
+    const where = filters.join(' AND ');
+
+    // Ordering is the routing decision: prefer low latency, then low risk. Nodes that
+    // have never reported are ranked last rather than excluded, so a fresh mesh still
+    // discovers its own members.
+    const order = `ORDER BY
+      (last_heartbeat IS NULL) ASC,
+      latency_ms ASC,
+      risk_score ASC,
+      created_at ASC`;
+
+    const pgSql = `SELECT id, public_key, overlay_ipv4, endpoints, country_code, city, asn,
+                          ip_class, latency_ms, risk_score, last_heartbeat
+                     FROM nodes WHERE ${where} ${order} LIMIT $${params.length + 1}`;
+
+    const sqliteSql = pgSql.replace(/\$\d+/g, '?').replace(/TRUE/g, '1').replace(/FALSE/g, '0');
+
+    const rows = await runQuery(pgSql, [...params, limit], sqliteSql, [...params, limit]);
+
+    const bridges = rows.map((row, index) => ({
+      node_id: row.id,
+      public_key_hex: row.public_key,
+      overlay_ipv4: row.overlay_ipv4,
+      endpoints: parseEndpoints(row.endpoints),
+      capability: {
+        enabled: true,
+        country_code: row.country_code || 'US',
+        city: row.city || '',
+        asn: Number(row.asn) || 0,
+        ip_class: row.ip_class || 'RESIDENTIAL',
+        max_bandwidth_kbps: 0,
+        max_concurrent_streams: 0,
+        allow_udp: true,
+        ac_power_only: false
+      },
+      // Descending, so the first result scores highest. The ordering above already
+      // encodes the preference; this exposes it to a client that wants to re-rank.
+      score: Number((1 - index / Math.max(rows.length, 1)).toFixed(4))
+    }));
+
+    return res.json({ bridges });
+  } catch (err) {
+    logger.error(`[GO-BRIDGE] Discovery failed: ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/** Endpoints are JSONB on PostgreSQL and a TEXT column on SQLite. */
+function parseEndpoints(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    return [];
+  }
+}
 
 function clampNumber(value, min, max, fallback) {
   const n = Number(value);
