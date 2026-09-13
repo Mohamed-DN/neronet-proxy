@@ -339,7 +339,8 @@ NeroNet integrates 1-click sovereign private cloud applications with automated O
 - 🔮 **[NeroNet v5.0 Next-Generation Roadmap](FUTURE_PLANS.md)**: Post-quantum ML-KEM-768, eBPF/XDP line-rate relays, and native mobile apps.
 - ⚙️ **[Environment Configuration Template](.env.example)**: Comprehensive configuration matrix and reference guide.
 - 🧪 **[Test Infrastructure & E2E Verification](TEST_INFRA.md)**: 5-Tier test methodology covering 330+ test cases.
-- 🗺️ **[Engineering Roadmap](docs/ROADMAP.md)**: measured load ceilings, the high-availability design, federation and revocation, competitor feature parity, post-quantum status, and the code rules. Start here.
+- 📕 **[Engineering Handbook](docs/HANDBOOK.md)**: complete system state — architecture, what works, what does not, verified against a running deployment. **Start here.**
+- 🗺️ **[Engineering Roadmap](docs/ROADMAP.md)**: measured load ceilings, the high-availability design, federation and revocation, competitor feature parity, post-quantum status, and the code rules.
 
 ---
 
