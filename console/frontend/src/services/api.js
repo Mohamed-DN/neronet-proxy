@@ -1243,9 +1243,13 @@ PersistentKeepalive = 25
 
   // NeroNuke 3-Tier Dead Man's Switch & Self-Destruct System
   nuke: {
+    // /nuke/state had no route. The 404 returned the fixture below, which reported
+    // a personal dead man's switch armed on a 30-day interval, an owner switch
+    // pointed at a Matrix webhook and a valid warrant canary — on a deployment
+    // where none of it was configured. For a set of destructive controls, showing
+    // armed when nothing is armed is the worst available failure.
     async getGlobalState() {
-      const live = await request('/nuke/state');
-      return live || inMemoryNukeConfig;
+      return request('/nuke/state');
     },
 
     // Tier 1: User Account Self-Destruct (Immediate)
@@ -1285,7 +1289,11 @@ PersistentKeepalive = 25
     },
 
     async cancelScheduledDestruct() {
-      const live = await request('/nuke/user/schedule/cancel', { method: 'POST' });
+      // Was '/nuke/user/schedule/cancel'; the route is '/nuke/user/cancel-scheduled'.
+      // The 404 fell through to a fixture that cleared a local object and reported
+      // the cancellation done, so a scheduled self-destruct the operator believed
+      // they had called off was still scheduled.
+      const live = await request('/nuke/user/cancel-scheduled', { method: 'POST' });
       if (live) return live;
 
       inMemoryNukeConfig.tier1_scheduled_kill = {
@@ -1383,10 +1391,17 @@ PersistentKeepalive = 25
       };
     },
 
-    async triggerOwnerWipe(passphrase) {
-      const live = await request('/nuke/owner-dms/trigger-wipe', {
+    // Was '/nuke/owner-dms/trigger-wipe'; the route is '/nuke/owner-dms/trigger',
+    // so this 404ed and the fixture below emptied some arrays and reported the wipe
+    // done. The server now requires the phrase and the caller's own password: the
+    // field sent here was named `passphrase` and the handler read neither.
+    async triggerOwnerWipe({ confirmationPhrase, password }) {
+      const live = await request('/nuke/owner-dms/trigger', {
         method: 'POST',
-        body: JSON.stringify({ passphrase })
+        body: JSON.stringify({
+          confirmation_phrase: confirmationPhrase,
+          password
+        })
       });
       if (live) return live;
 

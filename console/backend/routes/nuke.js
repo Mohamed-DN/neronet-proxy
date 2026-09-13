@@ -3,6 +3,9 @@ const router = express.Router();
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const NukeEngine = require('../services/NukeEngine');
 const CanaryService = require('../services/CanaryService');
+const bcrypt = require('bcryptjs');
+const { isPostgres, getPgPool, getDatabase } = require('../db/index');
+const { logAuditEvent } = require('../utils/audit');
 
 // =============================================================================
 // TIER 3: Warrant Canary (Public Endpoints - No Auth Required)
@@ -40,6 +43,53 @@ router.get('/.well-known/canary.txt', handleCanaryRequest);
 // =============================================================================
 
 // 1. Instant Kill
+/**
+ * The three tiers and the canary in one response.
+ *
+ * The console asked for /nuke/state and nothing served it, so the request 404ed and
+ * the client answered from a fixture: the panel reported a personal dead man's
+ * switch armed with a 30-day interval, an owner switch pointed at a Matrix webhook,
+ * and a valid warrant canary, on a deployment where none of that had been
+ * configured. This composes the three status calls that do exist.
+ *
+ * Each tier is read independently and a failure in one is reported as a failure in
+ * that tier, not as an absent switch: for a destructive control, "unknown" and
+ * "not armed" must not look the same.
+ */
+router.get('/state', authenticateToken, async (req, res, next) => {
+  try {
+    const isOwner = req.user.role === 'super-admin';
+
+    const [userStatus, personalStatus, ownerStatus, canary] = await Promise.all([
+      NukeEngine.getUserNukeStatus(req.user.id).catch(err => ({ error: err.message })),
+      NukeEngine.getPersonalDMSStatus(req.user.id).catch(err => ({ error: err.message })),
+      isOwner
+        ? NukeEngine.getOwnerDMSStatus(req.user.id).catch(err => ({ error: err.message }))
+        : Promise.resolve(null),
+      CanaryService.getLatestCanary().catch(err => ({ error: err.message }))
+    ]);
+
+    return res.status(200).json({
+      tier1_scheduled_kill: userStatus,
+      tier1b_personal_dms: personalStatus,
+      // null means this account cannot see the owner switch, which is different
+      // from an owner switch that is not armed.
+      tier2_owner_dms: ownerStatus,
+      tier3_warrant_canary: canary?.error
+        ? { error: canary.error }
+        : {
+            canary_url: '/api/nuke/canary.txt',
+            signature_valid: Boolean(canary?.valid),
+            last_signed_at: canary?.published_at || null,
+            signer_public_key: canary?.signer_public_key || null,
+            is_active: Boolean(canary?.is_active)
+          }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/user/self-destruct', authenticateToken, async (req, res, next) => {
   try {
     const { confirmation_text, disclaimer_accepted } = req.body || {};
@@ -155,6 +205,9 @@ async function handlePersonalUnlock(req, res, next) {
 
 router.post('/personal-dms/unlock', authenticateToken, handlePersonalUnlock);
 router.post('/personal-dms/access', authenticateToken, handlePersonalUnlock);
+// The console has always called this one. It 404ed, and the 404 was answered from
+// a fixture that reported the switch unlocked.
+router.post('/personal-dms/auth', authenticateToken, handlePersonalUnlock);
 
 // 3. Heartbeat Reset
 router.post('/personal-dms/heartbeat', authenticateToken, async (req, res, next) => {
@@ -238,13 +291,79 @@ router.get('/owner-dms/status', authenticateToken, requireRole('super-admin'), a
 });
 
 // 4. Trigger Disaster Wipe (Super-Admin emergency test)
+// The confirmation phrase, typed exactly, alongside the caller's own password.
+//
+// This endpoint destroys every node, every user and the entire audit ledger, and it
+// did so on a POST with an empty body: a bearer token and the right role were the
+// whole of it. A mistyped path during an unrelated sweep wiped a running staging
+// deployment, which is the same request an accidental retry, a stale tab or a
+// replayed curl would make.
+//
+// Two independent things are required now. The phrase cannot be produced by
+// anything replaying an old request, and the password cannot be produced by a
+// stolen access token alone.
+const GLOBAL_WIPE_PHRASE = 'DESTROY EVERYTHING PERMANENTLY';
+
 router.post('/owner-dms/trigger', authenticateToken, requireRole('super-admin'), async (req, res, next) => {
   try {
+    const { confirmation_phrase: phrase, password } = req.body || {};
+
+    if (phrase !== GLOBAL_WIPE_PHRASE) {
+      return res.status(400).json({
+        error: 'confirmation_phrase does not match',
+        required_phrase: GLOBAL_WIPE_PHRASE
+      });
+    }
+
+    if (!password) {
+      return res.status(400).json({ error: 'password is required to confirm a global wipe' });
+    }
+
+    const rows = await runNukeQuery(
+      'SELECT password_hash FROM users WHERE id = $1',
+      [req.user.id],
+      'SELECT password_hash FROM users WHERE id = ?',
+      [req.user.id]
+    );
+
+    const hash = rows[0]?.password_hash;
+    if (!hash || !(await bcrypt.compare(password, hash))) {
+      await logAuditEvent({
+        eventType: 'NUKE_WIPE_REJECTED',
+        severity: 'critical',
+        actorUserId: req.user.id,
+        actorUsername: req.user.username,
+        message: 'Global cascading wipe rejected: password did not verify',
+        ipAddress: req.ip
+      });
+      return res.status(401).json({ error: 'password did not verify' });
+    }
+
+    // Written before the wipe runs, because the wipe clears the audit table and an
+    // event recorded afterwards would be the only row in an otherwise empty ledger
+    // with nothing to place it against.
+    await logAuditEvent({
+      eventType: 'NUKE_WIPE_EXECUTED',
+      severity: 'critical',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      message: 'Global cascading wipe authorised and starting',
+      ipAddress: req.ip
+    });
+
     const result = await NukeEngine.executeOwnerGlobalCascadingWipe();
     return res.status(200).json(result);
   } catch (err) {
     next(err);
   }
 });
+
+async function runNukeQuery(pgSql, pgParams, sqliteSql, sqliteParams) {
+  if (isPostgres()) {
+    const res = await getPgPool().query(pgSql, pgParams);
+    return res.rows;
+  }
+  return getDatabase().prepare(sqliteSql).all(...sqliteParams);
+}
 
 module.exports = router;

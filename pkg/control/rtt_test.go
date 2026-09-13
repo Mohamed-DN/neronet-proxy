@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -66,5 +67,43 @@ func TestRTTRoundsUp(t *testing.T) {
 
 	if got := client.lastRTTMillis(); got != 1 {
 		t.Errorf("120us reported as %d ms, want 1", got)
+	}
+}
+
+// TestHeartbeatReportsUnknownNode covers a node stranded permanently after the
+// control plane lost its row: the daemon logged "did not acknowledge heartbeat"
+// every fifteen seconds and never enrolled again, because a 404 was indistinguishable
+// from any other unacknowledged beat.
+func TestHeartbeatReportsUnknownNode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"unknown node_id node-gone"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+
+	_, err := client.SendHeartbeat(t.Context(), "node-gone", nil, 0, 0, 0, 100, false)
+	if !errors.Is(err, ErrNodeUnknown) {
+		t.Errorf("a 404 heartbeat returned %v, want ErrNodeUnknown so the caller can re-enrol", err)
+	}
+}
+
+// TestHeartbeatAcknowledgedIsNotUnknown keeps the recovery path from firing on a
+// healthy beat, which would re-enrol the node on every heartbeat.
+func TestHeartbeatAcknowledgedIsNotUnknown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"acknowledged":true}`))
+	}))
+	defer server.Close()
+
+	resp, err := NewClient(server.URL).SendHeartbeat(t.Context(), "node-1", nil, 0, 0, 0, 100, false)
+	if err != nil {
+		t.Fatalf("healthy heartbeat: %v", err)
+	}
+	if !resp.Acknowledged {
+		t.Error("a healthy heartbeat was not acknowledged")
 	}
 }

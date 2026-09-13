@@ -20,6 +20,10 @@ import (
 // ClientVersion is reported to the control plane on registration.
 const ClientVersion = "v4.0.0"
 
+// ErrNodeUnknown is returned when the control plane has no record of this node.
+// It is recoverable: the node still holds its identity and can enrol again.
+var ErrNodeUnknown = errors.New("control plane has no record of this node")
+
 // Client interacts with the SovereignMesh Control Plane Service
 type Client struct {
 	serverURL  string
@@ -195,6 +199,16 @@ func (c *Client) SendHeartbeatWithPosture(
 	}
 	c.recordRTT(time.Since(sentAt))
 	defer resp.Body.Close()
+
+	// The control plane answers 404 when it has no row for this node. That happens
+	// after the control plane database is rebuilt, restored from a backup taken
+	// before this node enrolled, or wiped. The node used to log "did not acknowledge
+	// heartbeat" once every fifteen seconds forever with no way back: its identity
+	// was still valid and nothing ever tried to enrol it again. Naming the condition
+	// is what lets the caller recover from it.
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNodeUnknown
+	}
 
 	var hbResp HeartbeatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&hbResp); err != nil {

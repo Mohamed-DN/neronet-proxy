@@ -176,13 +176,30 @@ export default function NeroNukePanel({
     }
   };
 
+  // The server requires the phrase typed exactly and the caller's own password.
+  // Both are asked for here. The previous version collected one passphrase the
+  // handler never read, and announced "All network assets shredded" on a call that
+  // had returned 404 and done nothing.
+  const OWNER_WIPE_PHRASE = 'DESTROY EVERYTHING PERMANENTLY';
+
   const handleEmergencyTriggerOwnerWipe = async () => {
-    const pass = prompt('EMERGENCY: Enter Network Owner passphrase to trigger immediate global wipe:');
-    if (!pass) return;
-    if (window.confirm('THIS WILL DELETE ALL POSTGRESQL ROWS, VALKEY CACHE, AND NODE REGISTRATIONS GLOBALLY. CANNOT BE UNDONE. PROCEED?')) {
-      await api.nuke.triggerOwnerWipe(pass);
-      alert('Global wipe triggered. All network assets shredded.');
+    const phrase = window.prompt(
+      `This deletes every node, every account and the entire audit ledger. It cannot be undone.\n\nType exactly:\n${OWNER_WIPE_PHRASE}`
+    );
+    if (phrase !== OWNER_WIPE_PHRASE) {
+      if (phrase !== null) window.alert('The phrase did not match. Nothing was deleted.');
+      return;
+    }
+
+    const password = window.prompt('Confirm with your own account password:');
+    if (!password) return;
+
+    try {
+      await api.nuke.triggerOwnerWipe({ confirmationPhrase: phrase, password });
+      window.alert('Global wipe completed.');
       window.location.reload();
+    } catch (err) {
+      window.alert(`Nothing was deleted: ${err.message}`);
     }
   };
 

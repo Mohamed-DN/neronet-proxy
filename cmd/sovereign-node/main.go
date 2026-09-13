@@ -173,6 +173,28 @@ func main() {
 					hbCancel()
 
 					if hbErr != nil {
+						// The control plane has no row for this node: its database was
+						// rebuilt, restored from a backup predating this enrolment, or
+						// wiped. The identity on disk is still valid, so enrol again
+						// rather than beating into the void until someone restarts the
+						// process by hand.
+						if errors.Is(hbErr, control.ErrNodeUnknown) {
+							newID, reErr := reregister(ctx, ctrlClient, keypair.PublicKey, role, *countryCode, *enableExit)
+							if reErr != nil {
+								log.Printf("[SOVEREIGN-NODE] Re-enrolment failed: %v", reErr)
+								continue
+							}
+
+							log.Printf("[SOVEREIGN-NODE] Re-enrolled after the control plane lost this node: %s -> %s", nodeID, newID)
+							nodeID = newID
+
+							// The epochs belonged to the registration that no longer
+							// exists. Resetting them makes the next sync a full one.
+							policyEpoch = 0
+							routeEpoch = 0
+							continue
+						}
+
 						log.Printf("[SOVEREIGN-NODE] Heartbeat failed: %v", hbErr)
 						continue
 					}
@@ -313,3 +335,39 @@ func loadOrCreateIdentity(path string) (*crypto.Keypair, error) {
 // curve25519Basepoint is the generator, used to recover a public key from a stored
 // private one.
 var curve25519Basepoint = [crypto.KeySize]byte{9}
+
+// reregister enrols this node again using the identity it already holds.
+//
+// The keypair is unchanged, so the control plane recognises the same device and
+// assigns it a fresh overlay address. It is the same call made at startup, kept
+// separate so the heartbeat loop can reach it.
+func reregister(
+	ctx context.Context,
+	client *control.Client,
+	publicKey [crypto.KeySize]byte,
+	role string,
+	countryCode string,
+	enableExit bool,
+) (string, error) {
+	regCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	resp, err := client.Register(regCtx, publicKey, role, nil, control.CapabilityDesc{
+		Enabled:          enableExit,
+		CountryCode:      countryCode,
+		IPClass:          "RESIDENTIAL",
+		MaxBandwidthKbps: 50000,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if resp.AssignedNodeID == "" {
+		return "", errors.New("control plane assigned no node id")
+	}
+	if resp.OverlayIPv4 == "" {
+		return "", errors.New("control plane assigned no overlay address")
+	}
+
+	return resp.AssignedNodeID, nil
+}
