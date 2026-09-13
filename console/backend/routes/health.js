@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { checkHealth } = require('../db/index');
 const { checkValkeyHealth } = require('../db/valkey');
+const { auditHealth } = require('../utils/audit');
 
 router.get('/health', async (req, res) => {
   let dbHealth = { status: 'disconnected', type: 'unknown' };
@@ -32,6 +33,8 @@ router.get('/health', async (req, res) => {
     postgis: dbHealth.postgis || 'inactive',
     valkey: valkeyHealth.status,
     valkey_type: valkeyHealth.type,
+    // An audit ledger that is not recording is a compliance failure, not a log line.
+    audit: auditHealth(),
     uptime_seconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString()
   };
