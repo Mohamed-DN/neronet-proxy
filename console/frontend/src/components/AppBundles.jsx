@@ -147,12 +147,16 @@ export default function AppBundles() {
           <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
             <Monitor className="w-5 h-5 text-accent-primary" />
             <span>Sovereign Cloud PC & WebRTC Engine</span>
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-              Selkies-GStreamer Native
+            {/* The badge read "Selkies-GStreamer Native". There is no Selkies and no
+                GStreamer in this repository, and the instances point at
+                wss://signal.internal.darknero.com, a host that does not resolve. */}
+            <span className="text-xs font-mono px-2 py-0.5 rounded bg-neon-amber/20 text-neon-amber border border-neon-amber/40">
+              Streaming not implemented
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Ultra-low latency GPU-accelerated streaming (WebRTC 60 FPS / &lt;15ms latency) with instant WebRTC share links and custom domain ingress.
+            Instance records and custom domain routing. The remote desktop session
+            has no signalling backend, so a stream cannot be established.
           </p>
         </div>
 
@@ -445,11 +449,15 @@ export default function AppBundles() {
                     </div>
                     <div className="space-y-2 text-xs font-mono flex-1">
                       <div className="text-slate-200 font-bold flex items-center space-x-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        <span>Live WebRTC Stream Active</span>
+                        <CheckCircle2 className="w-4 h-4 text-neon-amber" />
+                        <span>Share link issued</span>
                       </div>
+                      {/* This said "Live WebRTC Stream Active" and offered to stream
+                          the desktop at 60 FPS. The link is a token this console
+                          generated; nothing is listening at the other end. */}
                       <p className="text-slate-400 text-[11px]">
-                        Scan with mobile or open the secure WebRTC player link to stream desktop at 60 FPS.
+                        The link and token are real. Opening them will not connect
+                        until a signalling service exists.
                       </p>
                       <div className="flex items-center space-x-2 pt-1">
                         <input
@@ -484,8 +492,8 @@ export default function AppBundles() {
                         <span className="text-slate-200">{shareData.stream_token}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Hardware Encoder:</span>
-                        <span className="text-emerald-400 font-bold">{shareData.codec} (60 FPS)</span>
+                        <span>Requested codec:</span>
+                        <span className="text-slate-300 font-bold">{shareData.codec}</span>
                       </div>
                     </div>
                   </div>

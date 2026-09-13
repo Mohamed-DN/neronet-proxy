@@ -406,13 +406,15 @@ export default function GeoFencingMap() {
         <div>
           <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
             <MapPin className="w-5 h-5 text-accent-primary" />
-            <span>Geo-Fencing 2D Map & PostGIS Policies</span>
+            {/* PostGIS was removed; migration 004 drops it and no query uses it. The
+                matching is plain per-country and lat/lon arithmetic. */}
+            <span>Geo-Fencing Map &amp; Country Policies</span>
             <span className="text-xs font-mono px-2 py-0.5 rounded bg-accent-primary/20 text-accent-primary border border-accent-primary/40">
               Dual-Layer Canvas Engine
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            60 FPS GPU-accelerated Equirectangular projection, zero-trust perimeter enforcement, and PostGIS spatial queries.
+            Where nodes are allowed to appear, and which countries may carry egress.
           </p>
         </div>
 
@@ -624,7 +626,7 @@ export default function GeoFencingMap() {
                     {selectedCountry.country_name} ({selectedCountry.country_code})
                   </h3>
                   <div className="text-[11px] text-slate-400 font-mono">
-                    PostGIS Spatial Rule Inspector
+                    Country Rule Inspector
                   </div>
                 </div>
                 <span

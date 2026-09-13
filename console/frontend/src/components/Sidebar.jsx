@@ -90,7 +90,7 @@ export default function Sidebar({
         { id: 'nodes', label: 'Node Matrix', icon: Server, count: nodeCount },
         { id: 'onion', label: 'Onion & Obfuscation', icon: Shield, badge: '3-Hop' },
         { id: 'peering', label: 'Cross-Mesh Peering', icon: Network, badge: 'Ed25519' },
-        { id: 'geofencing', label: 'Geo-Fencing Map', icon: MapPin, badge: 'PostGIS' }
+        { id: 'geofencing', label: 'Geo-Fencing Map', icon: MapPin, badge: 'Geo' }
       ]
     },
     {

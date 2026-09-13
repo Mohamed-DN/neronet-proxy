@@ -147,13 +147,6 @@ export default function NodeActions({
     }
   };
 
-  const handleSendNeroDrop = () => {
-    onClose();
-    if (onNavigateTab) {
-      onNavigateTab('nerodrop');
-    }
-  };
-
   const handleCopyKey = (key) => {
     navigator.clipboard.writeText(key);
     setCopiedKey(true);
@@ -233,27 +226,10 @@ export default function NodeActions({
 
         {/* Drawer Content */}
         <div className="p-5 space-y-5 flex-1">
-          {/* Direct NeroDrop Send File Action Banner */}
-          <div className="p-3.5 rounded-xl bg-gradient-to-r from-accent-primary/15 via-accent-alert/15 to-transparent border border-accent-primary/40 flex items-center justify-between shadow-lg">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-accent-primary/20 flex items-center justify-center text-accent-primary">
-                <Zap className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-100">Send File via NeroDrop</div>
-                <div className="text-[10px] text-slate-400 font-mono">
-                  Direct encrypted P2P transfer (64KB BLAKE3)
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={handleSendNeroDrop}
-              className="px-3 py-1.5 rounded-lg bg-accent-primary text-slate-950 font-bold font-mono text-xs hover:brightness-110 transition-all flex items-center space-x-1.5 shadow-md"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>Send File</span>
-            </button>
-          </div>
+          {/* A "Send File via NeroDrop — Direct encrypted P2P transfer (64KB
+              BLAKE3)" action sat here. NeroDrop is shelved and removed from the
+              navigation, and BLAKE3 is not a dependency of this project; the
+              button opened a transfer that could not start. */}
 
           {/* Identity & Crypto Card */}
           <div className="p-4 rounded-xl bg-dark-canvas border border-dark-border space-y-3">

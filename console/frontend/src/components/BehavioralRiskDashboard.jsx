@@ -71,9 +71,9 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
           <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
             <Activity className="w-5 h-5 text-accent-primary animate-pulse" />
             <span>Continuous Behavioral Risk & Anomaly Engine</span>
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/40 font-bold">
-              PostGIS + pgvector
-            </span>
+            {/* This badge read "PostGIS + pgvector". Neither is used: PostGIS was
+                removed by migration 004 and pgvector was never installed. Scores
+                come from the rules in services/RiskEngine.js. */}
           </h1>
           <p className="text-xs text-slate-400 mt-1">
             Real-time telemetry analysis: impossible travel detection (&gt;1000 km/h), wire RTT drift, and automated quarantine triggers.
