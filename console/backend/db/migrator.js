@@ -331,6 +331,30 @@ const SQLITE_MIGRATIONS = [
   }
 ];
 
+const SQLITE_MIGRATION_008 = {
+  name: '008_network_routes',
+  sql: `
+      -- Mirrors migration 008 on the PostgreSQL side.
+      CREATE TABLE IF NOT EXISTS network_routes (
+          id TEXT PRIMARY KEY,
+          network_id TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          network_cidr TEXT NOT NULL,
+          masquerade INTEGER NOT NULL DEFAULT 1,
+          failover_mode TEXT NOT NULL DEFAULT 'ACTIVE_PASSIVE'
+              CHECK (failover_mode IN ('ACTIVE_PASSIVE', 'ACTIVE_ACTIVE_ECMP')),
+          routing_peers TEXT NOT NULL DEFAULT '[]',
+          groups TEXT NOT NULL DEFAULT '[]',
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_network_routes_enabled ON network_routes(enabled);
+      CREATE INDEX IF NOT EXISTS idx_network_routes_network ON network_routes(network_id);
+  `
+};
+
 const SQLITE_MIGRATION_007 = {
   name: '007_acl_rules',
   sql: `
@@ -539,7 +563,8 @@ function runSQLiteMigrations(db) {
     SQLITE_MIGRATION_004,
     SQLITE_MIGRATION_005,
     SQLITE_MIGRATION_006,
-    SQLITE_MIGRATION_007
+    SQLITE_MIGRATION_007,
+    SQLITE_MIGRATION_008
   ];
 
   for (const migration of migrations) {
@@ -581,6 +606,7 @@ module.exports = {
   SQLITE_MIGRATION_005,
   SQLITE_MIGRATION_006,
   SQLITE_MIGRATION_007,
+  SQLITE_MIGRATION_008,
   runMigrations,
   runPostgresMigrations,
   runSQLiteMigrations,

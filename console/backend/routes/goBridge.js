@@ -28,6 +28,7 @@ const { getDatabase, isPostgres, getPgPool } = require('../db/index');
 const { allocateNextVip } = require('../utils/crypto');
 const HeartbeatBuffer = require('../services/HeartbeatBuffer');
 const AclEngine = require('../services/AclEngine');
+const RouteEngine = require('../services/RouteEngine');
 const config = require('../config/env');
 const logger = require('../utils/logger');
 
@@ -465,6 +466,50 @@ router.post('/sync-acls', async (req, res) => {
     return res.json({ new_policy_epoch: policy.epoch, policy });
   } catch (err) {
     logger.error(`[GO-BRIDGE] ACL sync failed: ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /v4/control/sync-routes
+//
+// Subnet route delivery. A route says "this subnet is reachable through these peers".
+// Nodes could never learn that, because this endpoint did not exist.
+//
+// Same epoch protocol as ACL sync: an unchanged epoch is answered without building or
+// transferring the route set.
+router.post('/sync-routes', async (req, res) => {
+  try {
+    const auth = checkRegistrationToken(req);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    const nodeId = String(req.body.node_id || '').trim();
+    if (!nodeId) {
+      return res.status(400).json({ error: 'node_id is required' });
+    }
+
+    const currentEpoch = Number(req.body.route_epoch) || 0;
+    const epoch = await AclEngine.getEpoch('routes');
+
+    if (currentEpoch === epoch) {
+      return res.json({ new_route_epoch: epoch, routes: [] });
+    }
+
+    const known = await runQuery(
+      'SELECT id FROM nodes WHERE id = $1',
+      [nodeId],
+      'SELECT id FROM nodes WHERE id = ?',
+      [nodeId]
+    );
+
+    if (known.length === 0) {
+      return res.status(404).json({ error: `unknown node_id ${nodeId}` });
+    }
+
+    return res.json({ new_route_epoch: epoch, routes: await RouteEngine.routesFor(nodeId) });
+  } catch (err) {
+    logger.error(`[GO-BRIDGE] Route sync failed: ${err.message}`);
     return res.status(500).json({ error: err.message });
   }
 });
