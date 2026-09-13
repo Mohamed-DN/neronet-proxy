@@ -107,27 +107,37 @@ revocation list keyed on `jti`. Two roles: `super-admin` and `user`.
 |---|---|---|
 | `/v4/control/register` | Enrolment, overlay address assignment | Implemented |
 | `/v4/control/heartbeat` | Telemetry, quarantine signal | Implemented |
-| `/v4/control/discover` | **Peer and bridge discovery** | **404** |
+| `/v4/control/discover` | Peer and bridge discovery | Implemented — `9a13e20` |
+| `/v4/control/sync-acls` | Zero-trust policy delivery | Implemented — `9228211` |
 | `/v4/control/circuit` | **Onion circuit construction** | **404** |
-| `/v4/control/sync-acls` | **Zero-trust policy delivery** | **404** |
 | `/v4/control/sync-routes` | **Subnet route delivery** | **404** |
 
 Verified by request against the running backend.
 
-### 3.1 What this means
+### 3.1 State as of 2026-09-13
 
-A node enrols, receives an overlay address, and sends heartbeats. It then does
-nothing else:
+Two of the four are now implemented and verified against a real Go node:
 
-- **It never learns about other nodes.** There is no mesh, only a list of registrants.
-- **It never receives ACL policy.** `pkg/acl` compiles and enforces policy correctly,
-  and is handed nothing. Every zero-trust rule configured in the console has no
-  effect on any node.
-- **It never builds an onion circuit.** The differentiating feature is unreachable
-  from a deployed node.
-- **It never receives subnet routes.**
+- **Discovery works.** `sovereign-cli peers DE` returns ranked bridges. A node can
+  learn that other nodes exist.
+- **ACL delivery works.** A node logs
+  `Zero Trust ACL policy loaded (epoch: 2, outbound rules: 49)` on enrolment. Rules
+  authored as CIDRs are expanded to one entry per matching peer, because `pkg/acl`
+  matches an exact address.
 
-The console displays a mesh topology. What it displays is the registration table.
+Still missing:
+
+- **Onion circuits.** `/v4/control/circuit` returns 404, so the differentiating
+  feature is unreachable from a deployed node.
+- **Subnet routes.** `/v4/control/sync-routes` returns 404.
+
+### 3.2 One behaviour worth knowing before changing ACLs
+
+`pkg/acl` defaults to deny. An empty rule set delivered to a fleet black-holes all
+traffic. The control plane therefore compiles an allow-all policy when no rules are
+configured: a mesh with no policy written is open, and closes when the first rule is
+written. Changing that default without changing the enforcement side takes the mesh
+down on deploy.
 
 ### 3.2 Why it looks finished
 
@@ -490,11 +500,12 @@ CI must run the backend suite three times.
 
 Nothing about the mesh works until this is done. In order of dependency:
 
-1. `/v4/control/discover` — peer and bridge discovery. Without it there is no mesh.
-2. `/v4/control/sync-acls` — policy delivery. The enforcement engine already exists
-   and receives nothing.
-3. `/v4/control/sync-routes` — subnet routes.
-4. `/v4/control/circuit` — onion circuits.
+1. ~~`/v4/control/discover`~~ — done, `9a13e20`.
+2. ~~`/v4/control/sync-acls`~~ — done, `9228211`.
+3. `/v4/control/sync-routes` — subnet routes. `mesh_epochs` already carries a
+   `routes` counter for it.
+4. `/v4/control/circuit` — onion circuits. Needs three distinct healthy relays and a
+   circuit lifetime; `pkg/routing.Build3HopCircuit` is the client side.
 
 The Go implementations in `pkg/control/server.go` are the reference for behaviour and
 the struct tags are the contract. Decide § 4.1 first: implementing these in the Node
