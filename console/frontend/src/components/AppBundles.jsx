@@ -128,15 +128,27 @@ export default function AppBundles() {
 
   const handleDeleteDomain = async (domain) => {
     if (window.confirm(`Remove custom domain mapping for ${domain}?`)) {
-      await api.cloudPc.deleteCustomDomain(domain);
-      loadData();
+      try {
+        await api.cloudPc.deleteCustomDomain(domain);
+        loadData();
+      } catch (err) {
+        window.alert(`The domain was not removed: ${err.message}`);
+      }
     }
   };
 
   const handleVerifyDomain = async (domain) => {
-    await api.cloudPc.verifyCustomDomain(domain);
-    loadData();
-    alert(`Domain ${domain} verified successfully with active TLS certificate.`);
+    // This reported "verified successfully with active TLS certificate" whatever
+    // came back, and the call could not fail because a failed request returned null.
+    try {
+      const result = await api.cloudPc.verifyCustomDomain(domain);
+      loadData();
+      window.alert(result?.verified === false
+        ? `${domain} did not verify: ${result.reason || 'the check did not pass'}`
+        : `${domain} verified.`);
+    } catch (err) {
+      window.alert(`${domain} could not be verified: ${err.message}`);
+    }
   };
 
   return (

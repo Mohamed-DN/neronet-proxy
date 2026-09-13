@@ -48,14 +48,25 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
     loadData();
   }, []);
 
+  // These reported nothing on failure, and a failed request used to be applied to a
+  // local object and answered `{ success: true }`, so quarantining a node appeared
+  // to work with the control plane unreachable.
   const handleQuarantine = async (nodeId) => {
-    await api.risk.quarantine(nodeId, 'Operator manual quarantine from Behavioral Risk Dashboard');
-    loadData();
+    try {
+      await api.risk.quarantine(nodeId, 'Operator manual quarantine from Behavioral Risk Dashboard');
+      loadData();
+    } catch (err) {
+      window.alert(`${nodeId} was not quarantined: ${err.message}`);
+    }
   };
 
   const handleClearRisk = async (nodeId) => {
-    await api.risk.clearRisk(nodeId);
-    loadData();
+    try {
+      await api.risk.clearRisk(nodeId);
+      loadData();
+    } catch (err) {
+      window.alert(`The risk score for ${nodeId} was not cleared: ${err.message}`);
+    }
   };
 
   const filteredEvents = events.filter((e) => {

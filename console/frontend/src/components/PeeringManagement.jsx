@@ -87,14 +87,24 @@ export default function PeeringManagement() {
   };
 
   const handleAccept = async (id) => {
-    await api.peering.accept(id);
-    loadAgreements();
+    try {
+      await api.peering.accept(id);
+      loadAgreements();
+    } catch (err) {
+      // Federation is the one place where a silently failed write is worst: the
+      // operator believes a remote mesh was admitted, or that it was not.
+      window.alert(`The agreement was not accepted: ${err.message}`);
+    }
   };
 
   const handleRevoke = async (id) => {
     if (window.confirm('Revoke this cross-mesh peering agreement? Remote routes will be immediately severed.')) {
-      await api.peering.revoke(id);
-      loadAgreements();
+      try {
+        await api.peering.revoke(id);
+        loadAgreements();
+      } catch (err) {
+        window.alert(`The agreement was NOT revoked and the remote mesh still has access: ${err.message}`);
+      }
     }
   };
 

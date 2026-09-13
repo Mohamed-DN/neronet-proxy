@@ -183,6 +183,12 @@ async function refreshAccessToken() {
   return refreshInFlight;
 }
 
+const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+function isMutation(method) {
+  return MUTATION_METHODS.has(String(method || 'GET').toUpperCase());
+}
+
 async function request(endpoint, options = {}, isRetry = false) {
   const url = `${API_BASE}${endpoint}`;
   const headers = {
@@ -215,10 +221,24 @@ async function request(endpoint, options = {}, isRetry = false) {
     if (endpoint.startsWith('/auth/')) {
       throw err;
     }
-    // Returning null means "the control plane did not answer", and nothing else.
-    // An endpoint that answers with an empty list returns that empty list, because
-    // "no nodes are registered" is an answer the operator needs to be able to see.
+
     markUnreachable(err?.message || 'control plane unreachable');
+
+    // A read that fails returns null, which downstream treats as "the control plane
+    // did not answer" — distinct from an empty list, which is a real answer an
+    // operator needs to be able to see.
+    //
+    // A write that fails throws. It used to return null too, and twenty-three
+    // mutation methods below responded by applying the change to a JavaScript
+    // object and answering `{ success: true }`: quarantining a node, deleting a
+    // user, accepting a federation, arming the self-destruct. The console reported
+    // each as done while the control plane had never heard of it. Nothing that
+    // changes state may report success it cannot account for, so the caller is made
+    // to deal with the failure. The in-memory branches below are now unreachable.
+    if (isMutation(options.method)) {
+      throw err;
+    }
+
     return null;
   }
 }
