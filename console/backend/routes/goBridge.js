@@ -26,6 +26,7 @@ const crypto = require('crypto');
 
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
 const { allocateNextVip } = require('../utils/crypto');
+const HeartbeatBuffer = require('../services/HeartbeatBuffer');
 const config = require('../config/env');
 const logger = require('../utils/logger');
 
@@ -251,12 +252,40 @@ router.post('/heartbeat', async (req, res) => {
     const txBytes = clampNumber(req.body.tx_bytes_sec, 0, Number.MAX_SAFE_INTEGER, 0);
     const rxBytes = clampNumber(req.body.rx_bytes_sec, 0, Number.MAX_SAFE_INTEGER, 0);
 
-    // latency_ms is deliberately not written here. The previous handler set it to
+    // The node must exist before its heartbeat is buffered, otherwise an unknown id
+    // accumulates state that no flush can ever apply.
+    const known = await runQuery(
+      'SELECT is_quarantined, quarantine_reason FROM nodes WHERE id = $1',
+      [nodeId],
+      'SELECT is_quarantined, quarantine_reason FROM nodes WHERE id = ?',
+      [nodeId]
+    );
+
+    if (known.length === 0) {
+      return res.status(404).json({ error: `unknown node_id ${nodeId}` });
+    }
+
+    // Buffered rather than written straight through: at 100,000 nodes beating every
+    // 15 seconds this endpoint alone would be 6,667 UPDATEs per second against a
+    // table with 11 indexes. See services/HeartbeatBuffer.js.
+    //
+    // latency_ms is deliberately never written. The previous handler set it to
     // `floor(random() * 50 + 10)` on every heartbeat, so the console displayed an
     // invented round-trip time for every node in the fleet. The node does not measure
     // RTT yet; showing nothing is correct until it does.
-    const rows = await runQuery(
-      `UPDATE nodes SET
+    const buffered = await HeartbeatBuffer.record(nodeId, {
+      txBytes,
+      rxBytes,
+      cpuPct,
+      memMb,
+      batteryPct
+    });
+
+    if (!buffered) {
+      // Valkey unavailable: fall back to writing through, so a cache outage costs
+      // throughput rather than telemetry.
+      await runQuery(
+        `UPDATE nodes SET
          tx_bytes = tx_bytes + $1,
          rx_bytes = rx_bytes + $2,
          cpu_usage_pct = $3,
@@ -265,10 +294,9 @@ router.post('/heartbeat', async (req, res) => {
          is_healthy = TRUE,
          last_heartbeat = NOW(),
          updated_at = NOW()
-       WHERE id = $6
-       RETURNING is_quarantined, quarantine_reason`,
-      [txBytes, rxBytes, cpuPct, memMb, batteryPct, nodeId],
-      `UPDATE nodes SET
+       WHERE id = $6`,
+        [txBytes, rxBytes, cpuPct, memMb, batteryPct, nodeId],
+        `UPDATE nodes SET
          tx_bytes = tx_bytes + ?,
          rx_bytes = rx_bytes + ?,
          cpu_usage_pct = ?,
@@ -278,27 +306,12 @@ router.post('/heartbeat', async (req, res) => {
          last_heartbeat = CURRENT_TIMESTAMP,
          updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [txBytes, rxBytes, cpuPct, memMb, batteryPct, nodeId]
-    );
-
-    let quarantined = false;
-    let quarantineReason = '';
-
-    if (isPostgres()) {
-      if (rows.length === 0) {
-        return res.status(404).json({ error: `unknown node_id ${nodeId}` });
-      }
-      quarantined = Boolean(rows[0].is_quarantined);
-      quarantineReason = rows[0].quarantine_reason || '';
-    } else {
-      const db = getDatabase();
-      const row = db.prepare('SELECT is_quarantined, quarantine_reason FROM nodes WHERE id = ?').get(nodeId);
-      if (!row) {
-        return res.status(404).json({ error: `unknown node_id ${nodeId}` });
-      }
-      quarantined = Boolean(row.is_quarantined);
-      quarantineReason = row.quarantine_reason || '';
+        [txBytes, rxBytes, cpuPct, memMb, batteryPct, nodeId]
+      );
     }
+
+    const quarantined = Boolean(known[0].is_quarantined);
+    const quarantineReason = known[0].quarantine_reason || '';
 
     // Shape must match control.HeartbeatResponse.
     return res.json({

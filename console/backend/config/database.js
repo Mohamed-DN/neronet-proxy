@@ -70,7 +70,13 @@ const dbConfig = {
     password: process.env.VALKEY_PASSWORD || process.env.REDIS_PASSWORD || null,
     db: parseInt(process.env.VALKEY_DB || '0', 10),
     connectTimeout: 3000,
-    lazyConnect: true,
+    // NOT lazyConnect. With it, ioredis waits for the first command before dialling,
+    // so the 'connect' event never fires at startup, isConnected stays false, and
+    // every caller silently takes the in-memory fallback instead. The fallback works,
+    // so nothing ever errors -- the token blacklist, the topology bus and rate
+    // limiting all quietly become per-process, which is exactly the guarantee they
+    // exist to provide across processes.
+    lazyConnect: false,
     maxRetriesPerRequest: 1
   },
 

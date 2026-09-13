@@ -339,7 +339,7 @@ NeroNet integrates 1-click sovereign private cloud applications with automated O
 - 🔮 **[NeroNet v5.0 Next-Generation Roadmap](FUTURE_PLANS.md)**: Post-quantum ML-KEM-768, eBPF/XDP line-rate relays, and native mobile apps.
 - ⚙️ **[Environment Configuration Template](.env.example)**: Comprehensive configuration matrix and reference guide.
 - 🧪 **[Test Infrastructure & E2E Verification](TEST_INFRA.md)**: 5-Tier test methodology covering 330+ test cases.
-- 🗺️ **[Execution Plan](docs/PIANO_ESECUTIVO.md)**: measured load ceilings, the high-availability design and why multi-master PostgreSQL is refused, competitor feature harvest, and the code rules. Start here.
+- 🗺️ **[Engineering Roadmap](docs/ROADMAP.md)**: measured load ceilings, the high-availability design, federation and revocation, competitor feature parity, post-quantum status, and the code rules. Start here.
 
 ---
 
@@ -372,7 +372,7 @@ Known gaps, stated rather than omitted:
 - `pkg/crypto` and `pkg/routing` have had no external audit. A nonce-reuse defect was
   found and fixed in the onion layer on 2026-09-12; treat the rest accordingly.
 - NeroDrop, Cloud PC and App Bundles are interface without implementation. See
-  [the execution plan](docs/PIANO_ESECUTIVO.md) § 3.
+  [the roadmap](docs/ROADMAP.md) § 3.
 - Honeypot and zero-trust egress filtering exist as Go code but have not been
   exercised against a real deployment.
 

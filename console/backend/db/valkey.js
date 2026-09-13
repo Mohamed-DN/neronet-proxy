@@ -92,23 +92,28 @@ function initValkey() {
 
 async function publishTopologyEvent(payload) {
   const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
-  
-  // Always emit to in-memory bus for local processes
-  inMemoryBus.emit(TOPOLOGY_CHANNEL, message);
 
+  // One path or the other, never both. Subscribers listen on the in-memory bus and
+  // on Valkey, so emitting to both delivered every event twice -- which stayed
+  // invisible for as long as the Valkey connection was never actually established.
   if (valkeyClient && isConnected) {
     try {
       await valkeyClient.publish(TOPOLOGY_CHANNEL, message);
+      return;
     } catch (err) {
       logger.warn(`Failed to publish to Valkey channel ${TOPOLOGY_CHANNEL}: ${err.message}`);
+      // Fall through to the local bus rather than dropping the event.
     }
   }
+
+  inMemoryBus.emit(TOPOLOGY_CHANNEL, message);
 }
 
 function subscribeTopologyEvents(handler) {
   initValkey();
 
-  // Local listener
+  // The local bus is the fallback path for when Valkey is unreachable; publish only
+  // ever uses one of the two, so listening on both does not duplicate.
   inMemoryBus.on(TOPOLOGY_CHANNEL, (msg) => {
     try {
       const data = typeof msg === 'string' ? JSON.parse(msg) : msg;
@@ -192,7 +197,34 @@ async function checkValkeyHealth() {
       // disconnected
     }
   }
-  return { status: 'in_memory_active', type: 'in_memory_state_bus' };
+
+  // Degraded, and named as such. This state means the token blacklist, the topology
+  // bus and rate limiting are per-process: a token revoked on one instance stays
+  // valid on the others, and every limit is multiplied by the number of replicas.
+  // Reporting it as an "active" state made a broken integration look like a design.
+  return {
+    status: 'degraded',
+    type: 'in_memory_fallback',
+    detail: 'Valkey is unreachable: revocation, topology events and rate limits are per-process only'
+  };
+}
+
+/**
+ * Warn loudly at startup when Valkey is configured but not reachable.
+ *
+ * Called once the connection has had a chance to establish. Silence here is how an
+ * integration stays broken for months: the fallback works, so nothing fails.
+ */
+async function reportValkeyState() {
+  const health = await checkValkeyHealth();
+
+  if (health.status === 'connected') {
+    logger.info('Valkey connected: revocation, topology events and rate limits are shared across instances.');
+  } else {
+    logger.warn(`Valkey is NOT connected (${dbConfig.valkey.url}). ${health.detail}`);
+  }
+
+  return health;
 }
 
 function closeValkey() {
@@ -223,6 +255,7 @@ function getValkeyClient() {
 
 module.exports = {
   TOPOLOGY_CHANNEL,
+  reportValkeyState,
   NAMESPACE,
   getValkeyClient,
   initValkey,

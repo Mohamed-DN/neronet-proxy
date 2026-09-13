@@ -10,7 +10,8 @@ const { getDatabase, isPostgres, getPgPool, closeDatabase } = require('./db/inde
 const { runMigrations } = require('./db/migrator');
 const { seedDatabase, bootstrapPostgresAdmin } = require('./db/seed');
 const goBridgeRoutes = require('./routes/goBridge');
-const { initValkey, closeValkey } = require('./db/valkey');
+const HeartbeatBuffer = require('./services/HeartbeatBuffer');
+const { initValkey, reportValkeyState, closeValkey } = require('./db/valkey');
 const { initTopologySync } = require('./services/TopologySync');
 const { initTopologyWebSocket } = require('./ws/topologyServer');
 
@@ -92,6 +93,11 @@ async function initDatabase() {
   try {
     config.assertProductionSecrets();
     initValkey();
+    // Give the connection a moment, then say plainly whether it came up. Without
+    // this the in-memory fallback is indistinguishable from a working cache.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await reportValkeyState();
+    HeartbeatBuffer.startFlusher();
     initTopologySync();
 
     if (isPostgres()) {
