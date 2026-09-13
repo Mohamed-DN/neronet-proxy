@@ -98,7 +98,7 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-bold text-emerald-400">
-            {summary?.distribution?.low ?? 14} Nodes
+            {summary?.distribution?.low ?? '—'} Nodes
           </div>
           <div className="text-[10px] text-slate-500">Fully compliant posture</div>
         </div>
@@ -110,9 +110,9 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
             <AlertTriangle className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-2xl font-bold text-amber-400">
-            {summary?.distribution?.medium ?? 2} Nodes
+            {summary?.distribution?.medium ?? '—'} Nodes
           </div>
-          <div className="text-[10px] text-slate-500">RTT or ASN variance detected</div>
+          <div className="text-[10px] text-slate-500">Above the quarantine threshold</div>
         </div>
 
         {/* Critical Risk */}
@@ -122,7 +122,7 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
             <Flame className="w-4 h-4 text-red-400 animate-bounce" />
           </div>
           <div className="text-2xl font-bold text-red-400">
-            {summary?.distribution?.high ?? 2} Nodes
+            {summary?.distribution?.high ?? '—'} Nodes
           </div>
           <div className="text-[10px] text-red-400/80">Auto-quarantined to 100.64.250.0/24</div>
         </div>
@@ -134,9 +134,10 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
             <Activity className="w-4 h-4 text-accent-primary" />
           </div>
           <div className="text-2xl font-bold text-slate-100">
-            {summary?.average_risk_score ?? 21.4} / 100
+            {summary?.average_risk_score ?? '—'} / 100
           </div>
-          <div className="text-[10px] text-slate-500">Continuous 60s moving window</div>
+          {/* There is no moving window: the score is the value stored on the node row. */}
+            <div className="text-[10px] text-slate-500">Mean across enrolled nodes</div>
         </div>
       </div>
 

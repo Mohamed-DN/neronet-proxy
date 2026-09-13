@@ -15,6 +15,8 @@ export function AuthProvider({ children }) {
 
   const clearAuth = useCallback(() => {
     localStorage.removeItem('neronet_jwt_token');
+    // Left behind, this stayed exchangeable for a fresh access token after sign-out.
+    localStorage.removeItem('neronet_refresh_token');
     localStorage.removeItem('neronet_active_role');
     setToken(null);
     setUser(null);

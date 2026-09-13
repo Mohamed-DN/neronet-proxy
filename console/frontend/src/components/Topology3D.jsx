@@ -116,10 +116,18 @@ export default function Topology3D({ onSelectNode }) {
   }, [isFullscreen]);
 
   // Load nodes from API based on role
+  const [meshLinks, setMeshLinks] = useState([]);
+  const [policyIsOpen, setPolicyIsOpen] = useState(false);
+
   const loadNodes = useCallback(async () => {
     try {
-      const nodeList = await api.nodes.list(role);
+      const [nodeList, topology] = await Promise.all([
+        api.nodes.list(role),
+        api.stats.getTopology()
+      ]);
       setNodes(Array.isArray(nodeList) ? nodeList : []);
+      setMeshLinks(topology.links);
+      setPolicyIsOpen(topology.policyIsOpen);
     } catch (err) {
       console.error('Failed to load topology nodes:', err);
     }
@@ -127,6 +135,8 @@ export default function Topology3D({ onSelectNode }) {
 
   useEffect(() => {
     loadNodes();
+    const poll = setInterval(loadNodes, 30000);
+    return () => clearInterval(poll);
   }, [loadNodes]);
 
   const isSuperAdmin = role === 'super-admin';
@@ -153,142 +163,78 @@ export default function Topology3D({ onSelectNode }) {
     const graphNodes = [];
     const graphLinks = [];
 
-    if (isSuperAdmin) {
-      filtered.forEach((node) => {
-        const isQuarantined = Boolean(node.is_quarantined || (node.risk_score || 0) > 75);
-        const isPeered = Boolean(node.is_peered || node.role === 'PEERED');
-        let nodeColor = '#38bdf8';
-        let nodeVal = 7;
+    // Node styling. Roles and state decide colour and size; nothing here invents a
+    // node that does not exist.
+    filtered.forEach((node) => {
+      const isQuarantined = Boolean(node.is_quarantined || (node.risk_score || 0) > 75);
+      const isPeered = Boolean(node.is_peered || node.role === 'PEERED');
 
-        if (isQuarantined) {
-          nodeColor = '#ef4444';
-          nodeVal = 9;
-        } else if (isPeered) {
-          nodeColor = '#a855f7';
-          nodeVal = 8;
-        } else if (node.role === 'RELAY') {
-          nodeColor = '#10b981';
-          nodeVal = 12;
-        } else if (node.role === 'EXIT_BRIDGE') {
-          nodeColor = '#6366f1';
-          nodeVal = 9;
-        } else if (node.role === 'HYBRID') {
-          nodeColor = '#06b6d4';
-          nodeVal = 8;
-        }
+      let nodeColor = '#38bdf8';
+      let nodeVal = 7;
 
-        graphNodes.push({
-          id: node.id,
-          name: node.name || node.hostname || node.id,
-          role: node.role === 'EDGE_CLIENT' ? 'CLIENT_ORIGIN' : (node.role || 'CLIENT_ORIGIN'),
-          overlay_ipv4: node.overlay_ipv4 || node.mesh_ip || '',
-          country_code: node.country_code,
-          city: node.city,
-          latency_ms: node.latency_ms || 14.5,
-          risk_score: node.risk_score || 0,
-          is_quarantined: isQuarantined,
-          is_peered: isPeered,
-          val: nodeVal,
-          color: nodeColor,
-          rawNode: node
-        });
-      });
-
-      const relays = graphNodes.filter((n) => n.role === 'RELAY');
-      for (let i = 0; i < relays.length; i++) {
-        for (let j = i + 1; j < relays.length; j++) {
-          graphLinks.push({
-            source: relays[i].id,
-            target: relays[j].id,
-            color: 'rgba(16, 185, 129, 0.5)',
-            curvature: 0.1,
-            speed: 0.008
-          });
-        }
+      if (isQuarantined) {
+        nodeColor = '#ef4444';
+        nodeVal = 9;
+      } else if (isPeered) {
+        nodeColor = '#a855f7';
+        nodeVal = 8;
+      } else if (node.role === 'RELAY') {
+        nodeColor = '#10b981';
+        nodeVal = 12;
+      } else if (node.role === 'EXIT_BRIDGE') {
+        nodeColor = '#6366f1';
+        nodeVal = 9;
+      } else if (node.role === 'HYBRID') {
+        nodeColor = '#06b6d4';
+        nodeVal = 8;
       }
 
-      graphNodes.forEach((node, idx) => {
-        if (node.role !== 'RELAY' && relays.length > 0) {
-          const nearestRelay = relays[idx % relays.length];
-          let linkColor = 'rgba(56, 189, 248, 0.35)';
-          let speed = 0.005;
-
-          if (node.is_quarantined) {
-            linkColor = 'rgba(239, 68, 68, 0.35)';
-          } else if (node.is_peered) {
-            linkColor = 'rgba(168, 85, 247, 0.45)';
-            speed = 0.006;
-          } else if (node.role === 'EXIT_BRIDGE') {
-            linkColor = 'rgba(99, 102, 241, 0.45)';
-          }
-
-          graphLinks.push({
-            source: nearestRelay.id,
-            target: node.id,
-            color: linkColor,
-            curvature: 0.15,
-            speed
-          });
-        }
+      graphNodes.push({
+        id: node.id,
+        name: node.name || node.hostname || node.id,
+        role: node.role === 'EDGE_CLIENT' ? 'CLIENT_ORIGIN' : (node.role || 'CLIENT_ORIGIN'),
+        overlay_ipv4: node.overlay_ipv4 || node.mesh_ip || '',
+        country_code: node.country_code,
+        city: node.city,
+        // Null rather than a stand-in: this node has not reported a round trip.
+        latency_ms: Number(node.latency_ms) > 0 ? Number(node.latency_ms) : null,
+        risk_score: node.risk_score || 0,
+        is_quarantined: isQuarantined,
+        is_peered: isPeered,
+        val: nodeVal,
+        color: nodeColor,
+        rawNode: node
       });
-    } else {
-      const designatedRelay = {
-        id: 'relay-iad-core',
-        name: 'neronet-relay-iad-01',
-        role: 'RELAY',
-        overlay_ipv4: '100.64.0.1',
-        country_code: 'US',
-        city: 'Ashburn',
-        latency_ms: 12.0,
-        risk_score: 5,
-        is_quarantined: false,
-        is_peered: false,
-        val: 14,
-        color: '#10b981'
-      };
-      graphNodes.push(designatedRelay);
+    });
 
-      filtered.forEach((node) => {
-        if (node.id === designatedRelay.id) return;
-        const isQuarantined = Boolean(node.is_quarantined || (node.risk_score || 0) > 75);
-        const nodeColor = isQuarantined ? '#ef4444' : node.role === 'HYBRID' ? '#06b6d4' : '#38bdf8';
+    // Edges come from the control plane, which compiles them from the ACL policy.
+    //
+    // They used to be generated here. Relays were joined in a full mesh that nobody
+    // had configured, every other node was attached to relays[idx % relays.length]
+    // and the result was labelled "nearest relay" though the choice was round-robin,
+    // and a tenant who was not a super-admin had a relay invented for them outright
+    // — id relay-iad-core, "neronet-relay-iad-01" in Ashburn, 100.64.0.1 — which
+    // appeared in their topology as though they owned it.
+    const presentIds = new Set(graphNodes.map((n) => n.id));
 
-        graphNodes.push({
-          id: node.id,
-          name: node.name || node.hostname || node.id,
-          role: node.role === 'EDGE_CLIENT' ? 'CLIENT_ORIGIN' : (node.role || 'CLIENT_ORIGIN'),
-          overlay_ipv4: node.overlay_ipv4 || node.mesh_ip || '',
-          country_code: node.country_code,
-          city: node.city,
-          latency_ms: node.latency_ms || 18.0,
-          risk_score: node.risk_score || 0,
-          is_quarantined: isQuarantined,
-          is_peered: false,
-          val: 8,
-          color: nodeColor,
-          rawNode: node
-        });
+    meshLinks.forEach((link) => {
+      // A link whose endpoints are not both on screen would resolve to undefined
+      // inside the force layout and take the canvas down with it. Filters and
+      // per-tenant scoping both produce this case.
+      if (!presentIds.has(link.source) || !presentIds.has(link.target)) return;
 
-        graphLinks.push({
-          source: designatedRelay.id,
-          target: node.id,
-          color: isQuarantined ? 'rgba(239, 68, 68, 0.35)' : 'rgba(56, 189, 248, 0.35)',
-          curvature: 0.1,
-          speed: 0.007
-        });
+      const a = graphNodes.find((n) => n.id === link.source);
+      const b = graphNodes.find((n) => n.id === link.target);
+      const degraded = a?.is_quarantined || b?.is_quarantined;
+
+      graphLinks.push({
+        source: link.source,
+        target: link.target,
+        color: degraded ? 'rgba(239, 68, 68, 0.35)' : 'rgba(56, 189, 248, 0.35)',
+        curvature: 0.12,
+        speed: 0.006
       });
-
-      const clientNodes = graphNodes.filter((n) => n.id !== designatedRelay.id);
-      if (clientNodes.length >= 2) {
-        graphLinks.push({
-          source: clientNodes[0].id,
-          target: clientNodes[1].id,
-          color: 'rgba(99, 102, 241, 0.45)',
-          curvature: 0.2,
-          speed: 0.009
-        });
-      }
-    }
+    });
 
     let totalAllocatedParticles = 0;
     const maxGlobalParticles = 50;
@@ -303,7 +249,7 @@ export default function Topology3D({ onSelectNode }) {
     });
 
     return { nodes: graphNodes, links: graphLinks };
-  }, [nodes, isSuperAdmin, searchQuery, selectedRoleFilter]);
+  }, [nodes, meshLinks, searchQuery, selectedRoleFilter]);
 
   const handleNodeHover = useCallback((node) => {
     setHoveredNode(node || null);
@@ -456,13 +402,25 @@ export default function Topology3D({ onSelectNode }) {
             <Layers className="w-4 h-4 text-accent-primary" />
             <span>{isSuperAdmin ? 'SCOPE: GLOBAL MESH' : 'SCOPE: TENANT ISOLATED'}</span>
           </div>
+          {/* With no ACL rule written, the control plane compiles allow-all: every
+              node may reach every other. The full mesh on screen is then the absence
+              of a policy, not a policy, and the distinction matters enough to name. */}
+          {policyIsOpen && (
+            <div className="mt-1.5 px-2 py-1 rounded bg-neon-amber/15 border border-neon-amber/40 text-[10px] text-neon-amber leading-snug max-w-[15rem]">
+              No ACL rule is defined, so every node may reach every other. These
+              edges are the default, not a configured policy.
+            </div>
+          )}
           <div className="text-[11px] text-slate-400 space-y-0.5 pt-1">
             <div className="flex justify-between space-x-4">
               <span>Rendered Nodes:</span>
               <strong className="text-white">{graphData.nodes.length}</strong>
             </div>
+            {/* These are the paths the policy permits, not circuits. A circuit is
+                built on request through chosen hops and is not held anywhere the
+                console can count. */}
             <div className="flex justify-between space-x-4">
-              <span>Active Circuits:</span>
+              <span>Permitted Paths:</span>
               <strong className="text-accent-primary">{graphData.links.length}</strong>
             </div>
             <div className="flex justify-between space-x-4">

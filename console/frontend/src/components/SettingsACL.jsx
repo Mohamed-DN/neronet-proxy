@@ -22,11 +22,21 @@ export default function SettingsACL() {
 
   // New Rule Form
   const [priority, setPriority] = useState(50);
-  const [source, setSource] = useState('tag:developers');
-  const [destination, setDestination] = useState('tag:cloud_pc');
-  const [portProto, setPortProto] = useState('8443/TCP (WebRTC)');
+  // The form used to collect Tailscale-style selectors — tag:developers,
+  // tag:cloud_pc, "8443/TCP (WebRTC)" — for an engine that matches on CIDRs and
+  // numeric port ranges. Tags are not implemented anywhere in this system, so a
+  // rule written that way could never match a packet. These are the fields the
+  // engine actually evaluates.
+  const [source, setSource] = useState('100.64.0.0/10');
+  const [destination, setDestination] = useState('100.64.0.0/10');
+  const [protocol, setProtocol] = useState('ALL');
+  const [portStart, setPortStart] = useState(0);
+  const [portEnd, setPortEnd] = useState(65535);
   const [action, setAction] = useState('ACCEPT');
   const [description, setDescription] = useState('');
+  const [formError, setFormError] = useState(null);
+  const [policyIsOpen, setPolicyIsOpen] = useState(false);
+  const [epoch, setEpoch] = useState(null);
 
   // Posture settings toggles
   const [batteryCutoff, setBatteryCutoff] = useState(true);
@@ -34,8 +44,10 @@ export default function SettingsACL() {
   const [heartbeatTimeoutSec, setHeartbeatTimeoutSec] = useState(60);
 
   const loadRules = async () => {
-    const list = await api.acl.list();
-    setRules(list);
+    const res = await api.acl.list();
+    setRules(res.rules);
+    setPolicyIsOpen(res.policyIsOpen);
+    setEpoch(res.epoch);
   };
 
   useEffect(() => {
@@ -44,22 +56,36 @@ export default function SettingsACL() {
 
   const handleCreateRule = async (e) => {
     e.preventDefault();
-    await api.acl.create({
-      priority,
-      source,
-      destination,
-      port_proto: portProto,
-      action,
-      description: description || `${action} traffic from ${source} to ${destination}`
-    });
-    setIsAddingRule(false);
-    setDescription('');
-    loadRules();
+    setFormError(null);
+
+    try {
+      await api.acl.create({
+        priority: Number(priority),
+        source_cidr: source,
+        destination_cidr: destination,
+        protocol,
+        port_start: Number(portStart),
+        port_end: Number(portEnd),
+        action,
+        description: description || `${action} ${protocol} from ${source} to ${destination}`
+      });
+      setIsAddingRule(false);
+      setDescription('');
+      await loadRules();
+    } catch (err) {
+      // A malformed CIDR is rejected by the engine. Showing the reason beats a
+      // form that closes as though it had worked.
+      setFormError(err?.message || 'The rule was rejected');
+    }
   };
 
   const handleDeleteRule = async (id) => {
-    await api.acl.delete(id);
-    loadRules();
+    try {
+      await api.acl.delete(id);
+      await loadRules();
+    } catch (err) {
+      setFormError(err?.message || 'The rule could not be deleted');
+    }
   };
 
   return (
@@ -97,14 +123,32 @@ export default function SettingsACL() {
           <span className="text-xs font-mono text-slate-500">{rules.length} Rules Enforced</span>
         </div>
 
+        {policyIsOpen && (
+          <div className="m-4 p-3 rounded-lg bg-neon-amber/10 border border-neon-amber/30 text-xs">
+            <p className="text-neon-amber font-bold font-mono">No rule is defined — the mesh is open</p>
+            <p className="text-slate-400 mt-1 leading-relaxed">
+              Node enforcement is default-deny, so an empty policy delivered to the
+              fleet would stop all traffic. The control plane compiles allow-all
+              while this table is empty: every node may reach every other. Writing
+              the first rule closes the mesh to everything it does not permit.
+            </p>
+          </div>
+        )}
+
+        {epoch !== null && (
+          <div className="px-4 pt-3 text-[11px] font-mono text-slate-500 tabular-nums">
+            Policy epoch {epoch} — nodes re-sync on their next heartbeat
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-mono">
             <thead className="bg-dark-canvas text-slate-400 uppercase text-[10px] tracking-wider border-b border-dark-border">
               <tr>
                 <th className="p-3.5">Priority</th>
-                <th className="p-3.5">Source Tag / Group</th>
-                <th className="p-3.5">Destination</th>
-                <th className="p-3.5">Port & Protocol</th>
+                <th className="p-3.5">Source CIDR</th>
+                <th className="p-3.5">Destination CIDR</th>
+                <th className="p-3.5">Protocol &amp; Ports</th>
                 <th className="p-3.5">Action Policy</th>
                 <th className="p-3.5">Description</th>
                 <th className="p-3.5 text-right">Delete</th>
@@ -114,9 +158,14 @@ export default function SettingsACL() {
               {rules.map((r) => (
                 <tr key={r.id} className="hover:bg-dark-card-hover transition-colors">
                   <td className="p-3.5 font-bold text-slate-200">#{r.priority}</td>
-                  <td className="p-3.5 text-neon-cyan font-bold">{r.source}</td>
-                  <td className="p-3.5 text-neon-indigo font-bold">{r.destination}</td>
-                  <td className="p-3.5 text-slate-300">{r.port_proto}</td>
+                  <td className="p-3.5 text-neon-cyan font-bold">{r.source_cidr}</td>
+                  <td className="p-3.5 text-neon-indigo font-bold">{r.destination_cidr}</td>
+                  <td className="p-3.5 text-slate-300 tabular-nums">
+                    {r.protocol}
+                    {Number(r.port_start) === 0 && Number(r.port_end) === 65535
+                      ? ' · all ports'
+                      : ` · ${r.port_start}-${r.port_end}`}
+                  </td>
                   <td className="p-3.5">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                       r.action === 'ACCEPT'
@@ -252,37 +301,71 @@ export default function SettingsACL() {
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Source Tag / Group / VIP</label>
+                <label className="block text-slate-400 mb-1">Source CIDR</label>
                 <input
                   type="text"
                   required
                   value={source}
                   onChange={(e) => setSource(e.target.value)}
+                  placeholder="100.64.0.0/10"
                   className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded text-slate-100 focus:outline-none focus:border-neon-cyan"
                 />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Overlay addresses. A single device is /32.
+                </p>
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Destination Tag / Group / Subnet</label>
+                <label className="block text-slate-400 mb-1">Destination CIDR</label>
                 <input
                   type="text"
                   required
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
+                  placeholder="100.64.0.0/10"
                   className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded text-slate-100 focus:outline-none focus:border-neon-cyan"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-400 mb-1">Port & Protocol</label>
-                <input
-                  type="text"
-                  required
-                  value={portProto}
-                  onChange={(e) => setPortProto(e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded text-slate-100 focus:outline-none focus:border-neon-cyan"
-                />
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Protocol</label>
+                  <select
+                    value={protocol}
+                    onChange={(e) => setProtocol(e.target.value)}
+                    className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded text-slate-100 focus:outline-none focus:border-neon-cyan"
+                  >
+                    <option value="ALL">ALL</option>
+                    <option value="TCP">TCP</option>
+                    <option value="UDP">UDP</option>
+                    <option value="ICMP">ICMP</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Port from</label>
+                  <input
+                    type="number" min="0" max="65535" required
+                    value={portStart}
+                    onChange={(e) => setPortStart(e.target.value)}
+                    className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded text-slate-100 tabular-nums focus:outline-none focus:border-neon-cyan"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Port to</label>
+                  <input
+                    type="number" min="0" max="65535" required
+                    value={portEnd}
+                    onChange={(e) => setPortEnd(e.target.value)}
+                    className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded text-slate-100 tabular-nums focus:outline-none focus:border-neon-cyan"
+                  />
+                </div>
               </div>
+
+              {formError && (
+                <div className="p-2.5 rounded bg-neon-rose/10 border border-neon-rose/30 text-[11px] text-neon-rose">
+                  {formError}
+                </div>
+              )}
 
               <div>
                 <label className="block text-slate-400 mb-1">Rule Description</label>

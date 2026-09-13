@@ -107,16 +107,83 @@ let inMemoryShareLinks = [
 
 const API_BASE = '/api';
 
-function getAuthHeader() {
+const TOKEN_KEY = 'neronet_jwt_token';
+const REFRESH_KEY = 'neronet_refresh_token';
+
+function readStored(key) {
   try {
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('neronet_jwt_token') : null;
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
   } catch (e) {
-    return {};
+    return null;
   }
 }
 
-async function request(endpoint, options = {}) {
+function writeStored(key, value) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch (e) {
+    // Private browsing, or storage disabled. The session then lasts as long as the
+    // tab, which is a degradation rather than a failure.
+  }
+}
+
+function getAuthHeader() {
+  const token = readStored(TOKEN_KEY);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// Access tokens last fifteen minutes. A 401 used to delete the token and report the
+// control plane as unreachable, so a console left open quietly logged itself out and
+// showed every panel as failed, even though a refresh token was issued at sign-in
+// and never stored. One refresh is attempted per expiry, shared between concurrent
+// callers: the overview alone fires five requests at once, and each retrying
+// independently would spend five refresh tokens on one expiry.
+let refreshInFlight = null;
+
+async function refreshAccessToken() {
+  const refreshToken = readStored(REFRESH_KEY);
+  if (!refreshToken) return null;
+
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken })
+        });
+
+        if (!res.ok) {
+          // The refresh token is spent, revoked or expired. Clearing both is what
+          // sends the user back to the sign-in screen.
+          writeStored(TOKEN_KEY, null);
+          writeStored(REFRESH_KEY, null);
+          return null;
+        }
+
+        const body = await res.json();
+        if (!body?.token) return null;
+
+        writeStored(TOKEN_KEY, body.token);
+        return body.token;
+      } catch (e) {
+        // A network failure is not proof the session ended, so the tokens are kept
+        // and the next request tries again.
+        return null;
+      } finally {
+        // Cleared on the next tick so callers awaiting this promise all observe the
+        // same result before a new attempt can start.
+        setTimeout(() => { refreshInFlight = null; }, 0);
+      }
+    })();
+  }
+
+  return refreshInFlight;
+}
+
+async function request(endpoint, options = {}, isRetry = false) {
   const url = `${API_BASE}${endpoint}`;
   const headers = {
     'Content-Type': 'application/json',
@@ -127,10 +194,14 @@ async function request(endpoint, options = {}) {
   try {
     const res = await fetch(url, { ...options, headers });
     if (!res.ok) {
-      // If 401, handle auth expiration
-      if (res.status === 401 && typeof localStorage !== 'undefined') {
-        try { localStorage.removeItem('neronet_jwt_token'); } catch (e) {}
+      // Never on an /auth/ call: refreshing in response to a failed sign-in or a
+      // failed refresh would loop.
+      if (res.status === 401 && !isRetry && !endpoint.startsWith('/auth/')) {
+        const fresh = await refreshAccessToken();
+        if (fresh) return request(endpoint, options, true);
+        writeStored(TOKEN_KEY, null);
       }
+
       const errorData = await res.json().catch(() => ({}));
       const err = new Error(errorData.error || `HTTP error ${res.status}`);
       err.status = res.status;
@@ -180,9 +251,10 @@ export const api = {
         body: JSON.stringify({ username, password })
       });
       if (live && live.token) {
-        if (typeof localStorage !== 'undefined') {
-          try { localStorage.setItem('neronet_jwt_token', live.token); } catch (e) {}
-        }
+        writeStored(TOKEN_KEY, live.token);
+        // Issued by the server since sign-in was built and dropped on the floor here,
+        // which is why sessions ended after fifteen minutes.
+        if (live.refreshToken) writeStored(REFRESH_KEY, live.refreshToken);
         return live;
       }
       throw new Error((live && live.error) || 'Invalid username or password');
@@ -200,9 +272,10 @@ export const api = {
       } catch (e) {
         // ignore logout network errors
       }
-      if (typeof localStorage !== 'undefined') {
-        try { localStorage.removeItem('neronet_jwt_token'); } catch (e) {}
-      }
+      // Both, or the refresh token outlives the session it belonged to and can be
+      // exchanged for a working access token after the user signed out.
+      writeStored(TOKEN_KEY, null);
+      writeStored(REFRESH_KEY, null);
       return { success: true };
     }
   },
@@ -821,6 +894,17 @@ PersistentKeepalive = 25
     async getGeoMatrix() {
       const matrix = await request('/stats/geo-matrix');
       return Array.isArray(matrix) ? matrix : [];
+    },
+
+    // Nodes plus the edges the ACL policy permits between them.
+    async getTopology() {
+      const t = await request('/stats/topology');
+      return {
+        nodes: Array.isArray(t?.nodes) ? t.nodes : [],
+        links: Array.isArray(t?.links) ? t.links : [],
+        policyIsOpen: Boolean(t?.policy_is_open),
+        reachable: t !== null
+      };
     }
   },
 
@@ -833,29 +917,39 @@ PersistentKeepalive = 25
   },
 
   // ACL & Settings
+  // These three used to operate on a JavaScript array in this file. The engine that
+  // compiles and delivers ACLs to the fleet was never contacted, so a rule written
+  // in the console was gone on reload and never reached a node, while the page
+  // showed it as active policy.
   acl: {
     async list() {
-      return inMemoryAclRules;
+      const res = await request('/acl/rules');
+      return {
+        rules: Array.isArray(res?.rules) ? res.rules : [],
+        epoch: res?.epoch ?? null,
+        policyIsOpen: Boolean(res?.policy_is_open),
+        reachable: res !== null
+      };
     },
 
     async create(rule) {
-      const newRule = {
-        id: `acl_${Math.random().toString(36).substring(2, 6)}`,
-        priority: Number(rule.priority) || 50,
-        source: rule.source,
-        destination: rule.destination,
-        port_proto: rule.port_proto,
-        action: rule.action,
-        description: rule.description
-      };
-      inMemoryAclRules.push(newRule);
-      inMemoryAclRules.sort((a, b) => a.priority - b.priority);
-      return newRule;
+      const res = await request('/acl/rules', {
+        method: 'POST',
+        body: JSON.stringify(rule)
+      });
+      if (!res) throw new Error('The control plane did not accept the rule');
+      return res;
     },
 
     async delete(id) {
-      inMemoryAclRules = inMemoryAclRules.filter(r => r.id !== id);
-      return { success: true };
+      const res = await request(`/acl/rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res) throw new Error('The control plane did not confirm the deletion');
+      return res;
+    },
+
+    /** The policy a node will actually enforce, for confirming a rule landed. */
+    async compiledFor(nodeId) {
+      return request(`/acl/compiled/${encodeURIComponent(nodeId)}`);
     }
   },
 
@@ -942,37 +1036,22 @@ PersistentKeepalive = 25
 
   // Behavioral Risk Dashboard & Anomaly Engine
   risk: {
+    // These three endpoints did not exist on the server, so each call 404ed and
+    // returned the fixture below it: the risk page reported a distribution of
+    // 14 low / 2 medium / 2 high and an average of 21.4 on any fleet. They exist
+    // now and the fixtures are gone.
     async getSummary() {
-      const live = await request('/risk/summary');
-      if (live && live.total_nodes > 0) return live;
-
-      const nodes = inMemoryNodes;
-      const low = nodes.filter(n => (n.risk_score || 0) < 40).length;
-      const medium = nodes.filter(n => (n.risk_score || 0) >= 40 && (n.risk_score || 0) <= 75).length;
-      const high = nodes.filter(n => (n.risk_score || 0) > 75).length;
-      const avg = +(nodes.reduce((acc, n) => acc + (n.risk_score || 0), 0) / (nodes.length || 1)).toFixed(1);
-
-      return {
-        distribution: { low, medium, high },
-        average_risk_score: avg,
-        total_nodes: nodes.length,
-        quarantined_nodes: nodes.filter(n => n.is_quarantined).length,
-        active_anomalies_count: inMemoryRiskEvents.length
-      };
+      return request('/risk/summary');
     },
 
     async listEvents() {
       const live = await request('/risk/events');
-      return resolveList('/risk/events', Array.isArray(live?.events) ? live.events : null, inMemoryRiskEvents);
+      return Array.isArray(live?.events) ? live.events : [];
     },
 
     async getLeaderboard() {
       const live = await request('/risk/leaderboard');
-      return resolveList(
-        '/risk/leaderboard',
-        Array.isArray(live?.nodes) ? live.nodes : null,
-        [...inMemoryNodes].sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0))
-      );
+      return Array.isArray(live?.leaderboard) ? live.leaderboard : [];
     },
 
     async quarantine(nodeId, reason) {

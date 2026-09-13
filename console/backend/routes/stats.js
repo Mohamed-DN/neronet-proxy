@@ -4,6 +4,7 @@ const { isPostgres, getPgPool, getDatabase } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
 const { readFleetState, LIVENESS_WINDOW_SECONDS } = require('../services/MetricsCollector');
 const { COUNTRY_NAMES } = require('../utils/countries');
+const AclEngine = require('../services/AclEngine');
 
 router.use(authenticateToken);
 
@@ -241,18 +242,18 @@ async function topologyHandler(req, res, next) {
     if (isPostgres()) {
       const pool = getPgPool();
       if (req.user.role === 'super-admin') {
-        const qRes = await pool.query('SELECT id, name, role, country_code, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC');
+        const qRes = await pool.query('SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC');
         visibleNodes = qRes.rows;
       } else {
-        const qRes = await pool.query('SELECT id, name, role, country_code, is_healthy, latency_ms FROM nodes WHERE user_id = $1 ORDER BY created_at ASC', [req.user.id]);
+        const qRes = await pool.query('SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes WHERE user_id = $1 ORDER BY created_at ASC', [req.user.id]);
         visibleNodes = qRes.rows;
       }
     } else {
       const db = getDatabase();
       if (req.user.role === 'super-admin') {
-        visibleNodes = db.prepare('SELECT id, name, role, country_code, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC').all();
+        visibleNodes = db.prepare('SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC').all();
       } else {
-        visibleNodes = db.prepare('SELECT id, name, role, country_code, is_healthy, latency_ms FROM nodes WHERE user_id = ? ORDER BY created_at ASC').all(req.user.id);
+        visibleNodes = db.prepare('SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes WHERE user_id = ? ORDER BY created_at ASC').all(req.user.id);
       }
     }
 
@@ -261,30 +262,81 @@ async function topologyHandler(req, res, next) {
       name: n.name,
       role: n.role,
       country: n.country_code || 'US',
+      overlay_ipv4: n.overlay_ipv4,
       is_healthy: Boolean(n.is_healthy),
-      latency_ms: n.latency_ms || 15.0
+      // Zero means the node has not reported a round trip yet. It used to be
+      // replaced with 15.0, which read as a measurement.
+      latency_ms: Number(n.latency_ms) > 0 ? Number(n.latency_ms) : null
     }));
 
-    const links = [];
-    for (let i = 0; i < Math.min(visibleNodes.length, 10); i++) {
-      for (let j = i + 1; j < Math.min(visibleNodes.length, 10); j++) {
-        links.push({
-          source: visibleNodes[i].id,
-          target: visibleNodes[j].id,
-          rtt_ms: Math.round(((visibleNodes[i].latency_ms || 10) + (visibleNodes[j].latency_ms || 10)) / 2 * 10) / 10
-        });
-      }
-    }
+    // Links are the paths the policy permits, compiled by the same engine that
+    // hands each node its ACLs, so the view and the enforcement cannot disagree.
+    //
+    // What was here before was a full mesh of the first ten nodes with an rtt_ms of
+    // (a.latency + b.latency) / 2 — the mean of two nodes' round trips to the
+    // control plane, which is not the round trip between them and was labelled as
+    // if it were. Nodes do not probe each other, so no per-link latency is reported.
+    const { links, policyIsOpen } = await compileTopologyLinks(nodes);
 
     return res.status(200).json({
       nodes,
       links,
       total_nodes: nodes.length,
+      // True when no ACL rule exists. pkg/acl is default-deny, so the control plane
+      // compiles allow-all in that case: the mesh is open until the first rule is
+      // written, and the console should say so rather than presenting a full mesh
+      // as a configured one.
+      policy_is_open: policyIsOpen,
       mesh_scope: req.user.role === 'super-admin' ? 'global' : 'user_isolated'
     });
   } catch (err) {
     next(err);
   }
+}
+
+/**
+ * Derives the edges of the topology from the compiled ACL policy.
+ *
+ * One compile per node is the same work the control plane does when a node syncs,
+ * and it is bounded by the number of nodes the caller can see. An edge is added
+ * once per unordered pair: A permitted to reach B and B permitted to reach A is one
+ * line on screen, not two.
+ */
+async function compileTopologyLinks(nodes) {
+  const byVip = new Map();
+  for (const n of nodes) {
+    if (n.overlay_ipv4) byVip.set(n.overlay_ipv4, n.id);
+  }
+
+  const seen = new Set();
+  const links = [];
+  let policyIsOpen = false;
+
+  for (const node of nodes) {
+    const policy = await AclEngine.compilePolicyFor(node.id);
+    if (!policy) continue;
+
+    // An allow-all compilation is marked by non-directional rules, which is what
+    // AclEngine emits when the rule table is empty.
+    if (policy.outbound_rules.some(r => r.is_directional === false)) {
+      policyIsOpen = true;
+    }
+
+    for (const rule of policy.outbound_rules) {
+      if (rule.action !== 'ACCEPT') continue;
+
+      const peerId = byVip.get(rule.allowed_peer_vip);
+      if (!peerId || peerId === node.id) continue;
+
+      const key = node.id < peerId ? `${node.id}|${peerId}` : `${peerId}|${node.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      links.push({ source: node.id, target: peerId, protocol: rule.protocol });
+    }
+  }
+
+  return { links, policyIsOpen };
 }
 
 router.get('/topology', topologyHandler);
