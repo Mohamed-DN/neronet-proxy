@@ -97,11 +97,17 @@ describe('Rate limiting', () => {
     return JSON.parse(lastLine);
   }
 
-  it('allows traffic up to the limit and refuses past it', () => {
+  // Each probe spawns a process that loads express and supertest. On a loaded
+  // machine that start-up can take seconds, and these assertions are about
+  // behaviour, not speed -- so they get headroom rather than a default timeout that
+  // turns CPU contention into a failed security test.
+  const PROBE_TIMEOUT_MS = 30_000;
+
+  it('allows traffic up to the limit and refuses past it', { timeout: PROBE_TIMEOUT_MS }, () => {
     assert.deepStrictEqual(probe('ceiling').codes, [200, 200, 200, 429, 429]);
   });
 
-  it('reports the budget so a client can back off', () => {
+  it('reports the budget so a client can back off', { timeout: PROBE_TIMEOUT_MS }, () => {
     const r = probe('headers');
 
     assert.strictEqual(r.limit, '2');
@@ -110,7 +116,7 @@ describe('Rate limiting', () => {
     assert.ok(r.retryAfter > 0, 'Retry-After must tell the client when to return');
   });
 
-  it('meters callers separately', () => {
+  it('meters callers separately', { timeout: PROBE_TIMEOUT_MS }, () => {
     const r = probe('isolation');
 
     assert.strictEqual(r.aFirst, 200);
@@ -119,7 +125,7 @@ describe('Rate limiting', () => {
     assert.strictEqual(r.bFirst, 200);
   });
 
-  it('refuses a request it cannot attribute', () => {
+  it('refuses a request it cannot attribute', { timeout: PROBE_TIMEOUT_MS }, () => {
     // Letting unattributable requests share one bucket means one attacker locks out
     // everybody; letting them through unmetered means the limiter can be bypassed.
     assert.strictEqual(probe('unattributable').status, 400);

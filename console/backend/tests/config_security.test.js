@@ -45,7 +45,7 @@ describe('Production secret enforcement', () => {
     POSTGRES_PASSWORD: ''
   };
 
-  it('refuses to start in production when JWT secrets are unset', () => {
+  it('refuses to start in production when JWT secrets are unset', { timeout: 30_000 }, () => {
     const res = runInEnv(
       { ...PROD, ...clearSecrets },
       "require('./config/env').assertProductionSecrets();"
@@ -58,7 +58,7 @@ describe('Production secret enforcement', () => {
     assert.match(res.output, /SOVEREIGN_ADMIN_PASS/);
   });
 
-  it('starts in production once every secret is supplied', () => {
+  it('starts in production once every secret is supplied', { timeout: 30_000 }, () => {
     const res = runInEnv(
       {
         ...PROD,
@@ -73,7 +73,7 @@ describe('Production secret enforcement', () => {
     assert.match(res.output, /STARTED 0/);
   });
 
-  it('does not reuse a published default as the production JWT secret', () => {
+  it('does not reuse a published default as the production JWT secret', { timeout: 30_000 }, () => {
     const res = runInEnv(
       {
         ...PROD,
@@ -89,7 +89,7 @@ describe('Production secret enforcement', () => {
     assert.doesNotMatch(res.output, /dev-only/);
   });
 
-  it('still boots in development, with a warning', () => {
+  it('still boots in development, with a warning', { timeout: 30_000 }, () => {
     const res = runInEnv(
       { NODE_ENV: 'development', ...clearSecrets },
       "const c = require('./config/env'); c.assertProductionSecrets(); console.log('DEV_OK', c.JWT_SECRET);"
@@ -100,7 +100,7 @@ describe('Production secret enforcement', () => {
     assert.match(res.output, /falling back to a well-known development value/);
   });
 
-  it('refuses a missing PostgreSQL password in production', () => {
+  it('refuses a missing PostgreSQL password in production', { timeout: 30_000 }, () => {
     const res = runInEnv(
       {
         ...PROD,
@@ -121,7 +121,7 @@ describe('Production secret enforcement', () => {
 // accepts any certificate is readable by anyone who can answer on the database's
 // address, which is a weaker position than plaintext on a trusted socket.
 describe('PostgreSQL TLS verification', () => {
-  it('verifies certificates by default when PGSSL is enabled', () => {
+  it('verifies certificates by default when PGSSL is enabled', { timeout: 30_000 }, () => {
     const res = runInEnv(
       { NODE_ENV: 'development', PGSSL: 'true', PGSSL_INSECURE: '' },
       "console.log(JSON.stringify(require('./config/database').postgres.ssl));"
@@ -131,7 +131,7 @@ describe('PostgreSQL TLS verification', () => {
     assert.match(res.output, /"rejectUnauthorized":true/);
   });
 
-  it('disables TLS entirely when PGSSL is not set', () => {
+  it('disables TLS entirely when PGSSL is not set', { timeout: 30_000 }, () => {
     const res = runInEnv(
       { NODE_ENV: 'development', PGSSL: '', PGSSL_INSECURE: '' },
       "console.log(JSON.stringify(require('./config/database').postgres.ssl));"
@@ -141,7 +141,7 @@ describe('PostgreSQL TLS verification', () => {
     assert.strictEqual(res.stdout.trim(), 'false');
   });
 
-  it('rejects PGSSL_INSECURE in production', () => {
+  it('rejects PGSSL_INSECURE in production', { timeout: 30_000 }, () => {
     const res = runInEnv(
       {
         NODE_ENV: 'production',
@@ -224,7 +224,7 @@ describe('Committed files carry no usable secrets', () => {
     });
   }
 
-  it('rejects any secret that has appeared in a committed file', () => {
+  it('rejects any secret that has appeared in a committed file', { timeout: 30_000 }, () => {
     const { isPublishedDefault } = require('../config/env');
 
     // The historical defaults, reconstructed here only to assert they are refused.
