@@ -29,6 +29,7 @@ export default function Sidebar({
   activeTab,
   setActiveTab,
   nodeCount = 0,
+  reachableCount = 0,
   quarantinedCount = 0,
   highRiskCount = 0,
   nukeArmed = false,
@@ -36,6 +37,10 @@ export default function Sidebar({
   onNukeClick,
   onExecuteWipe
 }) {
+  const reachablePct = nodeCount === 0
+    ? 0
+    : Math.round((reachableCount / nodeCount) * 100);
+
   const [collapsedSections, setCollapsedSections] = useState({
     mesh: false,
     compute: false,
@@ -272,21 +277,42 @@ export default function Sidebar({
         </nav>
       </div>
 
-      {/* Footer System Status */}
+      {/* Footer System Status
+          This panel used to claim "HA Ready" beside a bar fixed at 98.4% labelled
+          "Security: 98.4%". Neither figure was computed, and the deployment is a
+          single control-plane instance, not a highly available one. The bar now
+          shows the share of enrolled nodes that answered inside the liveness
+          window, which is the one number of the three that can be measured. */}
       <div className="p-3.5 border-t border-dark-border bg-dark-canvas/50 space-y-2.5 shrink-0">
         <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
           <span className="flex items-center space-x-1.5">
             <Cpu className="w-3.5 h-3.5 text-slate-500" />
-            <span className="text-[11px]">DirectFrame v4.0</span>
+            <span className="text-[11px]">NeroNet v4</span>
           </span>
-          <span className="text-accent-primary text-[11px] font-semibold">HA Ready</span>
+          <span className="text-[11px] font-semibold tabular-nums text-slate-300">
+            {nodeCount === 0 ? 'No nodes' : `${reachableCount}/${nodeCount} up`}
+          </span>
         </div>
-        <div className="w-full bg-dark-border rounded-full h-1.5 overflow-hidden">
-          <div className="bg-gradient-to-r from-accent-primary to-accent-alert h-full w-[98.4%]"></div>
+        <div
+          className="w-full bg-dark-border rounded-full h-1.5 overflow-hidden"
+          role="progressbar"
+          aria-valuenow={reachablePct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Nodes reachable"
+        >
+          <div
+            className={`h-full transition-[width] duration-500 ${
+              reachablePct === 100 ? 'bg-neon-emerald'
+                : reachablePct >= 80 ? 'bg-neon-amber'
+                : 'bg-neon-rose'
+            }`}
+            style={{ width: `${reachablePct}%` }}
+          ></div>
         </div>
         <div className="flex justify-between text-[9px] font-mono text-slate-500">
-          <span>Security: 98.4%</span>
-          <span>Zero-Trust: OK</span>
+          <span>Reachable: {nodeCount === 0 ? 'n/a' : `${reachablePct}%`}</span>
+          <span>{quarantinedCount > 0 ? `${quarantinedCount} quarantined` : 'None quarantined'}</span>
         </div>
       </div>
     </aside>

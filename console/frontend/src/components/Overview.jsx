@@ -24,6 +24,21 @@ import {
   Sparkles
 } from 'lucide-react';
 
+/**
+ * Renders a byte count at a sensible unit, or a dash when there is nothing to show.
+ * Binary units, because that is what the node counters measure in.
+ */
+function formatBytes(bytes) {
+  if (bytes === null || bytes === undefined) return '—';
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return '0 B';
+
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  const value = n / Math.pow(1024, i);
+  return `${value.toFixed(i === 0 ? 0 : value >= 100 ? 0 : 1)} ${units[i]}`;
+}
+
 export default function Overview({ onSelectNode, onNavigateTab }) {
   const [stats, setStats] = useState(null);
   const [timeseries, setTimeseries] = useState([]);
@@ -31,25 +46,39 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
   const [timeRange, setTimeRange] = useState('24h');
   const [loading, setLoading] = useState(true);
 
+  const [loadError, setLoadError] = useState(null);
+
+  // Re-runs when the range changes: the selector used to set state that nothing
+  // read, so every range showed the same fixed series.
   useEffect(() => {
+    let cancelled = false;
+
     async function loadData() {
       try {
         const [overviewStats, ts, geo] = await Promise.all([
           api.stats.getOverview(),
-          api.stats.getTimeseries(),
+          api.stats.getTimeseries(timeRange),
           api.stats.getGeoMatrix()
         ]);
+        if (cancelled) return;
         setStats(overviewStats);
         setTimeseries(ts);
         setGeoMatrix(geo);
+        setLoadError(null);
       } catch (err) {
-        console.error('Failed to load overview stats:', err);
+        if (cancelled) return;
+        // A console that cannot reach its control plane must say so. It used to log
+        // to the developer console and keep the previous figures on screen.
+        setLoadError(err?.message || 'The control plane did not respond');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
+
     loadData();
-  }, []);
+    const poll = setInterval(loadData, 30000);
+    return () => { cancelled = true; clearInterval(poll); };
+  }, [timeRange]);
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -84,14 +113,20 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
       {/* Top Banner / Heading */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
-            <span>Global Mesh Telemetry & Posture Command</span>
-            <span className="text-xs font-mono font-normal px-2 py-0.5 rounded bg-neon-emerald/20 text-neon-emerald border border-neon-emerald/40">
-              DirectFrame v4.0 Active
+          {/* The badge here read "DirectFrame v4.0 Active" in green whatever the state
+              of the fleet. It now reports whether the console is reading live data. */}
+          <h1 className="text-xl font-bold text-slate-100 flex items-center flex-wrap gap-x-2 gap-y-1">
+            <span>Mesh Overview</span>
+            <span className={`text-xs font-mono font-normal px-2 py-0.5 rounded border ${
+              loadError
+                ? 'bg-neon-rose/20 text-neon-rose border-neon-rose/40'
+                : 'bg-neon-emerald/20 text-neon-emerald border-neon-emerald/40'
+            }`}>
+              {loadError ? 'Control plane unreachable' : 'Live'}
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time multi-region sovereign overlay performance, zero-trust device health, and egress metrics.
+            Enrolled devices, what they are transferring, and where they are.
           </p>
         </div>
         <div className="flex items-center space-x-2">
@@ -105,6 +140,16 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
         </div>
       </div>
 
+      {loadError && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-neon-rose/10 border border-neon-rose/30">
+          <AlertTriangle className="w-4 h-4 text-neon-rose shrink-0 mt-0.5" />
+          <div className="text-xs">
+            <p className="text-neon-rose font-mono font-bold">Figures below may be stale</p>
+            <p className="text-slate-400 mt-0.5">{loadError}</p>
+          </div>
+        </div>
+      )}
+
       {/* KPI Metric Cards */}
       {(() => {
         const activeNodes = stats?.active_nodes ?? 0;
@@ -112,10 +157,27 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
         const quarantinedNodes = stats?.quarantined_nodes ?? 0;
         const compliantNodes = Math.max(0, activeNodes - quarantinedNodes);
         const activeUsers = stats?.active_users ?? 0;
-        const rxBandwidth = stats?.total_bandwidth_rx_mb_s ?? 88.4;
-        const txBandwidth = stats?.total_bandwidth_tx_mb_s ?? 64.1;
-        const totalBandwidth = +(rxBandwidth + txBandwidth).toFixed(1);
-        const healthScore = stats?.network_health_score ?? (totalNodes === 0 ? 100 : 98.4);
+        // null means the control plane has not measured this yet, which is not the
+        // same as zero. Both are rendered, and they are rendered differently.
+        const rxBandwidth = stats?.total_bandwidth_rx_mb_s ?? null;
+        const txBandwidth = stats?.total_bandwidth_tx_mb_s ?? null;
+        const haveRates = rxBandwidth !== null && txBandwidth !== null;
+        const totalBandwidth = haveRates ? +(rxBandwidth + txBandwidth).toFixed(2) : null;
+        const healthScore = stats?.network_health_score ?? null;
+        const dash = v => (v === null || v === undefined ? '—' : v);
+
+        const postureLabel =
+          healthScore === null ? 'Not measured'
+            : healthScore === 100 ? 'All nodes reachable'
+            : healthScore >= 80 ? 'Degraded'
+            : healthScore > 0 ? 'Impaired'
+            : 'Fleet offline';
+
+        const postureColour =
+          healthScore === null ? 'text-slate-400'
+            : healthScore === 100 ? 'text-neon-emerald'
+            : healthScore >= 80 ? 'text-neon-amber'
+            : 'text-neon-rose';
 
         return (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -170,19 +232,27 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 <Activity className="w-4 h-4 text-neon-emerald" />
               </div>
               <div className="flex items-baseline space-x-2">
-                <span className="text-2xl font-bold text-slate-100 font-mono">{totalBandwidth}</span>
+                <span className="text-2xl font-bold text-slate-100 font-mono tabular-nums">
+                  {dash(totalBandwidth)}
+                </span>
                 <span className="text-xs text-slate-400 font-mono">MB/s</span>
               </div>
-              <div className="mt-3 flex items-center justify-between text-[11px] font-mono text-slate-400">
-                <span className="text-neon-cyan flex items-center space-x-1">
-                  <ArrowDownLeft className="w-3 h-3" />
-                  <span>RX: {rxBandwidth} MB/s</span>
-                </span>
-                <span className="text-neon-indigo flex items-center space-x-1">
-                  <ArrowUpRight className="w-3 h-3" />
-                  <span>TX: {txBandwidth} MB/s</span>
-                </span>
-              </div>
+              {haveRates ? (
+                <div className="mt-3 flex items-center justify-between text-[11px] font-mono text-slate-400">
+                  <span className="text-neon-cyan flex items-center space-x-1">
+                    <ArrowDownLeft className="w-3 h-3" />
+                    <span className="tabular-nums">RX: {rxBandwidth} MB/s</span>
+                  </span>
+                  <span className="text-neon-indigo flex items-center space-x-1">
+                    <ArrowUpRight className="w-3 h-3" />
+                    <span className="tabular-nums">TX: {txBandwidth} MB/s</span>
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-3 text-[11px] font-mono text-slate-500">
+                  Needs two samples a minute apart
+                </div>
+              )}
             </div>
 
             {/* Metric 4: Posture Health Score */}
@@ -192,14 +262,17 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 <ShieldCheck className="w-4 h-4 text-neon-emerald" />
               </div>
               <div className="flex items-baseline space-x-2">
-                <span className="text-2xl font-bold text-neon-emerald font-mono">
-                  {healthScore}%
+                <span className={`text-2xl font-bold font-mono tabular-nums ${postureColour}`}>
+                  {healthScore === null ? '—' : `${healthScore}%`}
                 </span>
-                <span className="text-xs text-slate-400 font-mono">Optimal</span>
+                <span className="text-xs text-slate-400 font-mono">{postureLabel}</span>
               </div>
-              <div className="mt-3 flex items-center justify-between text-[11px] font-mono text-slate-400">
-                <span>Avg Latency: 16.2ms</span>
-                <span className="text-neon-cyan">Jitter: &lt;1.2ms</span>
+              {/* This card used to print a fixed "Avg Latency: 16.2ms / Jitter: <1.2ms".
+                  Neither was measured. The score below is the share of enrolled nodes
+                  that answered inside the liveness window. */}
+              <div className="mt-3 text-[11px] font-mono text-slate-500 tabular-nums">
+                {activeNodes} of {totalNodes} reachable
+                {stats?.liveness_window_seconds ? ` within ${stats.liveness_window_seconds}s` : ''}
               </div>
             </div>
           </div>
@@ -216,7 +289,9 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 <TrendingUp className="w-4 h-4 text-neon-cyan" />
                 <span>Aggregate Network Throughput Timeseries</span>
               </h2>
-              <p className="text-xs text-slate-400">Continuous 24-hour line rate measurement across regional relays</p>
+              <p className="text-xs text-slate-400">
+                Transfer rate across the fleet, sampled once a minute
+              </p>
             </div>
             <div className="flex items-center space-x-1 bg-dark-canvas p-1 rounded-lg border border-dark-border text-xs font-mono">
               {['1h', '6h', '24h', '7d'].map((r) => (
@@ -235,8 +310,19 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
             </div>
           </div>
 
-          {/* Area Chart */}
+          {/* Area Chart. An empty series is a real state on a fresh deployment: the
+              collector samples once a minute and needs two points to draw a rate. */}
           <div className="h-72 w-full">
+            {timeseries.length === 0 ? (
+              <div className="h-full w-full flex flex-col items-center justify-center text-center border border-dashed border-dark-border rounded-lg">
+                <TrendingUp className="w-6 h-6 text-slate-600 mb-2" />
+                <p className="text-sm text-slate-300 font-mono">No samples in this range yet</p>
+                <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                  Throughput is sampled once a minute. Two samples are needed before a
+                  rate can be drawn.
+                </p>
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={timeseries} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
@@ -281,6 +367,7 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </div>
 
           <div className="flex items-center justify-between text-xs font-mono text-slate-400 pt-2 border-t border-dark-border/80">
@@ -294,7 +381,12 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 <span>Outbound (TX)</span>
               </span>
             </div>
-            <span>Aggregate 24h Egress: <strong>14.89 TB</strong></span>
+            {/* Was a hardcoded "14.89 TB". This is the sum of the counters the nodes
+                report, which is a lifetime total rather than a figure for the range. */}
+            <span>
+              Transferred since enrolment:{' '}
+              <strong className="tabular-nums">{formatBytes(stats?.total_bandwidth_bytes)}</strong>
+            </span>
           </div>
         </div>
 
@@ -306,33 +398,53 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 <Globe2 className="w-4 h-4 text-neon-indigo" />
                 <span>Geographic Matrix</span>
               </h2>
-              <span className="text-[10px] font-mono text-neon-emerald">6 Regions</span>
+              <span className="text-[10px] font-mono text-slate-400 tabular-nums">
+                {geoMatrix.length} {geoMatrix.length === 1 ? 'Country' : 'Countries'}
+              </span>
             </div>
-            <p className="text-xs text-slate-400 mt-1">Multi-region mesh latency & egress capacity</p>
+            <p className="text-xs text-slate-400 mt-1">Where the enrolled nodes are</p>
           </div>
 
           <div className="space-y-3 my-2 overflow-y-auto max-h-72 pr-1">
+            {geoMatrix.length === 0 && (
+              <div className="p-4 text-center border border-dashed border-dark-border rounded-lg">
+                <p className="text-sm text-slate-300 font-mono">No nodes enrolled</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Countries appear here once a node registers from one.
+                </p>
+              </div>
+            )}
             {geoMatrix.map((g) => (
               <div
                 key={g.code}
                 className="p-3 rounded-lg bg-dark-canvas border border-dark-border flex items-center justify-between text-xs font-mono hover:border-dark-border/80 transition-colors"
               >
-                <div>
-                  <div className="font-bold text-slate-200 flex items-center space-x-2">
-                    <span>{g.country}</span>
-                    <span className="text-[10px] text-slate-500 font-normal">({g.code})</span>
+                <div className="min-w-0">
+                  <div className="font-bold text-slate-200 flex items-baseline gap-1.5">
+                    <span className="truncate">{g.country}</span>
+                    <span className="text-[10px] text-slate-500 font-normal shrink-0">{g.code}</span>
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">
-                    {g.nodes} Nodes &bull; {g.relays} Relay &bull; {g.exits} Exit
+                  <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums whitespace-nowrap">
+                    {g.live}/{g.nodes} up
+                    {g.relays > 0 && <> &bull; {g.relays} relay</>}
+                    {g.exits > 0 && <> &bull; {g.exits} exit</>}
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <div className="font-bold text-neon-cyan">{g.avg_latency}ms</div>
+                <div className="text-right shrink-0 ml-3">
+                  {/* A null latency means no node here has reported a measurement.
+                      The previous build substituted 35ms for that case. */}
+                  <div className="font-bold text-neon-cyan tabular-nums whitespace-nowrap">
+                    {g.avg_latency === null || g.avg_latency === undefined
+                      ? <span className="text-slate-500 font-normal text-[10px]">no RTT</span>
+                      : `${g.avg_latency}ms`}
+                  </div>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                    g.status === 'Optimal'
+                    g.status === 'Online'
                       ? 'bg-neon-emerald/20 text-neon-emerald'
-                      : 'bg-neon-amber/20 text-neon-amber'
+                      : g.status === 'Degraded'
+                        ? 'bg-neon-amber/20 text-neon-amber'
+                        : 'bg-neon-rose/20 text-neon-rose'
                   }`}>
                     {g.status}
                   </span>
@@ -341,13 +453,9 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
             ))}
           </div>
 
-          <div className="p-3 rounded-lg bg-neon-indigo/10 border border-neon-indigo/30 text-xs font-mono text-slate-300">
-            <div className="flex items-center space-x-1.5 text-neon-indigo font-bold text-[11px] mb-1">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Multi-Path BGP Anycast</span>
-            </div>
-            <span>Dynamic lowest-RTT relay selection active with sub-millisecond route convergence.</span>
-          </div>
+          {/* A "Multi-Path BGP Anycast — sub-millisecond route convergence" badge
+              sat here. There is no BGP and no anycast in this system; relay choice
+              is made by the circuit builder in the control plane. */}
         </div>
       </div>
     </div>

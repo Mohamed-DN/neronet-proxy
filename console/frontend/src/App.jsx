@@ -227,12 +227,24 @@ function MainConsole() {
     }
   }, []);
 
+  // Polled, not loaded once. Node rows carry last_heartbeat, and reachability is
+  // computed from it against the current clock: a list fetched at mount and never
+  // refreshed ages out of the liveness window and reports the whole fleet down.
   React.useEffect(() => {
     loadNodes();
+    const poll = setInterval(loadNodes, 30000);
+    return () => clearInterval(poll);
   }, [loadNodes]);
 
   const nodeCount = nodes.length;
   const quarantinedCount = nodes.filter((n) => Boolean(n.is_quarantined)).length;
+
+  // A node counts as reachable when the control plane heard from it within the last
+  // minute, which is four of its fifteen-second heartbeat intervals.
+  const reachableCount = nodes.filter((n) => {
+    if (!n.last_heartbeat) return false;
+    return Date.now() - new Date(n.last_heartbeat).getTime() < 60000;
+  }).length;
   const highRiskCount = nodes.filter((n) => (n.risk_score || 0) > 75).length;
 
   const handleExecuteWipe = async () => {
@@ -335,6 +347,7 @@ function MainConsole() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         nodeCount={nodeCount}
+        reachableCount={reachableCount}
         quarantinedCount={quarantinedCount}
         highRiskCount={highRiskCount}
         nukeArmed={nukeArmed}
@@ -478,7 +491,11 @@ function LoginPage() {
 
         <div className="text-center pt-2 border-t border-dark-border/80">
           <p className="text-[11px] text-slate-500 font-mono">
-            Zero-Knowledge Cryptographic Authentication &bull; Ed25519
+            {/* This read "Zero-Knowledge Cryptographic Authentication • Ed25519".
+                Console sign-in is a password verified with bcrypt against a hash,
+                and the session is a signed JWT. Ed25519 is used for node identity
+                and federation, not for logging in here. */}
+            Password sign-in &bull; bcrypt &bull; signed session token
           </p>
         </div>
       </div>

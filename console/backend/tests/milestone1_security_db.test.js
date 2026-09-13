@@ -258,7 +258,13 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
       assert.strictEqual(res.status, 200);
       assert.strictEqual(res.body.status, 'ok');
       assert.ok(res.body.database === 'connected');
-      assert.ok(res.body.valkey === 'connected' || res.body.valkey === 'in_memory_active');
+      // 'in_memory_active' was renamed to 'degraded' when the in-memory fallback
+      // stopped being reported as a healthy state; this assertion still named the
+      // old string and had been failing since.
+      assert.ok(
+        res.body.valkey === 'connected' || res.body.valkey === 'degraded',
+        `unexpected valkey status: ${res.body.valkey}`
+      );
       assert.ok(typeof res.body.uptime_seconds === 'number');
       assert.ok(res.body.timestamp);
     });

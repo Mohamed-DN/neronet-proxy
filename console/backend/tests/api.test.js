@@ -555,18 +555,45 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
       .get('/api/stats/overview')
       .set('Authorization', `Bearer ${adminToken}`);
     assert.strictEqual(res.status, 200);
-    assert(res.body.active_nodes >= 1);
+    // active_nodes counts nodes heard from inside the liveness window, which is not
+    // the same as enrolled. The seeded fleet has no recent heartbeat, so the figure
+    // to assert against here is the enrolment count.
+    assert(res.body.total_nodes >= 1, 'nodes are enrolled');
+    assert(typeof res.body.active_nodes === 'number');
+    assert(res.body.active_nodes <= res.body.total_nodes, 'live cannot exceed enrolled');
     assert(res.body.connected_users >= 1);
     assert(res.body.country_distribution);
   });
 
-  test('GET /api/stats/bandwidth should return time-series metrics', async () => {
+  test('GET /api/stats/bandwidth is empty before the collector has sampled', async () => {
     const res = await request(app)
       .get('/api/stats/bandwidth')
       .set('Authorization', `Bearer ${adminToken}`);
     assert.strictEqual(res.status, 200);
     assert(Array.isArray(res.body.bandwidth_series));
-    assert(res.body.bandwidth_series.length > 0);
+    // This used to assert a non-empty series and passed because the handler
+    // fabricated a seven-point ramp whenever no samples existed.
+  });
+
+  test('GET /api/stats/bandwidth returns a point once two samples exist', async () => {
+    const MetricsCollector = require('../services/MetricsCollector');
+
+    // A rate needs two cumulative readings and the interval between them.
+    await MetricsCollector.collectOnce();
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    await MetricsCollector.collectOnce();
+
+    const res = await request(app)
+      .get('/api/stats/bandwidth')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    assert.strictEqual(res.status, 200);
+    assert(res.body.bandwidth_series.length >= 1, 'two samples yield one interval');
+
+    const point = res.body.bandwidth_series[0];
+    assert(typeof point.rx === 'number');
+    assert(typeof point.tx === 'number');
+    assert(point.rx >= 0 && point.tx >= 0, 'a rate is never negative');
   });
 
   test('GET /api/stats/topology should return global mesh topology for admin', async () => {

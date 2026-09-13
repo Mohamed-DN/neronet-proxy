@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
 import {
   Shield,
   Activity,
@@ -17,6 +18,23 @@ import {
 export default function Header({ onOpenEnrollModal, activeTab }) {
   const { user, role, switchRole } = useAuth();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  // The ticker printed "RX: 88.4 MB/s | TX: 64.1 MB/s | Circuits: 142" as literal
+  // text in the markup. It now reads the same endpoint the overview does.
+  const [live, setLive] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => api.stats.getOverview()
+      .then(s => { if (!cancelled) setLive(s); })
+      .catch(() => { if (!cancelled) setLive(null); });
+
+    load();
+    const poll = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(poll); };
+  }, []);
+
+  const rate = v => (v === null || v === undefined ? '—' : `${v} MB/s`);
 
   const isSuperAdmin = role === 'super-admin';
 
@@ -38,19 +56,24 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
           <div className="flex items-center space-x-1.5 text-neon-cyan">
             <ArrowDownLeft className="w-3.5 h-3.5" />
             <span className="text-slate-400">RX:</span>
-            <span className="font-bold">88.4 MB/s</span>
+            <span className="font-bold tabular-nums">{rate(live?.total_bandwidth_rx_mb_s)}</span>
           </div>
           <span className="text-dark-border">|</span>
           <div className="flex items-center space-x-1.5 text-neon-indigo">
             <ArrowUpRight className="w-3.5 h-3.5" />
             <span className="text-slate-400">TX:</span>
-            <span className="font-bold">64.1 MB/s</span>
+            <span className="font-bold tabular-nums">{rate(live?.total_bandwidth_tx_mb_s)}</span>
           </div>
           <span className="text-dark-border">|</span>
+          {/* This read "Circuits: 142". Circuits are built on request and never
+              stored, so there is no count to report; live nodes is a figure the
+              control plane actually holds. */}
           <div className="flex items-center space-x-1.5 text-neon-emerald">
             <Zap className="w-3.5 h-3.5" />
-            <span className="text-slate-400">Circuits:</span>
-            <span className="font-bold">142</span>
+            <span className="text-slate-400">Nodes up:</span>
+            <span className="font-bold tabular-nums">
+              {live ? `${live.active_nodes}/${live.total_nodes}` : '—'}
+            </span>
           </div>
         </div>
       </div>

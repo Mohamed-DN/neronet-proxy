@@ -2,116 +2,158 @@ const express = require('express');
 const router = express.Router();
 const { isPostgres, getPgPool, getDatabase } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
+const { readFleetState, LIVENESS_WINDOW_SECONDS } = require('../services/MetricsCollector');
+const { COUNTRY_NAMES } = require('../utils/countries');
 
 router.use(authenticateToken);
 
 // 1. Overview Statistics
+//
+// Every figure here is read from the fleet. The previous version returned constants
+// for throughput (88.4 / 64.1 MB/s) and for the health score (98.4) regardless of
+// what the nodes were doing, including when none of them were running, so the
+// console reported a healthy loaded network against an empty database.
 async function overviewHandler(req, res, next) {
   try {
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const nodeCountRes = await pool.query('SELECT count(*) as count FROM nodes');
-      const userCountRes = await pool.query('SELECT count(*) as count FROM users');
-      const countryRowsRes = await pool.query('SELECT country_code, count(*) as count FROM nodes GROUP BY country_code');
-      const bwRes = await pool.query('SELECT sum(tx_bytes + rx_bytes) as total_bw FROM nodes');
-      const quarantinedRes = await pool.query('SELECT count(*) as count FROM nodes WHERE is_quarantined = TRUE');
+    const state = await readFleetState();
 
-      const countryDist = {};
-      for (const r of countryRowsRes.rows) {
-        countryDist[r.country_code || 'US'] = parseInt(r.count, 10);
-      }
-
-      const totalNodes = parseInt(nodeCountRes.rows[0]?.count || 0, 10);
-      const quarantinedNodes = parseInt(quarantinedRes.rows[0]?.count || 0, 10);
-      const activeUsers = parseInt(userCountRes.rows[0]?.count || 0, 10);
-
-      return res.status(200).json({
-        active_nodes: totalNodes,
-        total_nodes: totalNodes,
-        quarantined_nodes: quarantinedNodes,
-        connected_users: activeUsers,
-        active_users: activeUsers,
-        total_bandwidth_rx_mb_s: 88.4,
-        total_bandwidth_tx_mb_s: 64.1,
-        total_bandwidth_bytes: parseInt(bwRes.rows[0]?.total_bw || 104857600, 10),
-        country_distribution: countryDist,
-        system_health: '100%',
-        network_health_score: 98.4
-      });
-    }
-
-    const db = getDatabase();
-    const nodeCount = db.prepare('SELECT count(*) as count FROM nodes').get().count;
-    const userCount = db.prepare('SELECT count(*) as count FROM users').get().count;
-    const quarantinedCount = db.prepare('SELECT count(*) as count FROM nodes WHERE is_quarantined = 1').get()?.count || 0;
-
-    const countryRows = db.prepare('SELECT country_code, count(*) as count FROM nodes GROUP BY country_code').all();
-    const countryDist = {};
-    for (const r of countryRows) {
-      countryDist[r.country_code || 'US'] = r.count;
-    }
-
-    const bwRow = db.prepare('SELECT sum(tx_bytes + rx_bytes) as total_bw FROM nodes').get();
-    const totalBw = bwRow && bwRow.total_bw ? bwRow.total_bw : 104857600;
+    // Two consecutive samples give a rate. With fewer than two the rate is unknown,
+    // and unknown is reported as null rather than as a plausible-looking number:
+    // the console renders null as a dash, which is the honest thing to show.
+    const rates = await deriveThroughput();
 
     return res.status(200).json({
-      active_nodes: nodeCount,
-      total_nodes: nodeCount,
-      quarantined_nodes: quarantinedCount,
-      connected_users: userCount,
-      active_users: userCount,
-      total_bandwidth_rx_mb_s: 88.4,
-      total_bandwidth_tx_mb_s: 64.1,
-      total_bandwidth_bytes: totalBw,
-      country_distribution: countryDist,
-      system_health: '100%',
-      network_health_score: 98.4
+      active_nodes: state.liveNodes,
+      total_nodes: state.enrolledNodes,
+      quarantined_nodes: state.quarantinedNodes,
+      connected_users: state.activeUsers,
+      active_users: state.activeUsers,
+      total_bandwidth_rx_mb_s: rates.rxMbPerSec,
+      total_bandwidth_tx_mb_s: rates.txMbPerSec,
+      total_bandwidth_bytes: state.rxBytes + state.txBytes,
+      total_rx_bytes: state.rxBytes,
+      total_tx_bytes: state.txBytes,
+      country_distribution: await countryDistribution(),
+      avg_cpu_pct: state.cpuPct,
+      avg_memory_pct: state.memPct,
+      system_health: `${state.healthScore}%`,
+      network_health_score: state.healthScore,
+      liveness_window_seconds: LIVENESS_WINDOW_SECONDS
     });
   } catch (err) {
     next(err);
   }
 }
 
+/**
+ * Turns the two most recent cumulative samples into a rate.
+ *
+ * Returns nulls when there is not enough history, and when the counters have gone
+ * backwards. Counters decrease when a node restarts and resets its own counter, or
+ * when a node leaves the fleet; treating that as negative traffic would draw a
+ * downward spike that never happened.
+ */
+async function deriveThroughput() {
+  const unknown = { rxMbPerSec: null, txMbPerSec: null };
+  let rows;
+
+  if (isPostgres()) {
+    const pool = getPgPool();
+    const q = await pool.query(
+      'SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx FROM system_metrics ORDER BY timestamp DESC LIMIT 2');
+    rows = q.rows;
+  } else {
+    rows = getDatabase().prepare(
+      'SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx FROM system_metrics ORDER BY timestamp DESC LIMIT 2').all();
+  }
+
+  if (!rows || rows.length < 2) return unknown;
+
+  const [newer, older] = rows;
+  const seconds = (new Date(newer.timestamp) - new Date(older.timestamp)) / 1000;
+  if (!(seconds > 0)) return unknown;
+
+  const rxDelta = Number(newer.total_bandwidth_rx) - Number(older.total_bandwidth_rx);
+  const txDelta = Number(newer.total_bandwidth_tx) - Number(older.total_bandwidth_tx);
+  if (rxDelta < 0 || txDelta < 0) return unknown;
+
+  const toMbPerSec = bytes => Number((bytes / (1024 * 1024) / seconds).toFixed(2));
+  return { rxMbPerSec: toMbPerSec(rxDelta), txMbPerSec: toMbPerSec(txDelta) };
+}
+
+async function countryDistribution() {
+  const dist = {};
+  if (isPostgres()) {
+    const pool = getPgPool();
+    const q = await pool.query('SELECT country_code, count(*) AS count FROM nodes GROUP BY country_code');
+    for (const r of q.rows) dist[r.country_code] = parseInt(r.count, 10);
+    return dist;
+  }
+  const rows = getDatabase().prepare('SELECT country_code, count(*) AS count FROM nodes GROUP BY country_code').all();
+  for (const r of rows) dist[r.country_code] = r.count;
+  return dist;
+}
+
 router.get('/', overviewHandler);
 router.get('/overview', overviewHandler);
 
 // 2. Bandwidth Timeseries
+//
+// Returns the samples the collector recorded. When there are none it returns an
+// empty series rather than a synthetic ramp, so a fresh deployment shows that it
+// has no history yet instead of a day of traffic that never happened.
+// Ranges the console's selector offers. Anything else falls back to 24 hours rather
+// than letting a caller ask for an unbounded scan of the table.
+const RANGE_HOURS = { '1h': 1, '6h': 6, '24h': 24, '7d': 168 };
+
 async function timeseriesHandler(req, res, next) {
   try {
-    let metrics = [];
+    const hours = RANGE_HOURS[req.query.range] || 24;
+
+    let metrics;
     if (isPostgres()) {
       const pool = getPgPool();
-      const resData = await pool.query('SELECT * FROM system_metrics ORDER BY timestamp DESC LIMIT 20');
-      metrics = resData.rows;
+      const q = await pool.query(
+        `SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx, active_nodes,
+                cpu_usage_pct, memory_usage_mb, network_health_score
+         FROM system_metrics
+         WHERE timestamp > now() - make_interval(hours => $1)
+         ORDER BY timestamp ASC`, [hours]);
+      metrics = q.rows;
     } else {
-      const db = getDatabase();
-      metrics = db.prepare('SELECT * FROM system_metrics ORDER BY timestamp DESC LIMIT 20').all();
+      const cutoff = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+      metrics = getDatabase().prepare(
+        `SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx, active_nodes,
+                cpu_usage_pct, memory_usage_mb, network_health_score
+         FROM system_metrics WHERE timestamp > ? ORDER BY timestamp ASC`).all(cutoff);
     }
 
-    let series = [];
-    if (metrics.length > 0) {
-      series = metrics.map(m => ({
-        timestamp: m.timestamp,
-        time: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        tx: Number((Number(m.total_bandwidth_tx) / (1024 * 1024)).toFixed(1)) || 45.0,
-        rx: Number((Number(m.total_bandwidth_rx) / (1024 * 1024)).toFixed(1)) || 60.0,
-        tx_bytes: Number(m.total_bandwidth_tx) || 10485760,
-        rx_bytes: Number(m.total_bandwidth_rx) || 15728640,
-        latency: 16.0,
-        active_nodes: m.active_nodes,
-        cpu_usage_pct: m.cpu_usage_pct,
-        memory_usage_mb: m.memory_usage_mb
-      }));
-    } else {
-      const times = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "24:00"];
-      series = times.map((t, i) => ({
-        time: t,
-        rx: +(40 + (i * 15) % 80).toFixed(1),
-        tx: +(30 + (i * 11) % 60).toFixed(1),
-        tx_bytes: 1024 * 1024 * (10 + (i % 5)),
-        rx_bytes: 1024 * 1024 * (15 + (i % 7)),
-        latency: +(14 + (i * 1.5) % 6).toFixed(1)
-      }));
+    // The stored counters are cumulative. The chart wants a rate, so each point is
+    // the difference from the point before it; the first sample has no predecessor
+    // and is therefore the baseline rather than a data point.
+    const series = [];
+    for (let i = 1; i < metrics.length; i++) {
+      const prev = metrics[i - 1];
+      const cur = metrics[i];
+      const seconds = (new Date(cur.timestamp) - new Date(prev.timestamp)) / 1000;
+      if (!(seconds > 0)) continue;
+
+      const rxDelta = Number(cur.total_bandwidth_rx) - Number(prev.total_bandwidth_rx);
+      const txDelta = Number(cur.total_bandwidth_tx) - Number(prev.total_bandwidth_tx);
+      const rate = bytes => (bytes < 0 ? 0 : Number((bytes / (1024 * 1024) / seconds).toFixed(3)));
+
+      series.push({
+        timestamp: cur.timestamp,
+        time: new Date(cur.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        rx: rate(rxDelta),
+        tx: rate(txDelta),
+        rx_bytes: Number(cur.total_bandwidth_rx),
+        tx_bytes: Number(cur.total_bandwidth_tx),
+        active_nodes: cur.active_nodes,
+        cpu_usage_pct: cur.cpu_usage_pct,
+        memory_usage_mb: cur.memory_usage_mb,
+        health_score: cur.network_health_score
+      });
     }
 
     if (req.path === '/bandwidth') {
@@ -127,42 +169,59 @@ router.get('/bandwidth', timeseriesHandler);
 router.get('/timeseries', timeseriesHandler);
 
 // 3. Geographic Distribution
+//
+// Built from the nodes that exist. The previous version walked a fixed list of six
+// countries and reported at least one node in each, so the console showed presence
+// in the United Kingdom and Canada on a fleet that had never had a node in either.
 async function geoMatrixHandler(req, res, next) {
   try {
-    const regions = [
-      { country: "United States", code: "US" },
-      { country: "Germany", code: "DE" },
-      { country: "France", code: "FR" },
-      { country: "United Kingdom", code: "GB" },
-      { country: "Netherlands", code: "NL" },
-      { country: "Canada", code: "CA" }
-    ];
+    const sql = `
+      SELECT
+        country_code,
+        count(*) AS nodes,
+        count(*) FILTER (WHERE role = 'RELAY') AS relays,
+        count(*) FILTER (WHERE role = 'EXIT_BRIDGE') AS exits,
+        count(*) FILTER (WHERE last_heartbeat > now() - make_interval(secs => $1)) AS live,
+        avg(latency_ms) FILTER (WHERE latency_ms > 0) AS avg_latency
+      FROM nodes
+      GROUP BY country_code
+      ORDER BY count(*) DESC, country_code ASC`;
 
-    let countryCounts = {};
+    let rows;
     if (isPostgres()) {
       const pool = getPgPool();
-      const qRes = await pool.query('SELECT country_code, count(*) as cnt FROM nodes GROUP BY country_code');
-      for (const r of qRes.rows) {
-        countryCounts[r.country_code] = parseInt(r.cnt, 10);
-      }
+      const q = await pool.query(sql, [LIVENESS_WINDOW_SECONDS]);
+      rows = q.rows;
     } else {
-      const db = getDatabase();
-      const qRes = db.prepare('SELECT country_code, count(*) as cnt FROM nodes GROUP BY country_code').all();
-      for (const r of qRes) {
-        countryCounts[r.country_code] = r.cnt;
-      }
+      const cutoff = new Date(Date.now() - LIVENESS_WINDOW_SECONDS * 1000).toISOString();
+      rows = getDatabase().prepare(`
+        SELECT country_code,
+               count(*) AS nodes,
+               sum(CASE WHEN role = 'RELAY' THEN 1 ELSE 0 END) AS relays,
+               sum(CASE WHEN role = 'EXIT_BRIDGE' THEN 1 ELSE 0 END) AS exits,
+               sum(CASE WHEN last_heartbeat > ? THEN 1 ELSE 0 END) AS live,
+               avg(CASE WHEN latency_ms > 0 THEN latency_ms END) AS avg_latency
+        FROM nodes GROUP BY country_code ORDER BY count(*) DESC, country_code ASC`).all(cutoff);
     }
 
-    const matrix = regions.map(r => {
-      const count = countryCounts[r.code] || 1;
+    const matrix = rows.map(r => {
+      const nodes = Number(r.nodes);
+      const live = Number(r.live);
+      const latency = r.avg_latency === null || r.avg_latency === undefined
+        ? null
+        : Number(Number(r.avg_latency).toFixed(1));
+
       return {
-        country: r.country,
-        code: r.code,
-        nodes: count,
-        relays: r.code === 'US' || r.code === 'DE' ? 1 : 0,
-        exits: r.code === 'US' ? 1 : 0,
-        avg_latency: r.code === 'US' ? 12.4 : r.code === 'DE' ? 24.1 : 35.0,
-        status: "Optimal"
+        country: COUNTRY_NAMES[r.country_code] || r.country_code,
+        code: r.country_code,
+        nodes,
+        live,
+        relays: Number(r.relays),
+        exits: Number(r.exits),
+        // Null means no node in this country has reported a measurement yet, which
+        // is different from a measurement of zero.
+        avg_latency: latency,
+        status: live === 0 ? 'Offline' : live < nodes ? 'Degraded' : 'Online'
       };
     });
 

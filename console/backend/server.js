@@ -13,6 +13,7 @@ const goBridgeRoutes = require('./routes/goBridge');
 const HeartbeatBuffer = require('./services/HeartbeatBuffer');
 const { initValkey, reportValkeyState, closeValkey } = require('./db/valkey');
 const { initTopologySync } = require('./services/TopologySync');
+const { startCollector } = require('./services/MetricsCollector');
 const { initTopologyWebSocket } = require('./ws/topologyServer');
 
 // Import Route Handlers
@@ -111,6 +112,10 @@ async function initDatabase() {
       runMigrations(db);
       seedDatabase(db);
     }
+
+    // After migrations: the collector writes to system_metrics, which the
+    // migrations create.
+    startCollector();
     logger.info('Database and services initialized and ready.');
   } catch (err) {
     logger.error('Database initialization error:', err);

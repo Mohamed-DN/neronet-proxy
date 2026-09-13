@@ -209,17 +209,16 @@ export const api = {
 
   // Nodes Management
   nodes: {
-    async list(roleFilter = null) {
+    // The roleFilter argument is accepted and ignored. It used to filter the
+    // response down to rows whose user_id was one of two fixture accounts, or whose
+    // role was RELAY — so a real tenant saw an empty list, and anyone's relays were
+    // visible to everyone. /nodes is scoped to the caller by the server, which is
+    // where that decision belongs. The parameter is kept so the five call sites do
+    // not all have to change at once.
+    async list(_roleFilter = null) {
       const live = await request('/nodes');
-      let liveNodes = (live?.nodes && Array.isArray(live.nodes))
-        ? live.nodes
-        : (Array.isArray(live) ? live : null);
-      let nodes = liveNodes || [];
-      if (roleFilter === 'user') {
-        // Scoped for regular user (Alice / Tenant)
-        return nodes.filter(n => n.user_id === 'usr_alice_01' || n.user_id === 'usr-admin-001' || n.role === 'RELAY');
-      }
-      return nodes;
+      if (live?.nodes && Array.isArray(live.nodes)) return live.nodes;
+      return Array.isArray(live) ? live : [];
     },
 
     async get(id) {
@@ -803,70 +802,25 @@ PersistentKeepalive = 25
   },
 
   // Analytics & Stats
+  //
+  // These three read the control plane and nothing else. They used to fall back to
+  // fixtures — a constant 88.4 MB/s, a synthetic 24-hour ramp, and a six-country
+  // matrix — which meant a console pointed at an empty or unreachable backend still
+  // displayed a busy, healthy network. An empty result is now returned as empty and
+  // rendered as such.
   stats: {
     async getOverview() {
-      const live = await request('/stats/overview');
-      if (live && live.total_nodes > 0) return live;
-
-      const activeNodesCount = inMemoryNodes.filter(n => (n.is_healthy || n.status === 'active') && !n.is_quarantined).length;
-      const totalNodesCount = inMemoryNodes.length;
-      const quarantinedNodesCount = inMemoryNodes.filter(n => n.is_quarantined).length;
-      const activeUsersCount = inMemoryUsers.filter(u => u.status === 'active').length;
-
-      return {
-        active_nodes: activeNodesCount,
-        total_nodes: totalNodesCount,
-        quarantined_nodes: quarantinedNodesCount,
-        active_users: activeUsersCount,
-        total_bandwidth_rx_mb_s: 88.4,
-        total_bandwidth_tx_mb_s: 64.1,
-        aggregate_bandwidth_24h_gb: 14890,
-        active_circuits: 142,
-        network_health_score: 98.4,
-        avg_mesh_latency_ms: 16.2
-      };
+      return request('/stats/overview');
     },
 
-    async getTimeseries() {
-      if (MOCK_TIMESERIES && MOCK_TIMESERIES.length > 0) return MOCK_TIMESERIES;
-      return [
-        { time: "00:00", rx: 45.2, tx: 32.1, latency: 14.2 },
-        { time: "04:00", rx: 28.6, tx: 19.4, latency: 12.8 },
-        { time: "08:00", rx: 78.4, tx: 55.2, latency: 16.5 },
-        { time: "12:00", rx: 112.8, tx: 89.4, latency: 18.2 },
-        { time: "16:00", rx: 134.5, tx: 98.1, latency: 19.4 },
-        { time: "20:00", rx: 95.2, tx: 72.3, latency: 15.6 },
-        { time: "24:00", rx: 62.1, tx: 44.8, latency: 14.0 }
-      ];
+    async getTimeseries(range = '24h') {
+      const series = await request(`/stats/timeseries?range=${encodeURIComponent(range)}`);
+      return Array.isArray(series) ? series : [];
     },
 
     async getGeoMatrix() {
-      if (MOCK_GEO_MATRIX && MOCK_GEO_MATRIX.length > 0) return MOCK_GEO_MATRIX;
-      const regions = [
-        { country: "United States", code: "US" },
-        { country: "Germany", code: "DE" },
-        { country: "France", code: "FR" },
-        { country: "United Kingdom", code: "GB" },
-        { country: "Netherlands", code: "NL" },
-        { country: "Canada", code: "CA" }
-      ];
-      return regions.map(r => {
-        const countryNodes = inMemoryNodes.filter(n => n.country_code === r.code);
-        const relays = countryNodes.filter(n => n.role === 'RELAY').length;
-        const exits = countryNodes.filter(n => n.role === 'EXIT_BRIDGE').length;
-        const avgLat = countryNodes.length > 0
-          ? +(countryNodes.reduce((sum, n) => sum + (n.latency_ms || 15), 0) / countryNodes.length).toFixed(1)
-          : 15.0;
-        return {
-          country: r.country,
-          code: r.code,
-          nodes: countryNodes.length || 1,
-          relays: relays || (r.code === 'US' || r.code === 'DE' ? 1 : 0),
-          exits: exits,
-          avg_latency: avgLat,
-          status: avgLat < 30 ? "Optimal" : "Stable"
-        };
-      });
+      const matrix = await request('/stats/geo-matrix');
+      return Array.isArray(matrix) ? matrix : [];
     }
   },
 
