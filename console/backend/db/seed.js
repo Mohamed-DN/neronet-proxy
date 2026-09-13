@@ -7,11 +7,9 @@ function seedDatabase(db) {
 
   const insertUser = db.prepare(`
     INSERT OR IGNORE INTO users (
-      id, username, email, password_hash, role, tier, status,
-      bandwidth_quota_gb, bandwidth_used_bytes, max_nodes
+      id, username, email, password_hash, role, status
     ) VALUES (
-      @id, @username, @email, @password_hash, @role, @tier, @status,
-      @bandwidth_quota_gb, @bandwidth_used_bytes, @max_nodes
+      @id, @username, @email, @password_hash, @role, @status
     )
   `);
 
@@ -29,11 +27,11 @@ function seedDatabase(db) {
 
   const insertApp = db.prepare(`
     INSERT OR IGNORE INTO app_bundles (
-      id, user_id, name, type, tier, status,
+      id, user_id, name, type, status,
       endpoint_url, internal_port, cpu_cores, memory_mb, storage_gb,
       scale_to_zero
     ) VALUES (
-      @id, @user_id, @name, @type, @tier, @status,
+      @id, @user_id, @name, @type, @status,
       @endpoint_url, @internal_port, @cpu_cores, @memory_mb, @storage_gb,
       @scale_to_zero
     )
@@ -71,11 +69,7 @@ function seedDatabase(db) {
       email: config.ADMIN_EMAIL || 'admin@darknero.com',
       password_hash: adminPassHash,
       role: 'super-admin',
-      tier: 'managed_cloud',
-      status: 'active',
-      bandwidth_quota_gb: 1000,
-      bandwidth_used_bytes: 0,
-      max_nodes: 50
+      status: 'active'
     });
 
     // 2. Demo Users
@@ -85,11 +79,7 @@ function seedDatabase(db) {
       email: 'alice@homelab.local',
       password_hash: demoPassHash,
       role: 'user',
-      tier: 'hybrid_byos',
-      status: 'active',
-      bandwidth_quota_gb: 250,
-      bandwidth_used_bytes: 0,
-      max_nodes: 10
+      status: 'active'
     });
 
     insertUser.run({
@@ -98,11 +88,7 @@ function seedDatabase(db) {
       email: 'bob@cloud.internal',
       password_hash: demoPassHash,
       role: 'user',
-      tier: 'cloud_managed',
-      status: 'active',
-      bandwidth_quota_gb: 500,
-      bandwidth_used_bytes: 0,
-      max_nodes: 25
+      status: 'active'
     });
 
     // 3. Seed Nodes
@@ -150,7 +136,6 @@ function seedDatabase(db) {
       user_id: 'usr-admin',
       name: 'Guacamole Bastion',
       type: 'guacamole',
-      tier: 'managed_cloud',
       status: 'running',
       endpoint_url: 'https://guacamole.internal.darknero.com',
       internal_port: 8080,
@@ -165,7 +150,6 @@ function seedDatabase(db) {
       user_id: 'usr-alice',
       name: 'Alice Private Cloud',
       type: 'nextcloud',
-      tier: 'self_hosted_byos',
       status: 'stopped',
       endpoint_url: 'https://nextcloud.internal.darknero.com',
       internal_port: 8080,
@@ -262,9 +246,8 @@ async function bootstrapPostgresAdmin(pool) {
 
   await pool.query(
     `INSERT INTO users (
-       id, username, email, password_hash, role, tier, status,
-       bandwidth_quota_gb, bandwidth_used_bytes, max_nodes
-     ) VALUES ($1, $2, $3, $4, 'super-admin', 'managed_cloud', 'active', 1000, 0, 50)
+       id, username, email, password_hash, role, status
+     ) VALUES ($1, $2, $3, $4, 'super-admin', 'active')
      ON CONFLICT (username) DO NOTHING`,
     ['usr-admin', appConfig.ADMIN_USERNAME, appConfig.ADMIN_EMAIL, passwordHash]
   );

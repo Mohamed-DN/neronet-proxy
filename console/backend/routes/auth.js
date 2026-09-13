@@ -14,7 +14,7 @@ const DUMMY_BCRYPT_HASH = '$2a$10$wN3t8gX1ZkGkR0e2M8t0y.9gZ0n4p7s2e6u1v8w5x9y2z3
 // 1. Register User (Public)
 router.post('/register', registerLimiter, async (req, res, next) => {
   try {
-    const { username, password, email, role, tier } = req.body || {};
+    const { username, password, email, role } = req.body || {};
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Missing required registration fields' });
@@ -22,13 +22,9 @@ router.post('/register', registerLimiter, async (req, res, next) => {
 
     const userId = `usr-${uuidv4().substring(0, 8)}`;
     const userRole = role === 'super-admin' ? 'super-admin' : 'user';
-    const userTier = tier || 'hybrid_byos';
     const userEmail = email || `${username}@sovereign.local`;
     const salt = bcrypt.genSaltSync(10);
     const passwordHash = bcrypt.hashSync(password, salt);
-
-    const maxNodes = userTier === 'cloud_managed' || userTier === 'managed_cloud' ? 50 : 5;
-    const maxBwGb = userTier === 'cloud_managed' || userTier === 'managed_cloud' ? 1000 : 100;
 
     if (isPostgres()) {
       const pool = getPgPool();
@@ -39,12 +35,11 @@ router.post('/register', registerLimiter, async (req, res, next) => {
 
       await pool.query(`
         INSERT INTO users (
-          id, username, email, password_hash, role, tier, status,
-          bandwidth_quota_gb, bandwidth_used_bytes, max_nodes, bypass_apps
+          id, username, email, password_hash, role, status, bypass_apps
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, 'active', $7, 0, $8, '[]'::jsonb
+          $1, $2, $3, $4, $5, 'active', '[]'::jsonb
         )
-      `, [userId, username, userEmail, passwordHash, userRole, userTier, maxBwGb, maxNodes]);
+      `, [userId, username, userEmail, passwordHash, userRole]);
     } else {
       const db = getDatabase();
       const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
@@ -54,12 +49,11 @@ router.post('/register', registerLimiter, async (req, res, next) => {
 
       db.prepare(`
         INSERT INTO users (
-          id, username, email, password_hash, role, tier, status,
-          bandwidth_quota_gb, bandwidth_used_bytes, max_nodes
+          id, username, email, password_hash, role, status
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, 'active', ?, 0, ?
+          ?, ?, ?, ?, ?, 'active'
         )
-      `).run(userId, username, userEmail, passwordHash, userRole, userTier, maxBwGb, maxNodes);
+      `).run(userId, username, userEmail, passwordHash, userRole);
     }
 
     logAuditEvent({
@@ -76,12 +70,7 @@ router.post('/register', registerLimiter, async (req, res, next) => {
     const userObj = {
       id: userId,
       username,
-      role: userRole,
-      tier: userTier,
-      quota: {
-        max_nodes: maxNodes,
-        max_bandwidth_gb: maxBwGb
-      }
+      role: userRole
     };
 
     const token = signToken(userObj);
@@ -190,12 +179,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       id: user.id,
       username: user.username,
       role: user.role,
-      tier: user.tier,
-      compartment_access: accessTier, // 'standard' or 'root'
-      quota: {
-        max_nodes: user.max_nodes,
-        max_bandwidth_gb: user.bandwidth_quota_gb
-      }
+      compartment_access: accessTier // 'standard' or 'root'
     };
 
     const token = signToken(userPayload);
@@ -254,8 +238,7 @@ router.post('/refresh', async (req, res, next) => {
     const newToken = signToken({
       id: decoded.sub || decoded.id,
       username: decoded.username,
-      role: decoded.role,
-      tier: decoded.tier
+      role: decoded.role
     });
 
     return res.status(200).json({ token: newToken });
@@ -271,13 +254,13 @@ router.get('/me', authenticateToken, async (req, res, next) => {
     if (isPostgres()) {
       const pool = getPgPool();
       const userRes = await pool.query(
-        'SELECT id, username, email, role, tier, status, bandwidth_quota_gb, bandwidth_used_bytes, max_nodes, bypass_apps, created_at FROM users WHERE id = $1',
+        'SELECT id, username, email, role, status, bypass_apps, created_at FROM users WHERE id = $1',
         [req.user.id]
       );
       user = userRes.rows[0] || null;
     } else {
       const db = getDatabase();
-      user = db.prepare('SELECT id, username, email, role, tier, status, bandwidth_quota_gb, bandwidth_used_bytes, max_nodes, bypass_apps, created_at FROM users WHERE id = ?').get(req.user.id);
+      user = db.prepare('SELECT id, username, email, role, status, bypass_apps, created_at FROM users WHERE id = ?').get(req.user.id);
     }
 
     if (!user) {
@@ -299,14 +282,8 @@ router.get('/me', authenticateToken, async (req, res, next) => {
         username: user.username,
         email: user.email,
         role: user.role,
-        tier: user.tier,
         status: user.status,
         bypass_apps: bypassApps || [],
-        quota: {
-          max_nodes: user.max_nodes,
-          max_bandwidth_gb: user.bandwidth_quota_gb,
-          bandwidth_used_bytes: user.bandwidth_used_bytes || 0
-        },
         created_at: user.created_at
       }
     });

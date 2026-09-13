@@ -128,13 +128,28 @@ describe('Circuit path selection', () => {
     addRelay({ id: 'relay-e', owner: 'op-e', asn: 500 });
 
     const seen = new Set();
+    const failures = [];
+
     for (let i = 0; i < 30; i++) {
       const res = await request(app).post('/v4/control/circuit').send({ target_country: 'US' });
+
+      // A request that did not return a circuit must be reported as itself, not
+      // collapsed into "the path never varied" -- which is what this assertion used
+      // to say whatever the real cause was.
+      if (res.status !== 200 || !Array.isArray(res.body.hops)) {
+        failures.push(`${res.status}: ${JSON.stringify(res.body).slice(0, 120)}`);
+        continue;
+      }
+
       seen.add(res.body.hops.map((h) => h.node_id).join('>'));
     }
 
-    // A predictable path is an attackable one.
-    assert.ok(seen.size > 1, 'every circuit selected the same path');
+    assert.deepStrictEqual(failures, [], `some circuit requests failed: ${failures.join(' | ')}`);
+
+    // A predictable path is an attackable one. With five relays and three hops there
+    // are many possible paths, so one distinct result across thirty draws means the
+    // selection is not random.
+    assert.ok(seen.size > 1, `every circuit selected the same path: ${[...seen].join(', ')}`);
   });
 
   it('issues distinct circuit ids', async () => {

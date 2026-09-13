@@ -105,7 +105,6 @@ function formatApp(row) {
     user_id: row.user_id,
     name: row.name,
     type: row.type,
-    tier: row.tier,
     status: row.status,
     endpoint_url: row.endpoint_url,
     launch_url: launchUrl,
@@ -146,7 +145,7 @@ router.get('/', (req, res) => {
 
 // 2. Create App Bundle
 router.post('/', (req, res) => {
-  const { name, type, tier, memory_mb, storage_gb, cpu_cores, scale_to_zero } = req.body || {};
+  const { name, type, memory_mb, storage_gb, cpu_cores, scale_to_zero } = req.body || {};
 
   if (!name || !type) {
     return res.status(400).json({ error: 'Missing app name or type' });
@@ -160,25 +159,26 @@ router.post('/', (req, res) => {
   const storage = storage_gb !== undefined ? storage_gb : 100;
   const cores = cpu_cores !== undefined ? cpu_cores : 2.0;
 
+  // A sanity bound on what one bundle may request, not a commercial tier: 16 GB of
+  // memory or a terabyte of storage for a single app is a mistake, not a purchase.
   if (mem > 16384 || storage > 1000) {
-    return res.status(422).json({ error: 'Resource allocation exceeds allowed quota limits' });
+    return res.status(422).json({ error: 'Requested resources exceed what a single app bundle may allocate (16 GB memory, 1 TB storage)' });
   }
 
   const db = getDatabase();
   const aid = `app-${uuidv4().substring(0, 8)}`;
-  const appTier = tier || 'managed_cloud';
   const endpointUrl = `https://${type}.internal.darknero.com`;
   const stz = scale_to_zero !== undefined ? (scale_to_zero ? 1 : 0) : 1;
 
   db.prepare(`
     INSERT INTO app_bundles (
-      id, user_id, name, type, tier, status,
+      id, user_id, name, type, status,
       endpoint_url, internal_port, cpu_cores, memory_mb, storage_gb, scale_to_zero
     ) VALUES (
-      ?, ?, ?, ?, ?, 'stopped',
+      ?, ?, ?, ?, 'stopped',
       ?, 8080, ?, ?, ?, ?
     )
-  `).run(aid, req.user.id, name.trim(), type, appTier, endpointUrl, cores, mem, storage, stz);
+  `).run(aid, req.user.id, name.trim(), type, endpointUrl, cores, mem, storage, stz);
 
   logAuditEvent({
     eventType: 'APP_CREATE',

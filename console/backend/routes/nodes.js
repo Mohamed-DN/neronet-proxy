@@ -141,24 +141,10 @@ router.post('/', async (req, res, next) => {
 
     // Quota check for regular users
     if (req.user.role !== 'super-admin') {
-      if (isPostgres()) {
-        const pool = getPgPool();
-        const userRes = await pool.query('SELECT max_nodes FROM users WHERE id = $1', [req.user.id]);
-        const maxNodes = userRes.rows[0] ? userRes.rows[0].max_nodes : 5;
-        const countRes = await pool.query('SELECT count(*) as count FROM nodes WHERE user_id = $1', [req.user.id]);
-        const currentCount = parseInt(countRes.rows[0].count, 10);
-        if (currentCount >= maxNodes) {
-          return res.status(403).json({ error: `Node quota exceeded (${currentCount}/${maxNodes})` });
-        }
-      } else {
-        const db = getDatabase();
-        const userRow = db.prepare('SELECT max_nodes FROM users WHERE id = ?').get(req.user.id);
-        const maxNodes = userRow ? userRow.max_nodes : 5;
-        const currentCount = db.prepare('SELECT count(*) as count FROM nodes WHERE user_id = ?').get(req.user.id).count;
-        if (currentCount >= maxNodes) {
-          return res.status(403).json({ error: `Node quota exceeded (${currentCount}/${maxNodes})` });
-        }
-      }
+      // Node count is no longer capped per user. NeroNet has no paid tiers, and a
+      // per-account limit was a commercial boundary rather than a technical one: the
+      // overlay pool holds 4.19 million addresses and enrolment is rate limited, so
+      // the infrastructure protections that matter are elsewhere.
     }
 
     let finalPubKey = public_key;

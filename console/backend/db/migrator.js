@@ -331,6 +331,27 @@ const SQLITE_MIGRATIONS = [
   }
 ];
 
+const SQLITE_MIGRATION_011 = {
+  name: '011_remove_tiering',
+  sql: `
+      -- Mirrors migration 011 on the PostgreSQL side. SQLite supports DROP COLUMN
+      -- from 3.35, which better-sqlite3 bundles comfortably.
+      --
+      -- dead_man_switch.switch_tier is untouched: same word, unrelated concept.
+      --
+      -- The index goes first: SQLite refuses to drop a column an index references,
+      -- and reports it only after the drop has already been attempted
+      -- ("error in index idx_users_tier after drop column").
+      DROP INDEX IF EXISTS idx_users_tier;
+
+      ALTER TABLE users DROP COLUMN tier;
+      ALTER TABLE users DROP COLUMN bandwidth_quota_gb;
+      ALTER TABLE users DROP COLUMN bandwidth_used_bytes;
+      ALTER TABLE users DROP COLUMN max_nodes;
+      ALTER TABLE app_bundles DROP COLUMN tier;
+  `
+};
+
 const SQLITE_MIGRATION_010 = {
   name: '010_nodes_fillfactor',
   // No SQLite equivalent. Fill factor is a PostgreSQL page-packing setting; SQLite
@@ -591,7 +612,8 @@ function runSQLiteMigrations(db) {
     SQLITE_MIGRATION_007,
     SQLITE_MIGRATION_008,
     SQLITE_MIGRATION_009,
-    SQLITE_MIGRATION_010
+    SQLITE_MIGRATION_010,
+    SQLITE_MIGRATION_011
   ];
 
   for (const migration of migrations) {
@@ -636,6 +658,7 @@ module.exports = {
   SQLITE_MIGRATION_008,
   SQLITE_MIGRATION_009,
   SQLITE_MIGRATION_010,
+  SQLITE_MIGRATION_011,
   runMigrations,
   runPostgresMigrations,
   runSQLiteMigrations,

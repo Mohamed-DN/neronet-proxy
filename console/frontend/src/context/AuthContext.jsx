@@ -97,7 +97,6 @@ export function AuthProvider({ children }) {
       value={{
         user,
         role,
-        tier: user?.tier || 'cloud_managed',
         token,
         loading,
         isAuthenticated: !!token && !!user,

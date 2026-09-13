@@ -349,9 +349,7 @@ export const api = {
         username: userData.username,
         email: userData.email,
         role: userData.role || 'user',
-        tier: userData.tier || 'hybrid_byos',
         status: 'active',
-        bandwidth_quota_gb: Number(userData.bandwidth_quota_gb) || (userData.tier === 'cloud_managed' ? 1000 : 500),
         bandwidth_used_bytes: 0,
         max_nodes: Number(userData.max_nodes) || 5,
         bypass_apps: userData.bypass_apps || [],
@@ -402,7 +400,7 @@ export const api = {
 
       const clientConfig = `# NeroNet Mobile Auto-Onboarding Profile
 # User: ${user.username} (${user.id})
-# Tier: ${user.tier} | Generated: ${new Date().toISOString()}
+# Generated: ${new Date().toISOString()}
 
 [Interface]
 PrivateKey = ${privateKey}
@@ -480,7 +478,6 @@ PersistentKeepalive = 25
         user_id: appData.user_id || 'usr_admin_01',
         name: appData.name,
         type: appData.type,
-        tier: appData.tier || 'managed_cloud',
         status: 'running',
         endpoint_url: `https://${appData.type}.internal.darknero.net`,
         internal_port: appData.type === 'guacamole' ? 8443 : appData.type === 'immich' ? 2283 : 8080,

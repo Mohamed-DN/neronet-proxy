@@ -77,13 +77,11 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
       .post('/api/auth/register')
       .send({
         username: 'test_developer_1',
-        password: 'Password123!',
-        tier: 'hybrid_byos'
+        password: 'Password123!'
       });
     assert.strictEqual(res.status, 201);
     assert(res.body.token);
     assert.strictEqual(res.body.user.username, 'test_developer_1');
-    assert.strictEqual(res.body.user.tier, 'hybrid_byos');
     regularUserToken = res.body.token;
     regularUserId = res.body.user.id;
   });
@@ -113,8 +111,7 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
       .post('/api/auth/register')
       .send({
         username: 'victim_tenant_sec',
-        password: 'SuperSecretUniquePass!2026',
-        tier: 'hybrid_byos'
+        password: 'SuperSecretUniquePass!2026'
       });
     assert.strictEqual(regRes.status, 201);
 
@@ -145,7 +142,6 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.user.username, 'test_developer_1');
     assert.strictEqual(res.body.user.id, regularUserId);
-    assert(res.body.user.quota);
   });
 
   test('POST /api/auth/refresh should return refreshed JWT token', async () => {
@@ -217,20 +213,22 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
       .send({
         username: 'managed_user_2',
         password: 'Password123!',
-        role: 'user',
-        tier: 'cloud_managed'
+        role: 'user'
       });
     assert.strictEqual(res.status, 201);
     assert.strictEqual(res.body.user.username, 'managed_user_2');
   });
 
-  test('GET /api/users/:id/quota should return user quota and usage', async () => {
+  test('GET /api/users/:id/quota reports usage, not entitlement', async () => {
     const res = await request(app)
       .get(`/api/users/${regularUserId}/quota`)
       .set('Authorization', `Bearer ${regularUserToken}`);
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.user_id, regularUserId);
-    assert(typeof res.body.max_nodes === 'number');
+    // No tiers and no caps: how many nodes an account has is still worth
+    // reporting, what it is allowed is no longer a thing that exists.
+    assert(typeof res.body.used_nodes === 'number');
+    assert.strictEqual(res.body.max_nodes, undefined);
     assert(typeof res.body.used_nodes === 'number');
   });
 

@@ -144,7 +144,7 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
           <div className="hidden sm:block text-left font-mono">
             <div className="text-xs font-semibold text-slate-200">{user?.username}</div>
             <div className="text-[10px] text-slate-400 capitalize">
-              {user?.tier === 'hybrid_byos' ? 'Hybrid BYOS ($0)' : 'Managed Cloud ($12/mo)'}
+              {user?.role === 'super-admin' ? 'Super admin' : 'User'}
             </div>
           </div>
         </div>

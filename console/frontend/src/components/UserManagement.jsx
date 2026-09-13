@@ -4,8 +4,6 @@ import {
   Users,
   UserPlus,
   Shield,
-  Zap,
-  HardDrive,
   Activity,
   Key,
   Trash2,
@@ -48,9 +46,6 @@ export default function UserManagement() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('user');
-  const [tier, setTier] = useState('hybrid_byos');
-  const [bandwidthQuota, setBandwidthQuota] = useState(500);
-  const [maxNodes, setMaxNodes] = useState(5);
 
   const loadUsers = async () => {
     try {
@@ -74,9 +69,6 @@ export default function UserManagement() {
         username,
         email,
         role,
-        tier,
-        bandwidth_quota_gb: bandwidthQuota,
-        max_nodes: maxNodes,
         bypass_apps: ["com.apple.Music", "com.spotify.client"]
       });
       setIsProvisionModalOpen(false);
@@ -201,35 +193,6 @@ export default function UserManagement() {
         </button>
       </div>
 
-      {/* Tier Breakdown Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="p-5 rounded-2xl bg-dark-card border border-emerald-500/30 space-y-2 relative overflow-hidden shadow-xl">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-              HYBRID BYOS TIER ($0 / Mo)
-            </span>
-            <HardDrive className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div className="text-sm font-bold text-slate-100 font-mono">Self-Hosted Sovereign Storage</div>
-          <p className="text-xs text-slate-400">
-            User hosts their own hardware (TrueNAS, Synology, Raspberry Pi). Zero server storage liability for NeroNet, full mesh routing.
-          </p>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-dark-card border border-accent-primary/30 space-y-2 relative overflow-hidden shadow-xl">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-accent-primary/20 text-accent-primary border border-accent-primary/40">
-              MANAGED CLOUD TIER ($12 / Mo)
-            </span>
-            <Zap className="w-5 h-5 text-accent-primary" />
-          </div>
-          <div className="text-sm font-bold text-slate-100 font-mono">Turnkey Cloud PC & Relay Egress</div>
-          <p className="text-xs text-slate-400">
-            Fully managed containers (Sovereign Cloud PC, Immich, Nextcloud) running on high-bandwidth OCI Ampere A1 instances.
-          </p>
-        </div>
-      </div>
-
       {/* Users Table */}
       <div className="rounded-2xl bg-dark-card border border-dark-border overflow-hidden shadow-xl">
         <div className="p-4 border-b border-dark-border flex items-center justify-between bg-dark-canvas/50">
@@ -244,8 +207,7 @@ export default function UserManagement() {
             <thead className="bg-dark-canvas/80 text-slate-400 border-b border-dark-border">
               <tr>
                 <th className="p-3.5">User / Identity</th>
-                <th className="p-3.5">Tier & Role</th>
-                <th className="p-3.5">Bandwidth Quota</th>
+                <th className="p-3.5">Role</th>
                 <th className="p-3.5">Split Tunneling</th>
                 <th className="p-3.5">Status</th>
                 <th className="p-3.5 text-right">Actions</th>
@@ -253,9 +215,6 @@ export default function UserManagement() {
             </thead>
             <tbody className="divide-y divide-dark-border">
               {users.map((u) => {
-                const usedGb = (u.bandwidth_used_bytes / (1024 * 1024 * 1024)).toFixed(1);
-                const quotaGb = u.bandwidth_quota_gb || 500;
-                const pct = Math.min(100, Math.round((usedGb / quotaGb) * 100));
                 const bypassCount = Array.isArray(u.bypass_apps) ? u.bypass_apps.length : 0;
 
                 return (
@@ -267,42 +226,15 @@ export default function UserManagement() {
                     </td>
 
                     <td className="p-3.5">
-                      <div className="space-y-1">
-                        <span
-                          className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border ${
-                            u.tier === 'cloud_managed'
-                              ? 'bg-accent-primary/20 text-accent-primary border-accent-primary/40'
-                              : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                          }`}
-                        >
-                          {u.tier === 'cloud_managed' ? 'Cloud ($12/mo)' : 'BYOS ($0)'}
-                        </span>
-                        <div className="text-[10px] text-slate-400 uppercase tracking-wide">
-                          {u.role} &bull; Max {u.max_nodes || 5} Nodes
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="p-3.5 min-w-[160px]">
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-slate-300 font-bold">{usedGb} GB</span>
-                          <span className="text-slate-500">/ {quotaGb} GB</span>
-                        </div>
-                        <div className="w-full bg-dark-canvas rounded-full h-1.5 overflow-hidden border border-dark-border">
-                          <div
-                            className={`h-full rounded-full ${
-                              pct > 90
-                                ? 'bg-red-500'
-                                : pct > 70
-                                ? 'bg-amber-400'
-                                : 'bg-gradient-to-r from-accent-primary to-accent-alert'
-                            }`}
-                            style={{ width: `${pct}%` }}
-                          ></div>
-                        </div>
-                        <div className="text-[10px] text-slate-500">{pct}% utilized</div>
-                      </div>
+                      <span
+                        className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wide ${
+                          u.role === 'super-admin'
+                            ? 'bg-accent-primary/20 text-accent-primary border-accent-primary/40'
+                            : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                        }`}
+                      >
+                        {u.role === 'super-admin' ? 'Super admin' : 'User'}
+                      </span>
                     </td>
 
                     <td className="p-3.5">
@@ -642,50 +574,16 @@ export default function UserManagement() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 mb-1">Account Tier</label>
-                  <select
-                    value={tier}
-                    onChange={(e) => setTier(e.target.value)}
-                    className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded-lg text-slate-200 focus:outline-none focus:border-accent-primary"
-                  >
-                    <option value="hybrid_byos">Hybrid BYOS ($0)</option>
-                    <option value="cloud_managed">Cloud Managed ($12/mo)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 mb-1">RBAC Role</label>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded-lg text-slate-200 focus:outline-none focus:border-accent-primary"
-                  >
-                    <option value="user">Standard User</option>
-                    <option value="super-admin">Super Admin</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 mb-1">Quota (GB/mo)</label>
-                  <input
-                    type="number"
-                    value={bandwidthQuota}
-                    onChange={(e) => setBandwidthQuota(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded-lg text-slate-200 focus:outline-none focus:border-accent-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 mb-1">Max Devices</label>
-                  <input
-                    type="number"
-                    value={maxNodes}
-                    onChange={(e) => setMaxNodes(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded-lg text-slate-200 focus:outline-none focus:border-accent-primary"
-                  />
-                </div>
+              <div>
+                <label className="block text-slate-400 mb-1">RBAC Role</label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded-lg text-slate-200 focus:outline-none focus:border-accent-primary"
+                >
+                  <option value="user">Standard User</option>
+                  <option value="super-admin">Super Admin</option>
+                </select>
               </div>
 
               <div className="pt-4 border-t border-dark-border flex justify-end space-x-2">

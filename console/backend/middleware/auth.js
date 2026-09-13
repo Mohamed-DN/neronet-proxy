@@ -14,7 +14,6 @@ function signToken(payload, expiresIn = config.JWT_EXPIRES_IN || '15m') {
     id: payload.id || payload.sub,
     username: payload.username,
     role: payload.role,
-    tier: payload.tier,
     jti: uuidv4()
   };
   return jwt.sign(cleanPayload, config.JWT_SECRET, { expiresIn });
@@ -90,7 +89,6 @@ async function authenticateToken(req, res, next) {
       id: decoded.sub || decoded.id,
       username: decoded.username,
       role: decoded.role,
-      tier: decoded.tier
     };
     req.token = token;
     next();

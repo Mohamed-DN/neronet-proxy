@@ -24,14 +24,8 @@ function formatUser(row) {
     username: row.username,
     email: row.email,
     role: row.role,
-    tier: row.tier,
     status: row.status,
     bypass_apps: bypassApps || [],
-    quota: {
-      max_nodes: row.max_nodes,
-      max_bandwidth_gb: row.bandwidth_quota_gb,
-      bandwidth_used_bytes: Number(row.bandwidth_used_bytes) || 0
-    },
     created_at: row.created_at,
     updated_at: row.updated_at
   };
@@ -71,7 +65,7 @@ router.get('/', requireRole('super-admin'), async (req, res, next) => {
 // 2. Create User (Super-Admin only)
 router.post('/', requireRole('super-admin'), async (req, res, next) => {
   try {
-    const { username, password, email, role, tier, quota, bypass_apps } = req.body || {};
+    const { username, password, email, role, bypass_apps } = req.body || {};
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -79,14 +73,10 @@ router.post('/', requireRole('super-admin'), async (req, res, next) => {
 
     const userId = `usr-${uuidv4().substring(0, 8)}`;
     const userRole = role === 'super-admin' ? 'super-admin' : 'user';
-    const userTier = tier || 'hybrid_byos';
     const userEmail = email || `${username}@sovereign.local`;
     const salt = bcrypt.genSaltSync(10);
     const passwordHash = bcrypt.hashSync(password, salt);
     const bypassAppsJson = JSON.stringify(Array.isArray(bypass_apps) ? bypass_apps : []);
-
-    const maxNodes = (quota && quota.max_nodes !== undefined) ? quota.max_nodes : (userTier === 'cloud_managed' || userTier === 'managed_cloud' ? 50 : 5);
-    const maxBwGb = (quota && quota.max_bandwidth_gb !== undefined) ? quota.max_bandwidth_gb : (userTier === 'cloud_managed' || userTier === 'managed_cloud' ? 1000 : 100);
 
     if (isPostgres()) {
       const pool = getPgPool();
@@ -97,12 +87,11 @@ router.post('/', requireRole('super-admin'), async (req, res, next) => {
 
       await pool.query(`
         INSERT INTO users (
-          id, username, email, password_hash, role, tier, status,
-          bandwidth_quota_gb, bandwidth_used_bytes, max_nodes, bypass_apps
+          id, username, email, password_hash, role, status, bypass_apps
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, 'active', $7, 0, $8, $9::jsonb
+          $1, $2, $3, $4, $5, 'active', $6::jsonb
         )
-      `, [userId, username, userEmail, passwordHash, userRole, userTier, maxBwGb, maxNodes, bypassAppsJson]);
+      `, [userId, username, userEmail, passwordHash, userRole, bypassAppsJson]);
 
       const createdRes = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
       const createdUser = formatUser(createdRes.rows[0]);
@@ -128,12 +117,11 @@ router.post('/', requireRole('super-admin'), async (req, res, next) => {
 
       db.prepare(`
         INSERT INTO users (
-          id, username, email, password_hash, role, tier, status,
-          bandwidth_quota_gb, bandwidth_used_bytes, max_nodes, bypass_apps
+          id, username, email, password_hash, role, status, bypass_apps
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, 'active', ?, 0, ?, ?
+          ?, ?, ?, ?, ?, 'active', ?
         )
-      `).run(userId, username, userEmail, passwordHash, userRole, userTier, maxBwGb, maxNodes, bypassAppsJson);
+      `).run(userId, username, userEmail, passwordHash, userRole, bypassAppsJson);
 
       const createdUser = formatUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
 
@@ -199,10 +187,6 @@ router.put('/:id', requireSelfOrAdmin, async (req, res, next) => {
         updates.push(`email = $${pIdx++}`);
         params.push(req.body.email);
       }
-      if (req.body.tier) {
-        updates.push(`tier = $${pIdx++}`);
-        params.push(req.body.tier);
-      }
       if (req.body.status && req.user.role === 'super-admin') {
         updates.push(`status = $${pIdx++}`);
         params.push(req.body.status);
@@ -210,16 +194,6 @@ router.put('/:id', requireSelfOrAdmin, async (req, res, next) => {
       if (req.body.bypass_apps !== undefined) {
         updates.push(`bypass_apps = $${pIdx++}::jsonb`);
         params.push(JSON.stringify(Array.isArray(req.body.bypass_apps) ? req.body.bypass_apps : []));
-      }
-      if (req.body.quota) {
-        if (req.body.quota.max_nodes !== undefined) {
-          updates.push(`max_nodes = $${pIdx++}`);
-          params.push(req.body.quota.max_nodes);
-        }
-        if (req.body.quota.max_bandwidth_gb !== undefined) {
-          updates.push(`bandwidth_quota_gb = $${pIdx++}`);
-          params.push(req.body.quota.max_bandwidth_gb);
-        }
       }
       if (req.body.password) {
         const salt = bcrypt.genSaltSync(10);
@@ -249,10 +223,6 @@ router.put('/:id', requireSelfOrAdmin, async (req, res, next) => {
         updates.push('email = ?');
         params.push(req.body.email);
       }
-      if (req.body.tier) {
-        updates.push('tier = ?');
-        params.push(req.body.tier);
-      }
       if (req.body.status && req.user.role === 'super-admin') {
         updates.push('status = ?');
         params.push(req.body.status);
@@ -260,16 +230,6 @@ router.put('/:id', requireSelfOrAdmin, async (req, res, next) => {
       if (req.body.bypass_apps !== undefined) {
         updates.push('bypass_apps = ?');
         params.push(JSON.stringify(Array.isArray(req.body.bypass_apps) ? req.body.bypass_apps : []));
-      }
-      if (req.body.quota) {
-        if (req.body.quota.max_nodes !== undefined) {
-          updates.push('max_nodes = ?');
-          params.push(req.body.quota.max_nodes);
-        }
-        if (req.body.quota.max_bandwidth_gb !== undefined) {
-          updates.push('bandwidth_quota_gb = ?');
-          params.push(req.body.quota.max_bandwidth_gb);
-        }
       }
       if (req.body.password) {
         const salt = bcrypt.genSaltSync(10);
@@ -355,13 +315,11 @@ router.get('/:id/quota', requireSelfOrAdmin, async (req, res, next) => {
       const countRes = await pool.query('SELECT count(*) as count FROM nodes WHERE user_id = $1', [user.id]);
       const nodeCount = parseInt(countRes.rows[0].count, 10);
 
+      // Usage, not entitlement. There are no tiers and no caps; how many nodes an
+      // account has is still worth reporting, what it is allowed is not a thing.
       return res.status(200).json({
         user_id: user.id,
-        max_nodes: user.max_nodes,
-        used_nodes: nodeCount,
-        max_bandwidth_gb: user.bandwidth_quota_gb,
-        used_bandwidth_bytes: Number(user.bandwidth_used_bytes) || 0,
-        tier: user.tier
+        used_nodes: nodeCount
       });
     } else {
       const db = getDatabase();
@@ -374,11 +332,7 @@ router.get('/:id/quota', requireSelfOrAdmin, async (req, res, next) => {
 
       return res.status(200).json({
         user_id: user.id,
-        max_nodes: user.max_nodes,
-        used_nodes: nodeCount,
-        max_bandwidth_gb: user.bandwidth_quota_gb,
-        used_bandwidth_bytes: user.bandwidth_used_bytes || 0,
-        tier: user.tier
+        used_nodes: nodeCount
       });
     }
   } catch (err) {

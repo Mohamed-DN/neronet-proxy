@@ -127,7 +127,7 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
   describe('2. User Management with Split-Tunneling (bypass_apps) and Quotas', () => {
     let createdUserId;
 
-    it('should create user with bypass_apps JSON array and custom quota', async () => {
+    it('should create user with bypass_apps JSON array', async () => {
       const res = await request(app)
         .post('/api/users')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -135,16 +135,12 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
           username: 'charlie_split',
           password: 'Password123!',
           email: 'charlie@split.local',
-          tier: 'hybrid_byos',
-          bypass_apps: ['com.spotify.client', 'zoom.us', 'com.apple.Music'],
-          quota: { max_nodes: 8, max_bandwidth_gb: 300 }
+          bypass_apps: ['com.spotify.client', 'zoom.us', 'com.apple.Music']
         });
 
       assert.strictEqual(res.status, 201);
       assert.strictEqual(res.body.user.username, 'charlie_split');
       assert.deepStrictEqual(res.body.user.bypass_apps, ['com.spotify.client', 'zoom.us', 'com.apple.Music']);
-      assert.strictEqual(res.body.user.quota.max_nodes, 8);
-      assert.strictEqual(res.body.user.quota.max_bandwidth_gb, 300);
       createdUserId = res.body.user.id;
     });
 
@@ -160,16 +156,15 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
       assert.deepStrictEqual(res.body.user.bypass_apps, ['com.spotify.client', 'slack', 'discord']);
     });
 
-    it('should get user quota details including node count', async () => {
+    it('should report node usage for a user', async () => {
       const res = await request(app)
         .get(`/api/users/${createdUserId}/quota`)
         .set('Authorization', `Bearer ${adminToken}`);
 
       assert.strictEqual(res.status, 200);
       assert.strictEqual(res.body.user_id, createdUserId);
-      assert.strictEqual(res.body.max_nodes, 8);
       assert.strictEqual(res.body.used_nodes, 0);
-      assert.strictEqual(res.body.max_bandwidth_gb, 300);
+      assert.strictEqual(res.body.max_bandwidth_gb, undefined, 'bandwidth caps no longer exist');
     });
   });
 
