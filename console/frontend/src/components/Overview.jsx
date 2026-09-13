@@ -146,7 +146,7 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
             {/* Metric 2: Users */}
             <div className="p-4 rounded-xl bg-dark-card border border-dark-border relative overflow-hidden group hover:border-dark-border/80 transition-all shadow-lg">
               <div className="flex items-center justify-between text-slate-400 mb-2">
-                <span className="text-xs font-mono">Total Users & Tiers</span>
+                <span className="text-xs font-mono">Total Users</span>
                 <Users className="w-4 h-4 text-neon-indigo" />
               </div>
               <div className="flex items-baseline space-x-2">
@@ -155,9 +155,11 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 </span>
                 <span className="text-xs text-slate-500 font-mono">Active Tenants</span>
               </div>
-              <div className="mt-3 flex items-center justify-between text-[11px] font-mono">
-                <span className="text-neon-emerald">{Math.ceil(activeUsers / 2)} Hybrid BYOS ($0)</span>
-                <span className="text-neon-cyan">{Math.floor(activeUsers / 2)} Cloud Managed</span>
+              {/* This used to print activeUsers/2 as "Hybrid BYOS" and the other half as
+                  "Cloud Managed" — a made-up split, not a count of anything. There are
+                  no tiers now, and there was never data behind that line. */}
+              <div className="mt-3 text-[11px] font-mono text-slate-500">
+                All accounts have the same access
               </div>
             </div>
 

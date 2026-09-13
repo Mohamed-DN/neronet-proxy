@@ -1,24 +1,62 @@
-version: '3.8'
-
+# Simulated mesh nodes for testing the console against a real fleet.
+#
+# Each entry is a genuine Go daemon enrolling through nginx, not a database fixture.
+# Countries and roles differ so discovery filters and circuit selection have
+# something to choose between.
 services:
-  real-node-1:
-    image: sovereign-real-node
-    container_name: neronet_real_node_1
+  relay-de:
+    image: sovereign-node:current
+    container_name: neronet_relay_de
+    restart: unless-stopped
     environment:
-      - SOVEREIGN_CONTROL_PLANE_URL=http://frontend:8443
-      - SOVEREIGN_ENABLE_EXIT_BRIDGE=true
-    networks:
-      - neronet-isolated-mesh
-    command: ["/bin/sovereign-node", "-control-url", "http://frontend:8443", "-enable-exit=true"]
+      - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
+    command: ["-control-url", "http://frontend:8443", "-country", "DE", "-enable-exit=true"]
+    networks: [neronet-isolated-mesh]
 
-  real-node-2:
-    image: sovereign-real-node
-    container_name: neronet_real_node_2
+  relay-fr:
+    image: sovereign-node:current
+    container_name: neronet_relay_fr
+    restart: unless-stopped
     environment:
-      - SOVEREIGN_CONTROL_PLANE_URL=http://frontend:8443
-    networks:
-      - neronet-isolated-mesh
-    command: ["/bin/sovereign-node", "-control-url", "http://frontend:8443"]
+      - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
+    command: ["-control-url", "http://frontend:8443", "-country", "FR", "-enable-exit=true"]
+    networks: [neronet-isolated-mesh]
+
+  relay-us:
+    image: sovereign-node:current
+    container_name: neronet_relay_us
+    restart: unless-stopped
+    environment:
+      - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
+    command: ["-control-url", "http://frontend:8443", "-country", "US", "-enable-exit=true"]
+    networks: [neronet-isolated-mesh]
+
+  relay-nl:
+    image: sovereign-node:current
+    container_name: neronet_relay_nl
+    restart: unless-stopped
+    environment:
+      - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
+    command: ["-control-url", "http://frontend:8443", "-country", "NL", "-enable-exit=true"]
+    networks: [neronet-isolated-mesh]
+
+  client-it:
+    image: sovereign-node:current
+    container_name: neronet_client_it
+    restart: unless-stopped
+    environment:
+      - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
+    command: ["-control-url", "http://frontend:8443", "-country", "IT"]
+    networks: [neronet-isolated-mesh]
+
+  client-es:
+    image: sovereign-node:current
+    container_name: neronet_client_es
+    restart: unless-stopped
+    environment:
+      - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
+    command: ["-control-url", "http://frontend:8443", "-country", "ES"]
+    networks: [neronet-isolated-mesh]
 
 networks:
   neronet-isolated-mesh:

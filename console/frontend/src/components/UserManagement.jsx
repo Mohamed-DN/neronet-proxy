@@ -174,13 +174,13 @@ export default function UserManagement() {
         <div>
           <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
             <Users className="w-5 h-5 text-accent-primary" />
-            <span>Dual-Tier User Directory & Quotas</span>
+            <span>User Directory</span>
             <span className="text-xs font-mono px-2 py-0.5 rounded bg-accent-primary/20 text-accent-primary border border-accent-primary/40">
               {users.length} Active Tenants
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Enterprise RBAC managing Hybrid BYOS ($0 self-hosted) vs Managed Cloud ($12/mo) tenancy with instant QR onboarding.
+            Role-based access control with instant QR onboarding.
           </p>
         </div>
 

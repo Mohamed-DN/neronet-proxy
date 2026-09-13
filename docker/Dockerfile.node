@@ -1,0 +1,23 @@
+# Sovereign mesh node.
+#
+# Separate from docker/Dockerfile, which builds the security daemon and pins Go 1.22
+# — below the 1.25 this module now requires for hybrid post-quantum TLS.
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY pkg ./pkg
+COPY cmd ./cmd
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-node ./cmd/sovereign-node \
+ && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-cli ./cmd/sovereign-cli
+
+FROM alpine:3.20
+
+RUN adduser -D -u 10001 neronet
+COPY --from=builder /build/bin/sovereign-node /bin/sovereign-node
+COPY --from=builder /build/bin/sovereign-cli /bin/sovereign-cli
+
+USER 10001:10001
+ENTRYPOINT ["/bin/sovereign-node"]
