@@ -109,47 +109,57 @@ revocation list keyed on `jti`. Two roles: `super-admin` and `user`.
 | `/v4/control/heartbeat` | Telemetry, quarantine signal | Implemented |
 | `/v4/control/discover` | Peer and bridge discovery | Implemented — `9a13e20` |
 | `/v4/control/sync-acls` | Zero-trust policy delivery | Implemented — `9228211` |
-| `/v4/control/circuit` | **Onion circuit construction** | **404** |
-| `/v4/control/sync-routes` | **Subnet route delivery** | **404** |
+| `/v4/control/sync-routes` | Subnet route delivery | Implemented — `8bc7870` |
+| `/v4/control/circuit` | Onion circuit construction | Implemented — `0b9315c` |
 
-Verified by request against the running backend.
+All six verified against a running deployment with real Go clients.
 
 ### 3.1 State as of 2026-09-13
 
-Two of the four are now implemented and verified against a real Go node:
+All four are implemented and verified with real Go clients, not with curl:
 
-- **Discovery works.** `sovereign-cli peers DE` returns ranked bridges. A node can
-  learn that other nodes exist.
-- **ACL delivery works.** A node logs
-  `Zero Trust ACL policy loaded (epoch: 2, outbound rules: 49)` on enrolment. Rules
-  authored as CIDRs are expanded to one entry per matching peer, because `pkg/acl`
-  matches an exact address.
+- **Discovery.** `sovereign-cli peers DE` returns ranked bridges.
+- **ACL delivery.** A node logs `Zero Trust ACL policy loaded (epoch: N, outbound
+  rules: M)` on enrolment, and `Updated ACL policy to epoch N+1` within one heartbeat
+  of a rule changing.
+- **Subnet routes.** `Subnet routes synced (epoch: 2, count: 1)`, and the route's own
+  gateway correctly receives zero.
+- **Onion circuits.** `sovereign-cli circuit US` returns a three-hop path.
 
-Still missing:
+### 3.2 Two behaviours to know before changing anything here
 
-- **Onion circuits.** `/v4/control/circuit` returns 404, so the differentiating
-  feature is unreachable from a deployed node.
-- **Subnet routes.** `/v4/control/sync-routes` returns 404.
+**ACL delivery is default-open, enforcement is default-deny.** `pkg/acl` denies
+anything no rule permits. An empty rule set delivered to a fleet therefore
+black-holes all traffic. The control plane compiles allow-all when no rules exist: a
+mesh with no policy written is open, and closes when the first rule is written.
+Changing that default without changing the enforcement side takes the mesh down on
+deploy.
 
-### 3.2 One behaviour worth knowing before changing ACLs
+**Epochs are the only channel that tells a running node its policy is stale.** They
+are reported in the register and heartbeat responses. Returning a constant there —
+which is what happened when ACL delivery first shipped — makes
+`hbResp.PolicyEpoch > policyEpoch` permanently false, and policy delivery works once
+at enrolment and never again. It looks correct in every direct test of the sync
+endpoint.
 
-`pkg/acl` defaults to deny. An empty rule set delivered to a fleet black-holes all
-traffic. The control plane therefore compiles an allow-all policy when no rules are
-configured: a mesh with no policy written is open, and closes when the first rule is
-written. Changing that default without changing the enforcement side takes the mesh
-down on deploy.
+### 3.3 Circuit path selection
 
-### 3.2 Why it looks finished
+The security decision in onion routing is which relays are chosen, not how the cell
+is sealed. A circuit whose hops share an operator or an autonomous system protects
+nothing against that party: they observe entry and exit and correlate directly.
 
-The Go implementations of all four are in `pkg/control/server.go`, and the client
-calls are in `pkg/control/client.go`. Reading either file, the feature appears
-complete. What is missing is the server half in the control plane that actually
-runs — the Node.js bridge, which implements two endpoints out of six.
+Selection prefers independent hops wherever the fleet can provide them, and the
+response carries a `diversity` object stating what was achieved. It does not refuse a
+non-diverse path: a self-hosted mesh has one operator by definition, and onion
+routing still conceals traffic from network observers and from the destination — just
+not from the operator, who is the user. What must never happen is a caller believing
+it has anonymity it does not.
 
-**This is the first thing to fix.** Nothing else about the mesh is meaningful until a
-node can discover a peer.
-
----
+This matters for the fleet shape the product targets. An operator running a thousand
+machines across many networks gets full network diversity and no operator diversity:
+strong against an ISP or a destination, weak against anyone who can compel that one
+operator. Operator diversity is the thing a single owner cannot provide for
+themselves, and is the argument for third-party exit nodes.
 
 ## 4. Structural issues
 
@@ -496,16 +506,16 @@ CI must run the backend suite three times.
 
 ## 10. What to do next, in order
 
-### 10.1 Implement the four missing control plane endpoints
+### 10.1 Route traffic through a selected circuit
 
-Nothing about the mesh works until this is done. In order of dependency:
+The four control plane endpoints are done. The remaining gap is that a selected
+circuit is never used: no traffic flows through one.
 
-1. ~~`/v4/control/discover`~~ — done, `9a13e20`.
-2. ~~`/v4/control/sync-acls`~~ — done, `9228211`.
-3. `/v4/control/sync-routes` — subnet routes. `mesh_epochs` already carries a
-   `routes` counter for it.
-4. `/v4/control/circuit` — onion circuits. Needs three distinct healthy relays and a
-   circuit lifetime; `pkg/routing.Build3HopCircuit` is the client side.
+All four are done: `9a13e20`, `9228211`, `8bc7870`, `0b9315c`.
+
+What remains on the data plane is that nothing yet **uses** a circuit: the control
+plane selects a path and `pkg/routing` can seal cells for it, but no traffic is
+routed through one. That is the next piece of real work.
 
 The Go implementations in `pkg/control/server.go` are the reference for behaviour and
 the struct tags are the contract. Decide § 4.1 first: implementing these in the Node
