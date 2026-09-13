@@ -242,6 +242,20 @@ This needs, in order:
 
 Interface without implementation. The console presents all three as active.
 
+A fourth belongs on that list, and it is the one the product is named for. Onion
+routing is implemented in `pkg/routing` — per-hop ephemeral keys, XChaCha20 with a
+random nonce per layer, fixed 1420-byte cells, bounds-checked peeling — and covered
+by tests including a regression suite. Nothing runs it. The package is imported by
+`pkg/control`, the Go control plane no compose file deploys, and by its own tests;
+`cmd/sovereign-node` does not import it. The console's per-device toggle writes
+`onion_routing_enabled` and `onion_hops` to the control plane, and `HeartbeatResponse`
+carries no onion field, so no node is told and no node would act on it.
+
+Closing this is three pieces: carry the setting on the heartbeat the way revoked keys
+are carried, have the node build a circuit through `/v4/control/circuit`, which is
+implemented and answering, and put the data path through it. The first two are small.
+The third is the product.
+
 **Decision: NeroDrop is deferred.** File transfer over a mesh is a solved problem
 (Syncthing, Magic Wormhole, or scp over the overlay). It does not differentiate.
 Effort belongs in NeroNuke, the dead man's switch, the warrant canary and onion

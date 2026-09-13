@@ -26,10 +26,9 @@ export default function OnionObfuscationPanel() {
   const [loading, setLoading] = useState(true);
 
   // Global Multi-Hop State
-  const [masterOnion, setMasterOnion] = useState(true);
-  const [paddingMode, setPaddingMode] = useState('subtle'); // 'disabled' | 'subtle' | 'cbr'
-  const [timingJitter, setTimingJitter] = useState('low'); // 'direct' | 'low' | 'paranoid'
-  const [exitPolicy, setExitPolicy] = useState('fastest'); // 'fastest' | 'random' | 'CH' | 'DE' | 'SE' | 'IS' | 'JP' | 'US'
+  // masterOnion, paddingMode, timingJitter and exitPolicy lived here. None of them
+  // left this component: no request, no column, no delivery to a node, and every
+  // selection was lost on reload. The controls that drove them are gone.
   const [killSwitchGlobal, setKillSwitchGlobal] = useState(true);
 
   const loadNodes = async () => {
@@ -89,103 +88,131 @@ export default function OnionObfuscationPanel() {
         <div>
           <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
             <Shield className="w-5 h-5 text-accent-primary animate-pulse" />
-            <span>3-Hop Onion Routing & Traffic Cloaking</span>
+            <span>Onion Routing</span>
+            {/* Badged "Sphinx Cryptographic Mixnet". pkg/routing implements layered
+                encapsulation with a per-hop ephemeral key, not the Sphinx packet
+                format, and there is no mixnet. */}
             <span className="text-xs font-mono px-2 py-0.5 rounded bg-accent-primary/20 text-accent-primary border border-accent-primary/40">
-              Sphinx Cryptographic Mixnet
+              XChaCha20-Poly1305, per-hop keys
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Layered ChaCha20-Poly1305 multi-hop encapsulation, dummy traffic padding (CBR), and packet timing jitter.
+            Which devices route their traffic through three hops before it leaves the mesh.
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setMasterOnion(!masterOnion)}
-            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all shadow-lg flex items-center space-x-2 ${
-              masterOnion
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-emerald-500/10'
-                : 'bg-dark-card border border-dark-border text-slate-400'
-            }`}
-          >
-            <Radio className="w-3.5 h-3.5" />
-            <span>MASTER 3-HOP: {masterOnion ? 'ACTIVE' : 'BYPASSED'}</span>
-          </button>
-        </div>
+        {/* A "MASTER 3-HOP: ACTIVE / BYPASSED" switch stood here. It set React
+            state and nothing else: no request, no column, no delivery to any node,
+            and it reset on reload. Onion routing is per device, and the toggles in
+            the inventory below are the ones that reach the fleet. */}
       </div>
 
       {/* Global Status HUD Cards */}
+      {/* The state of this feature, stated once and plainly, because every number
+          on this page is otherwise easy to read as "it is running".
+
+          pkg/routing implements the layering: per-hop ephemeral keys, XChaCha20
+          with a random nonce per layer, fixed 1420-byte cells, bounds-checked
+          peeling, and it is covered by tests including a regression suite. It is
+          imported by pkg/control — the Go control plane no compose file deploys —
+          and by those tests. cmd/sovereign-node does not import it.
+
+          The toggles below write onion_routing_enabled and onion_hops to the
+          control plane. HeartbeatResponse carries no onion field, so no node is
+          told, and no node would act on it if it were. */}
+      <div className="p-3.5 rounded-xl bg-neon-amber/10 border border-neon-amber/30 flex items-start gap-2.5">
+        <AlertTriangle className="w-4 h-4 text-neon-amber shrink-0 mt-0.5" />
+        <div className="text-xs">
+          <p className="font-bold text-neon-amber font-mono">Recorded, not yet routed</p>
+          <p className="text-slate-400 mt-1 leading-relaxed">
+            The onion layering is implemented and tested in <code className="text-slate-300">pkg/routing</code>,
+            but the node daemon does not import it and the heartbeat carries no onion
+            field. Enabling a device here records the intent in the control plane; no
+            traffic is carried through a circuit yet.
+          </p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Active Circuits */}
         <div className="p-4 rounded-xl bg-dark-card border border-dark-border space-y-2 shadow-lg">
           <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-            <span>Active Onion Circuits</span>
+            <span>Onion Routing Enabled</span>
             <Layers className="w-4 h-4 text-accent-primary" />
           </div>
           <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-bold text-slate-100 font-mono">
-              {masterOnion ? Math.max(onionEnabledCount * 3, 12) : 0}
+            {/* Was Math.max(onionEnabledCount * 3, 12), so a mesh with onion
+                routing switched off everywhere still reported twelve circuits.
+                Circuits are built on request and never stored, so there is no
+                count of them; this is the figure the control plane does hold. */}
+            <span className="text-2xl font-bold text-slate-100 font-mono tabular-nums">
+              {onionEnabledCount}
             </span>
-            <span className="text-xs text-slate-500 font-mono">Circuits</span>
+            <span className="text-xs text-slate-500 font-mono">
+              of {nodes.length} devices
+            </span>
           </div>
           <div className="text-[11px] font-mono text-emerald-400 flex items-center space-x-1">
             <CheckCircle2 className="w-3 h-3" />
-            <span>3-Hop Sphinx Encapsulated</span>
+            <span>Three hops before egress</span>
           </div>
         </div>
 
         {/* Card 2: Padding Rate */}
         <div className="p-4 rounded-xl bg-dark-card border border-dark-border space-y-2 shadow-lg">
           <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-            <span>Traffic Padding (Chaff)</span>
+            <span>Cell Padding</span>
             <Zap className="w-4 h-4 text-neon-cyan" />
           </div>
+          {/* This showed a selectable chaff rate — 64 or 256 KB/s. No traffic
+              generator exists. What does exist is in pkg/routing/cell.go: every
+              cell is encoded to exactly 1420 bytes and the remainder filled from
+              the CSPRNG, so payload length is not observable. It is always on and
+              has no setting. */}
           <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-bold text-slate-100 font-mono capitalize">
-              {paddingMode}
-            </span>
-            <span className="text-xs text-slate-400 font-mono">
-              {paddingMode === 'cbr' ? '256 KB/s' : paddingMode === 'subtle' ? '64 KB/s' : '0 KB/s'}
-            </span>
+            <span className="text-2xl font-bold text-slate-100 font-mono tabular-nums">1420</span>
+            <span className="text-xs text-slate-400 font-mono">bytes, fixed</span>
           </div>
           <div className="text-[11px] font-mono text-slate-400">
-            <span>DPI Size-Correlation Resistance</span>
+            <span>Payload length not observable</span>
           </div>
         </div>
 
         {/* Card 3: Timing Jitter */}
         <div className="p-4 rounded-xl bg-dark-card border border-dark-border space-y-2 shadow-lg">
           <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-            <span>Timing Jitter Modulation</span>
+            <span>Timing Jitter</span>
             <Activity className="w-4 h-4 text-neon-indigo" />
           </div>
+          {/* Reported a "Gaussian packet burst shaping" profile. The jitter that
+              exists, OnionCircuit.ComputeJitterDelay, draws a uniform delay from
+              crypto/rand — not Gaussian — and the node daemon never calls it. */}
           <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-bold text-slate-100 font-mono capitalize">
-              {timingJitter}
-            </span>
-            <span className="text-xs text-slate-400 font-mono">
-              {timingJitter === 'paranoid' ? '50-150ms' : timingJitter === 'low' ? '5-25ms' : '0ms'}
-            </span>
+            <span className="text-2xl font-bold text-slate-400 font-mono">Not applied</span>
           </div>
           <div className="text-[11px] font-mono text-slate-400">
-            <span>Gaussian Packet Burst Shaping</span>
+            <span>Implemented in pkg/routing, not called by the node</span>
           </div>
         </div>
 
         {/* Card 4: Mean Circuit Latency */}
         <div className="p-4 rounded-xl bg-dark-card border border-dark-border space-y-2 shadow-lg">
           <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-            <span>Mean 3-Hop Circuit Latency</span>
+            <span>Exit Bridges Available</span>
             <Globe2 className="w-4 h-4 text-neon-emerald" />
           </div>
+          {/* Was "Mean 3-Hop Circuit Latency", 42.8ms when the master switch was on
+              and 14.5ms when off — two constants, and nothing measures the latency
+              of a circuit. This is the figure that decides whether a three-hop path
+              can be built at all. */}
           <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-bold text-neon-emerald font-mono">
-              {masterOnion ? '42.8' : '14.5'}
+            <span className="text-2xl font-bold text-neon-emerald font-mono tabular-nums">
+              {nodes.filter((n) => n.role === 'EXIT_BRIDGE').length}
             </span>
-            <span className="text-xs text-slate-400 font-mono">ms</span>
+            <span className="text-xs text-slate-400 font-mono">for the final hop</span>
           </div>
           <div className="text-[11px] font-mono text-slate-400">
-            <span>Forward Secrecy Verified</span>
+            <span>Path diversity requires distinct operators</span>
           </div>
         </div>
       </div>
@@ -195,10 +222,16 @@ export default function OnionObfuscationPanel() {
         <div className="flex items-center justify-between border-b border-dark-border pb-3">
           <div className="flex items-center space-x-2 text-xs font-mono text-slate-200">
             <Shuffle className="w-4 h-4 text-accent-primary" />
-            <span className="font-bold">Cryptographic Multi-Hop Pipeline Architecture</span>
+            {/* A schematic of how a path is layered, not a live circuit. The hops
+                were labelled "Relay US-East", "Relay EU-Central" and "Exit
+                FASTEST", which read as nodes that had been selected; no circuit is
+                being displayed here. "Zero Information Leakage" was an unqualified
+                guarantee — the property the design provides is that no single hop
+                learns both ends. */}
+            <span className="font-bold">How a three-hop path is layered</span>
           </div>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-            Zero Information Leakage
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-500/20 text-slate-300 border border-slate-500/30">
+            Schematic
           </span>
         </div>
 
@@ -223,7 +256,7 @@ export default function OnionObfuscationPanel() {
             <div className="font-bold text-slate-100">Entry Guard</div>
             <div className="text-[10px] text-slate-400">Peels Outer Layer (1)</div>
             <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
-              Relay US-East
+              Hop 1
             </span>
           </div>
 
@@ -235,7 +268,7 @@ export default function OnionObfuscationPanel() {
             <div className="font-bold text-slate-100">Middle Relay</div>
             <div className="text-[10px] text-slate-400">Peels Middle Layer (2)</div>
             <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
-              Relay EU-Central
+              Hop 2
             </span>
           </div>
 
@@ -247,7 +280,7 @@ export default function OnionObfuscationPanel() {
             <div className="font-bold text-slate-100">Exit Bridge</div>
             <div className="text-[10px] text-slate-400">Peels Inner Layer (3)</div>
             <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800">
-              Exit {exitPolicy.toUpperCase()}
+              Hop 3
             </span>
           </div>
 
@@ -265,129 +298,17 @@ export default function OnionObfuscationPanel() {
         </div>
       </div>
 
-      {/* Traffic Obfuscation & Egress Preferences Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Left: Obfuscation & Jitter */}
-        <div className="p-5 rounded-2xl bg-dark-card border border-dark-border space-y-4 shadow-xl font-mono text-xs">
-          <div className="flex items-center space-x-2 text-slate-100 font-bold border-b border-dark-border pb-2">
-            <Sliders className="w-4 h-4 text-accent-primary" />
-            <span>Traffic Padding & Jitter Modulation</span>
-          </div>
+      {/* A "Traffic Padding & Jitter Modulation" panel stood here, offering a
+          constant-bitrate padding mode (disabled / subtle / CBR) and a jitter
+          profile (direct / low / paranoid), alongside an exit policy selector.
+          All three were React state. Nothing was persisted, no request was made,
+          no node received them, and every selection was lost on reload.
 
-          {/* Traffic Padding Mode */}
-          <div className="space-y-2">
-            <label className="text-slate-300 font-bold block">
-              Constant Bitrate (CBR) Traffic Padding
-            </label>
-            <p className="text-[11px] text-slate-500 font-sans">
-              Injects cryptographic dummy chaff packets into the mesh stream to eliminate packet length signatures.
-            </p>
-            <div className="grid grid-cols-3 gap-2 pt-1">
-              {['disabled', 'subtle', 'cbr'].map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setPaddingMode(mode)}
-                  className={`py-2 px-3 rounded-lg border font-bold capitalize transition-all ${
-                    paddingMode === mode
-                      ? 'bg-accent-primary/20 text-accent-primary border-accent-primary/50 shadow-md'
-                      : 'bg-dark-canvas border-dark-border text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {mode === 'cbr' ? 'Aggressive CBR' : mode}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Timing Jitter */}
-          <div className="space-y-2 pt-3 border-t border-dark-border">
-            <label className="text-slate-300 font-bold block">
-              Packet Timing Jitter Engine
-            </label>
-            <p className="text-[11px] text-slate-500 font-sans">
-              Randomizes inter-packet transmission delays via Gaussian distribution to foil ISP correlation timing attacks.
-            </p>
-            <div className="grid grid-cols-3 gap-2 pt-1">
-              {[
-                { id: 'direct', label: 'Direct (0ms)' },
-                { id: 'low', label: 'Low (5-25ms)' },
-                { id: 'paranoid', label: 'Paranoid (50-150ms)' }
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setTimingJitter(item.id)}
-                  className={`py-2 px-2 rounded-lg border font-bold text-[11px] transition-all ${
-                    timingJitter === item.id
-                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50 shadow-md'
-                      : 'bg-dark-canvas border-dark-border text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Right: Exit Node Selection Policy & Kill-Switch */}
-        <div className="p-5 rounded-2xl bg-dark-card border border-dark-border space-y-4 shadow-xl font-mono text-xs">
-          <div className="flex items-center space-x-2 text-slate-100 font-bold border-b border-dark-border pb-2">
-            <Globe2 className="w-4 h-4 text-emerald-400" />
-            <span>Exit Node Routing Preferences & Kill-Switch</span>
-          </div>
-
-          {/* Exit Node Policy */}
-          <div className="space-y-2">
-            <label className="text-slate-300 font-bold block">
-              Exit Node Geographic Routing
-            </label>
-            <p className="text-[11px] text-slate-500 font-sans">
-              Select your preferred exit bridge jurisdiction or randomize dynamically on each session.
-            </p>
-            <select
-              value={exitPolicy}
-              onChange={(e) => setExitPolicy(e.target.value)}
-              className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded-xl text-slate-100 font-mono text-xs focus:outline-none focus:border-accent-primary"
-            >
-              <option value="fastest">⚡ Lowest Latency / Fast Relay (Automatic)</option>
-              <option value="random">🎲 Random Hop Rotation (Maximum Anonymity)</option>
-              <option value="CH">🇨🇭 Switzerland (CH) - Strict Privacy Laws</option>
-              <option value="IS">🇮🇸 Iceland (IS) - Free Speech Data Haven</option>
-              <option value="SE">🇸🇪 Sweden (SE) - Privacy Relay</option>
-              <option value="DE">🇩🇪 Germany (DE) - European Backbone</option>
-              <option value="JP">🇯🇵 Japan (JP) - Asia Pacific Hub</option>
-              <option value="US">🇺🇸 United States (US) - High Bandwidth Gateway</option>
-            </select>
-          </div>
-
-          {/* Strict Egress Kill-Switch */}
-          <div className="space-y-2 pt-3 border-t border-dark-border">
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="text-slate-300 font-bold block">
-                  Strict Egress Kill-Switch
-                </label>
-                <p className="text-[11px] text-slate-500 font-sans">
-                  Instantly drop all outbound network packets if the encrypted 3-hop onion circuit drops.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setKillSwitchGlobal(!killSwitchGlobal)}
-                className={`px-3 py-1.5 rounded-full font-bold text-xs transition-all ${
-                  killSwitchGlobal
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50'
-                    : 'bg-red-500/20 text-red-400 border border-red-500/50'
-                }`}
-              >
-                {killSwitchGlobal ? 'ARMED (STRICT)' : 'DISABLED'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+          What the system does have: cells are padded to a fixed 1420 bytes in
+          pkg/routing/cell.go, always, with no setting; and ComputeJitterDelay
+          exists on OnionCircuit but the node daemon never calls it. Restoring
+          these controls means delivering them the way ACLs are delivered — a
+          column, an epoch, and a node that acts on the value. */}
 
       {/* Per-Node Routing Table with 1-Click Onion Toggles */}
       <div className="p-5 rounded-2xl bg-dark-card border border-dark-border space-y-4 shadow-xl font-mono text-xs">
