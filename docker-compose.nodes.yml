@@ -4,6 +4,31 @@
 # Countries and roles differ so discovery filters and circuit selection have
 # something to choose between.
 services:
+  # DERP relays: the fallback path for peers that cannot reach each other directly.
+  # Two regions so relay selection has a choice. Each also answers STUN on UDP, which
+  # is what a node behind NAT uses to learn its own public address.
+  derp-eu:
+    image: sovereign-node:current
+    container_name: neronet_derp_eu
+    restart: unless-stopped
+    entrypoint: ["/bin/sovereign-derp-relay"]
+    command: ["-listen-addr", "0.0.0.0:8444", "-stun-addr", "0.0.0.0:3478", "-region", "eu-central", "-decoy-title", "Apache2 Ubuntu Default Page"]
+    ports:
+      - "127.0.0.1:8444:8444"
+      - "127.0.0.1:3478:3478/udp"
+    networks: [neronet-isolated-mesh]
+
+  derp-us:
+    image: sovereign-node:current
+    container_name: neronet_derp_us
+    restart: unless-stopped
+    entrypoint: ["/bin/sovereign-derp-relay"]
+    command: ["-listen-addr", "0.0.0.0:8444", "-stun-addr", "0.0.0.0:3478", "-region", "us-east", "-decoy-title", "Apache2 Ubuntu Default Page"]
+    ports:
+      - "127.0.0.1:8445:8444"
+      - "127.0.0.1:3479:3478/udp"
+    networks: [neronet-isolated-mesh]
+
   relay-de:
     image: sovereign-node:current
     container_name: neronet_relay_de
@@ -11,6 +36,8 @@ services:
     environment:
       - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
     command: ["-control-url", "http://frontend:8443", "-country", "DE", "-enable-exit=true"]
+    volumes:
+      - identity-relay-de:/var/lib/neronet
     networks: [neronet-isolated-mesh]
 
   relay-fr:
@@ -20,6 +47,8 @@ services:
     environment:
       - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
     command: ["-control-url", "http://frontend:8443", "-country", "FR", "-enable-exit=true"]
+    volumes:
+      - identity-relay-fr:/var/lib/neronet
     networks: [neronet-isolated-mesh]
 
   relay-us:
@@ -29,6 +58,8 @@ services:
     environment:
       - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
     command: ["-control-url", "http://frontend:8443", "-country", "US", "-enable-exit=true"]
+    volumes:
+      - identity-relay-us:/var/lib/neronet
     networks: [neronet-isolated-mesh]
 
   relay-nl:
@@ -38,6 +69,8 @@ services:
     environment:
       - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
     command: ["-control-url", "http://frontend:8443", "-country", "NL", "-enable-exit=true"]
+    volumes:
+      - identity-relay-nl:/var/lib/neronet
     networks: [neronet-isolated-mesh]
 
   client-it:
@@ -47,6 +80,8 @@ services:
     environment:
       - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
     command: ["-control-url", "http://frontend:8443", "-country", "IT"]
+    volumes:
+      - identity-client-it:/var/lib/neronet
     networks: [neronet-isolated-mesh]
 
   client-es:
@@ -56,7 +91,20 @@ services:
     environment:
       - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
     command: ["-control-url", "http://frontend:8443", "-country", "ES"]
+    volumes:
+      - identity-client-es:/var/lib/neronet
     networks: [neronet-isolated-mesh]
+
+# One volume per node. The identity key inside it is what ties a container to the
+# device row it already has in the control plane; delete a volume and that container
+# comes back as a different node.
+volumes:
+  identity-relay-de:
+  identity-relay-fr:
+  identity-relay-us:
+  identity-relay-nl:
+  identity-client-it:
+  identity-client-es:
 
 networks:
   neronet-isolated-mesh:

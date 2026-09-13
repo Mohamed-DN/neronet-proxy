@@ -1,4 +1,4 @@
-# Sovereign mesh node.
+# Sovereign mesh binaries: node, CLI and DERP relay.
 #
 # Separate from docker/Dockerfile, which builds the security daemon and pins Go 1.22
 # — below the 1.25 this module now requires for hybrid post-quantum TLS.
@@ -11,13 +11,23 @@ RUN go mod download
 COPY pkg ./pkg
 COPY cmd ./cmd
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-node ./cmd/sovereign-node \
- && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-cli ./cmd/sovereign-cli
+ && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-cli ./cmd/sovereign-cli \
+ && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-derp-relay ./cmd/sovereign-derp-relay
 
 FROM alpine:3.20
 
 RUN adduser -D -u 10001 neronet
+
+# The node's identity key lives here. Creating the directory in the image, owned by
+# the unprivileged user, is what makes a named volume mounted over it inherit that
+# ownership: Docker copies the image's ownership onto an empty volume, and a volume
+# created against a path that does not exist in the image comes up owned by root,
+# where uid 10001 cannot write.
+RUN mkdir -p /var/lib/neronet && chown 10001:10001 /var/lib/neronet && chmod 700 /var/lib/neronet
+
 COPY --from=builder /build/bin/sovereign-node /bin/sovereign-node
 COPY --from=builder /build/bin/sovereign-cli /bin/sovereign-cli
+COPY --from=builder /build/bin/sovereign-derp-relay /bin/sovereign-derp-relay
 
 USER 10001:10001
 ENTRYPOINT ["/bin/sovereign-node"]

@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -30,14 +32,15 @@ func main() {
 	controlURL := config.BindStringFlag(flag.CommandLine, "control-url", "SOVEREIGN_CONTROL_PLANE_URL", "http://127.0.0.1:8443", "SovereignMesh Control Plane URL")
 	enableExit := config.BindBoolFlag(flag.CommandLine, "enable-exit", "SOVEREIGN_ENABLE_EXIT_BRIDGE", false, "Enable sandboxed egress exit node bridge")
 	countryCode := config.BindStringFlag(flag.CommandLine, "country", "SOVEREIGN_COUNTRY_CODE", "US", "ISO Country Code for bridge registration")
+	identityPath := config.BindStringFlag(flag.CommandLine, "identity", "SOVEREIGN_NODE_KEY_PATH", "/var/lib/neronet/node_identity.key", "Path to this node's persistent identity key")
 	flag.Parse()
 
 	log.Printf("[SOVEREIGN-NODE] Initializing SovereignMesh client daemon (%s)...", ClientVersion)
 
-	// Generate node identity keypair
-	keypair, err := crypto.GenerateKeypair()
+	// Load, or create once, this node's identity keypair.
+	keypair, err := loadOrCreateIdentity(*identityPath)
 	if err != nil {
-		log.Fatalf("Failed to generate node identity keypair: %v", err)
+		log.Fatalf("Failed to establish node identity: %v", err)
 	}
 
 	nodeID := control.GenerateNodeID(keypair.PublicKey)
@@ -253,3 +256,60 @@ func main() {
 	_ = httpSrv.Close()
 	fmt.Println("Sovereign node stopped cleanly.")
 }
+
+// loadOrCreateIdentity reads this node's keypair from disk, creating it on first run.
+//
+// The identity used to be generated on every start. A node's id and public key derive
+// from it, so each restart enrolled as a brand new node: the control plane accumulated
+// one dead row per restart, each holding an overlay address that was never released,
+// and none of them could be correlated with the device they actually came from.
+//
+// An identity that changes is not an identity. A path that cannot be written is a
+// fatal error rather than a silent fall back to an ephemeral key, because that would
+// reintroduce the same problem while looking like it worked.
+func loadOrCreateIdentity(path string) (*crypto.Keypair, error) {
+	if path == "" {
+		return nil, errors.New("no identity path configured")
+	}
+
+	raw, err := os.ReadFile(path)
+	if err == nil {
+		if len(raw) != crypto.KeySize {
+			return nil, fmt.Errorf("identity at %s is %d bytes, expected %d", path, len(raw), crypto.KeySize)
+		}
+
+		var priv [crypto.KeySize]byte
+		copy(priv[:], raw)
+
+		pub, dhErr := crypto.DH(priv, curve25519Basepoint)
+		if dhErr != nil {
+			return nil, fmt.Errorf("identity at %s is not a usable key: %w", path, dhErr)
+		}
+
+		log.Printf("[SOVEREIGN-NODE] Loaded identity from %s", path)
+		return &crypto.Keypair{PrivateKey: priv, PublicKey: pub}, nil
+	}
+
+	if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("cannot read identity at %s: %w", path, err)
+	}
+
+	generated, err := crypto.GenerateKeypair()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("cannot create directory for %s: %w", path, err)
+	}
+	if err := os.WriteFile(path, generated.PrivateKey[:], 0o600); err != nil {
+		return nil, fmt.Errorf("cannot write identity to %s: %w", path, err)
+	}
+
+	log.Printf("[SOVEREIGN-NODE] Generated a new identity at %s", path)
+	return generated, nil
+}
+
+// curve25519Basepoint is the generator, used to recover a public key from a stored
+// private one.
+var curve25519Basepoint = [crypto.KeySize]byte{9}
