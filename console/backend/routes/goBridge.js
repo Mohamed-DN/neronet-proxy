@@ -25,10 +25,11 @@ const express = require('express');
 const crypto = require('crypto');
 
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
-const { allocateNextVip } = require('../utils/crypto');
+const { allocateNextVip, normalisePublicKeyHex } = require('../utils/crypto');
 const HeartbeatBuffer = require('../services/HeartbeatBuffer');
 const AclEngine = require('../services/AclEngine');
 const RouteEngine = require('../services/RouteEngine');
+const CircuitEngine = require('../services/CircuitEngine');
 const config = require('../config/env');
 const logger = require('../utils/logger');
 
@@ -241,8 +242,12 @@ router.post('/register', async (req, res) => {
       relays: [],
       lease_expiry_utc: Math.floor(Date.now() / 1000) + 86400,
       network_psk_hex: '',
-      policy_epoch: 0,
-      route_epoch: 0
+      // Real epochs, not zero. The node stores these and compares later heartbeats
+      // against them; returning 0 here made `hbResp.PolicyEpoch > policyEpoch`
+      // permanently false, so a running node never learned that an ACL rule had
+      // changed. Policy delivery worked at enrolment and never again.
+      policy_epoch: await AclEngine.getEpoch('acl'),
+      route_epoch: await AclEngine.getEpoch('routes')
     });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Registration failed: ${err.message}`);
@@ -335,8 +340,9 @@ router.post('/heartbeat', async (req, res) => {
       revoked_keys: [],
       is_quarantined: quarantined,
       quarantine_reason: quarantineReason,
-      policy_epoch: 0,
-      route_epoch: 0
+      // This is the only channel that tells a running node its policy is stale.
+      policy_epoch: await AclEngine.getEpoch('acl'),
+      route_epoch: await AclEngine.getEpoch('routes')
     });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Heartbeat failed: ${err.message}`);
@@ -400,9 +406,15 @@ router.post('/discover', async (req, res) => {
 
     const rows = await runQuery(pgSql, [...params, limit], sqliteSql, [...params, limit]);
 
-    const bridges = rows.map((row, index) => ({
+    // The nodes table holds hex from Go nodes and base64 from console-minted keys.
+    // The wire field is public_key_hex, so the base64 form must be converted or the
+    // node receives a key it cannot decode.
+    const bridges = rows
+      .map((row) => ({ ...row, public_key_hex: normalisePublicKeyHex(row.public_key) }))
+      .filter((row) => row.public_key_hex !== null)
+      .map((row, index) => ({
       node_id: row.id,
-      public_key_hex: row.public_key,
+      public_key_hex: row.public_key_hex,
       overlay_ipv4: row.overlay_ipv4,
       endpoints: parseEndpoints(row.endpoints),
       capability: {
@@ -510,6 +522,37 @@ router.post('/sync-routes', async (req, res) => {
     return res.json({ new_route_epoch: epoch, routes: await RouteEngine.routesFor(nodeId) });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Route sync failed: ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /v4/control/circuit
+//
+// Onion circuit path selection. pkg/routing.Build3HopCircuit has always been able to
+// seal a cell for three hops; this is the control plane telling a node which three.
+// Without it the differentiating feature was unreachable from a deployment.
+router.post('/circuit', async (req, res) => {
+  try {
+    const auth = checkRegistrationToken(req);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    // CircuitRequest carries no node id, so the requester is identified only when a
+    // caller supplies one. Without it the requester cannot be excluded from its own
+    // path -- worth knowing, and worth adding to the protocol.
+    const circuit = await CircuitEngine.buildCircuit({
+      requesterNodeId: String(req.body.node_id || '').trim() || null,
+      targetCountry: req.body.target_country,
+      hopCount: req.body.hop_count
+    });
+
+    return res.json(circuit);
+  } catch (err) {
+    if (err instanceof CircuitEngine.CircuitError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    logger.error(`[GO-BRIDGE] Circuit build failed: ${err.message}`);
     return res.status(500).json({ error: err.message });
   }
 });

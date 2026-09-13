@@ -33,6 +33,17 @@ function buildSslConfig() {
 function resolvePostgresPassword() {
   const value = process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD;
   if (value && value.length > 0) {
+    // Being set is not enough. The JWT and admin secrets are checked against the
+    // hashes of every default this repository has shipped; this one was not, so a
+    // deployment could pass the published database password and boot in production
+    // with no error at all.
+    if (config.IS_PRODUCTION && config.isPublishedDefault(value)) {
+      throw new Error(
+        'Refusing to start: PGPASSWORD (or POSTGRES_PASSWORD) is set to a value published in this repository. ' +
+        'Rotate it with ALTER USER — changing the environment variable alone does not rotate a password already ' +
+        'written into the database volume.'
+      );
+    }
     return value;
   }
 

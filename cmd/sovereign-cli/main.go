@@ -121,22 +121,38 @@ func main() {
 			os.Exit(1)
 		}
 
-		fmt.Printf("\n3-Hop Onion Obfuscation Circuit (ID: 0x%08X, Exit: %s):\n\n", circ.CircuitID, country)
+		fmt.Printf("\n%d-hop onion path (ID: 0x%08X, exit country: %s):\n\n", len(circ.Hops), circ.CircuitID, country)
 		for _, hop := range circ.Hops {
+			// Hop indices are zero-based. The previous labels tested for 1 and 3, so
+			// every hop was named wrongly -- the exit was printed as "Intermediate".
 			role := "Intermediate"
-			if hop.HopIndex == 1 {
-				role = "Entry Relay"
-			} else if hop.HopIndex == 3 {
-				role = "Exit Bridge"
+			switch hop.HopIndex {
+			case 0:
+				role = "Entry relay"
+			case len(circ.Hops) - 1:
+				role = "Exit bridge"
 			}
-			fmt.Printf(" [Hop %d] %-14s | Node ID: %-16s | Key: %s...\n",
-				hop.HopIndex,
-				role,
-				hop.NodeID,
-				hop.PublicKeyHex[:16],
+
+			keyPrefix := hop.PublicKeyHex
+			if len(keyPrefix) > 16 {
+				keyPrefix = keyPrefix[:16]
+			}
+
+			fmt.Printf(" [Hop %d] %-13s | Node ID: %-20s | Key: %s...\n",
+				hop.HopIndex, role, hop.NodeID, keyPrefix,
 			)
 		}
-		fmt.Println("\nCircuit Status: ESTABLISHED (Zero-Knowledge Layered Isolation)")
+
+		// This is a selected path, not an established circuit: no handshake has run
+		// and no cell has been sent. Saying "ESTABLISHED" here claimed otherwise.
+		fmt.Printf("\nPath selected. Valid until %s.\n",
+			time.Unix(int64(circ.ExpiryTimestamp), 0).Format(time.RFC3339))
+
+		if circ.Diversity.DistinctOperators && circ.Diversity.DistinctNetworks {
+			fmt.Println("Independence: every hop has a different operator and network.")
+		} else {
+			fmt.Printf("Independence: LIMITED — %s\n", circ.Diversity.Note)
+		}
 
 	case "keygen":
 		kp, err := crypto.GenerateKeypair()

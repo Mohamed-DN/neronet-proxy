@@ -1,4 +1,8 @@
 const jwt = require('jsonwebtoken');
+
+// Pinning the algorithm keeps a token from choosing its own verification method.
+// jsonwebtoken defends against the classic 'alg: none' forgery, but an unpinned
+// verifier still accepts any algorithm the secret happens to satisfy.
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config/env');
 const { isTokenBlacklisted } = require('../db/valkey');
@@ -29,7 +33,7 @@ function signRefreshToken(payload, expiresIn = config.REFRESH_EXPIRES_IN || '7d'
 
 function verifyToken(token) {
   try {
-    return jwt.verify(token, config.JWT_SECRET);
+    return jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
   } catch (err) {
     return null;
   }
@@ -37,7 +41,7 @@ function verifyToken(token) {
 
 function verifyRefreshToken(token) {
   try {
-    return jwt.verify(token, config.REFRESH_SECRET);
+    return jwt.verify(token, config.REFRESH_SECRET, { algorithms: ['HS256'] });
   } catch (err) {
     return null;
   }
@@ -81,7 +85,7 @@ async function authenticateToken(req, res, next) {
 
   // 3. Cryptographic JWT verification
   try {
-    const decoded = jwt.verify(token, config.JWT_SECRET);
+    const decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
     req.user = {
       id: decoded.sub || decoded.id,
       username: decoded.username,

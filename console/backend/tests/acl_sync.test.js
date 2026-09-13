@@ -216,6 +216,47 @@ describe('ACL policy delivery', () => {
     assert.ok(after > before, 'a new node did not invalidate existing policies');
   });
 
+  // The epoch a node holds only ever changes through register and heartbeat. Both
+  // returned a hardcoded 0, so cmd/sovereign-node's `hbResp.PolicyEpoch > policyEpoch`
+  // was permanently false and a running node never learned a rule had changed --
+  // policy delivery worked once, at enrolment, and never again.
+  //
+  // The earlier tests missed this because they called sync-acls directly instead of
+  // going through the path a node actually uses.
+  it('reports the current epoch on registration', async () => {
+    await AclEngine.bumpEpoch('acl');
+    const epoch = await AclEngine.getEpoch('acl');
+
+    const res = await request(app)
+      .post('/v4/control/register')
+      .send(registerBody('e'.repeat(64)));
+
+    assert.strictEqual(res.body.policy_epoch, epoch + 1, 'registration itself bumps the epoch, and must report the new one');
+    assert.ok(res.body.route_epoch >= 1);
+  });
+
+  it('reports a raised epoch on heartbeat so a running node re-syncs', async () => {
+    const reg = await request(app).post('/v4/control/register').send(registerBody('f'.repeat(64)));
+    const held = reg.body.policy_epoch;
+
+    const before = await request(app)
+      .post('/v4/control/heartbeat')
+      .send({ node_id: reg.body.assigned_node_id, cpu_usage_pct: 1 });
+
+    assert.strictEqual(before.body.policy_epoch, held, 'nothing changed, so the node must not re-sync');
+
+    await AclEngine.createRule({ source_cidr: '0.0.0.0/0', destination_cidr: '0.0.0.0/0' });
+
+    const after = await request(app)
+      .post('/v4/control/heartbeat')
+      .send({ node_id: reg.body.assigned_node_id, cpu_usage_pct: 1 });
+
+    assert.ok(
+      after.body.policy_epoch > held,
+      `heartbeat reported ${after.body.policy_epoch}, node holds ${held}: a rule change would never reach it`
+    );
+  });
+
   it('refuses an unknown node', async () => {
     const res = await sync('pk_0000000000000000');
     assert.strictEqual(res.status, 404);

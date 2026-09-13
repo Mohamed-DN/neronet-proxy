@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	SprayProbeMagic = []byte("SVRN_DISCO_SPRAY_V4")
-	SprayAckMagic   = []byte("SVRN_DISCO_ACK_V4")
+	SprayProbeMagic    = []byte("SVRN_DISCO_SPRAY_V4")
+	SprayAckMagic      = []byte("SVRN_DISCO_ACK_V4")
 	ErrHolePunchFailed = errors.New("hole punching timed out: no bidirectional path established")
 )
 
@@ -144,6 +144,11 @@ func ExecuteBirthdaySpray(
 	case <-time.After(500 * time.Millisecond):
 	case <-ctx.Done():
 	}
+
+	// Signal the reader to stop. Returning without this left it blocked on the socket
+	// for the lifetime of the process, holding memory and consuming inbound packets
+	// that belonged to whatever used the port next.
+	close(done)
 
 	return nil, ErrHolePunchFailed
 }

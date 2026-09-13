@@ -257,10 +257,26 @@ type HopInfo struct {
 	Endpoints    []EndpointDesc `json:"endpoints"`
 }
 
+// CircuitDiversity states how independent a selected path actually is.
+//
+// A three-hop circuit whose hops share an operator or an autonomous system protects
+// nothing against that party: they observe entry and exit and can correlate them. A
+// self-hosted mesh has one operator by definition and onion routing still hides its
+// traffic from network observers and from the destination -- so the path is built,
+// and this says what it is. A caller must never believe it has anonymity it does not.
+type CircuitDiversity struct {
+	DistinctOperators bool   `json:"distinct_operators"`
+	DistinctNetworks  bool   `json:"distinct_networks"`
+	OperatorCount     int    `json:"operator_count"`
+	NetworkCount      int    `json:"network_count"`
+	Note              string `json:"note"`
+}
+
 type CircuitResponse struct {
-	CircuitID       uint32    `json:"circuit_id"`
-	Hops            []HopInfo `json:"hops"`
-	ExpiryTimestamp uint64    `json:"expiry_timestamp"`
+	CircuitID       uint32           `json:"circuit_id"`
+	Hops            []HopInfo        `json:"hops"`
+	ExpiryTimestamp uint64           `json:"expiry_timestamp"`
+	Diversity       CircuitDiversity `json:"diversity"`
 }
 
 type SyncRequest struct {

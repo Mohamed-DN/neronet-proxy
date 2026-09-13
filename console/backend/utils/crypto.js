@@ -216,6 +216,37 @@ function allocateVipFromRows(existingVips = []) {
   throw err;
 }
 
+/**
+ * Normalise a stored public key to the hex encoding the wire protocol names.
+ *
+ * The nodes table holds two encodings in one column. Go nodes register with 64 hex
+ * characters; keys minted by the console are base64 of the same 32 bytes, the
+ * WireGuard convention. Both are valid Curve25519 keys, but the protocol field is
+ * public_key_hex, so handing a node the base64 form produces a key it cannot decode
+ * and a handshake that fails for a reason nothing explains.
+ *
+ * Returns null for anything that is not a 32-byte key in either encoding, so a
+ * placeholder left by an older bridge is rejected at selection rather than at the
+ * first Diffie-Hellman.
+ */
+function normalisePublicKeyHex(value) {
+  const text = String(value || '').trim();
+
+  if (/^[0-9a-f]{64}$/i.test(text)) {
+    return text.toLowerCase();
+  }
+
+  // 32 bytes base64 is 44 characters with one '=' of padding.
+  if (/^[A-Za-z0-9+/]{43}=$/.test(text)) {
+    const raw = Buffer.from(text, 'base64');
+    if (raw.length === 32) {
+      return raw.toString('hex');
+    }
+  }
+
+  return null;
+}
+
 /** Map an allocation offset onto the overlay address pair it represents. */
 function vipFromOffset(offset) {
   const o2 = 64 + Math.floor(offset / 65536);
@@ -315,6 +346,7 @@ async function allocateNextVip(dbOrPool) {
 }
 
 module.exports = {
+  normalisePublicKeyHex,
   vipFromOffset,
   generateCurve25519Keypair,
   buildWireGuardConfig,

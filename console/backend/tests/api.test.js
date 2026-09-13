@@ -149,11 +149,31 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('POST /api/auth/refresh should return refreshed JWT token', async () => {
+    // Log in to obtain a real refresh token. This test used to send the access
+    // token, which passed only because /refresh accepted either -- the defect it
+    // was supposed to be exercising.
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'alice_homelab', password: 'Password123!' });
+
+    assert.ok(login.body.refreshToken, 'login must issue a refresh token');
+
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: login.body.refreshToken });
+
+    assert.strictEqual(res.status, 200);
+    assert(res.body.token);
+  });
+
+  test('POST /api/auth/refresh rejects an access token', async () => {
+    // Accepting one would let anyone holding a 15-minute token exchange it for
+    // another indefinitely, which removes the reason access tokens are short-lived.
     const res = await request(app)
       .post('/api/auth/refresh')
       .set('Authorization', `Bearer ${regularUserToken}`);
-    assert.strictEqual(res.status, 200);
-    assert(res.body.token);
+
+    assert.strictEqual(res.status, 401);
   });
 
   test('POST /api/auth/logout should revoke token', async () => {

@@ -243,7 +243,10 @@ router.post('/refresh', async (req, res, next) => {
       return res.status(401).json({ error: 'Token has been revoked' });
     }
 
-    const decoded = verifyToken(token) || verifyRefreshToken(token);
+    // A refresh token only. Accepting an access token here let anyone holding a
+    // 15-minute token exchange it for another indefinitely, which removes the reason
+    // access tokens are short-lived.
+    const decoded = verifyRefreshToken(token);
     if (!decoded) {
       return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }

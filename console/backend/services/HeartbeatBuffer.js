@@ -144,23 +144,41 @@ async function flush() {
         break;
       }
 
+      // Read only. Deleting in the same transaction discarded the buffered counters
+      // before the database write was known to have succeeded, so a lock timeout or
+      // a dropped connection destroyed the telemetry it was meant to persist.
       const multi = client.multi();
       for (const id of nodeIds) {
         multi.hgetall(nodeKey(id));
-        multi.del(nodeKey(id));
       }
 
       const results = await multi.exec();
 
       const updates = [];
       nodeIds.forEach((id, index) => {
-        const [err, value] = results[index * 2];
+        const [err, value] = results[index];
         if (!err && value && Object.keys(value).length > 0) {
           updates.push({ nodeId: id, metrics: value });
         }
       });
 
-      await persist(updates);
+      try {
+        await persist(updates);
+      } catch (err) {
+        // Put the work back so the next flush retries it, instead of losing it.
+        if (nodeIds.length > 0) {
+          await client.sadd(PENDING_SET, ...nodeIds);
+        }
+        throw err;
+      }
+
+      // Only now is the data safely in the database.
+      const cleanup = client.multi();
+      for (const id of nodeIds) {
+        cleanup.del(nodeKey(id));
+      }
+      await cleanup.exec();
+
       flushed += updates.length;
 
       if (nodeIds.length < FLUSH_BATCH) {
