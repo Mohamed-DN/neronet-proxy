@@ -247,8 +247,23 @@ Interface without implementation. The console presents all three as active.
 Effort belongs in NeroNuke, the dead man's switch, the warrant canary and onion
 routing, where nothing comparable exists.
 
-Cloud PC and App Bundles remain under evaluation. All three must be marked in the UI
-as not implemented until they are.
+NeroDrop has now been removed from the console's navigation. Its routes were never
+ported off SQLite, so on a PostgreSQL deployment — the production configuration —
+the page answered 500 and the client substituted fixture transfers, presenting a
+history of transfers that had never occurred. The component and the routes remain in
+the tree; reinstating the menu entry requires porting `routes/nerodrop.js` and
+building the WebRTC half that does not exist.
+
+App Bundles is dead code on both sides. `api.apps` in the frontend has no callers,
+and the menu entry labelled "Sovereign Cloud PC" renders `components/AppBundles.jsx`,
+which despite its filename calls `/cloud-pc` and works. `routes/apps.js` is likewise
+SQLite-only and unreachable; it would 500 on PostgreSQL if anything called it. It
+claims more than that if it is ever revived: `POST /apps/:id/start` sets
+`status = 'running'` in a table and starts no container, then answers success.
+
+Cloud PC works and stays. Its instances still point at `wss://signal.internal.
+darknero.com`, which does not resolve, so streaming cannot connect — the listing and
+the custom-domain management are real, the session is not.
 
 ---
 

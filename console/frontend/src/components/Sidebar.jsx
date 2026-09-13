@@ -19,7 +19,6 @@ import {
   ChevronDown,
   ChevronRight,
   Monitor,
-  Zap,
   Skull,
   AlertTriangle,
   Shield
@@ -98,8 +97,13 @@ export default function Sidebar({
       key: 'compute',
       title: 'Compute & Storage',
       items: [
-        { id: 'apps', label: 'Sovereign Cloud PC', icon: Monitor, badge: 'WebRTC' },
-        { id: 'nerodrop', label: 'P2P NeroDrop', icon: Zap, highlight: true }
+        { id: 'apps', label: 'Sovereign Cloud PC', icon: Monitor, badge: 'WebRTC' }
+        // P2P NeroDrop was removed from the menu. The decision to shelve it was
+        // taken earlier — file transfer over an existing mesh is a solved problem
+        // and it did not differentiate the product — and its routes were never
+        // ported off SQLite, so on a PostgreSQL deployment the page answered 500
+        // and the console filled it with fixture transfers that had never happened.
+        // The component and its routes are still in the tree; see docs/ROADMAP.md.
       ]
     },
     {
