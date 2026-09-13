@@ -331,6 +331,39 @@ const SQLITE_MIGRATIONS = [
   }
 ];
 
+const SQLITE_MIGRATION_007 = {
+  name: '007_acl_rules',
+  sql: `
+      -- Mirrors migration 007 on the PostgreSQL side.
+      CREATE TABLE IF NOT EXISTS acl_rules (
+          id TEXT PRIMARY KEY,
+          priority INTEGER NOT NULL DEFAULT 100,
+          source_cidr TEXT NOT NULL DEFAULT '0.0.0.0/0',
+          destination_cidr TEXT NOT NULL DEFAULT '0.0.0.0/0',
+          protocol TEXT NOT NULL DEFAULT 'ALL' CHECK (protocol IN ('TCP', 'UDP', 'ICMP', 'ALL')),
+          port_start INTEGER NOT NULL DEFAULT 0,
+          port_end INTEGER NOT NULL DEFAULT 65535,
+          action TEXT NOT NULL DEFAULT 'ACCEPT' CHECK (action IN ('ACCEPT', 'DROP')),
+          description TEXT NOT NULL DEFAULT '',
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_acl_rules_priority ON acl_rules(priority, id);
+      CREATE INDEX IF NOT EXISTS idx_acl_rules_enabled ON acl_rules(enabled);
+
+      CREATE TABLE IF NOT EXISTS mesh_epochs (
+          name TEXT PRIMARY KEY,
+          epoch INTEGER NOT NULL DEFAULT 1,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      INSERT OR IGNORE INTO mesh_epochs (name, epoch) VALUES ('acl', 1);
+      INSERT OR IGNORE INTO mesh_epochs (name, epoch) VALUES ('routes', 1);
+  `
+};
+
 const SQLITE_MIGRATION_006 = {
   name: '006_vip_counter',
   sql: `
@@ -505,7 +538,8 @@ function runSQLiteMigrations(db) {
     ...SQLITE_MIGRATIONS,
     SQLITE_MIGRATION_004,
     SQLITE_MIGRATION_005,
-    SQLITE_MIGRATION_006
+    SQLITE_MIGRATION_006,
+    SQLITE_MIGRATION_007
   ];
 
   for (const migration of migrations) {
@@ -546,6 +580,7 @@ module.exports = {
   SQLITE_MIGRATION_004,
   SQLITE_MIGRATION_005,
   SQLITE_MIGRATION_006,
+  SQLITE_MIGRATION_007,
   runMigrations,
   runPostgresMigrations,
   runSQLiteMigrations,

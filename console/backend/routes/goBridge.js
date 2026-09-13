@@ -27,6 +27,7 @@ const crypto = require('crypto');
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
 const { allocateNextVip } = require('../utils/crypto');
 const HeartbeatBuffer = require('../services/HeartbeatBuffer');
+const AclEngine = require('../services/AclEngine');
 const config = require('../config/env');
 const logger = require('../utils/logger');
 
@@ -222,6 +223,13 @@ router.post('/register', async (req, res) => {
             publicKeyHex, overlayIpv4, overlayIpv6, endpointsJson);
     }
 
+    // Rules expand to one entry per peer, so the compiled policy changes when the
+    // fleet changes, not only when the rules do. Missing this is the subtle failure:
+    // rules stay identical while the peers they expand to do not.
+    if (existing.length === 0) {
+      await AclEngine.bumpEpoch('acl');
+    }
+
     logger.info(`[GO-BRIDGE] Registered ${nodeId} (${role}) with overlay ${overlayIpv4} / ${overlayIpv6}`);
 
     // Field names and shape must match control.RegisterResponse exactly.
@@ -415,6 +423,48 @@ router.post('/discover', async (req, res) => {
     return res.json({ bridges });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Discovery failed: ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /v4/control/sync-acls
+//
+// Policy delivery. pkg/acl compiles and enforces zero-trust policy correctly and was
+// handed nothing, because this endpoint did not exist -- so every rule configured in
+// the console had no effect on any node.
+//
+// The node sends the epoch it currently holds. An unchanged epoch is answered without
+// compiling or transferring a policy: at fleet scale that is the difference between
+// every node pulling a full policy every 15 seconds and almost none of them doing so.
+router.post('/sync-acls', async (req, res) => {
+  try {
+    const auth = checkRegistrationToken(req);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    const nodeId = String(req.body.node_id || '').trim();
+    if (!nodeId) {
+      return res.status(400).json({ error: 'node_id is required' });
+    }
+
+    const currentEpoch = Number(req.body.policy_epoch) || 0;
+    const epoch = await AclEngine.getEpoch('acl');
+
+    if (currentEpoch === epoch) {
+      // Up to date. A null policy tells the client to keep what it has; sending the
+      // same policy again would be a full transfer to say nothing changed.
+      return res.json({ new_policy_epoch: epoch, policy: null });
+    }
+
+    const policy = await AclEngine.compilePolicyFor(nodeId);
+    if (!policy) {
+      return res.status(404).json({ error: `unknown node_id ${nodeId}` });
+    }
+
+    return res.json({ new_policy_epoch: policy.epoch, policy });
+  } catch (err) {
+    logger.error(`[GO-BRIDGE] ACL sync failed: ${err.message}`);
     return res.status(500).json({ error: err.message });
   }
 });
