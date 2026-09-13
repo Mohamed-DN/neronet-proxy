@@ -9,6 +9,7 @@
  */
 
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
+const { COUNTRY_NAMES } = require('../utils/countries');
 const logger = require('../utils/logger');
 
 const CENSORSHIP_BYPASS_COUNTRIES = new Set(['RU', 'EG', 'CN', 'IN']);
@@ -39,11 +40,12 @@ async function listPolicies() {
   if (isPostgres()) {
     const pool = getPgPool();
     const res = await pool.query('SELECT * FROM geofencing_policies ORDER BY country_code ASC');
-    return res.rows;
+    return res.rows.map(withResolvedCountryName);
   } else {
     const db = getDatabase();
     ensureGeofencingSchema(db);
-    return db.prepare('SELECT * FROM geofencing_policies ORDER BY country_code ASC').all();
+    return db.prepare('SELECT * FROM geofencing_policies ORDER BY country_code ASC')
+      .all().map(withResolvedCountryName);
   }
 }
 
@@ -99,7 +101,13 @@ async function createOrUpdatePolicy({ country_code, country_name, action = 'ALLO
     throw err;
   }
 
-  const name = country_name || `Country (${cc})`;
+  // Was `Country (IR)` — a placeholder built from the code and then persisted, so
+  // the console displayed the code twice. The ISO table already exists for the
+  // country column elsewhere. A caller-supplied name still wins, but a stored
+  // placeholder does not: rows written before this are repaired on read.
+  const name = (country_name && !isPlaceholderName(country_name, cc))
+    ? country_name
+    : (COUNTRY_NAMES[cc] || cc);
   const existing = await getPolicyByCountryCode(cc);
   const nowIso = new Date().toISOString();
 
@@ -228,7 +236,28 @@ async function evaluateCountry(countryCode) {
   };
 }
 
+/** True when a stored name is the old `Country (XX)` placeholder for this code. */
+function isPlaceholderName(name, cc) {
+  return String(name).trim() === `Country (${cc})`;
+}
+
+/**
+ * Replaces a persisted placeholder with the real country name.
+ *
+ * Applied on read so existing rows do not need a migration and no row has to be
+ * rewritten to be displayed correctly.
+ */
+function withResolvedCountryName(row) {
+  if (!row) return row;
+  const cc = row.country_code;
+  if (!row.country_name || isPlaceholderName(row.country_name, cc)) {
+    return { ...row, country_name: COUNTRY_NAMES[cc] || cc };
+  }
+  return row;
+}
+
 module.exports = {
+  withResolvedCountryName,
   listPolicies,
   getPolicyById,
   getPolicyByCountryCode,

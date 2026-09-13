@@ -909,10 +909,18 @@ PersistentKeepalive = 25
   },
 
   // Forensic Audit Logs
+  //
+  // Two faults in one line. The path was '/audit', and the server mounts the stats
+  // router there, so GET /api/audit answered with the overview figures — active
+  // nodes, total nodes, connected users. The response was then read for `events`,
+  // which the audit handler does not return either; it returns `audit_logs`. Both
+  // misses fell through to a fixture, so the forensic log displayed fabricated
+  // entries, and went on displaying them throughout the period when the ledger was
+  // recording nothing at all.
   audit: {
-    async list() {
-      const live = await request('/audit');
-      return resolveList('/audit', Array.isArray(live?.events) ? live.events : null, inMemoryAuditLogs);
+    async list({ limit = 200 } = {}) {
+      const live = await request(`/audit/events?limit=${encodeURIComponent(limit)}`);
+      return Array.isArray(live?.audit_logs) ? live.audit_logs : [];
     }
   },
 

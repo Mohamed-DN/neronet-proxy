@@ -344,29 +344,38 @@ router.get('/topology', topologyHandler);
 // 5. Audit Logs / Events
 async function auditLogsHandler(req, res, next) {
   try {
+    // Was a hardcoded 100 with the caller's ?limit ignored, so a console asking for
+    // more silently got a truncated ledger and no indication it had been cut.
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 1000);
+
     let rows = [];
     if (isPostgres()) {
       const pool = getPgPool();
       if (req.user.role === 'super-admin') {
-        const qRes = await pool.query('SELECT * FROM audit_events ORDER BY created_at DESC LIMIT 100');
+        const qRes = await pool.query('SELECT * FROM audit_events ORDER BY created_at DESC LIMIT $1', [limit]);
         rows = qRes.rows;
       } else {
-        const qRes = await pool.query('SELECT * FROM audit_events WHERE actor_user_id = $1 ORDER BY created_at DESC LIMIT 100', [req.user.id]);
+        const qRes = await pool.query('SELECT * FROM audit_events WHERE actor_user_id = $1 ORDER BY created_at DESC LIMIT $2', [req.user.id, limit]);
         rows = qRes.rows;
       }
     } else {
       const db = getDatabase();
       if (req.user.role === 'super-admin') {
-        rows = db.prepare('SELECT * FROM audit_events ORDER BY created_at DESC LIMIT 100').all();
+        rows = db.prepare('SELECT * FROM audit_events ORDER BY created_at DESC LIMIT ?').all(limit);
       } else {
-        rows = db.prepare('SELECT * FROM audit_events WHERE actor_user_id = ? ORDER BY created_at DESC LIMIT 100').all(req.user.id);
+        rows = db.prepare('SELECT * FROM audit_events WHERE actor_user_id = ? ORDER BY created_at DESC LIMIT ?').all(req.user.id, limit);
       }
     }
 
     const logs = rows.map(r => ({
       id: `audit-${r.id.toString().padStart(4, '0')}`,
       timestamp: r.created_at,
+      // The console reads created_at and actor_username, the column names. Both
+      // were renamed on the way out and only the renamed forms were sent, so the
+      // date and actor columns rendered empty.
+      created_at: r.created_at,
       actor: r.actor_username || 'system',
+      actor_username: r.actor_username || 'system',
       actor_user_id: r.actor_user_id,
       action: r.event_type,
       event_type: r.event_type,
@@ -375,12 +384,26 @@ async function auditLogsHandler(req, res, next) {
       status: r.severity === 'error' ? 'failed' : 'success',
       message: r.message,
       ip_address: r.ip_address,
-      details: typeof r.metadata === 'string' ? JSON.parse(r.metadata || '{}') : (r.metadata || r.metadata_json || {})
+      // r.metadata does not exist; the column is metadata_json. Reading the wrong
+      // name first meant the fallback did the work and a JSON string was never
+      // parsed, so details arrived as text where an object was expected.
+      details: parseDetails(r.metadata_json)
     }));
 
     return res.status(200).json({ audit_logs: logs, total: logs.length });
   } catch (err) {
     next(err);
+  }
+}
+
+function parseDetails(value) {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch (err) {
+    // Keep it rather than losing it: an audit record's metadata is evidence.
+    return { unparsed: String(value) };
   }
 }
 
