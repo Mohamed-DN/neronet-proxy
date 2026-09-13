@@ -331,6 +331,14 @@ const SQLITE_MIGRATIONS = [
   }
 ];
 
+const SQLITE_MIGRATION_010 = {
+  name: '010_nodes_fillfactor',
+  // No SQLite equivalent. Fill factor is a PostgreSQL page-packing setting; SQLite
+  // has no HOT update path for it to enable. Registered so the two migration
+  // sequences stay aligned and the numbering does not drift.
+  sql: ''
+};
+
 const SQLITE_MIGRATION_009 = {
   name: '009_key_revocation',
   sql: `
@@ -582,7 +590,8 @@ function runSQLiteMigrations(db) {
     SQLITE_MIGRATION_006,
     SQLITE_MIGRATION_007,
     SQLITE_MIGRATION_008,
-    SQLITE_MIGRATION_009
+    SQLITE_MIGRATION_009,
+    SQLITE_MIGRATION_010
   ];
 
   for (const migration of migrations) {
@@ -626,6 +635,7 @@ module.exports = {
   SQLITE_MIGRATION_007,
   SQLITE_MIGRATION_008,
   SQLITE_MIGRATION_009,
+  SQLITE_MIGRATION_010,
   runMigrations,
   runPostgresMigrations,
   runSQLiteMigrations,
