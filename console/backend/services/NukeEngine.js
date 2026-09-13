@@ -145,6 +145,16 @@ function sendWebhookPing(url) {
  * Executes immediate, irreversible destruction of a single user account and all owned assets.
  */
 async function executeInstantUserDestruction(userId, token = null, actorUsername = 'user') {
+  // Revoke before deleting. Once the rows are gone the keys cannot be looked up, and
+  // every peer that federated with this user would keep routing to devices that no
+  // longer exist.
+  try {
+    const { revokeUserNodes } = require('./RevocationEngine');
+    await revokeUserNodes(userId, { reason: 'user_destroyed' });
+  } catch (err) {
+    logger.error(`Could not revoke keys for ${userId} before destruction: ${err.message}`);
+  }
+
   await ensureTables();
 
   // 1. Blacklist active JWT token immediately

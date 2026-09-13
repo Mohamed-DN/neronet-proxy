@@ -331,6 +331,23 @@ const SQLITE_MIGRATIONS = [
   }
 ];
 
+const SQLITE_MIGRATION_009 = {
+  name: '009_key_revocation',
+  sql: `
+      -- Mirrors migration 009 on the PostgreSQL side.
+      CREATE TABLE IF NOT EXISTS revoked_keys (
+          public_key_hex TEXT PRIMARY KEY,
+          node_id TEXT,
+          reason TEXT NOT NULL DEFAULT 'manual',
+          revoked_by TEXT,
+          revoked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          expires_at DATETIME NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_revoked_keys_expiry ON revoked_keys(expires_at);
+  `
+};
+
 const SQLITE_MIGRATION_008 = {
   name: '008_network_routes',
   sql: `
@@ -564,7 +581,8 @@ function runSQLiteMigrations(db) {
     SQLITE_MIGRATION_005,
     SQLITE_MIGRATION_006,
     SQLITE_MIGRATION_007,
-    SQLITE_MIGRATION_008
+    SQLITE_MIGRATION_008,
+    SQLITE_MIGRATION_009
   ];
 
   for (const migration of migrations) {
@@ -607,6 +625,7 @@ module.exports = {
   SQLITE_MIGRATION_006,
   SQLITE_MIGRATION_007,
   SQLITE_MIGRATION_008,
+  SQLITE_MIGRATION_009,
   runMigrations,
   runPostgresMigrations,
   runSQLiteMigrations,

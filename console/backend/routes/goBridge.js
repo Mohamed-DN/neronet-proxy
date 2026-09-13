@@ -30,6 +30,7 @@ const HeartbeatBuffer = require('../services/HeartbeatBuffer');
 const AclEngine = require('../services/AclEngine');
 const RouteEngine = require('../services/RouteEngine');
 const CircuitEngine = require('../services/CircuitEngine');
+const RevocationEngine = require('../services/RevocationEngine');
 const config = require('../config/env');
 const logger = require('../utils/logger');
 
@@ -337,7 +338,9 @@ router.post('/heartbeat', async (req, res) => {
       acknowledged: true,
       force_rekey: false,
       drain_and_exit: false,
-      revoked_keys: [],
+      // The only channel that reaches a running node. It was always empty, so
+      // revoking a peering agreement changed a database row and left the tunnel up.
+      revoked_keys: await RevocationEngine.activeRevocations(),
       is_quarantined: quarantined,
       quarantine_reason: quarantineReason,
       // This is the only channel that tells a running node its policy is stale.

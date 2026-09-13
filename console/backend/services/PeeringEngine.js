@@ -599,6 +599,22 @@ async function revokePeeringAgreement(peeringId, actor) {
     payload: { peering_id: peeringId }
   };
   publishTopologyEvent('neronet:topology:events', eventPayload);
+  // Withdraw the peer's devices from the data plane, not only from the database.
+  // Removing the row does not close an established tunnel, so without this the
+  // devices shared under this agreement stay reachable after it is revoked.
+  try {
+    const imported = parseJson(agreement && agreement.imported_nodes, []);
+    const importedIds = imported.map((n) => n && n.id).filter(Boolean);
+
+    if (importedIds.length > 0) {
+      const { revokeNodeKeys } = require('./RevocationEngine');
+      await revokeNodeKeys(importedIds, { reason: 'peering_revoked', actorId: actor && actor.id });
+    }
+  } catch (err) {
+    logger.error(`Peering ${peeringId} revoked in the database but key revocation failed: ${err.message}`);
+    throw err;
+  }
+
   broadcastNodeEvent('peering:revoked', eventPayload.payload);
 
   return { success: true, message: 'Peering agreement revoked', peering_id: peeringId };

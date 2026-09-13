@@ -130,6 +130,10 @@ func main() {
 			var policyEpoch uint64 = regResp.PolicyEpoch
 			var routeEpoch uint64 = regResp.RouteEpoch
 
+			// Keys this node must stop talking to. Kept so a repeated delivery does
+			// not trigger a re-sync on every heartbeat.
+			revokedPeers := make(map[string]bool)
+
 			for {
 				select {
 				case <-ticker.C:
@@ -172,6 +176,35 @@ func main() {
 
 					if !hbResp.Acknowledged {
 						log.Printf("[SOVEREIGN-NODE] WARNING: control plane did not acknowledge heartbeat for %s", nodeID)
+					}
+
+					// Revoked keys. The control plane has always carried this field and
+					// nothing read it, so a revocation reached the database and the
+					// console and never the data plane: the tunnel stayed up and the
+					// withdrawn device stayed reachable.
+					//
+					// Applying the same revocation twice is harmless, which is why the
+					// control plane sends a window rather than a per-node cursor.
+					if len(hbResp.RevokedKeys) > 0 {
+						newlyRevoked := 0
+						for _, key := range hbResp.RevokedKeys {
+							if !revokedPeers[key] {
+								revokedPeers[key] = true
+								newlyRevoked++
+								log.Printf("[SOVEREIGN-NODE] Peer key revoked: %.16s...", key)
+							}
+						}
+
+						if newlyRevoked > 0 {
+							// Force a policy and route re-sync. The control plane already
+							// excludes revoked peers when it compiles, so pulling fresh
+							// state is what actually removes them here -- and it reuses a
+							// path that is already tested rather than mutating the active
+							// policy in place.
+							log.Printf("[SOVEREIGN-NODE] %d peer key(s) revoked, re-syncing policy and routes", newlyRevoked)
+							policyEpoch = 0
+							routeEpoch = 0
+						}
 					}
 
 					if hbResp.IsQuarantined {
