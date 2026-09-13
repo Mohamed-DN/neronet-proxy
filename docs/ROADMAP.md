@@ -186,7 +186,27 @@ The mesh identity is persisted at `$SOVEREIGN_DATA_DIR/peering_identity.pem`, mo
 importing the peer's real ones. A node exchange protocol between control planes is
 required.
 
-### 4.3 Revocation — required, not implemented
+### 4.3 Exit nodes offered to third parties
+
+Operator diversity is the one property a single owner cannot provide for themselves.
+A fleet of a thousand machines across many networks has full network diversity and
+none of operator diversity: strong against an ISP or a destination, weak against
+anyone able to compel that operator. Third-party exit nodes are the only source of
+the missing property, which makes them a security feature rather than a capacity one.
+
+Three things need designing before offering them:
+
+- **Abuse handling.** Whoever runs an exit node receives the complaints for traffic
+  leaving through it. This is the daily reality of Tor exit operators and the reason
+  most people will not run one. An operator must be able to choose what exits through
+  their node — port and destination policy — and that choice must be enforced at the
+  exit rather than requested politely.
+- **Per-exit rate limits**, so one node cannot be used to saturate another's link.
+- **Accountability without deanonymisation.** An exit operator needs enough to answer
+  a complaint without being able to identify the originating user, which is the same
+  constraint Tor operates under.
+
+### 4.4 Revocation — required, not implemented
 
 The network owner must be able to withdraw a device they shared. Three cases, none of
 which currently drop anything:
@@ -334,6 +354,7 @@ Migration `007_remove_tiering` after every code reference is removed, not before
 |---|---|---|---|
 | 0 | 2–3 weeks | Rate limiting, security headers, bounded lists, O(1) VIP allocation | done — `71cb108` |
 | 0b | — | Peering signature verification, tenant isolation, unprivileged containers | done — `460eb6f`, `e71296b` |
+| 0c | — | The four missing control plane endpoints: discovery, ACL delivery, subnet routes, onion circuits | done — `9a13e20`, `9228211`, `8bc7870`, `0b9315c` |
 | 1 | 1–2 months | State out of process, HA with quorum and fencing, one database backend | in progress |
 | 2 | 2–3 months | Rosenpass, external audit, reproducible builds, threat model | open |
 | 3 | 3–4 months | OIDC, one-command install, one mobile client, internal DNS, federation revocation | open |
