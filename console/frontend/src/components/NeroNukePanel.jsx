@@ -569,7 +569,6 @@ export default function NeroNukePanel({ nukeArmed, nukeScheduledAt, onArmNuke, o
               <ul className="space-y-2 text-slate-400 text-[11px] list-disc list-inside">
                 <li>PostgreSQL rows are purged with hard deletes (no soft-delete or tombstones).</li>
                 <li>Curve25519 clamped private/public key pairs are wiped from server memory.</li>
-                <li>P2P NeroDrop transmission buffers are cryptographically shredded.</li>
                 <li>Active JWT bearer tokens and refresh secrets are blacklisted in Valkey.</li>
               </ul>
             </div>

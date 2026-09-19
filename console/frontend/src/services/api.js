@@ -13,7 +13,6 @@ import {
   MOCK_TIMESERIES,
   MOCK_GEO_MATRIX,
   MOCK_ACL_RULES,
-  MOCK_NERODROP_HISTORY,
   MOCK_PEERING_AGREEMENTS,
   MOCK_RISK_EVENTS,
   MOCK_GEOFENCING_POLICIES,
@@ -87,7 +86,6 @@ let inMemoryUsers = [...MOCK_USERS];
 let inMemoryApps = [...MOCK_APP_BUNDLES];
 let inMemoryAuditLogs = [...MOCK_AUDIT_LOGS];
 let inMemoryAclRules = [...MOCK_ACL_RULES];
-let inMemoryNeroDropHistory = [...MOCK_NERODROP_HISTORY];
 let inMemoryPeering = [...MOCK_PEERING_AGREEMENTS];
 let inMemoryRiskEvents = [...MOCK_RISK_EVENTS];
 let inMemoryGeoPolicies = [...MOCK_GEOFENCING_POLICIES];
@@ -858,57 +856,6 @@ PersistentKeepalive = 25
         json_profile: jsonProfile,
         qrcode_data_url: qrCodeUrl
       };
-    }
-  },
-
-  // NeroDrop P2P File Transfer
-  nerodrop: {
-    async createSession(sessionData) {
-      const live = await request('/nerodrop/session', {
-        method: 'POST',
-        body: JSON.stringify(sessionData)
-      });
-      if (live) return live;
-
-      const sessionId = `drop_${Math.random().toString(36).substring(2, 10)}`;
-      const chunkSize = 65536; // 64KB chunks
-      const totalChunks = Math.ceil(sessionData.file_size_bytes / chunkSize);
-
-      return {
-        session_id: sessionId,
-        status: 'ready',
-        chunk_size_bytes: chunkSize,
-        total_chunks: totalChunks,
-        blake3_hash: sessionData.blake3_hash,
-        webrtc_signal: {
-          sdp_type: 'offer',
-          dtls_fingerprint: 'SHA-256 89:3B:4E:...:9A',
-          ice_candidates: ['candidate:1 1 UDP 2130706431 100.64.0.10 54321 typ host']
-        }
-      };
-    },
-
-    async listHistory() {
-      return inMemoryNeroDropHistory;
-    },
-
-    async recordTransfer(transfer) {
-      inMemoryNeroDropHistory.unshift(transfer);
-      inMemoryAuditLogs.unshift({
-        id: Date.now(),
-        event_type: 'NERODROP_SESSION',
-        severity: 'info',
-        actor_user_id: 'usr_alice_01',
-        actor_username: 'alice_dev',
-        target_id: transfer.target_node_name,
-        target_type: 'file_transfer',
-        message: `P2P NeroDrop completed: '${transfer.file_name}' (${(transfer.file_size_bytes / 1024 / 1024).toFixed(2)} MB)`,
-        ip_address: '100.64.0.10',
-        user_agent: 'NeroNet-Client/4.0.0',
-        metadata_json: JSON.stringify(transfer),
-        created_at: new Date().toISOString()
-      });
-      return { success: true };
     }
   },
 

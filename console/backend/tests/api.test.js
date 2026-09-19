@@ -30,7 +30,6 @@ let regularUserToken = '';
 let regularUserId = '';
 let createdNodeId = '';
 let createdAppId = '';
-let createdDropSessionId = '';
 let createdShareLinkId = '';
 let createdShareToken = '';
 
@@ -476,42 +475,19 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     assert.strictEqual(res.body.is_revoked, true);
   });
 
-  // 7. NeroDrop P2P File Transfer Signaling
-  test('POST /api/nerodrop/session should initiate P2P file transfer session', async () => {
+  // NeroDrop was removed. Its routes answered 500 on PostgreSQL and 201 with a
+  // fabricated SDP on SQLite; the mount is gone and the paths fall through to 404.
+  test('GET /api/nerodrop/transfers is not routed', async () => {
+    const res = await request(app).get('/api/nerodrop/transfers').set('Authorization', `Bearer ${regularUserToken}`);
+    assert.strictEqual(res.status, 404);
+  });
+
+  test('POST /api/nerodrop/session is not routed', async () => {
     const res = await request(app)
       .post('/api/nerodrop/session')
       .set('Authorization', `Bearer ${regularUserToken}`)
-      .send({
-        target_node_id: createdNodeId,
-        file_name: 'production_database_backup.tar.gz',
-        file_size_bytes: 104857600
-      });
-    assert.strictEqual(res.status, 201);
-    assert(res.body.session_id);
-    assert.strictEqual(res.body.status, 'ready');
-    assert(res.body.webrtc_signal.sdp);
-    createdDropSessionId = res.body.session_id;
-  });
-
-  test('PUT /api/nerodrop/transfers/:id/progress should update chunk progress', async () => {
-    const res = await request(app)
-      .put(`/api/nerodrop/transfers/${createdDropSessionId}/progress`)
-      .set('Authorization', `Bearer ${regularUserToken}`)
-      .send({
-        transferred_chunks: 800,
-        bytes_transferred: 52428800,
-        status: 'transferring'
-      });
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.body.session.transferred_chunks, 800);
-  });
-
-  test('POST /api/nerodrop/transfers/:id/cancel should cancel transfer session', async () => {
-    const res = await request(app)
-      .post(`/api/nerodrop/transfers/${createdDropSessionId}/cancel`)
-      .set('Authorization', `Bearer ${regularUserToken}`);
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.body.status, 'cancelled');
+      .send({ target_node_id: createdNodeId, file_name: 'x.bin', file_size_bytes: 1 });
+    assert.strictEqual(res.status, 404);
   });
 
   // 8. Stats, Bandwidth, Topology & Audit Logs

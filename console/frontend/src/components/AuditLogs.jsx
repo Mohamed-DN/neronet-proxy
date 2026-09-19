@@ -118,8 +118,8 @@ export default function AuditLogs() {
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time telemetry stream capturing authentication, cryptographic handshakes, posture violations, and
-            NeroDrop sessions.
+            Real-time telemetry stream capturing authentication, cryptographic handshakes, posture violations, and node
+            lifecycle events.
           </p>
         </div>
 

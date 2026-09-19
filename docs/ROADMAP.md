@@ -261,12 +261,11 @@ The third is the product.
 Effort belongs in NeroNuke, the dead man's switch, the warrant canary and onion
 routing, where nothing comparable exists.
 
-NeroDrop has now been removed from the console's navigation. Its routes were never
-ported off SQLite, so on a PostgreSQL deployment — the production configuration —
-the page answered 500 and the client substituted fixture transfers, presenting a
-history of transfers that had never occurred. The component and the routes remain in
-the tree; reinstating the menu entry requires porting `routes/nerodrop.js` and
-building the WebRTC half that does not exist.
+NeroDrop is deleted (D8). Its routes were never ported off SQLite, so on a PostgreSQL
+deployment, the production configuration, the page answered 500 and the client
+substituted fixture transfers, presenting a history of transfers that had never
+occurred. The component, the routes, the client methods and the fixtures are removed;
+the `nerodrop_sessions` table is dropped in WP-104.
 
 App Bundles is dead code on both sides. `api.apps` in the frontend has no callers,
 and the menu entry labelled "Sovereign Cloud PC" renders `components/AppBundles.jsx`,

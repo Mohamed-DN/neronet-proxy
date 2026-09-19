@@ -1998,19 +1998,6 @@ export const MOCK_ACL_RULES = [
   }
 ];
 
-export const MOCK_NERODROP_HISTORY = [
-  {
-    id: 'drop_hist_001',
-    file_name: 'prod_k8s_manifest_v4.tar.gz',
-    file_size_bytes: 4194304,
-    source_node_name: 'relay-gb-ds1',
-    target_node_name: 'relay-us-ds4',
-    blake3_hash: '3b9a7c4e...8f12',
-    status: 'completed',
-    completed_at: new Date(Date.now() - 3600000).toISOString()
-  }
-];
-
 export const MOCK_PEERING_AGREEMENTS = [
   {
     id: 'peer_ag_001',

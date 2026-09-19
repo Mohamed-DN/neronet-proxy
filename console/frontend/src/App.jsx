@@ -7,7 +7,6 @@ import Overview from './components/Overview';
 import Topology3D from './components/Topology3D';
 import NodeMatrix from './components/NodeMatrix';
 import NodeActions from './components/NodeActions';
-import NeroDrop from './components/NeroDrop';
 import UserManagement from './components/UserManagement';
 import AppBundles from './components/AppBundles';
 import PeeringManagement from './components/PeeringManagement';
@@ -313,8 +312,6 @@ function MainConsole() {
         return <GeoFencingMap />;
       case 'apps':
         return <AppBundles />;
-      case 'nerodrop':
-        return <NeroDrop />;
       case 'risk':
         return <BehavioralRiskDashboard onSelectNode={(node) => setSelectedNode(node)} />;
       case 'acls':

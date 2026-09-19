@@ -212,11 +212,6 @@ export default function NodeActions({ node, isOpen, onClose, onNodeUpdated, onNo
 
         {/* Drawer Content */}
         <div className="p-5 space-y-5 flex-1">
-          {/* A "Send File via NeroDrop — Direct encrypted P2P transfer (64KB
-              BLAKE3)" action sat here. NeroDrop is shelved and removed from the
-              navigation, and BLAKE3 is not a dependency of this project; the
-              button opened a transfer that could not start. */}
-
           {/* Identity & Crypto Card */}
           <div className="p-4 rounded-xl bg-dark-canvas border border-dark-border space-y-3">
             <div className="text-xs font-semibold text-slate-300 flex items-center justify-between">
