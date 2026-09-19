@@ -22,17 +22,17 @@ const (
 
 // NetworkPath represents an individual candidate route to a peer
 type NetworkPath struct {
-	ID             string        `json:"id"`
-	Type           PathType      `json:"type"`
-	RemoteAddr     *net.UDPAddr  `json:"remote_addr"`
-	LocalInterface string        `json:"local_interface"`
-	Priority       int           `json:"priority"`
-	Active         bool          `json:"active"`
-	RTTms          float64       `json:"rtt_ms"`
-	JitterMs       float64       `json:"jitter_ms"`
-	PacketLossRate float64       `json:"loss_rate"` // 0.0 - 1.0
-	Score          float64       `json:"score"`
-	LastSampleAt   time.Time     `json:"last_sample_at"`
+	ID              string       `json:"id"`
+	Type            PathType     `json:"type"`
+	RemoteAddr      *net.UDPAddr `json:"remote_addr"`
+	LocalInterface  string       `json:"local_interface"`
+	Priority        int          `json:"priority"`
+	Active          bool         `json:"active"`
+	RTTms           float64      `json:"rtt_ms"`
+	JitterMs        float64      `json:"jitter_ms"`
+	PacketLossRate  float64      `json:"loss_rate"` // 0.0 - 1.0
+	Score           float64      `json:"score"`
+	LastSampleAt    time.Time    `json:"last_sample_at"`
 	ConsecutiveFail int          `json:"consecutive_fail"`
 }
 

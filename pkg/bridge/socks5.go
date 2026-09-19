@@ -32,13 +32,13 @@ var (
 
 // RoutingIntent specifies target egress parameters requested via proxy credentials
 type RoutingIntent struct {
-	Mode         string // "DIRECT", "COUNTRY", "HOST", "ONION"
-	TargetParam  string // Country Code or Host ID
+	Mode        string // "DIRECT", "COUNTRY", "HOST", "ONION"
+	TargetParam string // Country Code or Host ID
 }
 
 // SOCKS5Server handles inbound SOCKS5 proxy connections
 type SOCKS5Server struct {
-	mu       sync.Mutex
+	mu         sync.Mutex
 	listenAddr string
 	listener   net.Listener
 	bridge     *NetstackBridge

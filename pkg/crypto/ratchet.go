@@ -9,15 +9,15 @@ import (
 )
 
 const (
-	RekeyPacketThreshold  uint64        = 1048576       // 2^20 packets
-	RekeyTimeThreshold    time.Duration = 180 * time.Second // 180 seconds
-	DualKeyGracePeriod    time.Duration = 15 * time.Second  // 15 seconds dual-key receive window
+	RekeyPacketThreshold uint64        = 1048576           // 2^20 packets
+	RekeyTimeThreshold   time.Duration = 180 * time.Second // 180 seconds
+	DualKeyGracePeriod   time.Duration = 15 * time.Second  // 15 seconds dual-key receive window
 )
 
 var (
-	ErrSessionClosed    = errors.New("session is closed")
-	ErrReplayDetected   = errors.New("packet sequence number replayed or out of sliding window")
-	ErrRekeyRequired    = errors.New("session requires immediate rekey")
+	ErrSessionClosed     = errors.New("session is closed")
+	ErrReplayDetected    = errors.New("packet sequence number replayed or out of sliding window")
+	ErrRekeyRequired     = errors.New("session requires immediate rekey")
 	ErrInvalidCiphertext = errors.New("failed to decrypt ciphertext with active or fallback keys")
 )
 

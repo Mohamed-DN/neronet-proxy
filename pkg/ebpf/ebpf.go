@@ -115,17 +115,17 @@ func (e *FlowEntry) age(now time.Time) time.Duration {
 
 // PacketInfo holds parsed metadata from an inbound Ethernet/IP/Transport frame
 type PacketInfo struct {
-	IsIPv4         bool
-	SrcIP          net.IP
-	DstIP          net.IP
-	SrcPort        uint16
-	DstPort        uint16
-	Protocol       uint8
-	SessionID      uint64
-	IsSVRN         bool
-	PayloadOffset  int
-	PayloadLength  int
-	TotalLength    int
+	IsIPv4        bool
+	SrcIP         net.IP
+	DstIP         net.IP
+	SrcPort       uint16
+	DstPort       uint16
+	Protocol      uint8
+	SessionID     uint64
+	IsSVRN        bool
+	PayloadOffset int
+	PayloadLength int
+	TotalLength   int
 }
 
 // XDPStats holds performance counters for eBPF XDP classifier & bypass engine
@@ -292,7 +292,7 @@ func (c *PacketClassifier) ParsePacket(raw []byte) (*PacketInfo, error) {
 		}
 		info.SrcPort = binary.BigEndian.Uint16(raw[offset : offset+2])
 		info.DstPort = binary.BigEndian.Uint16(raw[offset+2 : offset+4])
-		dataOffset := int((raw[offset+12] >> 4) & 0x0F) * 4
+		dataOffset := int((raw[offset+12]>>4)&0x0F) * 4
 		info.PayloadOffset = offset + dataOffset
 		if info.PayloadOffset <= len(raw) {
 			info.PayloadLength = len(raw) - info.PayloadOffset

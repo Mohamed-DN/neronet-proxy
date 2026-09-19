@@ -11,23 +11,23 @@ import (
 type NATType string
 
 const (
-	NATTypeDirectPublic        NATType = "DIRECT_PUBLIC"
-	NATTypeFullCone            NATType = "FULL_CONE"
-	NATTypeRestrictedCone      NATType = "RESTRICTED_CONE"
-	NATTypePortRestrictedCone  NATType = "PORT_RESTRICTED_CONE"
-	NATTypeSymmetric           NATType = "SYMMETRIC"
-	NATTypeBlocked             NATType = "BLOCKED"
+	NATTypeDirectPublic       NATType = "DIRECT_PUBLIC"
+	NATTypeFullCone           NATType = "FULL_CONE"
+	NATTypeRestrictedCone     NATType = "RESTRICTED_CONE"
+	NATTypePortRestrictedCone NATType = "PORT_RESTRICTED_CONE"
+	NATTypeSymmetric          NATType = "SYMMETRIC"
+	NATTypeBlocked            NATType = "BLOCKED"
 )
 
 // NATDescriptor summarizes the network topology discovery
 type NATDescriptor struct {
-	Type          NATType   `json:"nat_type"`
-	LocalAddr     *net.UDPAddr `json:"local_addr"`
-	PublicAddr1   *net.UDPAddr `json:"public_addr_1"`
-	PublicAddr2   *net.UDPAddr `json:"public_addr_2,omitempty"`
-	PortDelta     int       `json:"port_delta"`
-	IsSequential  bool      `json:"is_sequential"`
-	LastTestedAt  time.Time `json:"last_tested_at"`
+	Type         NATType      `json:"nat_type"`
+	LocalAddr    *net.UDPAddr `json:"local_addr"`
+	PublicAddr1  *net.UDPAddr `json:"public_addr_1"`
+	PublicAddr2  *net.UDPAddr `json:"public_addr_2,omitempty"`
+	PortDelta    int          `json:"port_delta"`
+	IsSequential bool         `json:"is_sequential"`
+	LastTestedAt time.Time    `json:"last_tested_at"`
 }
 
 // ClassifyNAT performs RFC 3489 / 5780 detection by querying at least 2 distinct STUN endpoints

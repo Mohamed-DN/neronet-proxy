@@ -35,13 +35,13 @@ type SecurityConfig struct {
 
 // GlobalConfig contains global settings applicable across all nodes and tiers.
 type GlobalConfig struct {
-	Domain       string           `json:"domain" yaml:"domain"`
-	AcmeEmail    string           `json:"acmeEmail" yaml:"acmeEmail"`
-	DnsProvider  string           `json:"dnsProvider" yaml:"dnsProvider"`
-	OverlayCidr  string           `json:"overlayCidr" yaml:"overlayCidr"`
-	Encryption   EncryptionConfig `json:"encryption" yaml:"encryption"`
-	Telemetry    TelemetryConfig  `json:"telemetry" yaml:"telemetry"`
-	Security     SecurityConfig   `json:"security" yaml:"security"`
+	Domain      string           `json:"domain" yaml:"domain"`
+	AcmeEmail   string           `json:"acmeEmail" yaml:"acmeEmail"`
+	DnsProvider string           `json:"dnsProvider" yaml:"dnsProvider"`
+	OverlayCidr string           `json:"overlayCidr" yaml:"overlayCidr"`
+	Encryption  EncryptionConfig `json:"encryption" yaml:"encryption"`
+	Telemetry   TelemetryConfig  `json:"telemetry" yaml:"telemetry"`
+	Security    SecurityConfig   `json:"security" yaml:"security"`
 }
 
 // ControlPlaneNode defines node deployment distribution for the control plane.

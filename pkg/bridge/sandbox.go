@@ -8,25 +8,25 @@ import (
 )
 
 var (
-	ErrBogonIPBlocked      = errors.New("destination IP belongs to private RFC 1918 / Bogon range")
-	ErrAbusePortBlocked    = errors.New("destination port is blocked by anti-abuse egress policy")
-	ErrBatteryLowBlocked   = errors.New("bridge is suspended due to low battery (< 20%)")
-	ErrQuotaExceeded       = errors.New("bridge monthly bandwidth quota exceeded (>= 90%)")
-	ErrEgressNotPermitted  = errors.New("egress connection rejected by bridge policy engine")
+	ErrBogonIPBlocked     = errors.New("destination IP belongs to private RFC 1918 / Bogon range")
+	ErrAbusePortBlocked   = errors.New("destination port is blocked by anti-abuse egress policy")
+	ErrBatteryLowBlocked  = errors.New("bridge is suspended due to low battery (< 20%)")
+	ErrQuotaExceeded      = errors.New("bridge monthly bandwidth quota exceeded (>= 90%)")
+	ErrEgressNotPermitted = errors.New("egress connection rejected by bridge policy engine")
 )
 
 // Private and Bogon IP CIDR ranges blocked from egress
 var bogonCIDRs = []*net.IPNet{
-	mustParseCIDR("10.0.0.0/8"),      // RFC 1918 Private Local
-	mustParseCIDR("172.16.0.0/12"),   // RFC 1918 Private Local
-	mustParseCIDR("192.168.0.0/16"),  // RFC 1918 Private Local
-	mustParseCIDR("127.0.0.0/8"),     // Host Loopback
-	mustParseCIDR("100.64.0.0/10"),   // CGNAT / Overlay Subnet
-	mustParseCIDR("169.254.0.0/16"),  // Link-Local
-	mustParseCIDR("224.0.0.0/4"),     // Multicast
-	mustParseCIDR("fc00::/7"),        // IPv6 Unique Local
-	mustParseCIDR("fe80::/10"),       // IPv6 Link-Local
-	mustParseCIDR("::1/128"),         // IPv6 Loopback
+	mustParseCIDR("10.0.0.0/8"),     // RFC 1918 Private Local
+	mustParseCIDR("172.16.0.0/12"),  // RFC 1918 Private Local
+	mustParseCIDR("192.168.0.0/16"), // RFC 1918 Private Local
+	mustParseCIDR("127.0.0.0/8"),    // Host Loopback
+	mustParseCIDR("100.64.0.0/10"),  // CGNAT / Overlay Subnet
+	mustParseCIDR("169.254.0.0/16"), // Link-Local
+	mustParseCIDR("224.0.0.0/4"),    // Multicast
+	mustParseCIDR("fc00::/7"),       // IPv6 Unique Local
+	mustParseCIDR("fe80::/10"),      // IPv6 Link-Local
+	mustParseCIDR("::1/128"),        // IPv6 Loopback
 }
 
 // Blocked outbound ports for anti-abuse

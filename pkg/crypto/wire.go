@@ -37,14 +37,14 @@ var (
 
 // DirectFrame represents a parsed SovereignMesh UDP Direct Wire Frame
 type DirectFrame struct {
-	Magic            uint32
-	Version          uint8
-	MsgType          uint8
-	SenderSessionID  uint32
+	Magic             uint32
+	Version           uint8
+	MsgType           uint8
+	SenderSessionID   uint32
 	ReceiverSessionID uint32
-	SequenceCounter  uint64
-	Ciphertext       []byte
-	AuthTag          [Poly1305TagSize]byte
+	SequenceCounter   uint64
+	Ciphertext        []byte
+	AuthTag           [Poly1305TagSize]byte
 }
 
 // EncodeDirectFrame serializes a DirectFrame into wire format.

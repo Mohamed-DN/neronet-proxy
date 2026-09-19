@@ -52,10 +52,10 @@ type InitiatorHandshakeState struct {
 
 // HandshakeAct1Packet represents the wire format of Act 1
 type HandshakeAct1Packet struct {
-	SenderSessionID uint32
-	EphemeralPub    [KeySize]byte
-	EncryptedStatic [48]byte // 32 bytes pubkey + 16 bytes Poly1305 tag
-	EncryptedPayload []byte  // 0-RTT payload + 16 bytes Poly1305 tag
+	SenderSessionID  uint32
+	EphemeralPub     [KeySize]byte
+	EncryptedStatic  [48]byte // 32 bytes pubkey + 16 bytes Poly1305 tag
+	EncryptedPayload []byte   // 0-RTT payload + 16 bytes Poly1305 tag
 }
 
 // HandshakeAct2Packet represents the wire format of Act 2

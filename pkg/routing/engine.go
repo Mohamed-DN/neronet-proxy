@@ -30,9 +30,9 @@ type NodeCandidate struct {
 
 // RoutingEngine coordinates mode-specific path selection and circuit builds
 type RoutingEngine struct {
-	mu           sync.RWMutex
-	candidates   map[string]*NodeCandidate
-	circuitSeq   uint32
+	mu         sync.RWMutex
+	candidates map[string]*NodeCandidate
+	circuitSeq uint32
 }
 
 // NewRoutingEngine creates an initialized routing engine

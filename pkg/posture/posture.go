@@ -32,7 +32,7 @@ type OSVersionRule struct {
 
 // GeoFencingRule defines allowed/prohibited geographic jurisdictions and ASNs
 type GeoFencingRule struct {
-	AllowedCountries    []string `json:"allowed_countries"`    // ISO 3166-1 alpha-2
+	AllowedCountries    []string `json:"allowed_countries"` // ISO 3166-1 alpha-2
 	ProhibitedCountries []string `json:"prohibited_countries"`
 	AllowedASNs         []uint32 `json:"allowed_asns"`
 }

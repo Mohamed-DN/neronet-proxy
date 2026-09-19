@@ -309,7 +309,7 @@ func TestAdversarialRouteTableConcurrentStress(t *testing.T) {
 		go func(workerID int) {
 			defer wg.Done()
 			for it := 0; it < iterations; it++ {
-				routeIdx := (workerID%10) + 1
+				routeIdx := (workerID % 10) + 1
 				routeID := fmt.Sprintf("rt-%d", routeIdx)
 				gwID := fmt.Sprintf("gw-%d-a", routeIdx)
 

@@ -8,61 +8,61 @@ import (
 
 // TFVarsOCI represents Terraform input variables for the OCI module.
 type TFVarsOCI struct {
-	ClusterName   string                 `json:"cluster_name"`
-	CompartmentID string                 `json:"compartment_id"`
-	VpcCIDR       string                 `json:"vpc_cidr"`
-	SubnetCIDR    string                 `json:"subnet_cidr"`
-	SSHPort       int                    `json:"ssh_port"`
+	ClusterName   string                   `json:"cluster_name"`
+	CompartmentID string                   `json:"compartment_id"`
+	VpcCIDR       string                   `json:"vpc_cidr"`
+	SubnetCIDR    string                   `json:"subnet_cidr"`
+	SSHPort       int                      `json:"ssh_port"`
 	Nodes         []map[string]interface{} `json:"nodes"`
 }
 
 // TFVarsAWS represents Terraform input variables for the AWS module.
 type TFVarsAWS struct {
-	ClusterName string                 `json:"cluster_name"`
-	Region      string                 `json:"region"`
-	VpcCIDR     string                 `json:"vpc_cidr"`
-	SubnetCIDR  string                 `json:"subnet_cidr"`
-	SSHPort     int                    `json:"ssh_port"`
+	ClusterName string                   `json:"cluster_name"`
+	Region      string                   `json:"region"`
+	VpcCIDR     string                   `json:"vpc_cidr"`
+	SubnetCIDR  string                   `json:"subnet_cidr"`
+	SSHPort     int                      `json:"ssh_port"`
 	Nodes       []map[string]interface{} `json:"nodes"`
 }
 
 // TFVarsGCP represents Terraform input variables for the GCP module.
 type TFVarsGCP struct {
-	ClusterName string                 `json:"cluster_name"`
-	ProjectID   string                 `json:"project_id"`
-	Region      string                 `json:"region"`
-	VpcCIDR     string                 `json:"vpc_cidr"`
-	SubnetCIDR  string                 `json:"subnet_cidr"`
-	SSHPort     int                    `json:"ssh_port"`
+	ClusterName string                   `json:"cluster_name"`
+	ProjectID   string                   `json:"project_id"`
+	Region      string                   `json:"region"`
+	VpcCIDR     string                   `json:"vpc_cidr"`
+	SubnetCIDR  string                   `json:"subnet_cidr"`
+	SSHPort     int                      `json:"ssh_port"`
 	Nodes       []map[string]interface{} `json:"nodes"`
 }
 
 // TFVarsDO represents Terraform input variables for DigitalOcean.
 type TFVarsDO struct {
-	ClusterName string                 `json:"cluster_name"`
-	Region      string                 `json:"region"`
-	VpcCIDR     string                 `json:"vpc_cidr"`
-	SSHPort     int                    `json:"ssh_port"`
+	ClusterName string                   `json:"cluster_name"`
+	Region      string                   `json:"region"`
+	VpcCIDR     string                   `json:"vpc_cidr"`
+	SSHPort     int                      `json:"ssh_port"`
 	Nodes       []map[string]interface{} `json:"nodes"`
 }
 
 // TFVarsHetzner represents Terraform input variables for Hetzner.
 type TFVarsHetzner struct {
-	ClusterName string                 `json:"cluster_name"`
-	Location    string                 `json:"location"`
-	NetworkCIDR string                 `json:"network_cidr"`
-	SubnetCIDR  string                 `json:"subnet_cidr"`
-	SSHPort     int                    `json:"ssh_port"`
+	ClusterName string                   `json:"cluster_name"`
+	Location    string                   `json:"location"`
+	NetworkCIDR string                   `json:"network_cidr"`
+	SubnetCIDR  string                   `json:"subnet_cidr"`
+	SSHPort     int                      `json:"ssh_port"`
 	Nodes       []map[string]interface{} `json:"nodes"`
 }
 
 // TFVarsVultr represents Terraform input variables for Vultr.
 type TFVarsVultr struct {
-	ClusterName string                 `json:"cluster_name"`
-	Region      string                 `json:"region"`
-	VpcCIDR     string                 `json:"vpc_cidr"`
-	SubnetCIDR  string                 `json:"subnet_cidr"`
-	SSHPort     int                    `json:"ssh_port"`
+	ClusterName string                   `json:"cluster_name"`
+	Region      string                   `json:"region"`
+	VpcCIDR     string                   `json:"vpc_cidr"`
+	SubnetCIDR  string                   `json:"subnet_cidr"`
+	SSHPort     int                      `json:"ssh_port"`
 	Nodes       []map[string]interface{} `json:"nodes"`
 }
 
@@ -102,11 +102,11 @@ func (cfg *MeshClusterConfig) ExportAWSTFVars() ([]byte, error) {
 	for _, n := range cfg.RelayFleet.Nodes {
 		if strings.ToLower(n.Provider) == "aws" {
 			nodes = append(nodes, map[string]interface{}{
-				"id":             n.ID,
+				"id":                n.ID,
 				"availability_zone": n.Zone,
-				"instance_type":  n.Shape,
-				"decoy_domain":   n.AntiCensorship.DecoyDomain,
-				"honeypot_port":  n.AntiCensorship.HoneypotPort,
+				"instance_type":     n.Shape,
+				"decoy_domain":      n.AntiCensorship.DecoyDomain,
+				"honeypot_port":     n.AntiCensorship.HoneypotPort,
 			})
 		}
 	}
@@ -129,10 +129,10 @@ func (cfg *MeshClusterConfig) ExportGCPTFVars() ([]byte, error) {
 	for _, n := range cfg.RelayFleet.Nodes {
 		if strings.ToLower(n.Provider) == "gcp" {
 			nodes = append(nodes, map[string]interface{}{
-				"id":           n.ID,
-				"zone":         n.Zone,
-				"machine_type": n.Shape,
-				"decoy_domain": n.AntiCensorship.DecoyDomain,
+				"id":            n.ID,
+				"zone":          n.Zone,
+				"machine_type":  n.Shape,
+				"decoy_domain":  n.AntiCensorship.DecoyDomain,
 				"honeypot_port": n.AntiCensorship.HoneypotPort,
 			})
 		}
@@ -157,9 +157,9 @@ func (cfg *MeshClusterConfig) ExportDOTFVars() ([]byte, error) {
 	for _, n := range cfg.RelayFleet.Nodes {
 		if strings.ToLower(n.Provider) == "digitalocean" {
 			nodes = append(nodes, map[string]interface{}{
-				"id":           n.ID,
-				"size":         n.Shape,
-				"decoy_domain": n.AntiCensorship.DecoyDomain,
+				"id":            n.ID,
+				"size":          n.Shape,
+				"decoy_domain":  n.AntiCensorship.DecoyDomain,
 				"honeypot_port": n.AntiCensorship.HoneypotPort,
 			})
 		}
@@ -182,9 +182,9 @@ func (cfg *MeshClusterConfig) ExportHetznerTFVars() ([]byte, error) {
 	for _, n := range cfg.RelayFleet.Nodes {
 		if strings.ToLower(n.Provider) == "hetzner" {
 			nodes = append(nodes, map[string]interface{}{
-				"id":           n.ID,
-				"server_type":  n.Shape,
-				"decoy_domain": n.AntiCensorship.DecoyDomain,
+				"id":            n.ID,
+				"server_type":   n.Shape,
+				"decoy_domain":  n.AntiCensorship.DecoyDomain,
 				"honeypot_port": n.AntiCensorship.HoneypotPort,
 			})
 		}
@@ -208,9 +208,9 @@ func (cfg *MeshClusterConfig) ExportVultrTFVars() ([]byte, error) {
 	for _, n := range cfg.RelayFleet.Nodes {
 		if strings.ToLower(n.Provider) == "vultr" {
 			nodes = append(nodes, map[string]interface{}{
-				"id":           n.ID,
-				"plan":         n.Shape,
-				"decoy_domain": n.AntiCensorship.DecoyDomain,
+				"id":            n.ID,
+				"plan":          n.Shape,
+				"decoy_domain":  n.AntiCensorship.DecoyDomain,
 				"honeypot_port": n.AntiCensorship.HoneypotPort,
 			})
 		}

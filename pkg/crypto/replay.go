@@ -5,8 +5,8 @@ import (
 )
 
 const (
-	WindowSizeBits  = 1024
-	WindowWords     = WindowSizeBits / 64 // 16 uint64 words
+	WindowSizeBits = 1024
+	WindowWords    = WindowSizeBits / 64 // 16 uint64 words
 )
 
 // AntiReplayWindow implements an O(1) 1024-packet sliding window filter.

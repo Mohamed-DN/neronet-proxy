@@ -24,11 +24,11 @@ var upgrader = websocket.Upgrader{
 
 // WebSocketSession implements the Session interface for a WebSocket connection
 type WebSocketSession struct {
-	mu      sync.Mutex
-	conn    *websocket.Conn
-	pubKey  [PubKeySize]byte
-	router  *Router
-	closed  bool
+	mu     sync.Mutex
+	conn   *websocket.Conn
+	pubKey [PubKeySize]byte
+	router *Router
+	closed bool
 }
 
 func (s *WebSocketSession) SendFrame(frame *Frame) error {

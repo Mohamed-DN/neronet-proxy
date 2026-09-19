@@ -10,22 +10,22 @@ import (
 )
 
 const (
-	STUNMagicCookie        uint32 = 0x2112A442
-	STUNHeaderSize                = 20
-	STUNBindingRequest     uint16 = 0x0001
-	STUNBindingResponse    uint16 = 0x0101
-	AttrMappedAddress      uint16 = 0x0001
-	AttrXORMappedAddress   uint16 = 0x0020
-	AttrSoftware           uint16 = 0x0022
-	AttrFingerprint        uint16 = 0x8028
-	FamilyIPv4             uint8  = 0x01
-	FamilyIPv6             uint8  = 0x02
+	STUNMagicCookie      uint32 = 0x2112A442
+	STUNHeaderSize              = 20
+	STUNBindingRequest   uint16 = 0x0001
+	STUNBindingResponse  uint16 = 0x0101
+	AttrMappedAddress    uint16 = 0x0001
+	AttrXORMappedAddress uint16 = 0x0020
+	AttrSoftware         uint16 = 0x0022
+	AttrFingerprint      uint16 = 0x8028
+	FamilyIPv4           uint8  = 0x01
+	FamilyIPv6           uint8  = 0x02
 )
 
 var (
-	ErrInvalidSTUNHeader   = errors.New("invalid STUN header or magic cookie")
-	ErrSTUNTimeout         = errors.New("STUN request timed out")
-	ErrAttributeNotFound   = errors.New("required STUN attribute not found in response")
+	ErrInvalidSTUNHeader = errors.New("invalid STUN header or magic cookie")
+	ErrSTUNTimeout       = errors.New("STUN request timed out")
+	ErrAttributeNotFound = errors.New("required STUN attribute not found in response")
 )
 
 // STUNMessage represents an RFC 5389/8489 STUN packet

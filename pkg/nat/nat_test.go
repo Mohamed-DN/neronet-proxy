@@ -294,4 +294,3 @@ func TestLANDiscoveryBeaconing(t *testing.T) {
 		t.Fatalf("Self beacon should return nil peer")
 	}
 }
-

@@ -37,7 +37,7 @@ type RoutingPeerSpec struct {
 // NetworkRoute defines an advertised subnet and its routing peers
 type NetworkRoute struct {
 	ID           string             `json:"id"`
-	NetworkID    string             `json:"network_id"`   // e.g. "corp-vpc"
+	NetworkID    string             `json:"network_id"` // e.g. "corp-vpc"
 	Description  string             `json:"description"`
 	NetworkCIDR  *net.IPNet         `json:"network_cidr"` // e.g. 10.100.0.0/24
 	Masquerade   bool               `json:"masquerade"`   // Enable NAT masquerade at gateway

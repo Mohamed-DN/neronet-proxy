@@ -102,8 +102,8 @@ func TestAdversarialPortRangeBoundariesAndInvalidInputs(t *testing.T) {
 			shouldErr: true,
 		},
 		{
-			name:     "Multiple overlapping and contiguous valid ranges",
-			input:    "80-100, 90-120, 110-200, 443, 65530-65535",
+			name:  "Multiple overlapping and contiguous valid ranges",
+			input: "80-100, 90-120, 110-200, 443, 65530-65535",
 			expected: []PortRange{
 				{Start: 80, End: 100},
 				{Start: 90, End: 120},

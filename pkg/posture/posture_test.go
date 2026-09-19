@@ -289,4 +289,3 @@ func TestGeoFencingDefaultAllowAndCensoredCountries(t *testing.T) {
 		t.Fatalf("Expected country EG to pass under default group")
 	}
 }
-

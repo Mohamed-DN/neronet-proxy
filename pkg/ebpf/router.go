@@ -17,17 +17,17 @@ var (
 
 // RouteRule defines a kernel/eBPF synced routing entry
 type RouteRule struct {
-	CIDR            string       `json:"cidr"`
-	IPNet           *net.IPNet   `json:"-"`
-	Gateway         net.IP       `json:"gateway,omitempty"`
-	PeerID          string       `json:"peer_id,omitempty"`
-	InterfaceName   string       `json:"interface_name"`
-	InterfaceIndex  uint32       `json:"interface_index"`
-	Metric          int          `json:"metric"`
-	FastPathEnabled bool         `json:"fast_path_enabled"`
-	TargetMAC       [6]byte      `json:"target_mac,omitempty"`
-	CreatedAt       time.Time    `json:"created_at"`
-	LastSyncedAt    time.Time    `json:"last_synced_at"`
+	CIDR            string     `json:"cidr"`
+	IPNet           *net.IPNet `json:"-"`
+	Gateway         net.IP     `json:"gateway,omitempty"`
+	PeerID          string     `json:"peer_id,omitempty"`
+	InterfaceName   string     `json:"interface_name"`
+	InterfaceIndex  uint32     `json:"interface_index"`
+	Metric          int        `json:"metric"`
+	FastPathEnabled bool       `json:"fast_path_enabled"`
+	TargetMAC       [6]byte    `json:"target_mac,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	LastSyncedAt    time.Time  `json:"last_synced_at"`
 }
 
 // RouteResult contains routing decision and rewritten frame

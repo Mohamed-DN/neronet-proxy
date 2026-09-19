@@ -12,9 +12,9 @@ import (
 // ConfigManager provides layered configuration resolution:
 // CLI Flags > Environment Variables / .env > Structured YAML Config > In-Code Defaults.
 type ConfigManager struct {
-	MeshConfig  *MeshClusterConfig
+	MeshConfig   *MeshClusterConfig
 	DotEnvLoaded bool
-	FlagSet     *flag.FlagSet
+	FlagSet      *flag.FlagSet
 }
 
 // NewConfigManager initializes a new ConfigManager, loading .env and structured YAML config.

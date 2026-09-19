@@ -226,7 +226,7 @@ listWithSubObjects:
 	}
 
 	var parsed struct {
-		ListWithURLs []string `json:"listWithURLs"`
+		ListWithURLs       []string            `json:"listWithURLs"`
 		ListWithSubObjects []map[string]string `json:"listWithSubObjects"`
 	}
 
@@ -409,4 +409,3 @@ func TestValidationBoundaries(t *testing.T) {
 		t.Error("expected error for unsupported cloud provider")
 	}
 }
-

@@ -451,7 +451,7 @@ func TestAdversarial_DomainFuzzing(t *testing.T) {
 		"-starts-with-dash.com",
 		"ends-with-dash-.com",
 		"domain..double-dot.com",
-		"domain.c",        // TLD must be >= 2 chars
+		"domain.c",          // TLD must be >= 2 chars
 		"http://domain.com", // Scheme not allowed in FQDN
 		"domain.com/path",   // Path not allowed
 		"domain.com:8443",   // Port not allowed
@@ -528,4 +528,3 @@ cluster:
 		t.Errorf("expected tildeVal nil, got %v", clusterMap["tildeVal"])
 	}
 }
-

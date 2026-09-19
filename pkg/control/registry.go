@@ -182,7 +182,6 @@ func (r *Registry) DeleteNode(nodeID string) error {
 	return nil
 }
 
-
 // DiscoverBridges queries online exit bridges matching criteria
 func (r *Registry) DiscoverBridges(country string, asn uint32, ipClass string, limit int) []*NodeRecord {
 	r.mu.RLock()

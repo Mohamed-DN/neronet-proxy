@@ -19,41 +19,41 @@ const (
 
 // PeerBeacon represents the payload broadcasted across local LAN
 type PeerBeacon struct {
-	Magic       string        `json:"magic"`
-	NodeID      string        `json:"node_id"`
-	PublicKey   string        `json:"public_key"`
-	OverlayIP   string        `json:"overlay_ip"`
-	Endpoints   []string      `json:"endpoints"`
-	NetworkName string        `json:"network_name"`
-	Timestamp   time.Time     `json:"timestamp"`
-	Nonce       [8]byte       `json:"nonce"`
+	Magic       string    `json:"magic"`
+	NodeID      string    `json:"node_id"`
+	PublicKey   string    `json:"public_key"`
+	OverlayIP   string    `json:"overlay_ip"`
+	Endpoints   []string  `json:"endpoints"`
+	NetworkName string    `json:"network_name"`
+	Timestamp   time.Time `json:"timestamp"`
+	Nonce       [8]byte   `json:"nonce"`
 }
 
 // DiscoveredPeer tracks a neighbor node discovered on the local broadcast domain
 type DiscoveredPeer struct {
-	NodeID       string
-	PublicKey    string
-	OverlayIP    string
-	LocalAddr    *net.UDPAddr
-	Endpoints    []string
-	NetworkName  string
-	LastSeen     time.Time
-	IsLocalLAN   bool
+	NodeID      string
+	PublicKey   string
+	OverlayIP   string
+	LocalAddr   *net.UDPAddr
+	Endpoints   []string
+	NetworkName string
+	LastSeen    time.Time
+	IsLocalLAN  bool
 }
 
 // LANDiscoveryManager manages periodic beacon broadcast and listener on local networks
 type LANDiscoveryManager struct {
-	mu           sync.RWMutex
-	nodeID       string
-	publicKey    string
-	overlayIP    string
-	endpoints    []string
-	networkName  string
+	mu            sync.RWMutex
+	nodeID        string
+	publicKey     string
+	overlayIP     string
+	endpoints     []string
+	networkName   string
 	multicastAddr *net.UDPAddr
 	broadcastAddr *net.UDPAddr
-	discovered   map[string]*DiscoveredPeer
-	closed       bool
-	onPeerFound  func(peer DiscoveredPeer)
+	discovered    map[string]*DiscoveredPeer
+	closed        bool
+	onPeerFound   func(peer DiscoveredPeer)
 }
 
 // NewLANDiscoveryManager creates a local LAN peer discovery coordinator

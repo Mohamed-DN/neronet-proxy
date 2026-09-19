@@ -320,4 +320,3 @@ func TestAdaptiveMultiPathScoringAndFailover(t *testing.T) {
 		t.Fatalf("Expected 3 candidate paths, got %d", len(paths))
 	}
 }
-

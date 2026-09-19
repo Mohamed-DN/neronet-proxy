@@ -50,13 +50,13 @@ func SimpleYAMLToJSON(yamlData []byte) ([]byte, error) {
 // yamlToJSONConverter transforms structured YAML lines into a standard map/JSON structure.
 func yamlToJSONConverter(yamlStr string) ([]byte, error) {
 	lines := strings.Split(yamlStr, "\n")
-	
+
 	// We use a robust recursive line-based tree builder for YAML structures
 	tree, err := parseYAMLTree(lines)
 	if err != nil {
 		return nil, fmt.Errorf("yaml parse error: %w", err)
 	}
-	
+
 	return json.Marshal(tree)
 }
 
@@ -286,7 +286,7 @@ func LoadMeshConfig(path string) (*MeshClusterConfig, error) {
 // ParseMeshConfig expands env variables and unmarshals raw YAML data into a validated MeshClusterConfig.
 func ParseMeshConfig(data []byte) (*MeshClusterConfig, error) {
 	expandedStr := ExpandEnv(string(data))
-	
+
 	var cfg MeshClusterConfig
 	// Use standard robust yaml parser to avoid inline list splitting bugs
 	if err := yaml.Unmarshal([]byte(expandedStr), &cfg); err != nil {

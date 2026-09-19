@@ -21,12 +21,12 @@ QUOTED_WITH_SPACES="value with spaces and = sign"
 	parsed := ParseDotEnv(content)
 
 	expected := map[string]string{
-		"SOVEREIGN_CLUSTER_NAME":   "test-cluster",
-		"SOVEREIGN_ENVIRONMENT":    "production",
-		"SOVEREIGN_DOMAIN":         "mesh.example.org",
-		"SOVEREIGN_SSH_PORT":       "2222",
-		"EMPTY_VAL":                "",
-		"QUOTED_WITH_SPACES":       "value with spaces and = sign",
+		"SOVEREIGN_CLUSTER_NAME": "test-cluster",
+		"SOVEREIGN_ENVIRONMENT":  "production",
+		"SOVEREIGN_DOMAIN":       "mesh.example.org",
+		"SOVEREIGN_SSH_PORT":     "2222",
+		"EMPTY_VAL":              "",
+		"QUOTED_WITH_SPACES":     "value with spaces and = sign",
 	}
 
 	for k, exp := range expected {

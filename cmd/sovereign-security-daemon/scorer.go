@@ -16,12 +16,12 @@ type ThreatEntry struct {
 
 // ThreatScorer implements stateful threat scoring with continuous exponential time decay.
 type ThreatScorer struct {
-	mu            sync.Mutex
-	scores        map[string]*ThreatEntry
-	banThreshold  float64
-	decayLambda   float64 // lambda = ln(2) / halfLifeSeconds
-	banDuration   time.Duration
-	stopChan      chan struct{}
+	mu           sync.Mutex
+	scores       map[string]*ThreatEntry
+	banThreshold float64
+	decayLambda  float64 // lambda = ln(2) / halfLifeSeconds
+	banDuration  time.Duration
+	stopChan     chan struct{}
 }
 
 // NewThreatScorer creates a new ThreatScorer instance.

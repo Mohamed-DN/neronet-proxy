@@ -12,14 +12,14 @@ import (
 type Config struct {
 	ListenAddr         string        `json:"listen_addr"`
 	HoneypotPort       int           `json:"honeypot_port"`
-	FirewallDriver     string        `json:"firewall_driver"`     // "mock", "ipset", "nftables", "ufw-batch"
-	BanDuration        time.Duration `json:"ban_duration"`        // e.g. 24h
-	ThreatScoreBan     int           `json:"threat_score_ban"`    // Score required to trigger ban (default: 100)
-	ScoreHalfLife      time.Duration `json:"score_half_life"`     // Decay half-life (default: 1h)
-	PerIPTokenCapacity int           `json:"per_ip_token_cap"`    // Burst capacity per IP (default: 5)
-	PerIPRefillRate    float64       `json:"per_ip_refill_rate"`  // Refill tokens/sec per IP (default: 1.0)
-	SubnetTokenCap     int           `json:"subnet_token_cap"`    // Burst capacity per /24 subnet (default: 20)
-	SubnetRefillRate   float64       `json:"subnet_refill_rate"`  // Refill tokens/sec per subnet (default: 5.0)
+	FirewallDriver     string        `json:"firewall_driver"`    // "mock", "ipset", "nftables", "ufw-batch"
+	BanDuration        time.Duration `json:"ban_duration"`       // e.g. 24h
+	ThreatScoreBan     int           `json:"threat_score_ban"`   // Score required to trigger ban (default: 100)
+	ScoreHalfLife      time.Duration `json:"score_half_life"`    // Decay half-life (default: 1h)
+	PerIPTokenCapacity int           `json:"per_ip_token_cap"`   // Burst capacity per IP (default: 5)
+	PerIPRefillRate    float64       `json:"per_ip_refill_rate"` // Refill tokens/sec per IP (default: 1.0)
+	SubnetTokenCap     int           `json:"subnet_token_cap"`   // Burst capacity per /24 subnet (default: 20)
+	SubnetRefillRate   float64       `json:"subnet_refill_rate"` // Refill tokens/sec per subnet (default: 5.0)
 	WhitelistedCIDRs   []string      `json:"whitelisted_cidrs"`
 	NtfyURL            string        `json:"ntfy_url"`
 	NtfyTopic          string        `json:"ntfy_topic"`
@@ -42,18 +42,18 @@ func DefaultConfig() *Config {
 		SubnetTokenCap:     20,
 		SubnetRefillRate:   5.0,
 		WhitelistedCIDRs: []string{
-			"127.0.0.0/8",      // IPv4 Loopback
-			"10.0.0.0/8",       // RFC 1918 Private
-			"172.16.0.0/12",    // RFC 1918 Private
-			"192.168.0.0/16",   // RFC 1918 Private
-			"100.64.0.0/10",    // Carrier-Grade NAT & Overlay
-			"169.254.0.0/16",   // Link Local
-			"224.0.0.0/4",      // Multicast
-			"1.1.1.1/32",       // Cloudflare DNS
-			"1.0.0.1/32",       // Cloudflare DNS
-			"8.8.8.8/32",       // Google DNS
-			"8.8.4.4/32",       // Google DNS
-			"9.9.9.9/32",       // Quad9 DNS
+			"127.0.0.0/8",        // IPv4 Loopback
+			"10.0.0.0/8",         // RFC 1918 Private
+			"172.16.0.0/12",      // RFC 1918 Private
+			"192.168.0.0/16",     // RFC 1918 Private
+			"100.64.0.0/10",      // Carrier-Grade NAT & Overlay
+			"169.254.0.0/16",     // Link Local
+			"224.0.0.0/4",        // Multicast
+			"1.1.1.1/32",         // Cloudflare DNS
+			"1.0.0.1/32",         // Cloudflare DNS
+			"8.8.8.8/32",         // Google DNS
+			"8.8.4.4/32",         // Google DNS
+			"9.9.9.9/32",         // Quad9 DNS
 			"149.112.112.112/32", // Quad9 DNS
 		},
 		NtfyURL:            "",

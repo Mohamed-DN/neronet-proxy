@@ -178,9 +178,9 @@ func TestPolicyCompilationDirectionalAndBidirectional(t *testing.T) {
 
 	// Node lookup mock
 	nodeVIPs := map[string]net.IP{
-		"alice":   net.ParseIP("100.64.0.2"),
-		"db-prod": net.ParseIP("100.64.0.10"),
-		"exit-us": net.ParseIP("100.64.0.20"),
+		"alice":    net.ParseIP("100.64.0.2"),
+		"db-prod":  net.ParseIP("100.64.0.10"),
+		"exit-us":  net.ParseIP("100.64.0.20"),
 		"stranger": net.ParseIP("100.64.0.99"),
 	}
 	lookup := func(nodeID string) (net.IP, []string, bool) {

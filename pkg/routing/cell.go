@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	OnionCellFixedSize = 1420 // Fixed cell size to neutralize size-based traffic analysis
-	CellHeaderSize     = 4 + 1 + 3 + 4 + 2 // 14 bytes: CircuitID (4) + Cmd (1) + StreamID (3) + Digest (4) + PayloadLen (2)
+	OnionCellFixedSize = 1420                                // Fixed cell size to neutralize size-based traffic analysis
+	CellHeaderSize     = 4 + 1 + 3 + 4 + 2                   // 14 bytes: CircuitID (4) + Cmd (1) + StreamID (3) + Digest (4) + PayloadLen (2)
 	MaxCellPayloadSize = OnionCellFixedSize - CellHeaderSize // 1406 bytes
 
 	CellCmdCreate      uint8 = 0x01

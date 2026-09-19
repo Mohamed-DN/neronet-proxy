@@ -118,17 +118,17 @@ func TestUpstreamGatewayAntiBlacklistImmunity(t *testing.T) {
 	}
 
 	criticalGateways := []string{
-		"1.1.1.1",       // Cloudflare DoH Upstream
-		"1.0.0.1",       // Cloudflare Secondary
-		"8.8.8.8",       // Google DNS
-		"8.8.4.4",       // Google Secondary
-		"9.9.9.9",       // Quad9 DNS
-		"100.64.0.1",    // SovereignMesh Control Plane VIP
-		"100.64.12.34",  // SovereignMesh Client VIP
-		"127.0.0.1",     // Localhost
-		"10.0.0.1",      // RFC 1918 LAN Router
-		"192.168.1.1",   // RFC 1918 Home Gateway
-		"172.16.0.1",    // RFC 1918 Enterprise Core
+		"1.1.1.1",         // Cloudflare DoH Upstream
+		"1.0.0.1",         // Cloudflare Secondary
+		"8.8.8.8",         // Google DNS
+		"8.8.4.4",         // Google Secondary
+		"9.9.9.9",         // Quad9 DNS
+		"100.64.0.1",      // SovereignMesh Control Plane VIP
+		"100.64.12.34",    // SovereignMesh Client VIP
+		"127.0.0.1",       // Localhost
+		"10.0.0.1",        // RFC 1918 LAN Router
+		"192.168.1.1",     // RFC 1918 Home Gateway
+		"172.16.0.1",      // RFC 1918 Enterprise Core
 		"169.254.169.254", // Cloud Instance Metadata
 	}
 

@@ -23,7 +23,7 @@ func buildUDPTestPacket(srcIP, dstIP net.IP, srcPort, dstPort uint16, payload []
 	binary.BigEndian.PutUint16(buf[2:4], uint16(totalLen))
 	binary.BigEndian.PutUint16(buf[4:6], 0x1234) // ID
 	binary.BigEndian.PutUint16(buf[6:8], 0x0000) // Flags / Fragment
-	buf[8] = 64                                 // TTL
+	buf[8] = 64                                  // TTL
 	buf[9] = ProtoUDP
 	copy(buf[12:16], srcIP.To4())
 	copy(buf[16:20], dstIP.To4())

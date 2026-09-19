@@ -19,9 +19,9 @@ type Session interface {
 
 // Router maintains the thread-safe map of active client sessions keyed by public key
 type Router struct {
-	mu           sync.RWMutex
-	sessions     map[[PubKeySize]byte]Session
-	routedPackets uint64
+	mu             sync.RWMutex
+	sessions       map[[PubKeySize]byte]Session
+	routedPackets  uint64
 	droppedPackets uint64
 }
 

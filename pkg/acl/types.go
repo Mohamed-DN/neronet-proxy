@@ -113,11 +113,11 @@ type PolicyRule struct {
 
 // PeerGroup defines a named group of peers
 type PeerGroup struct {
-	ID          string    `json:"id"`          // e.g. "group:exit-nodes"
-	Name        string    `json:"name"`        // e.g. "Exit Nodes Swarm"
+	ID          string    `json:"id"`   // e.g. "group:exit-nodes"
+	Name        string    `json:"name"` // e.g. "Exit Nodes Swarm"
 	Description string    `json:"description"`
-	Peers       []string  `json:"peers"`       // Node IDs
-	IsSystem    bool      `json:"is_system"`   // Built-in (e.g. group:all)
+	Peers       []string  `json:"peers"`     // Node IDs
+	IsSystem    bool      `json:"is_system"` // Built-in (e.g. group:all)
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

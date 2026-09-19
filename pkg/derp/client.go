@@ -17,14 +17,14 @@ type PacketHandler func(srcPub [PubKeySize]byte, payload []byte)
 
 // Client coordinates connection and framing to a DERP-v4 relay server
 type Client struct {
-	mu          sync.Mutex
-	serverURL   string
-	pubKey      [PubKeySize]byte
-	conn        *websocket.Conn
-	handler     PacketHandler
-	closed      bool
-	dialer      *websocket.Dialer
-	tlsConfig   *tls.Config
+	mu        sync.Mutex
+	serverURL string
+	pubKey    [PubKeySize]byte
+	conn      *websocket.Conn
+	handler   PacketHandler
+	closed    bool
+	dialer    *websocket.Dialer
+	tlsConfig *tls.Config
 }
 
 // NewClient creates a new DERP-v4 relay client

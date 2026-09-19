@@ -20,17 +20,17 @@ const (
 )
 
 var (
-	ErrFrameTooSmall     = errors.New("derp frame too small")
-	ErrPayloadTooLarge   = errors.New("derp frame payload exceeds max size")
-	ErrUnknownFrameType  = errors.New("unknown derp frame type")
+	ErrFrameTooSmall    = errors.New("derp frame too small")
+	ErrPayloadTooLarge  = errors.New("derp frame payload exceeds max size")
+	ErrUnknownFrameType = errors.New("unknown derp frame type")
 )
 
 // Frame represents a DERP-v4 packet frame
 type Frame struct {
-	Type        uint8
-	DestPubKey  [PubKeySize]byte
-	SrcPubKey   [PubKeySize]byte
-	Payload     []byte
+	Type       uint8
+	DestPubKey [PubKeySize]byte
+	SrcPubKey  [PubKeySize]byte
+	Payload    []byte
 }
 
 var framePool = sync.Pool{

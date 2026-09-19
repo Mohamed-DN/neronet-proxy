@@ -811,4 +811,3 @@ relay:
 		t.Errorf("Relay KEDA ScaledObject was not rendered when relay.keda.enabled=true")
 	}
 }
-

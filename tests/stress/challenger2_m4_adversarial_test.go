@@ -677,11 +677,11 @@ func TestAdversarialManagementRESTMalformedPayloads(t *testing.T) {
 		path   string
 		body   string
 	}{
-		{http.MethodPost, "/api/v4/groups", `{"id":""}`},                                                                                                       // Empty ID
-		{http.MethodPost, "/api/v4/routes", `{"id":"rt-1","network_cidr":"999.999.999.999/99"}`},                                                              // Invalid CIDR
-		{http.MethodPost, "/api/v4/acls", `{"id":"acl-1","source_groups":[],"destination_groups":[],"rules":[]}`},                                             // Missing groups/rules
-		{http.MethodPost, "/api/v4/acls", `{"id":"acl-1","source_groups":["group:all"],"destination_groups":["group:exit-nodes"],"rules":[]}`},                // Empty rules
-		{http.MethodPost, "/api/v4/posture-checks", `{"id":""}`},                                                                                               // Empty posture check ID
+		{http.MethodPost, "/api/v4/groups", `{"id":""}`},                                                                                       // Empty ID
+		{http.MethodPost, "/api/v4/routes", `{"id":"rt-1","network_cidr":"999.999.999.999/99"}`},                                               // Invalid CIDR
+		{http.MethodPost, "/api/v4/acls", `{"id":"acl-1","source_groups":[],"destination_groups":[],"rules":[]}`},                              // Missing groups/rules
+		{http.MethodPost, "/api/v4/acls", `{"id":"acl-1","source_groups":["group:all"],"destination_groups":["group:exit-nodes"],"rules":[]}`}, // Empty rules
+		{http.MethodPost, "/api/v4/posture-checks", `{"id":""}`},                                                                               // Empty posture check ID
 	}
 
 	for _, sp := range semanticProbes {
