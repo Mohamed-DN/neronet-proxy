@@ -96,7 +96,27 @@ async function bumpEpoch(name) {
     'UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = CURRENT_TIMESTAMP WHERE name = ?',
     [name]
   );
+
+  // The netmap is derived from the compiled policy and the route set, so anything
+  // that moves either of those moves it too. Doing this here rather than at each
+  // call site is deliberate: there are five of them across three services, and a
+  // netmap version that fails to advance leaves a revoked peer reachable. An extra
+  // bump costs one re-fetch of a document the node finds identical.
+  if (name !== 'netmap') {
+    await bumpEpoch('netmap');
+  }
+
   return getEpoch(name);
+}
+
+/**
+ * Advance the netmap version alone.
+ *
+ * For the changes that do not touch a rule or a route: quarantine, health, and a
+ * node's reported endpoints.
+ */
+async function bumpNetmap() {
+  return bumpEpoch('netmap');
 }
 
 async function listRules() {
@@ -174,10 +194,13 @@ async function compilePolicyFor(nodeId) {
 
   const self = selfRows[0];
 
+  // Ordered because the compiled policy is now part of the netmap, and the netmap has
+  // to serialise to the same bytes for the same inputs: an unordered scan is free to
+  // return the rows in a different sequence on the same data.
   const peers = await query(
-    'SELECT id, overlay_ipv4 FROM nodes WHERE id <> $1 AND is_quarantined = FALSE',
+    'SELECT id, overlay_ipv4 FROM nodes WHERE id <> $1 AND is_quarantined = FALSE ORDER BY id ASC',
     [nodeId],
-    'SELECT id, overlay_ipv4 FROM nodes WHERE id <> ? AND is_quarantined = 0',
+    'SELECT id, overlay_ipv4 FROM nodes WHERE id <> ? AND is_quarantined = 0 ORDER BY id ASC',
     [nodeId]
   );
 
@@ -249,6 +272,7 @@ module.exports = {
   cidrContains,
   getEpoch,
   bumpEpoch,
+  bumpNetmap,
   listRules,
   createRule,
   deleteRule,
