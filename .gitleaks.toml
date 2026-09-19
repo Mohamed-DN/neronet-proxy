@@ -1,0 +1,42 @@
+# Gitleaks configuration. CI runs it over the full history on every push, every pull
+# request and nightly (.github/workflows/security-scan.yml).
+#
+# Each allowlist below names one path and the rules that fire there, and says why the
+# finding is not a secret. Adding a path here needs the same explanation. Findings in
+# product code that are real go in .gitleaksignore, one fingerprint per line, never
+# here.
+
+title = "NeroNet gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Sample WireGuard-style preshared keys in the console's offline demo data. Random-looking base64 that belongs to no node."
+targetRules = ["generic-api-key"]
+paths = ['''^console/frontend/src/services/mockData\.js$''']
+
+[[allowlists]]
+description = "Test fixtures for the nuke routes: passwords and confirmation strings posted to a test server."
+targetRules = ["generic-api-key"]
+paths = ['''^console/backend/tests/m3_nuke\.test\.js$''']
+
+[[allowlists]]
+description = "Go test that sets an environment variable to a placeholder to check that the config loader reads it."
+targetRules = ["generic-api-key"]
+paths = ['''^pkg/config/env_test\.go$''']
+
+[[allowlists]]
+description = "Removed Python E2E suite (tests/e2e, deleted in WP-002). Fake bearer tokens with a literal BAD signature and a reversed sample password, plus a docstring naming a cipher. Only history still contains it."
+targetRules = ["generic-api-key", "jwt"]
+paths = ['''^tests/e2e/(console_e2e\.py|tier1_features/test_f09_crypto_overlay\.py)$''']
+
+[[allowlists]]
+description = "Stress script that sends a syntactically valid JWT with a literal BAD signature to check that the console rejects it."
+targetRules = ["generic-api-key", "jwt"]
+paths = ['''^tests/stress/challenger_frontend_staging_stress\.py$''']
+
+[[allowlists]]
+description = "Documentation. A WireGuard public key printed in an example, and a placeholder enrolment token in a command line."
+targetRules = ["generic-api-key"]
+paths = ['''^(DEVELOPER_SETUP|BUSINESS_AND_ROADMAP)\.md$''']
