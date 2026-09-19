@@ -436,7 +436,11 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		peerGroups := s.aclEngine.GetPeerGroups(req.NodeID)
 		postureResult := s.postureEngine.EvaluateAttestation(req.Posture, peerGroups)
 
-		if !postureResult.Compliant || postureResult.Quarantine {
+		// Only a check that was measured and failed is a violation. An unverified
+		// result means the node reported nothing for a required check; draining the
+		// mesh on that would quarantine every node that is honest about what it
+		// cannot measure.
+		if postureResult.Status == posture.StatusNonCompliant {
 			resp.IsQuarantined = true
 			resp.QuarantineReason = postureResult.ViolationReason
 			resp.DrainAndExit = true

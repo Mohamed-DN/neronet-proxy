@@ -14,6 +14,10 @@ import (
 	"github.com/sovereign/proxy/v4/pkg/routes"
 )
 
+// attBool exists because PeerAttestation distinguishes a measured false from a value
+// the node never looked at.
+func attBool(v bool) *bool { return &v }
+
 func TestVIPAllocator(t *testing.T) {
 	alloc := NewVIPAllocator()
 
@@ -181,8 +185,8 @@ func TestControlPlaneServerAndClientWithNetBirdFeatures(t *testing.T) {
 		ClientVersion:  "v4.0.0",
 		CountryCode:    "US",
 		ASN:            7018,
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  attBool(true),
+		FirewallActive: attBool(true),
 		IsRootless:     true,
 	})
 	if err != nil {
@@ -198,8 +202,8 @@ func TestControlPlaneServerAndClientWithNetBirdFeatures(t *testing.T) {
 		OSVersion:      "6.1.0",
 		ClientVersion:  "v4.0.0",
 		CountryCode:    "DE",
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  attBool(true),
+		FirewallActive: attBool(true),
 		IsRootless:     true,
 	})
 
@@ -209,8 +213,8 @@ func TestControlPlaneServerAndClientWithNetBirdFeatures(t *testing.T) {
 		OSVersion:      "6.1.0",
 		ClientVersion:  "v4.0.0",
 		CountryCode:    "GB",
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  attBool(true),
+		FirewallActive: attBool(true),
 		IsRootless:     true,
 	})
 
@@ -230,8 +234,8 @@ func TestControlPlaneServerAndClientWithNetBirdFeatures(t *testing.T) {
 		OSVersion:      "6.1.0",
 		ClientVersion:  "v4.0.0",
 		CountryCode:    "CN", // Violation!
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  attBool(true),
+		FirewallActive: attBool(true),
 		IsRootless:     true,
 	})
 	if err != nil {
@@ -258,8 +262,8 @@ func TestControlPlaneServerAndClientWithNetBirdFeatures(t *testing.T) {
 		ClientVersion:  "v4.0.0",
 		CountryCode:    "US", // Back in US!
 		ASN:            7018,
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  attBool(true),
+		FirewallActive: attBool(true),
 		IsRootless:     true,
 	})
 	if err != nil || hbRespRecovered.IsQuarantined {

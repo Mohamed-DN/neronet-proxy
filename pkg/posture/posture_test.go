@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+func boolPtr(v bool) *bool { return &v }
+
 func TestCompareSemver(t *testing.T) {
 	tests := []struct {
 		a        string
@@ -71,8 +73,8 @@ func TestPostureEngineComplianceAndQuarantine(t *testing.T) {
 		ClientVersion:  "v4.0.2",
 		CountryCode:    "US",
 		ASN:            7018,
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  boolPtr(true),
+		FirewallActive: boolPtr(true),
 		IsRootless:     true,
 		TimestampUTC:   time.Now().UTC(),
 	}
@@ -93,8 +95,8 @@ func TestPostureEngineComplianceAndQuarantine(t *testing.T) {
 		ClientVersion:  "v3.9.5",
 		CountryCode:    "US",
 		ASN:            7018,
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  boolPtr(true),
+		FirewallActive: boolPtr(true),
 		IsRootless:     true,
 	}
 	res = pe.EvaluateAttestation(attOldClient, []string{"group:all"})
@@ -113,8 +115,8 @@ func TestPostureEngineComplianceAndQuarantine(t *testing.T) {
 		ClientVersion:  "v4.0.0",
 		CountryCode:    "US",
 		ASN:            7018,
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  boolPtr(true),
+		FirewallActive: boolPtr(true),
 		IsRootless:     true,
 	}
 	res = pe.EvaluateAttestation(attOldOS, []string{"group:all"})
@@ -130,8 +132,8 @@ func TestPostureEngineComplianceAndQuarantine(t *testing.T) {
 		ClientVersion:  "v4.0.0",
 		CountryCode:    "CN",
 		ASN:            7018,
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  boolPtr(true),
+		FirewallActive: boolPtr(true),
 		IsRootless:     true,
 	}
 	res = pe.EvaluateAttestation(attProhibitedCountry, []string{"group:all"})
@@ -147,8 +149,8 @@ func TestPostureEngineComplianceAndQuarantine(t *testing.T) {
 		ClientVersion:  "v4.0.0",
 		CountryCode:    "BR",
 		ASN:            7018,
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  boolPtr(true),
+		FirewallActive: boolPtr(true),
 		IsRootless:     true,
 	}
 	res = pe.EvaluateAttestation(attUnapprovedCountry, []string{"group:all"})
@@ -164,9 +166,9 @@ func TestPostureEngineComplianceAndQuarantine(t *testing.T) {
 		ClientVersion:  "v4.0.0",
 		CountryCode:    "DE",
 		ASN:            15169,
-		DiskEncrypted:  false, // Violation 1
-		FirewallActive: false, // Violation 2
-		IsRootless:     false, // Violation 3
+		DiskEncrypted:  boolPtr(false), // Violation 1
+		FirewallActive: boolPtr(false), // Violation 2
+		IsRootless:     false,          // Violation 3
 	}
 	res = pe.EvaluateAttestation(attInsecureHost, []string{"group:all"})
 	if res.Compliant || !res.Quarantine {
@@ -184,8 +186,8 @@ func TestPostureEngineComplianceAndQuarantine(t *testing.T) {
 		ClientVersion:  "v4.0.0",
 		CountryCode:    "US",
 		ASN:            7018,
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  boolPtr(true),
+		FirewallActive: boolPtr(true),
 		IsRootless:     true,
 	}
 	res = pe.EvaluateAttestation(attRoamedBack, []string{"group:all"})
@@ -287,5 +289,133 @@ func TestGeoFencingDefaultAllowAndCensoredCountries(t *testing.T) {
 	resDefault := pe.EvaluateAttestation(attEGDefault, []string{"group:default"})
 	if !resDefault.Compliant {
 		t.Fatalf("Expected country EG to pass under default group")
+	}
+}
+
+// TestUnknownChecksAreUnverifiedNotCompliant covers the third outcome.
+//
+// The engine had two: pass or quarantine. A node that reported nothing about disk
+// encryption took the pass branch, so "compliant" meant "nothing was found wrong",
+// which on a fleet that measures nothing is every node.
+func TestUnknownChecksAreUnverifiedNotCompliant(t *testing.T) {
+	pe := NewPostureEngine()
+
+	err := pe.UpsertPolicy(&PosturePolicy{
+		ID:           "sec-baseline",
+		Name:         "Host hardening baseline",
+		Enabled:      true,
+		TargetGroups: []string{"group:all"},
+		SecurityRule: SecurityStateRule{
+			RequireDiskEncryption: true,
+			RequireFirewall:       true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpsertPolicy failed: %v", err)
+	}
+
+	// What a node built from this branch actually sends: both security booleans
+	// absent from the measurement.
+	unmeasured := &PeerAttestation{
+		NodeID:        "node-unmeasured",
+		OSName:        "linux",
+		OSVersion:     "12",
+		ClientVersion: "v4.0.0",
+		CountryCode:   "IT",
+		IsRootless:    true,
+		TimestampUTC:  time.Now().UTC(),
+	}
+
+	res := pe.EvaluateAttestation(unmeasured, []string{"group:all"})
+
+	if res.Status != StatusUnverified {
+		t.Fatalf("status = %q, want %q", res.Status, StatusUnverified)
+	}
+	if res.Compliant {
+		t.Fatalf("an attestation that measured neither required check was reported compliant: %+v", res)
+	}
+	if res.Quarantine {
+		t.Fatalf("an unverified node was quarantined; not measuring is not a violation: %+v", res)
+	}
+	if len(res.UnknownChecks) != 2 {
+		t.Fatalf("expected both required checks to be listed as unknown, got %v", res.UnknownChecks)
+	}
+	if len(res.FailedChecks) != 0 {
+		t.Fatalf("nothing failed, but the result lists failures: %v", res.FailedChecks)
+	}
+
+	// One known failure outranks the unknowns: a measured false is a violation.
+	partial := &PeerAttestation{
+		NodeID:        "node-partial",
+		OSName:        "linux",
+		OSVersion:     "12",
+		ClientVersion: "v4.0.0",
+		DiskEncrypted: boolPtr(false),
+		IsRootless:    true,
+	}
+
+	res = pe.EvaluateAttestation(partial, []string{"group:all"})
+	if res.Status != StatusNonCompliant {
+		t.Fatalf("status = %q, want %q for a measured failing check", res.Status, StatusNonCompliant)
+	}
+	if !res.Quarantine {
+		t.Fatalf("a measured violation did not quarantine: %+v", res)
+	}
+
+	// Everything measured and passing is the only route to compliance.
+	measured := &PeerAttestation{
+		NodeID:         "node-measured",
+		OSName:         "linux",
+		OSVersion:      "12",
+		ClientVersion:  "v4.0.0",
+		DiskEncrypted:  boolPtr(true),
+		FirewallActive: boolPtr(true),
+		IsRootless:     true,
+	}
+
+	res = pe.EvaluateAttestation(measured, []string{"group:all"})
+	if res.Status != StatusVerifiedCompliant || !res.Compliant {
+		t.Fatalf("status = %q compliant = %t, want %q / true", res.Status, res.Compliant, StatusVerifiedCompliant)
+	}
+}
+
+// TestUnverifiedDoesNotLiftAnExistingQuarantine: a node that stops reporting a check
+// it previously failed must not be released by its own silence.
+func TestUnverifiedDoesNotLiftAnExistingQuarantine(t *testing.T) {
+	pe := NewPostureEngine()
+
+	err := pe.UpsertPolicy(&PosturePolicy{
+		ID:           "sec-baseline",
+		Enabled:      true,
+		TargetGroups: []string{"group:all"},
+		SecurityRule: SecurityStateRule{RequireDiskEncryption: true},
+	})
+	if err != nil {
+		t.Fatalf("UpsertPolicy failed: %v", err)
+	}
+
+	failing := &PeerAttestation{NodeID: "node-quiet", DiskEncrypted: boolPtr(false)}
+	if res := pe.EvaluateAttestation(failing, nil); !res.Quarantine {
+		t.Fatalf("expected the measured violation to quarantine, got %+v", res)
+	}
+
+	silent := &PeerAttestation{NodeID: "node-quiet"}
+	res := pe.EvaluateAttestation(silent, nil)
+	if res.Status != StatusUnverified {
+		t.Fatalf("status = %q, want %q", res.Status, StatusUnverified)
+	}
+	if !pe.QuarantineManager().IsQuarantined("node-quiet") {
+		t.Fatalf("the quarantine was lifted by a node that simply stopped reporting the check")
+	}
+}
+
+// TestNilAttestationIsUnverified: no attestation is the strongest unknown, and it
+// must not panic the caller either.
+func TestNilAttestationIsUnverified(t *testing.T) {
+	pe := NewPostureEngine()
+
+	res := pe.EvaluateAttestation(nil, []string{"group:all"})
+	if res.Status != StatusUnverified || res.Compliant {
+		t.Fatalf("EvaluateAttestation(nil) = %+v, want an unverified, non-compliant result", res)
 	}
 }

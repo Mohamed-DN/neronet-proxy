@@ -59,25 +59,73 @@ type PosturePolicy struct {
 	UpdatedAt    time.Time         `json:"updated_at"`
 }
 
-// PeerAttestation represents the telemetry payload submitted by the peer
+// PeerAttestation represents the telemetry payload submitted by the peer.
+//
+// A field the node did not measure must stay unset rather than carry a plausible
+// value. The zero value is the "not measured" marker for everything except the two
+// security booleans, which need a third state and are therefore pointers:
+//
+//	ASN == 0            not measured
+//	OSVersion == ""     not measured
+//	CountryCode == ""   not declared (it is self-declared, never measured)
+//	DiskEncrypted nil   not measured (JSON null)
+//	FirewallActive nil  not measured (JSON null)
+//
+// The JSON field names are part of the wire contract with the control plane and do
+// not change. A node built before the pointers existed sends a bare `true`/`false`,
+// which still decodes; a node that omits the field decodes to nil, and nil must
+// never be read as true.
 type PeerAttestation struct {
-	NodeID         string    `json:"node_id"`
-	OSName         string    `json:"os_name"`
-	OSVersion      string    `json:"os_version"`
-	ClientVersion  string    `json:"client_version"`
-	CountryCode    string    `json:"country_code"`
-	ASN            uint32    `json:"asn"`
-	DiskEncrypted  bool      `json:"disk_encrypted"`
-	FirewallActive bool      `json:"firewall_active"`
-	IsRootless     bool      `json:"is_rootless"`
-	TimestampUTC   time.Time `json:"timestamp_utc"`
+	NodeID        string `json:"node_id"`
+	OSName        string `json:"os_name"`
+	OSVersion     string `json:"os_version"`
+	ClientVersion string `json:"client_version"`
+	CountryCode   string `json:"country_code"`
+	ASN           uint32 `json:"asn"`
+
+	// Nil means the node did not measure host disk encryption, which is not the
+	// same as measuring it and finding it off.
+	DiskEncrypted *bool `json:"disk_encrypted"`
+
+	// Nil means the node did not measure the host firewall.
+	FirewallActive *bool `json:"firewall_active"`
+
+	// IsRootless is measured on every platform the node runs on, so it has no
+	// unknown state.
+	IsRootless   bool      `json:"is_rootless"`
+	TimestampUTC time.Time `json:"timestamp_utc"`
 }
+
+// PostureStatus is the outcome of evaluating an attestation against the policies
+// that apply to a peer.
+type PostureStatus string
+
+const (
+	// StatusVerifiedCompliant means every required check was reported and passed.
+	StatusVerifiedCompliant PostureStatus = "verified_compliant"
+
+	// StatusNonCompliant means at least one reported check failed.
+	StatusNonCompliant PostureStatus = "non_compliant"
+
+	// StatusUnverified means nothing failed but at least one required check was
+	// not measured. It is not compliance: the node has proved nothing.
+	StatusUnverified PostureStatus = "unverified"
+)
 
 // PostureResult indicates the outcome of a posture evaluation
 type PostureResult struct {
+	// Status is the full answer. Compliant below is kept because callers already
+	// branch on it, but it cannot distinguish "failed" from "never measured", which
+	// is exactly the distinction this type exists to carry.
+	Status PostureStatus `json:"status"`
+
+	// Compliant is true only for StatusVerifiedCompliant. An unverified result is
+	// not compliant and is not a violation either; branch on Quarantine, or on
+	// Status, to tell the two apart.
 	Compliant       bool     `json:"compliant"`
 	Quarantine      bool     `json:"quarantine"`
 	FailedChecks    []string `json:"failed_checks"`
+	UnknownChecks   []string `json:"unknown_checks"`
 	ViolationReason string   `json:"violation_reason"`
 }
 
@@ -258,8 +306,21 @@ func (pe *PostureEngine) Epoch() uint64 {
 	return pe.epoch
 }
 
-// EvaluateAttestation validates peer telemetry against applicable policies
+// EvaluateAttestation validates peer telemetry against applicable policies.
+//
+// Three outcomes, not two. A required check the node did not measure leaves the peer
+// unverified: it is not evidence of compliance and it is not a violation either.
+// Collapsing that third state into "compliant" is what let a fleet report itself
+// fully hardened without a single measurement.
 func (pe *PostureEngine) EvaluateAttestation(att *PeerAttestation, peerGroups []string) PostureResult {
+	if att == nil {
+		// No attestation at all is the strongest form of "not measured".
+		return PostureResult{
+			Status:        StatusUnverified,
+			UnknownChecks: []string{"no attestation was submitted"},
+		}
+	}
+
 	pe.mu.RLock()
 	policies := make([]*PosturePolicy, 0, len(pe.policies))
 	for _, p := range pe.policies {
@@ -274,6 +335,7 @@ func (pe *PostureEngine) EvaluateAttestation(att *PeerAttestation, peerGroups []
 	groupSet["group:all"] = true
 
 	var failed []string
+	var unknown []string
 
 	for _, policy := range policies {
 		if !policy.Enabled {
@@ -296,18 +358,28 @@ func (pe *PostureEngine) EvaluateAttestation(att *PeerAttestation, peerGroups []
 		}
 
 		// 1. Client Version Check
-		if policy.MinClientVer != "" && att.ClientVersion != "" {
-			if CompareSemver(att.ClientVersion, policy.MinClientVer) < 0 {
+		if policy.MinClientVer != "" {
+			if att.ClientVersion == "" {
+				// This used to be skipped, which silently passed the check.
+				unknown = append(unknown, "client version was not reported")
+			} else if CompareSemver(att.ClientVersion, policy.MinClientVer) < 0 {
 				failed = append(failed, fmt.Sprintf("Client version %s below required min %s", att.ClientVersion, policy.MinClientVer))
 			}
 		}
 
 		// 2. OS Version Check
 		for _, osRule := range policy.OSRules {
-			if strings.EqualFold(att.OSName, osRule.OSName) {
-				if osRule.MinVersion != "" && CompareSemver(att.OSVersion, osRule.MinVersion) < 0 {
-					failed = append(failed, fmt.Sprintf("OS %s version %s below required min %s", att.OSName, att.OSVersion, osRule.MinVersion))
-				}
+			if !strings.EqualFold(att.OSName, osRule.OSName) || osRule.MinVersion == "" {
+				continue
+			}
+			if att.OSVersion == "" {
+				// An empty version compares below every minimum, so this used to be
+				// reported as a violation. The node did not measure it.
+				unknown = append(unknown, fmt.Sprintf("OS version was not reported for %s", osRule.OSName))
+				continue
+			}
+			if CompareSemver(att.OSVersion, osRule.MinVersion) < 0 {
+				failed = append(failed, fmt.Sprintf("OS %s version %s below required min %s", att.OSName, att.OSVersion, osRule.MinVersion))
 			}
 		}
 
@@ -339,26 +411,45 @@ func (pe *PostureEngine) EvaluateAttestation(att *PeerAttestation, peerGroups []
 			}
 		}
 
-		// ASN Whitelist check
-		if len(policy.GeoRule.AllowedASNs) > 0 && att.ASN > 0 {
-			asnAllowed := false
-			for _, asn := range policy.GeoRule.AllowedASNs {
-				if asn == att.ASN {
-					asnAllowed = true
-					break
+		// ASN Whitelist check. ASN 0 is the unmeasured value, not an ASN outside the
+		// list: the node does not resolve its own ASN.
+		if len(policy.GeoRule.AllowedASNs) > 0 {
+			if att.ASN == 0 {
+				unknown = append(unknown, "ASN was not reported")
+			} else {
+				asnAllowed := false
+				for _, asn := range policy.GeoRule.AllowedASNs {
+					if asn == att.ASN {
+						asnAllowed = true
+						break
+					}
 				}
-			}
-			if !asnAllowed {
-				failed = append(failed, fmt.Sprintf("ASN %d is not in allowed compliance list", att.ASN))
+				if !asnAllowed {
+					failed = append(failed, fmt.Sprintf("ASN %d is not in allowed compliance list", att.ASN))
+				}
 			}
 		}
 
-		// 4. Security State Check
-		if policy.SecurityRule.RequireDiskEncryption && !att.DiskEncrypted {
-			failed = append(failed, "Host disk encryption is not enabled")
+		// 4. Security State Check.
+		//
+		// A nil pointer is "the node did not look", and it must not fall through to
+		// the false branch. The whole fleet reported disk encryption and a live
+		// firewall because these two values were constants in the node binary.
+		if policy.SecurityRule.RequireDiskEncryption {
+			switch {
+			case att.DiskEncrypted == nil:
+				unknown = append(unknown, "host disk encryption was not measured")
+			case !*att.DiskEncrypted:
+				failed = append(failed, "Host disk encryption is not enabled")
+			}
 		}
-		if policy.SecurityRule.RequireFirewall && !att.FirewallActive {
-			failed = append(failed, "Host local firewall is disabled")
+		if policy.SecurityRule.RequireFirewall {
+			switch {
+			case att.FirewallActive == nil:
+				unknown = append(unknown, "host local firewall was not measured")
+			case !*att.FirewallActive:
+				failed = append(failed, "Host local firewall is disabled")
+			}
 		}
 		if policy.SecurityRule.RequireRootless && !att.IsRootless {
 			failed = append(failed, "Process running with privileged root execution")
@@ -367,9 +458,11 @@ func (pe *PostureEngine) EvaluateAttestation(att *PeerAttestation, peerGroups []
 
 	if len(failed) > 0 {
 		res := PostureResult{
+			Status:          StatusNonCompliant,
 			Compliant:       false,
 			Quarantine:      true,
 			FailedChecks:    failed,
+			UnknownChecks:   unknown,
 			ViolationReason: strings.Join(failed, "; "),
 		}
 		if att.NodeID != "" {
@@ -378,11 +471,24 @@ func (pe *PostureEngine) EvaluateAttestation(att *PeerAttestation, peerGroups []
 		return res
 	}
 
+	if len(unknown) > 0 {
+		// Nothing failed, but nothing was proved either. The quarantine state is left
+		// exactly as it is: lifting it here would clear a quarantine imposed for a
+		// check the node has now simply stopped reporting.
+		return PostureResult{
+			Status:        StatusUnverified,
+			Compliant:     false,
+			Quarantine:    false,
+			UnknownChecks: unknown,
+		}
+	}
+
 	if att.NodeID != "" {
 		pe.quarantineMgr.UnquarantinePeer(att.NodeID)
 	}
 
 	return PostureResult{
+		Status:     StatusVerifiedCompliant,
 		Compliant:  true,
 		Quarantine: false,
 	}

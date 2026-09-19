@@ -26,6 +26,10 @@ import (
 // 1. SEMVER COMPARATOR ADVERSARIAL FUZZING & PROPERTY-BASED TESTS
 // ============================================================================
 
+// ptrBool exists because PeerAttestation now distinguishes a measured false from a
+// value the node never looked at.
+func ptrBool(v bool) *bool { return &v }
+
 func TestAdversarialSemverFuzzingAndComparisons(t *testing.T) {
 	// 1. Deterministic Equivalence & Precedence Test Vectors
 	vectors := []struct {
@@ -392,8 +396,8 @@ func TestAdversarialHostSecurityTruthTable(t *testing.T) {
 		t.Run(fmt.Sprintf("Disk_%t_FW_%t_Rootless_%t", disk, fw, rootless), func(t *testing.T) {
 			att := &posture.PeerAttestation{
 				NodeID:         fmt.Sprintf("node-sec-%d", i),
-				DiskEncrypted:  disk,
-				FirewallActive: fw,
+				DiskEncrypted:  &disk,
+				FirewallActive: &fw,
 				IsRootless:     rootless,
 			}
 
@@ -496,8 +500,8 @@ func TestAdversarialQuarantineLifecycleAndControlPlaneIntegration(t *testing.T) 
 		ClientVersion:  "4.0.0",
 		CountryCode:    "US",
 		ASN:            7018,
-		DiskEncrypted:  true,
-		FirewallActive: true,
+		DiskEncrypted:  ptrBool(true),
+		FirewallActive: ptrBool(true),
 		IsRootless:     true,
 		TimestampUTC:   time.Now().UTC(),
 	}
@@ -534,8 +538,8 @@ func TestAdversarialQuarantineLifecycleAndControlPlaneIntegration(t *testing.T) 
 		ClientVersion:  "4.0.0",
 		CountryCode:    "US",
 		ASN:            7018,
-		DiskEncrypted:  false, // VIOLATION
-		FirewallActive: false, // VIOLATION
+		DiskEncrypted:  ptrBool(false), // VIOLATION
+		FirewallActive: ptrBool(false), // VIOLATION
 		IsRootless:     true,
 		TimestampUTC:   time.Now().UTC(),
 	}
