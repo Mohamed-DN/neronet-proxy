@@ -29,9 +29,6 @@ let adminToken = '';
 let regularUserToken = '';
 let regularUserId = '';
 let createdNodeId = '';
-let createdAppId = '';
-let createdShareLinkId = '';
-let createdShareToken = '';
 
 describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   after(() => {
@@ -357,122 +354,16 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     assert.strictEqual(typeof res.body.json_profile.routing.onion_hops, 'number');
   });
 
-  // 6. App Bundles Lifecycle & Fast SSO Wakeup
-  test('POST /api/apps should provision a new app bundle', async () => {
-    const res = await request(app).post('/api/apps').set('Authorization', `Bearer ${regularUserToken}`).send({
-      name: 'My Guacamole Gateway',
-      type: 'guacamole',
-      memory_mb: 4096,
-      storage_gb: 50
-    });
-    assert.strictEqual(res.status, 201);
-    assert.strictEqual(res.body.app.type, 'guacamole');
-    assert.strictEqual(res.body.app.status, 'stopped');
-    createdAppId = res.body.app.id;
+  // App Bundles was removed. Its routes were SQLite-only and answered 500 on
+  // PostgreSQL; the mount is gone and the paths fall through to 404.
+  test('GET /api/apps is not routed', async () => {
+    const res = await request(app).get('/api/apps').set('Authorization', `Bearer ${regularUserToken}`);
+    assert.strictEqual(res.status, 404);
   });
 
-  test('POST /api/apps with invalid type should fail with 400', async () => {
-    const res = await request(app).post('/api/apps').set('Authorization', `Bearer ${regularUserToken}`).send({
-      name: 'Invalid App',
-      type: 'unsupported_app_type'
-    });
-    assert.strictEqual(res.status, 400);
-  });
-
-  test('POST /api/apps/:id/start and stop should transition states', async () => {
-    const startRes = await request(app)
-      .post(`/api/apps/${createdAppId}/start`)
-      .set('Authorization', `Bearer ${regularUserToken}`);
-    assert.strictEqual(startRes.status, 200);
-    assert.strictEqual(startRes.body.app.status, 'running');
-
-    const stopRes = await request(app)
-      .post(`/api/apps/${createdAppId}/stop`)
-      .set('Authorization', `Bearer ${regularUserToken}`);
-    assert.strictEqual(stopRes.status, 200);
-    assert.strictEqual(stopRes.body.app.status, 'stopped');
-  });
-
-  test('POST /api/apps/:id/scale-to-zero should hibernate app', async () => {
-    const res = await request(app)
-      .post(`/api/apps/${createdAppId}/scale-to-zero`)
-      .set('Authorization', `Bearer ${regularUserToken}`);
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.body.app.status, 'hibernated');
-  });
-
-  test('GET /api/apps/:id/launch should wake hibernated app and return SSO token', async () => {
-    const res = await request(app)
-      .get(`/api/apps/${createdAppId}/launch`)
-      .set('Authorization', `Bearer ${regularUserToken}`);
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.body.status, 'running');
-    assert(res.body.sso_token.startsWith('sso_'));
-    assert(res.body.launch_url.includes('darknero.com'));
-  });
-
-  // 6.1 Guacamole Public Share Links (Clientless RDP)
-  test('POST /api/apps/:id/share should generate a clientless public share link', async () => {
-    const res = await request(app)
-      .post(`/api/apps/${createdAppId}/share`)
-      .set('Authorization', `Bearer ${regularUserToken}`)
-      .send({
-        auth_mode: 'temporary_password',
-        expires_in_hours: 24,
-        max_uses: 5
-      });
-    assert.strictEqual(res.status, 201);
-    assert.strictEqual(res.body.success, true);
-    assert(res.body.share_link.id);
-    assert(res.body.share_link.share_token);
-    assert(res.body.share_link.public_url.includes(res.body.share_link.share_token));
-    assert.strictEqual(res.body.share_link.auth_mode, 'temporary_password');
-    assert(res.body.share_link.temporary_password.startsWith('SVRN-'));
-    assert.strictEqual(res.body.share_link.max_uses, 5);
-    assert.strictEqual(res.body.share_link.use_count, 0);
-    assert.strictEqual(res.body.share_link.is_revoked, false);
-    createdShareLinkId = res.body.share_link.id;
-    createdShareToken = res.body.share_link.share_token;
-  });
-
-  test('GET /api/apps/:id/share-links should list active share links for app', async () => {
-    const res = await request(app)
-      .get(`/api/apps/${createdAppId}/share-links`)
-      .set('Authorization', `Bearer ${regularUserToken}`);
-    assert.strictEqual(res.status, 200);
-    assert(Array.isArray(res.body.share_links));
-    assert(res.body.share_links.length >= 1);
-    const found = res.body.share_links.find((l) => l.id === createdShareLinkId);
-    assert(found);
-    assert.strictEqual(found.share_token, createdShareToken);
-  });
-
-  test('GET /api/apps/public/verify/:token (unauthenticated) should verify share token and return RDP gateway details', async () => {
-    const res = await request(app).get(`/api/apps/public/verify/${createdShareToken}`);
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.body.valid, true);
-    assert.strictEqual(res.body.app_id, createdAppId);
-    assert.strictEqual(res.body.gateway_protocol, 'guacamole_clientless_rdp');
-    assert.strictEqual(res.body.auth_mode, 'temporary_password');
-    assert.strictEqual(res.body.requires_password, true);
-    assert(res.body.websocket_endpoint.includes('guac-tunnel'));
-    assert(res.body.session_token.startsWith('sess_pub_'));
-    assert.strictEqual(res.body.use_count, 1);
-  });
-
-  test('DELETE /api/apps/:id/share-links/:linkId should revoke share link', async () => {
-    const res = await request(app)
-      .delete(`/api/apps/${createdAppId}/share-links/${createdShareLinkId}`)
-      .set('Authorization', `Bearer ${regularUserToken}`);
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.body.success, true);
-  });
-
-  test('GET /api/apps/public/verify/:token with revoked token should fail with 403', async () => {
-    const res = await request(app).get(`/api/apps/public/verify/${createdShareToken}`);
-    assert.strictEqual(res.status, 403);
-    assert.strictEqual(res.body.valid, false);
-    assert.strictEqual(res.body.is_revoked, true);
+  test('GET /api/apps/public/verify/:token is not routed', async () => {
+    const res = await request(app).get('/api/apps/public/verify/some-token');
+    assert.strictEqual(res.status, 404);
   });
 
   // NeroDrop was removed. Its routes answered 500 on PostgreSQL and 201 with a

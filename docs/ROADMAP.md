@@ -267,12 +267,13 @@ substituted fixture transfers, presenting a history of transfers that had never
 occurred. The component, the routes, the client methods and the fixtures are removed;
 the `nerodrop_sessions` table is dropped in WP-104.
 
-App Bundles is dead code on both sides. `api.apps` in the frontend has no callers,
-and the menu entry labelled "Sovereign Cloud PC" renders `components/AppBundles.jsx`,
-which despite its filename calls `/cloud-pc` and works. `routes/apps.js` is likewise
-SQLite-only and unreachable; it would 500 on PostgreSQL if anything called it. It
-claims more than that if it is ever revived: `POST /apps/:id/start` sets
-`status = 'running'` in a table and starts no container, then answers success.
+App Bundles is deleted (D8). `routes/apps.js` was SQLite-only and `api.apps` in the
+frontend had no callers. It claimed more than it did: `POST /apps/:id/start` set
+`status = 'running'` in a table and started no container, then answered success. The
+routes, the client methods, the fixtures and the seeded rows are removed; the
+`app_bundles` and `app_share_links` tables are dropped in WP-104. The menu entry
+labelled "Sovereign Cloud PC" rendered `components/AppBundles.jsx`, which despite its
+filename calls `/cloud-pc`; that component is Cloud PC and is handled separately.
 
 Cloud PC works and stays. Its instances still point at `wss://signal.internal.
 darknero.com`, which does not resolve, so streaming cannot connect — the listing and
@@ -359,8 +360,7 @@ Remove:
 
 - `users.tier` and the values `cloud_managed`, `managed_cloud`, `hybrid_byos`,
   `free_core`.
-- `bandwidth_quota_gb`, `max_nodes`, and the quota checks in `routes/nodes.js` and
-  `routes/apps.js`.
+- `bandwidth_quota_gb`, `max_nodes`, and the quota checks in `routes/nodes.js`.
 - `app_bundles.tier`.
 - `BUSINESS_AND_ROADMAP.md` chapter 6 (subscription matrix, unit economics, Stripe
   and BTCPay, billing lifecycle) and § 5.5 (Ed25519 licensing).

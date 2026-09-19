@@ -8,7 +8,6 @@ import { markReachable, markUnreachable, resolveList, resolveOne } from './dataS
 import {
   MOCK_USERS,
   MOCK_NODES,
-  MOCK_APP_BUNDLES,
   MOCK_AUDIT_LOGS,
   MOCK_TIMESERIES,
   MOCK_GEO_MATRIX,
@@ -83,7 +82,6 @@ let inMemoryNodes = MOCK_NODES.map((n, index) => {
   };
 });
 let inMemoryUsers = [...MOCK_USERS];
-let inMemoryApps = [...MOCK_APP_BUNDLES];
 let inMemoryAuditLogs = [...MOCK_AUDIT_LOGS];
 let inMemoryAclRules = [...MOCK_ACL_RULES];
 let inMemoryPeering = [...MOCK_PEERING_AGREEMENTS];
@@ -92,26 +90,6 @@ let inMemoryGeoPolicies = [...MOCK_GEOFENCING_POLICIES];
 let inMemoryCloudPc = [...MOCK_SOVEREIGN_CLOUD_PC];
 let inMemoryCustomDomains = [...MOCK_CUSTOM_DOMAINS];
 let inMemoryNukeConfig = JSON.parse(JSON.stringify(MOCK_NERONUKE_CONFIG));
-let inMemoryShareLinks = [
-  {
-    id: 'shlink-seed-01',
-    app_id: 'app-seed-guac',
-    user_id: 'usr-admin',
-    share_token: 'tok_guac_demo_clientless_rdp_2026',
-    public_url:
-      'https://workspace.neronet.darknero.com/#/clientless/app-seed-guac?token=tok_guac_demo_clientless_rdp_2026',
-    auth_mode: 'temporary_password',
-    temporary_password: 'SVRN-DEMO-2026',
-    expires_at: new Date(Date.now() + 86400000 * 7).toISOString(),
-    max_uses: 10,
-    use_count: 1,
-    is_revoked: false,
-    is_expired: false,
-    status: 'active',
-    created_at: new Date().toISOString()
-  }
-];
-
 const API_BASE = '/api';
 
 const TOKEN_KEY = 'neronet_jwt_token';
@@ -558,157 +536,6 @@ PersistentKeepalive = 25
         return inMemoryUsers[idx];
       }
       throw new Error('User not found');
-    }
-  },
-
-  // App Bundles
-  apps: {
-    async list() {
-      const live = await request('/apps');
-      return resolveList('/apps', Array.isArray(live?.apps) ? live.apps : null, inMemoryApps);
-    },
-
-    async create(appData) {
-      const live = await request('/apps', {
-        method: 'POST',
-        body: JSON.stringify(appData)
-      });
-      if (live && live.app) return live.app;
-
-      const newApp = {
-        id: `app_${appData.type}_${Math.random().toString(36).substring(2, 7)}`,
-        user_id: appData.user_id || 'usr_admin_01',
-        name: appData.name,
-        type: appData.type,
-        status: 'running',
-        endpoint_url: `https://${appData.type}.internal.darknero.net`,
-        internal_port: appData.type === 'guacamole' ? 8443 : appData.type === 'immich' ? 2283 : 8080,
-        container_id: `cnt_neronet_${appData.type}_${Math.random().toString(36).substring(2, 6)}`,
-        cpu_cores: Number(appData.cpu_cores) || 2.0,
-        memory_mb: Number(appData.memory_mb) || 4096,
-        storage_gb: Number(appData.storage_gb) || 100,
-        scale_to_zero: appData.scale_to_zero ? 1 : 0,
-        inactivity_timeout_min: Number(appData.inactivity_timeout_min) || 30,
-        config_json: JSON.stringify(appData.config || {}),
-        last_accessed_at: new Date().toISOString(),
-        created_at: new Date().toISOString()
-      };
-      inMemoryApps.push(newApp);
-      return newApp;
-    },
-
-    async action(id, actionType) {
-      const live = await request(`/apps/${id}/action`, {
-        method: 'POST',
-        body: JSON.stringify({ action: actionType })
-      });
-      if (live) return live;
-
-      const idx = inMemoryApps.findIndex((a) => a.id === id);
-      if (idx !== -1) {
-        if (actionType === 'start') {
-          inMemoryApps[idx].status = 'running';
-          inMemoryApps[idx].last_accessed_at = new Date().toISOString();
-        } else if (actionType === 'stop') {
-          inMemoryApps[idx].status = 'stopped';
-        } else if (actionType === 'scale_to_zero') {
-          inMemoryApps[idx].scale_to_zero = inMemoryApps[idx].scale_to_zero ? 0 : 1;
-        }
-        return { success: true, app: inMemoryApps[idx] };
-      }
-      return { success: false, error: 'App not found' };
-    },
-
-    async launch(id) {
-      const live = await request(`/apps/${id}/launch`);
-      if (live) return live;
-
-      const app = inMemoryApps.find((a) => a.id === id);
-      const ssoToken = `sso_neronet_${Math.random().toString(36).substring(2, 15)}`;
-      return {
-        launch_url: app ? `${app.endpoint_url}?sso_token=${ssoToken}` : 'https://guac.internal.darknero.net',
-        sso_token: ssoToken,
-        app_name: app?.name || 'Sovereign Service'
-      };
-    },
-
-    async listShareLinks(appId) {
-      const live = await request(`/apps/${appId}/share-links`);
-      if (live && live.share_links) return live.share_links;
-      return inMemoryShareLinks.filter((l) => l.app_id === appId);
-    },
-
-    async createShareLink(appId, shareData) {
-      const live = await request(`/apps/${appId}/share`, {
-        method: 'POST',
-        body: JSON.stringify(shareData)
-      });
-      if (live && (live.share_link || live.link)) return live.share_link || live.link;
-
-      const newLink = {
-        id: `shlink-${Math.random().toString(36).substring(2, 10)}`,
-        app_id: appId,
-        user_id: 'usr_admin_01',
-        share_token: `tok_pub_${Math.random().toString(36).substring(2, 15)}`,
-        public_url: `https://workspace.neronet.darknero.com/#/clientless/${appId}?token=tok_pub_${Math.random().toString(36).substring(2, 15)}`,
-        auth_mode: shareData.auth_mode || 'temporary_password',
-        temporary_password:
-          shareData.auth_mode === 'temporary_password'
-            ? shareData.temporary_password || `SVRN-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
-            : null,
-        expires_at:
-          shareData.expires_at ||
-          new Date(Date.now() + (Number(shareData.expires_in_hours) || 24) * 3600 * 1000).toISOString(),
-        max_uses: Number(shareData.max_uses) || 0,
-        use_count: 0,
-        is_revoked: false,
-        is_expired: false,
-        status: 'active',
-        created_at: new Date().toISOString()
-      };
-      inMemoryShareLinks.unshift(newLink);
-      return newLink;
-    },
-
-    async revokeShareLink(appId, linkId) {
-      const live = await request(`/apps/${appId}/share-links/${linkId}`, {
-        method: 'DELETE'
-      });
-      if (live) return live;
-
-      const idx = inMemoryShareLinks.findIndex((l) => l.id === linkId);
-      if (idx !== -1) {
-        inMemoryShareLinks[idx].is_revoked = true;
-        inMemoryShareLinks[idx].status = 'revoked';
-        return { success: true, message: 'Share link revoked successfully' };
-      }
-      return { success: false, error: 'Share link not found' };
-    },
-
-    async verifyPublicShareLink(token) {
-      const live = await request(`/apps/public/verify/${token}`);
-      if (live) return live;
-
-      const link = inMemoryShareLinks.find((l) => l.share_token === token);
-      if (!link) return { valid: false, error: 'Share link not found' };
-      if (link.is_revoked) return { valid: false, error: 'Share link is revoked', is_revoked: true };
-      link.use_count += 1;
-      return {
-        valid: true,
-        share_id: link.id,
-        app_id: link.app_id,
-        app_name: 'Guacamole Bastion',
-        app_type: 'guacamole',
-        auth_mode: link.auth_mode,
-        public_url: link.public_url,
-        gateway_protocol: 'guacamole_clientless_rdp',
-        websocket_endpoint: `wss://workspace.neronet.darknero.com/guac-tunnel/${link.app_id}`,
-        session_token: `sess_pub_${Math.random().toString(36).substring(2, 12)}`,
-        expires_at: link.expires_at,
-        use_count: link.use_count,
-        max_uses: link.max_uses,
-        requires_password: link.auth_mode === 'temporary_password'
-      };
     }
   },
 

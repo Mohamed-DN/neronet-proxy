@@ -22,7 +22,6 @@ const authRoutes = require('./routes/auth');
 const usersRoutes = require('./routes/users');
 const nodesRoutes = require('./routes/nodes');
 const configsRoutes = require('./routes/configs');
-const appsRoutes = require('./routes/apps');
 const statsRoutes = require('./routes/stats');
 const peeringRoutes = require('./routes/peering');
 const riskRoutes = require('./routes/risk');
@@ -72,7 +71,6 @@ function createApp() {
   app.use('/api/nodes', nodesRoutes);
   app.use('/api/nodes', riskRoutes);
   app.use('/api/configs', configsRoutes);
-  app.use('/api/apps', appsRoutes);
   app.use('/api/stats', statsRoutes);
   app.use('/api/audit', statsRoutes);
   app.use('/api/peering', peeringRoutes);

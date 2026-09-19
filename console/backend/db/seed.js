@@ -25,18 +25,6 @@ function seedDatabase(db) {
     )
   `);
 
-  const insertApp = db.prepare(`
-    INSERT OR IGNORE INTO app_bundles (
-      id, user_id, name, type, status,
-      endpoint_url, internal_port, cpu_cores, memory_mb, storage_gb,
-      scale_to_zero
-    ) VALUES (
-      @id, @user_id, @name, @type, @status,
-      @endpoint_url, @internal_port, @cpu_cores, @memory_mb, @storage_gb,
-      @scale_to_zero
-    )
-  `);
-
   const insertAudit = db.prepare(`
     INSERT INTO audit_events (
       event_type, severity, actor_user_id, actor_username,
@@ -128,35 +116,6 @@ function seedDatabase(db) {
       is_healthy: 1,
       is_quarantined: 0,
       latency_ms: 24.1
-    });
-
-    // 4. Seed Apps
-    insertApp.run({
-      id: 'app-seed-guac',
-      user_id: 'usr-admin',
-      name: 'Guacamole Bastion',
-      type: 'guacamole',
-      status: 'running',
-      endpoint_url: 'https://guacamole.internal.darknero.com',
-      internal_port: 8080,
-      cpu_cores: 2.0,
-      memory_mb: 4096,
-      storage_gb: 50,
-      scale_to_zero: 0
-    });
-
-    insertApp.run({
-      id: 'app-seed-nextcloud',
-      user_id: 'usr-alice',
-      name: 'Alice Private Cloud',
-      type: 'nextcloud',
-      status: 'stopped',
-      endpoint_url: 'https://nextcloud.internal.darknero.com',
-      internal_port: 8080,
-      cpu_cores: 4.0,
-      memory_mb: 8192,
-      storage_gb: 500,
-      scale_to_zero: 1
     });
 
     // 5. Initial Cloud PC and Custom Domain if empty and table exists

@@ -55,10 +55,8 @@ function requireOwnership({ table, param = 'id', ownerColumn = 'user_id' }) {
 }
 
 const requireNodeOwnership = requireOwnership({ table: 'nodes' });
-const requireAppOwnership = requireOwnership({ table: 'app_bundles' });
 
 module.exports = {
   requireOwnership,
-  requireNodeOwnership,
-  requireAppOwnership
+  requireNodeOwnership
 };

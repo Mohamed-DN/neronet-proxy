@@ -1853,60 +1853,6 @@ export const MOCK_NODES = [
   }
 ];
 
-export const MOCK_APP_BUNDLES = [
-  {
-    id: 'app_guac_01',
-    user_id: 'usr-admin-001',
-    name: 'Sovereign Cloud PC (Guacamole)',
-    type: 'guacamole',
-    tier: 'cloud_managed',
-    status: 'running',
-    endpoint_url: 'https://guac.internal.darknero.net',
-    internal_port: 8443,
-    cpu_cores: 4.0,
-    memory_mb: 8192,
-    storage_gb: 200,
-    scale_to_zero: 0,
-    inactivity_timeout_min: 30,
-    last_accessed_at: new Date().toISOString(),
-    created_at: new Date().toISOString()
-  },
-  {
-    id: 'app_immich_01',
-    user_id: 'usr-admin-001',
-    name: 'Immich Photo Backup',
-    type: 'immich',
-    tier: 'cloud_managed',
-    status: 'running',
-    endpoint_url: 'https://photos.internal.darknero.net',
-    internal_port: 2283,
-    cpu_cores: 2.0,
-    memory_mb: 4096,
-    storage_gb: 500,
-    scale_to_zero: 1,
-    inactivity_timeout_min: 60,
-    last_accessed_at: new Date().toISOString(),
-    created_at: new Date().toISOString()
-  },
-  {
-    id: 'app_nextcloud_01',
-    user_id: 'usr_alice_01',
-    name: 'Nextcloud Sovereign Drive',
-    type: 'nextcloud',
-    tier: 'hybrid_byos',
-    status: 'running',
-    endpoint_url: 'https://drive.internal.darknero.net',
-    internal_port: 8080,
-    cpu_cores: 2.0,
-    memory_mb: 4096,
-    storage_gb: 1000,
-    scale_to_zero: 0,
-    inactivity_timeout_min: 45,
-    last_accessed_at: new Date().toISOString(),
-    created_at: new Date().toISOString()
-  }
-];
-
 export const MOCK_AUDIT_LOGS = [
   {
     id: 1725178900000,

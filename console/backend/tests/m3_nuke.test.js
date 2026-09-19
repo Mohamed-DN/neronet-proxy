@@ -16,7 +16,6 @@ const authRoutes = require('../routes/auth');
 const usersRoutes = require('../routes/users');
 const nodesRoutes = require('../routes/nodes');
 const configsRoutes = require('../routes/configs');
-const appsRoutes = require('../routes/apps');
 const statsRoutes = require('../routes/stats');
 const nukeRouter = require('../routes/nuke');
 
@@ -42,7 +41,6 @@ function createNukeTestApp() {
   app.use('/api/users', usersRoutes);
   app.use('/api/nodes', nodesRoutes);
   app.use('/api/configs', configsRoutes);
-  app.use('/api/apps', appsRoutes);
   app.use('/api/stats', statsRoutes);
   app.use('/api/audit', statsRoutes);
 
