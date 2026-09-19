@@ -2,21 +2,32 @@ const express = require('express');
 const router = express.Router();
 const WebRtcSignalingEngine = require('../services/WebRtcSignalingEngine');
 const { authenticateToken } = require('../middleware/auth');
+const { gatewayAuthAddressLimiter, gatewayAuthDomainLimiter } = require('../middleware/rateLimit');
 
 // 1. Custom Domain Public Auth Gateway (Public endpoint with OTP verification)
-router.post('/custom-domains/:domain/auth-gateway', async (req, res, next) => {
-  try {
-    const { domain } = req.params;
-    const { otp_code } = req.body || {};
-    const result = await WebRtcSignalingEngine.authenticateGateway(domain, otp_code);
-    return res.status(200).json(result);
-  } catch (err) {
-    if (err.status) {
-      return res.status(err.status).json({ error: err.message });
+//
+// Unauthenticated, and it verifies a static secret, so the limiters are the only
+// thing between a caller and that secret. They run before the handler so that
+// attempts which fail -- including the 404 for a domain that does not exist -- are
+// counted: an enumeration is made entirely of requests that fail.
+router.post(
+  '/custom-domains/:domain/auth-gateway',
+  gatewayAuthAddressLimiter,
+  gatewayAuthDomainLimiter,
+  async (req, res, next) => {
+    try {
+      const { domain } = req.params;
+      const { otp_code } = req.body || {};
+      const result = await WebRtcSignalingEngine.authenticateGateway(domain, otp_code);
+      return res.status(200).json(result);
+    } catch (err) {
+      if (err.status) {
+        return res.status(err.status).json({ error: err.message });
+      }
+      next(err);
     }
-    next(err);
   }
-});
+);
 
 // Authenticated Endpoints
 router.use(authenticateToken);

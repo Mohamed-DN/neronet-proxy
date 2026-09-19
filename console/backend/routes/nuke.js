@@ -6,6 +6,7 @@ const CanaryService = require('../services/CanaryService');
 const bcrypt = require('bcryptjs');
 const { isPostgres, getPgPool, getDatabase } = require('../db/index');
 const { logAuditEvent } = require('../utils/audit');
+const { dmsUnlockLimiter } = require('../middleware/rateLimit');
 
 // =============================================================================
 // TIER 3: Warrant Canary (Public Endpoints - No Auth Required)
@@ -199,11 +200,14 @@ async function handlePersonalUnlock(req, res, next) {
   }
 }
 
-router.post('/personal-dms/unlock', authenticateToken, handlePersonalUnlock);
-router.post('/personal-dms/access', authenticateToken, handlePersonalUnlock);
+// The limiter runs after authentication because it meters the account, not the
+// address: the passphrase belongs to the account, so a caller who moves to another
+// address must not be handed a fresh budget.
+router.post('/personal-dms/unlock', authenticateToken, dmsUnlockLimiter, handlePersonalUnlock);
+router.post('/personal-dms/access', authenticateToken, dmsUnlockLimiter, handlePersonalUnlock);
 // The console has always called this one. It 404ed, and the 404 was answered from
 // a fixture that reported the switch unlocked.
-router.post('/personal-dms/auth', authenticateToken, handlePersonalUnlock);
+router.post('/personal-dms/auth', authenticateToken, dmsUnlockLimiter, handlePersonalUnlock);
 
 // 3. Heartbeat Reset
 router.post('/personal-dms/heartbeat', authenticateToken, async (req, res, next) => {

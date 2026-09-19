@@ -198,6 +198,56 @@ const enrolmentLimiter = rateLimit({
   keyFn: clientIp
 });
 
+// The personal dead man's switch unlock verifies a passphrase, and the three routes
+// that reach it (unlock, access, auth) are one verification, so they share one
+// budget. Metered per account rather than per address: the passphrase belongs to the
+// account, so an attacker moving between addresses must not get a fresh budget, and
+// nobody else's unlock is affected when this one is exhausted.
+const dmsUnlockLimiter = rateLimit({
+  name: 'dms-unlock',
+  limit: 5,
+  windowMs: 15 * 60_000,
+  failClosed: true,
+  message: 'too many dead man switch unlock attempts; wait before trying again',
+  keyFn: (req) => (req.user?.id ? `user:${req.user.id}` : null)
+});
+
+// The custom domain gateway is unauthenticated and verifies a static secret, so the
+// only thing standing between a caller and that secret is this limiter. Metered per
+// domain and address so one caller cannot grind one domain...
+const gatewayAuthAddressLimiter = rateLimit({
+  name: 'gateway-auth-address',
+  limit: 10,
+  windowMs: 15 * 60_000,
+  failClosed: true,
+  message: 'too many gateway authentication attempts',
+  keyFn: (req) => {
+    const ip = clientIp(req);
+    const domain = gatewayDomain(req);
+    if (!ip || !domain) return null;
+    return `${domain}|${ip}`;
+  }
+});
+
+// ...and per domain as well, because an attacker with a list of addresses has an
+// unlimited budget against a single domain if the address is part of every key.
+const gatewayAuthDomainLimiter = rateLimit({
+  name: 'gateway-auth-domain',
+  limit: 100,
+  windowMs: 60 * 60_000,
+  failClosed: true,
+  message: 'too many gateway authentication attempts for this domain',
+  keyFn: gatewayDomain
+});
+
+/** The domain a gateway request is aimed at, normalised as the engine normalises it. */
+function gatewayDomain(req) {
+  return String(req.params?.domain || '')
+    .trim()
+    .toLowerCase()
+    .slice(0, 253);
+}
+
 // Everything else, metered per authenticated user where possible.
 const apiLimiter = rateLimit({
   name: 'api',
@@ -222,5 +272,8 @@ module.exports = {
   registerLimiter,
   enrolmentLimiter,
   apiLimiter,
-  writeLimiter
+  writeLimiter,
+  dmsUnlockLimiter,
+  gatewayAuthAddressLimiter,
+  gatewayAuthDomainLimiter
 };
