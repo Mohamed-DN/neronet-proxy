@@ -11,6 +11,34 @@ import (
 	"time"
 )
 
+// OverlayDialer opens connections inside the mesh overlay. The data plane device
+// implements it; the bridge holds it as an interface so pkg/bridge does not depend
+// on the WireGuard stack, and so a test can substitute a plain listener for it.
+type OverlayDialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
+}
+
+// overlayPrefixes are the ranges the control plane allocates node addresses from.
+// A destination inside them belongs to the mesh and has no meaning on the public
+// internet, so dialling it directly can only ever reach the wrong host.
+var overlayPrefixes = []*net.IPNet{
+	mustParseCIDR("100.64.0.0/10"),
+	mustParseCIDR("fd7a:115c:a1e0::/48"),
+}
+
+// IsOverlayIP reports whether an address belongs to the mesh overlay.
+func IsOverlayIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	for _, p := range overlayPrefixes {
+		if p.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // NetstackBridge coordinates userspace sandboxed outbound dialing and stream piping
 type NetstackBridge struct {
 	mu            sync.RWMutex
@@ -21,6 +49,8 @@ type NetstackBridge struct {
 	bytesSent     uint64
 	bytesRecv     uint64
 	dialer        *net.Dialer
+
+	overlay OverlayDialer
 }
 
 // NewNetstackBridge initializes a new sandboxed userspace bridge
@@ -46,6 +76,23 @@ func NewNetstackBridge(policy *SandboxPolicyEngine, resolver *DoHResolver, guard
 	}
 }
 
+// SetOverlayDialer attaches a mesh data plane to the bridge. Until one is set, a
+// destination inside the overlay ranges is rejected by the sandbox as a bogon,
+// which is what happens today: the assigned 100.64 addresses are unreachable.
+//
+// Passing nil detaches it and restores that behaviour.
+func (b *NetstackBridge) SetOverlayDialer(d OverlayDialer) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.overlay = d
+}
+
+func (b *NetstackBridge) overlayDialer() OverlayDialer {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.overlay
+}
+
 // DialAndPipe forwards traffic from an inbound client connection to a destination host:port
 func (b *NetstackBridge) DialAndPipe(ctx context.Context, clientConn net.Conn, targetHost string, targetPort int) error {
 	defer clientConn.Close()
@@ -66,25 +113,43 @@ func (b *NetstackBridge) DialAndPipe(ctx context.Context, clientConn net.Conn, t
 	}
 
 	targetIP := ips[0]
-
-	// 3. Validate sandbox policy (Bogon IP, blocked ports, battery)
-	batPct, onBat, _, _ := b.guardian.Status()
-	if err := b.policy.ValidateEgress(targetIP, targetPort, batPct, onBat); err != nil {
-		return err
-	}
-
-	// 4. Dial destination
 	targetAddr := net.JoinHostPort(targetIP.String(), strconv.Itoa(targetPort))
-	outboundConn, err := b.dialer.DialContext(ctx, "tcp", targetAddr)
-	if err != nil {
-		return fmt.Errorf("outbound dial to %s failed: %w", targetAddr, err)
+
+	var outboundConn net.Conn
+
+	// 3. An overlay destination goes through the mesh, not out of the host.
+	//
+	// The sandbox is deliberately skipped for this path: its job is to keep egress
+	// off private networks, and it lists 100.64.0.0/10 as a bogon precisely because
+	// reaching that range over the host's interfaces would be a leak. Inside the
+	// tunnel the same range is the mesh, and what a peer may reach there is decided
+	// by the ACL filter on the packets, not by the egress sandbox.
+	if overlay := b.overlayDialer(); overlay != nil && IsOverlayIP(targetIP) {
+		conn, dialErr := overlay.DialContext(ctx, "tcp", targetAddr)
+		if dialErr != nil {
+			return fmt.Errorf("overlay dial to %s failed: %w", targetAddr, dialErr)
+		}
+		outboundConn = conn
+	} else {
+		// 4. Validate sandbox policy (Bogon IP, blocked ports, battery)
+		batPct, onBat, _, _ := b.guardian.Status()
+		if err := b.policy.ValidateEgress(targetIP, targetPort, batPct, onBat); err != nil {
+			return err
+		}
+
+		// 5. Dial destination
+		conn, dialErr := b.dialer.DialContext(ctx, "tcp", targetAddr)
+		if dialErr != nil {
+			return fmt.Errorf("outbound dial to %s failed: %w", targetAddr, dialErr)
+		}
+		outboundConn = conn
 	}
 	defer outboundConn.Close()
 
 	atomic.AddInt64(&b.activeStreams, 1)
 	defer atomic.AddInt64(&b.activeStreams, -1)
 
-	// 5. Bidirectional copy
+	// 6. Bidirectional copy
 	errCh := make(chan error, 2)
 
 	go func() {
