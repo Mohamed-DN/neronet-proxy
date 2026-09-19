@@ -1,0 +1,221 @@
+/*
+ * Design tokens for the NeroNet console.
+ *
+ * This file is the single source of truth for colour. Every colour value in the
+ * product resolves to one of the custom properties below, either through a
+ * Tailwind utility (see tailwind.config.js) or through var() in CSS.
+ *
+ * Colours are stored as space-separated sRGB channels, not as hex or rgb(),
+ * so that Tailwind's alpha modifiers (bg-surface-raised/60) keep working:
+ * the config wraps each token in rgb(var(--token) / <alpha-value>).
+ *
+ * scripts/design/contrast.mjs parses the two theme blocks below and fails the
+ * build when a declared pair drops under its WCAG target. Change a value here
+ * and re-run it before committing.
+ *
+ * Light is the default. [data-theme='dark'] is set by public/theme-init.js
+ * before first paint, from the stored preference or prefers-color-scheme.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces. Page, cards, wells; no gradients, no glow. */
+  --color-surface: 248 250 252;
+  --color-surface-raised: 255 255 255;
+  --color-surface-sunken: 241 245 249;
+  --color-surface-hover: 241 245 249;
+  --color-surface-inverse: 15 23 42;
+  --color-scrim: 15 23 42;
+
+  /* Lines. `border` and `border-subtle` are decorative separators;
+     `border-strong` bounds interactive controls and holds 3:1. */
+  --color-border: 203 213 225;
+  --color-border-subtle: 226 232 240;
+  --color-border-strong: 100 116 139;
+
+  /* Text. */
+  --color-content: 15 23 42;
+  --color-content-muted: 71 85 105;
+  --color-content-subtle: 91 106 128;
+  --color-content-inverse: 248 250 252;
+
+  /* Accent: the one non-status colour. Restrained blue. */
+  --color-accent: 29 78 216;
+  --color-accent-subtle: 230 238 255;
+  --color-accent-strong: 30 64 175;
+  --color-accent-contrast: 255 255 255;
+
+  /* Status. Never decoration: always paired with an icon and a word. */
+  --color-success: 21 128 61;
+  --color-success-subtle: 220 252 231;
+  --color-success-strong: 22 101 52;
+  --color-success-contrast: 255 255 255;
+
+  --color-warning: 180 83 9;
+  --color-warning-subtle: 254 243 199;
+  --color-warning-strong: 146 64 14;
+  --color-warning-contrast: 255 255 255;
+
+  --color-danger: 185 28 28;
+  --color-danger-subtle: 254 226 226;
+  --color-danger-strong: 153 27 27;
+  --color-danger-contrast: 255 255 255;
+
+  --color-info: 109 40 217;
+  --color-info-subtle: 237 233 254;
+  --color-info-strong: 91 33 182;
+  --color-info-contrast: 255 255 255;
+
+  /* Focus ring. One colour, used by every focusable element. */
+  --color-focus: 29 78 216;
+
+  /* Categorical chart series, ordered by first use. Colour-blind safe
+     (Okabe-Ito derived), each at least 3:1 on surface-raised. */
+  --color-chart-1: 29 78 216;
+  --color-chart-2: 217 119 6;
+  --color-chart-3: 4 120 87;
+  --color-chart-4: 162 28 175;
+  --color-chart-5: 14 116 144;
+  --color-chart-6: 220 38 38;
+  --color-chart-7: 63 98 18;
+  --color-chart-8: 71 85 105;
+
+  /* Sequential ramp for heat maps and density. Light to dark. */
+  --color-ramp-1: 239 246 255;
+  --color-ramp-2: 191 219 254;
+  --color-ramp-3: 96 165 250;
+  --color-ramp-4: 37 99 235;
+  --color-ramp-5: 30 64 175;
+  --color-ramp-6: 23 37 84;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-surface: 15 23 42;
+  --color-surface-raised: 30 41 59;
+  --color-surface-sunken: 11 18 32;
+  --color-surface-hover: 39 53 74;
+  --color-surface-inverse: 241 245 249;
+  --color-scrim: 2 6 23;
+
+  --color-border: 51 65 85;
+  --color-border-subtle: 30 41 59;
+  --color-border-strong: 100 116 139;
+
+  --color-content: 241 245 249;
+  --color-content-muted: 148 163 184;
+  --color-content-subtle: 132 148 171;
+  --color-content-inverse: 15 23 42;
+
+  --color-accent: 96 165 250;
+  --color-accent-subtle: 23 37 84;
+  --color-accent-strong: 147 197 253;
+  --color-accent-contrast: 15 23 42;
+
+  --color-success: 74 222 128;
+  --color-success-subtle: 6 46 31;
+  --color-success-strong: 134 239 172;
+  --color-success-contrast: 5 46 22;
+
+  --color-warning: 251 191 36;
+  --color-warning-subtle: 58 38 6;
+  --color-warning-strong: 253 224 71;
+  --color-warning-contrast: 69 26 3;
+
+  --color-danger: 248 113 113;
+  --color-danger-subtle: 69 10 10;
+  --color-danger-strong: 252 165 165;
+  --color-danger-contrast: 69 10 10;
+
+  --color-info: 167 139 250;
+  --color-info-subtle: 46 16 101;
+  --color-info-strong: 196 181 253;
+  --color-info-contrast: 46 16 101;
+
+  --color-focus: 147 197 253;
+
+  --color-chart-1: 96 165 250;
+  --color-chart-2: 251 191 36;
+  --color-chart-3: 52 211 153;
+  --color-chart-4: 232 121 249;
+  --color-chart-5: 103 232 249;
+  --color-chart-6: 248 113 113;
+  --color-chart-7: 190 242 100;
+  --color-chart-8: 148 163 184;
+
+  --color-ramp-1: 23 37 84;
+  --color-ramp-2: 30 64 175;
+  --color-ramp-3: 37 99 235;
+  --color-ramp-4: 96 165 250;
+  --color-ramp-5: 147 197 253;
+  --color-ramp-6: 219 234 254;
+}
+
+/*
+ * Non-colour tokens. Identical in both themes.
+ */
+:root {
+  /* Spacing: 4 px base, 8 px rhythm between blocks. Mirrors the Tailwind
+     scale that the pages already use; named here for raw CSS. */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* Radius: controls 6 px, cards 8 px. Nothing rounder. */
+  --radius-sm: 4px;
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-pill: 9999px;
+
+  /* Elevation. Data surfaces are flat and separated by borders; shadows are
+     reserved for things that float above the page. */
+  --elevation-flat: none;
+  --elevation-raised: 0 1px 2px 0 rgb(var(--color-scrim) / 0.06);
+  --elevation-overlay:
+    0 10px 15px -3px rgb(var(--color-scrim) / 0.18), 0 4px 6px -4px rgb(var(--color-scrim) / 0.18);
+  --elevation-popover: 0 4px 6px -1px rgb(var(--color-scrim) / 0.14), 0 2px 4px -2px rgb(var(--color-scrim) / 0.14);
+
+  /* Type scale, 1.125 modular ratio around a 14 px body. Dense by design. */
+  --font-size-micro: 0.6875rem;
+  --font-size-caption: 0.75rem;
+  --font-size-label: 0.8125rem;
+  --font-size-body: 0.875rem;
+  --font-size-heading: 1rem;
+  --font-size-title: 1.125rem;
+  --font-size-display: 1.5rem;
+  --font-size-metric: 1.75rem;
+
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+
+  --font-sans:
+    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  /* Focus ring geometry, applied by the .focus-ring utility. */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* Stacking order. Nothing in the product may invent a z-index. */
+  --z-base: 0;
+  --z-sticky: 30;
+  --z-drawer: 40;
+  --z-overlay: 50;
+  --z-popover: 60;
+  --z-toast: 70;
+
+  /* Motion. Functional only; disabled under prefers-reduced-motion. */
+  --duration-fast: 100ms;
+  --duration-normal: 160ms;
+  --easing-standard: cubic-bezier(0.2, 0, 0.2, 1);
+}

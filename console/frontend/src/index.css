@@ -1,118 +1,100 @@
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  :root {
-    color-scheme: dark;
+  html {
+    /* Every number in a table or a metric lines up. */
+    font-variant-numeric: tabular-nums;
   }
 
   body {
-    background-color: #0f172a;
-    color: #f1f5f9;
-    font-family:
-      'Geist',
-      'Inter',
-      'DM Sans',
-      system-ui,
-      -apple-system,
-      sans-serif;
+    background-color: rgb(var(--color-surface));
+    color: rgb(var(--color-content));
+    font-family: var(--font-sans);
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-normal);
+    -webkit-font-smoothing: antialiased;
   }
 
   code,
   pre,
   kbd,
   samp {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-family: var(--font-mono);
   }
-}
 
-/* Custom Cyber / Enterprise Dark Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
+  /* One focus ring for the whole product. Keyboard only: a pointer click on a
+     button does not need the ring, a Tab to it does. */
+  :focus-visible {
+    outline: var(--focus-ring-width) solid rgb(var(--color-focus));
+    outline-offset: var(--focus-ring-offset);
+    border-radius: var(--radius-sm);
+  }
 
-::-webkit-scrollbar-track {
-  background: #0f172a;
-}
+  ::selection {
+    background-color: rgb(var(--color-accent) / 0.25);
+  }
 
-::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #475569;
-}
-
-/* Custom glow and backdrop effects */
-.glow-cyan,
-.glow-sky {
-  box-shadow: 0 0 20px -5px rgba(56, 189, 248, 0.45);
-}
-
-.glow-purple,
-.glow-violet {
-  box-shadow: 0 0 20px -5px rgba(139, 92, 246, 0.45);
-}
-
-.glow-emerald {
-  box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.45);
-}
-
-.glow-indigo {
-  box-shadow: 0 0 20px -5px rgba(99, 102, 241, 0.45);
-}
-
-.glow-rose,
-.glow-red {
-  box-shadow: 0 0 25px -3px rgba(239, 68, 68, 0.65);
-}
-
-.glass-panel {
-  background: rgba(30, 41, 59, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid #334155;
-}
-
-.radar-sweep {
-  background: conic-gradient(from 0deg, transparent 0deg, rgba(56, 189, 248, 0.15) 60deg, transparent 65deg);
-}
-
-@keyframes pulse-subtle {
-  0%,
-  100% {
+  ::placeholder {
+    color: rgb(var(--color-content-subtle));
     opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.75;
-    transform: scale(0.98);
   }
 }
 
-.animate-pulse-subtle {
-  animation: pulse-subtle 3s ease-in-out infinite;
-}
-
-@keyframes pulse-red-glow {
-  0%,
-  100% {
-    box-shadow:
-      0 0 10px rgba(239, 68, 68, 0.5),
-      inset 0 0 10px rgba(239, 68, 68, 0.2);
-    border-color: rgba(239, 68, 68, 0.8);
+@layer components {
+  /* For elements that draw their own ring inside an overflow-hidden parent,
+     where an outline would be clipped. */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
   }
-  50% {
-    box-shadow:
-      0 0 25px rgba(239, 68, 68, 0.9),
-      inset 0 0 15px rgba(239, 68, 68, 0.4);
-    border-color: rgba(239, 68, 68, 1);
+
+  /* The first thing in the tab order: jumps past the sidebar to the page body. */
+  .skip-link {
+    @apply sr-only;
+  }
+
+  .skip-link:focus {
+    @apply not-sr-only fixed left-4 top-4 z-toast rounded-control border border-border-strong bg-surface-raised px-4 py-2 text-body font-semibold text-content shadow-overlay;
   }
 }
 
-.animate-pulse-red-glow {
-  animation: pulse-red-glow 1.5s ease-in-out infinite;
+@layer utilities {
+  /* Scrollbars follow the theme instead of the browser default. */
+  * {
+    scrollbar-color: rgb(var(--color-border-strong)) transparent;
+    scrollbar-width: thin;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--color-border-strong));
+    border-radius: var(--radius-pill);
+  }
+}
+
+/*
+ * Motion is functional: it shows that something is loading or that a surface
+ * came from somewhere. A reader who asked their system to stop animating gets
+ * the end state immediately, not a slower animation.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
