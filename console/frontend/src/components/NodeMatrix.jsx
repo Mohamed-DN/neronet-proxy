@@ -6,6 +6,7 @@ import {
   Search,
   Filter,
   Activity,
+  Shield,
   ShieldCheck,
   ShieldAlert,
   Battery,
@@ -82,6 +83,41 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
 
     return matchesSearch && matchesRole && matchesPosture;
   });
+
+  // Posture has three states and the console must be able to say "we do not know".
+  // Anything the API does not classify is treated as unverified, never as passing.
+  const postureLabel = (status) => {
+    switch (status) {
+      case 'verified_compliant':
+        return 'Verified compliant';
+      case 'non_compliant':
+        return 'Non-compliant';
+      default:
+        return 'Unverified';
+    }
+  };
+
+  const postureColour = (status) => {
+    switch (status) {
+      case 'verified_compliant':
+        return 'text-neon-emerald';
+      case 'non_compliant':
+        return 'text-neon-rose font-bold';
+      default:
+        return 'text-slate-400';
+    }
+  };
+
+  const postureIcon = (status) => {
+    switch (status) {
+      case 'verified_compliant':
+        return <ShieldCheck className="w-3.5 h-3.5 text-neon-emerald" />;
+      case 'non_compliant':
+        return <ShieldAlert className="w-3.5 h-3.5 text-neon-rose" />;
+      default:
+        return <Shield className="w-3.5 h-3.5 text-slate-500" />;
+    }
+  };
 
   const getPlatformIcon = (os) => {
     switch (os) {
@@ -230,15 +266,17 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
           </div>
 
           <div className="flex items-center space-x-1.5">
-            <span className="text-slate-500">Posture:</span>
+            {/* This filter selects on liveness, not on posture. It is labelled for
+                what it does. */}
+            <span className="text-slate-500">Reachability:</span>
             <select
               value={postureFilter}
               onChange={(e) => setPostureFilter(e.target.value)}
               className="px-2 py-1 bg-dark-canvas border border-dark-border rounded text-slate-200 focus:outline-none focus:border-neon-cyan text-xs"
             >
               <option value="ALL">All States</option>
-              <option value="HEALTHY">Compliant</option>
-              <option value="DEGRADED">Degraded</option>
+              <option value="HEALTHY">Reachable</option>
+              <option value="DEGRADED">Not answering</option>
               <option value="QUARANTINED">Quarantined</option>
             </select>
           </div>
@@ -255,7 +293,7 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
                   <th className="p-3.5">Device / Node Name</th>
                   <th className="p-3.5">Overlay VIPs</th>
                   <th className="p-3.5">Role & Class</th>
-                  <th className="p-3.5">Posture Compliance</th>
+                  <th className="p-3.5">Posture / Reachability</th>
                   <th className="p-3.5">RTT Latency</th>
                   <th className="p-3.5">Telemetry (CPU/RAM/Bat)</th>
                   <th className="p-3.5 text-right">Actions</th>
@@ -340,24 +378,18 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
                         </div>
                       </td>
 
-                      {/* Posture */}
+                      {/* Posture and reachability. This column used to say "Compliant"
+                          for any node that was simply answering, which is a liveness
+                          reading wearing a compliance label. The two are now shown as
+                          the separate facts they are. */}
                       <td className="p-3.5">
-                        {isQuarantined ? (
-                          <div className="flex items-center space-x-1.5 text-neon-rose font-bold">
-                            <ShieldAlert className="w-3.5 h-3.5" />
-                            <span>Quarantined</span>
-                          </div>
-                        ) : isHealthy ? (
-                          <div className="flex items-center space-x-1.5 text-neon-emerald">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            <span>Compliant</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center space-x-1.5 text-neon-amber font-bold">
-                            <Activity className="w-3.5 h-3.5" />
-                            <span>Degraded</span>
-                          </div>
-                        )}
+                        <div className="flex items-center space-x-1.5">
+                          {postureIcon(n.posture_status)}
+                          <span className={postureColour(n.posture_status)}>{postureLabel(n.posture_status)}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">
+                          {isQuarantined ? 'Quarantined' : isHealthy ? 'Reachable' : 'Not answering'}
+                        </div>
                       </td>
 
                       {/* Latency */}
@@ -378,7 +410,10 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
                       {/* Telemetry */}
                       <td className="p-3.5">
                         <div className="flex items-center space-x-3 text-[11px] text-slate-400">
-                          <span title="CPU Usage">CPU: {n.cpu_usage_pct || 0}%</span>
+                          {/* Nothing on a node samples CPU yet; the wire value 0
+                              means "not measured", and printing it as 0% claimed an
+                              idle host. */}
+                          <span title="CPU Usage">CPU: {n.cpu_usage_pct ? `${n.cpu_usage_pct}%` : 'not measured'}</span>
                           <span title="RAM Usage">RAM: {n.memory_usage_pct || 0}%</span>
                           <span className="flex items-center space-x-1 text-slate-300" title="Battery">
                             {n.battery_pct === 100 ? (

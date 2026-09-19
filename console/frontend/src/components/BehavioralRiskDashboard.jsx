@@ -74,6 +74,17 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
     return e.severity === filterSeverity;
   });
 
+  // Posture counts come from what each node attested. "Fully compliant posture" is
+  // only true when every enrolled node is verified_compliant, which on a fleet that
+  // measures nothing is never.
+  const posture = summary?.posture;
+  const postureTotal = posture ? posture.verified_compliant + posture.unverified + posture.non_compliant : 0;
+  const lowRiskCaption = !posture
+    ? 'Posture not reported'
+    : postureTotal > 0 && posture.verified_compliant === postureTotal
+      ? 'Fully compliant posture'
+      : `Posture: ${posture.verified_compliant} verified, ${posture.unverified} unverified, ${posture.non_compliant} non-compliant`;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -110,7 +121,11 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-bold text-emerald-400">{summary?.distribution?.low ?? '—'} Nodes</div>
-          <div className="text-[10px] text-slate-500">Fully compliant posture</div>
+          {/* This read "Fully compliant posture" under a count of low risk scores. A
+              low score means nothing was seen going wrong; it is not a measurement of
+              the host. The claim is made only when every node has actually attested
+              every required check. */}
+          <div className="text-[10px] text-slate-500">{lowRiskCaption}</div>
         </div>
 
         {/* Medium Risk */}

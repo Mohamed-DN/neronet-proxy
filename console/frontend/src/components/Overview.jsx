@@ -152,7 +152,13 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
         const activeNodes = stats?.active_nodes ?? 0;
         const totalNodes = stats?.total_nodes ?? stats?.active_nodes ?? 0;
         const quarantinedNodes = stats?.quarantined_nodes ?? 0;
-        const compliantNodes = Math.max(0, activeNodes - quarantinedNodes);
+        // This card used to show "N Compliant", where N was active minus quarantined
+        // -- a liveness figure under a compliance label, on a fleet where no node has
+        // ever had its posture measured. These three come from what each node
+        // attested; quarantine is a separate fact and is shown as one.
+        const verifiedCompliantNodes = stats?.posture_verified_compliant_nodes ?? null;
+        const unverifiedNodes = stats?.posture_unverified_nodes ?? null;
+        const nonCompliantNodes = stats?.posture_non_compliant_nodes ?? null;
         const activeUsers = stats?.active_users ?? 0;
         // null means the control plane has not measured this yet, which is not the
         // same as zero. Both are rendered, and they are rendered differently.
@@ -195,15 +201,27 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 <span className="text-2xl font-bold text-slate-100 font-mono">{activeNodes}</span>
                 <span className="text-xs text-slate-500 font-mono">/ {totalNodes} Enrolled</span>
               </div>
-              <div className="mt-3 flex items-center justify-between text-[11px] font-mono">
-                <span className="text-neon-emerald flex items-center space-x-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-neon-emerald"></span>
-                  <span>{compliantNodes} Compliant</span>
-                </span>
-                <span className="text-neon-rose flex items-center space-x-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-neon-rose"></span>
-                  <span>{quarantinedNodes} Quarantined</span>
-                </span>
+              <div className="mt-3 space-y-1 text-[11px] font-mono">
+                <div className="flex items-center justify-between">
+                  <span className="text-neon-emerald flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-neon-emerald"></span>
+                    <span>{dash(verifiedCompliantNodes)} posture verified</span>
+                  </span>
+                  <span className="text-slate-400 flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                    <span>{dash(unverifiedNodes)} unverified</span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-neon-amber flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-neon-amber"></span>
+                    <span>{dash(nonCompliantNodes)} non-compliant</span>
+                  </span>
+                  <span className="text-neon-rose flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-neon-rose"></span>
+                    <span>{quarantinedNodes} quarantined</span>
+                  </span>
+                </div>
               </div>
             </div>
 

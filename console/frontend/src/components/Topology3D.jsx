@@ -534,10 +534,30 @@ export default function Topology3D({ onSelectNode }) {
                   {hoveredNode.risk_score || 0} / 100
                 </span>
               </div>
+              {/* This said "Compliant" for any node that was not quarantined, which
+                  is the absence of an enforcement action, not a measurement. */}
               <div className="flex justify-between">
-                <span>Zero-Trust Posture:</span>
-                <span className={hoveredNode.is_quarantined ? 'text-red-400 font-bold' : 'text-emerald-400'}>
-                  {hoveredNode.is_quarantined ? 'QUARANTINED (100.64.250.0/24)' : 'Compliant'}
+                <span>Posture:</span>
+                <span
+                  className={
+                    hoveredNode.posture_status === 'verified_compliant'
+                      ? 'text-emerald-400'
+                      : hoveredNode.posture_status === 'non_compliant'
+                        ? 'text-red-400 font-bold'
+                        : 'text-slate-400'
+                  }
+                >
+                  {hoveredNode.posture_status === 'verified_compliant'
+                    ? 'VERIFIED COMPLIANT'
+                    : hoveredNode.posture_status === 'non_compliant'
+                      ? 'NON-COMPLIANT'
+                      : 'UNVERIFIED'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Quarantine:</span>
+                <span className={hoveredNode.is_quarantined ? 'text-red-400 font-bold' : 'text-slate-400'}>
+                  {hoveredNode.is_quarantined ? 'QUARANTINED (100.64.250.0/24)' : 'None'}
                 </span>
               </div>
             </div>
