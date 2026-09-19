@@ -56,10 +56,7 @@ export default function AppBundles() {
 
   const loadData = async () => {
     try {
-      const [pcList, domainList] = await Promise.all([
-        api.cloudPc.list(),
-        api.cloudPc.listCustomDomains()
-      ]);
+      const [pcList, domainList] = await Promise.all([api.cloudPc.list(), api.cloudPc.listCustomDomains()]);
       setCloudPcs(Array.isArray(pcList) ? pcList : []);
       setCustomDomains(Array.isArray(domainList) ? domainList : []);
     } catch (err) {
@@ -143,9 +140,11 @@ export default function AppBundles() {
     try {
       const result = await api.cloudPc.verifyCustomDomain(domain);
       loadData();
-      window.alert(result?.verified === false
-        ? `${domain} did not verify: ${result.reason || 'the check did not pass'}`
-        : `${domain} verified.`);
+      window.alert(
+        result?.verified === false
+          ? `${domain} did not verify: ${result.reason || 'the check did not pass'}`
+          : `${domain} verified.`
+      );
     } catch (err) {
       window.alert(`${domain} could not be verified: ${err.message}`);
     }
@@ -167,8 +166,8 @@ export default function AppBundles() {
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Instance records and custom domain routing. The remote desktop session
-            has no signalling backend, so a stream cannot be established.
+            Instance records and custom domain routing. The remote desktop session has no signalling backend, so a
+            stream cannot be established.
           </p>
         </div>
 
@@ -207,11 +206,10 @@ export default function AppBundles() {
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-sm font-bold text-slate-100 font-mono">
-                  Sovereign WebRTC Video Pipeline
-                </div>
+                <div className="text-sm font-bold text-slate-100 font-mono">Sovereign WebRTC Video Pipeline</div>
                 <div className="text-xs text-slate-400">
-                  Zero-latency H.264 / AV1 hardware encoding directly over encrypted WireGuard mesh circuits. No third-party relays.
+                  Zero-latency H.264 / AV1 hardware encoding directly over encrypted WireGuard mesh circuits. No
+                  third-party relays.
                 </div>
               </div>
             </div>
@@ -245,9 +243,7 @@ export default function AppBundles() {
                             isRunning ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'
                           }`}
                         ></span>
-                        <span className="text-xs font-mono font-bold text-slate-200 uppercase">
-                          {pc.status}
-                        </span>
+                        <span className="text-xs font-mono font-bold text-slate-200 uppercase">{pc.status}</span>
                       </div>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-dark-canvas border border-dark-border text-accent-primary font-semibold">
                         {pc.os_type}
@@ -282,7 +278,9 @@ export default function AppBundles() {
                     <div className="text-[11px] font-mono text-slate-400 space-y-1">
                       <div className="flex justify-between">
                         <span>GPU Accelerator:</span>
-                        <span className="text-slate-200">{pc.gpu_acceleration ? 'NVIDIA A10G (Passthrough)' : 'Software EGL'}</span>
+                        <span className="text-slate-200">
+                          {pc.gpu_acceleration ? 'NVIDIA A10G (Passthrough)' : 'Software EGL'}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span>Signaling:</span>
@@ -426,9 +424,7 @@ export default function AppBundles() {
                   <Share2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-100">
-                    Project Device: WebRTC Native Viewer
-                  </h3>
+                  <h3 className="text-sm font-bold text-slate-100">Project Device: WebRTC Native Viewer</h3>
                   <div className="text-xs font-mono text-slate-400">
                     Target: <strong className="text-accent-primary">{selectedSharePc.name}</strong>
                   </div>
@@ -453,11 +449,7 @@ export default function AppBundles() {
                   {/* QR and Viewer Link */}
                   <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-xl bg-dark-canvas border border-dark-border">
                     <div className="p-2 bg-slate-950 rounded-xl border border-accent-primary/40 shadow-xl shrink-0">
-                      <img
-                        src={shareQrCodeUrl}
-                        alt="WebRTC Stream QR"
-                        className="w-32 h-32 rounded"
-                      />
+                      <img src={shareQrCodeUrl} alt="WebRTC Stream QR" className="w-32 h-32 rounded" />
                     </div>
                     <div className="space-y-2 text-xs font-mono flex-1">
                       <div className="text-slate-200 font-bold flex items-center space-x-1.5">
@@ -468,8 +460,7 @@ export default function AppBundles() {
                           the desktop at 60 FPS. The link is a token this console
                           generated; nothing is listening at the other end. */}
                       <p className="text-slate-400 text-[11px]">
-                        The link and token are real. Opening them will not connect
-                        until a signalling service exists.
+                        The link and token are real. Opening them will not connect until a signalling service exists.
                       </p>
                       <div className="flex items-center space-x-2 pt-1">
                         <input

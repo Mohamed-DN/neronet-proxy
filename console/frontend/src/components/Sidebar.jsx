@@ -36,9 +36,7 @@ export default function Sidebar({
   onNukeClick,
   onExecuteWipe
 }) {
-  const reachablePct = nodeCount === 0
-    ? 0
-    : Math.round((reachableCount / nodeCount) * 100);
+  const reachablePct = nodeCount === 0 ? 0 : Math.round((reachableCount / nodeCount) * 100);
 
   const [collapsedSections, setCollapsedSections] = useState({
     mesh: false,
@@ -61,7 +59,9 @@ export default function Sidebar({
           const hours = Math.floor(diff / (1000 * 60 * 60));
           const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
           const secs = Math.floor((diff % (1000 * 60)) / 1000);
-          setTimeRemaining(`${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
+          setTimeRemaining(
+            `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+          );
         }
       } else if (nukeArmed) {
         setTimeRemaining('ARMED - INSTANT');
@@ -140,9 +140,7 @@ export default function Sidebar({
               <div className="font-bold text-sm tracking-wider bg-gradient-to-r from-sky-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
                 NERONET
               </div>
-              <div className="text-[10px] font-mono tracking-widest text-slate-400 uppercase">
-                Sovereign Mesh v4.0
-              </div>
+              <div className="text-[10px] font-mono tracking-widest text-slate-400 uppercase">Sovereign Mesh v4.0</div>
             </div>
           </div>
         </div>
@@ -228,8 +226,8 @@ export default function Sidebar({
                                 ? 'bg-red-500/20 text-red-300 border border-red-500/40 shadow-[0_0_15px_-3px_rgba(239,68,68,0.3)]'
                                 : 'bg-accent-primary/10 text-accent-primary border border-accent-primary/30 shadow-[0_0_15px_-3px_rgba(56,189,248,0.25)]'
                               : isDanger
-                              ? 'text-red-400 hover:text-red-200 hover:bg-red-950/40 border border-transparent'
-                              : 'text-slate-400 hover:text-slate-200 hover:bg-dark-card-hover border border-transparent'
+                                ? 'text-red-400 hover:text-red-200 hover:bg-red-950/40 border border-transparent'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-dark-card-hover border border-transparent'
                           }`}
                         >
                           <div className="flex items-center space-x-2.5">
@@ -240,8 +238,8 @@ export default function Sidebar({
                                     ? 'text-red-400'
                                     : 'text-accent-primary'
                                   : isDanger
-                                  ? 'text-red-500 group-hover:text-red-300'
-                                  : 'text-slate-500 group-hover:text-slate-300'
+                                    ? 'text-red-500 group-hover:text-red-300'
+                                    : 'text-slate-500 group-hover:text-slate-300'
                               }`}
                             />
                             <span className="truncate">{item.label}</span>
@@ -307,9 +305,7 @@ export default function Sidebar({
         >
           <div
             className={`h-full transition-[width] duration-500 ${
-              reachablePct === 100 ? 'bg-neon-emerald'
-                : reachablePct >= 80 ? 'bg-neon-amber'
-                : 'bg-neon-rose'
+              reachablePct === 100 ? 'bg-neon-emerald' : reachablePct >= 80 ? 'bg-neon-amber' : 'bg-neon-rose'
             }`}
             style={{ width: `${reachablePct}%` }}
           ></div>
@@ -322,4 +318,3 @@ export default function Sidebar({
     </aside>
   );
 }
-

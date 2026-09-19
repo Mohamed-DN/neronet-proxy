@@ -69,7 +69,7 @@ export default function UserManagement() {
         username,
         email,
         role,
-        bypass_apps: ["com.apple.Music", "com.spotify.client"]
+        bypass_apps: ['com.apple.Music', 'com.spotify.client']
       });
       setIsProvisionModalOpen(false);
       setUsername('');
@@ -179,9 +179,7 @@ export default function UserManagement() {
               {users.length} Active Tenants
             </span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Role-based access control with instant QR onboarding.
-          </p>
+          <p className="text-xs text-slate-400 mt-1">Role-based access control with instant QR onboarding.</p>
         </div>
 
         <button
@@ -256,11 +254,7 @@ export default function UserManagement() {
                             : 'bg-red-500/20 text-red-400 border-red-500/40'
                         }`}
                       >
-                        {u.status === 'active' ? (
-                          <CheckCircle2 className="w-3 h-3" />
-                        ) : (
-                          <XCircle className="w-3 h-3" />
-                        )}
+                        {u.status === 'active' ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
                         <span className="uppercase">{u.status}</span>
                       </span>
                     </td>
@@ -312,11 +306,10 @@ export default function UserManagement() {
                   <Smartphone className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-100">
-                    Mobile Instant QR Onboarding
-                  </h3>
+                  <h3 className="text-sm font-bold text-slate-100">Mobile Instant QR Onboarding</h3>
                   <div className="text-xs font-mono text-slate-400">
-                    User: <strong className="text-accent-primary">{selectedUserForQr.username}</strong> ({selectedUserForQr.email})
+                    User: <strong className="text-accent-primary">{selectedUserForQr.username}</strong> (
+                    {selectedUserForQr.email})
                   </div>
                 </div>
               </div>
@@ -351,11 +344,16 @@ export default function UserManagement() {
                         <span>Ready to Scan on Mobile</span>
                       </div>
                       <p className="text-slate-400 text-[11px]">
-                        Open WireGuard or NeroNet Client on iOS/Android, tap <strong>"+"</strong> and select <strong>"Create from QR code"</strong>.
+                        Open WireGuard or NeroNet Client on iOS/Android, tap <strong>"+"</strong> and select{' '}
+                        <strong>"Create from QR code"</strong>.
                       </p>
                       <div className="text-[10px] text-slate-500 pt-1">
-                        <div>Assigned VIP: <strong className="text-accent-primary">{qrModalData.overlay_ip}</strong></div>
-                        <div>Protocol: <strong className="text-slate-300">Noise_IKpsk2_25519</strong></div>
+                        <div>
+                          Assigned VIP: <strong className="text-accent-primary">{qrModalData.overlay_ip}</strong>
+                        </div>
+                        <div>
+                          Protocol: <strong className="text-slate-300">Noise_IKpsk2_25519</strong>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -411,9 +409,7 @@ export default function UserManagement() {
                   <Sliders className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-100">
-                    Split Tunneling Policy Editor (`bypass_apps`)
-                  </h3>
+                  <h3 className="text-sm font-bold text-slate-100">Split Tunneling Policy Editor (`bypass_apps`)</h3>
                   <div className="text-xs font-mono text-slate-400">
                     User: <strong className="text-violet-400">{selectedUserForSplit.username}</strong>
                   </div>
@@ -429,7 +425,8 @@ export default function UserManagement() {
 
             <div className="p-6 space-y-5">
               <p className="text-xs text-slate-400">
-                Define application bundle identifiers, domain wildcards, or LAN CIDR subnets that bypass the WireGuard encrypted overlay and egress directly over local WAN.
+                Define application bundle identifiers, domain wildcards, or LAN CIDR subnets that bypass the WireGuard
+                encrypted overlay and egress directly over local WAN.
               </p>
 
               {/* Input for new bypass entry */}
@@ -454,9 +451,7 @@ export default function UserManagement() {
 
               {/* Preset Shortcuts */}
               <div className="space-y-1.5">
-                <div className="text-[11px] font-mono text-slate-400 font-semibold">
-                  Quick Presets:
-                </div>
+                <div className="text-[11px] font-mono text-slate-400 font-semibold">Quick Presets:</div>
                 <div className="flex flex-wrap gap-1.5 text-xs font-mono">
                   {[
                     'com.apple.Music',

@@ -22,25 +22,25 @@ const WORLD_COUNTRIES_GEO = {
   US: { name: 'United States', lat: 37.0902, lon: -95.7129, region: 'NA' },
   CA: { name: 'Canada', lat: 56.1304, lon: -106.3468, region: 'NA' },
   MX: { name: 'Mexico', lat: 23.6345, lon: -102.5528, region: 'NA' },
-  BR: { name: 'Brazil', lat: -14.2350, lon: -51.9253, region: 'LATAM' },
+  BR: { name: 'Brazil', lat: -14.235, lon: -51.9253, region: 'LATAM' },
   AR: { name: 'Argentina', lat: -38.4161, lon: -63.6167, region: 'LATAM' },
-  GB: { name: 'United Kingdom', lat: 55.3781, lon: -3.4360, region: 'EU' },
+  GB: { name: 'United Kingdom', lat: 55.3781, lon: -3.436, region: 'EU' },
   DE: { name: 'Germany', lat: 51.1657, lon: 10.4515, region: 'EU' },
   FR: { name: 'France', lat: 46.2276, lon: 2.2137, region: 'EU' },
   CH: { name: 'Switzerland', lat: 46.8182, lon: 8.2275, region: 'EU' },
   NL: { name: 'Netherlands', lat: 52.1326, lon: 5.2913, region: 'EU' },
   SE: { name: 'Sweden', lat: 60.1282, lon: 18.6435, region: 'EU' },
-  NO: { name: 'Norway', lat: 60.4720, lon: 8.4689, region: 'EU' },
+  NO: { name: 'Norway', lat: 60.472, lon: 8.4689, region: 'EU' },
   IS: { name: 'Iceland', lat: 64.9631, lon: -19.0208, region: 'EU' },
   IT: { name: 'Italy', lat: 41.8719, lon: 12.5674, region: 'EU' },
   ES: { name: 'Spain', lat: 40.4637, lon: -3.7492, region: 'EU' },
-  RU: { name: 'Russia', lat: 61.5240, lon: 105.3188, region: 'EMEA' },
+  RU: { name: 'Russia', lat: 61.524, lon: 105.3188, region: 'EMEA' },
   UA: { name: 'Ukraine', lat: 48.3794, lon: 31.1656, region: 'EMEA' },
   TR: { name: 'Turkey', lat: 38.9637, lon: 35.2433, region: 'MENA' },
   IL: { name: 'Israel', lat: 31.0461, lon: 34.8516, region: 'MENA' },
   AE: { name: 'UAE', lat: 23.4241, lon: 53.8478, region: 'MENA' },
   SA: { name: 'Saudi Arabia', lat: 23.8859, lon: 45.0792, region: 'MENA' },
-  IR: { name: 'Iran', lat: 32.4279, lon: 53.6880, region: 'MENA' },
+  IR: { name: 'Iran', lat: 32.4279, lon: 53.688, region: 'MENA' },
   IN: { name: 'India', lat: 20.5937, lon: 78.9629, region: 'APAC' },
   CN: { name: 'China', lat: 35.8617, lon: 104.1954, region: 'APAC' },
   JP: { name: 'Japan', lat: 36.2048, lon: 138.2529, region: 'APAC' },
@@ -50,51 +50,90 @@ const WORLD_COUNTRIES_GEO = {
   HK: { name: 'Hong Kong', lat: 22.3193, lon: 114.1694, region: 'APAC' },
   TW: { name: 'Taiwan', lat: 23.6978, lon: 120.9605, region: 'APAC' },
   AU: { name: 'Australia', lat: -25.2744, lon: 133.7751, region: 'APAC' },
-  NZ: { name: 'New Zealand', lat: -40.9006, lon: 174.8860, region: 'APAC' },
+  NZ: { name: 'New Zealand', lat: -40.9006, lon: 174.886, region: 'APAC' },
   ZA: { name: 'South Africa', lat: -30.5595, lon: 22.9375, region: 'AFRICA' },
   EG: { name: 'Egypt', lat: 26.8206, lon: 30.8025, region: 'AFRICA' },
-  NG: { name: 'Nigeria', lat: 9.0820, lon: 8.6753, region: 'AFRICA' }
+  NG: { name: 'Nigeria', lat: 9.082, lon: 8.6753, region: 'AFRICA' }
 };
 
 const CONTINENT_POLYGONS = [
   // North America
   [
-    { lat: 70, lon: -160 }, { lat: 72, lon: -125 }, { lat: 60, lon: -75 },
-    { lat: 45, lon: -60 }, { lat: 30, lon: -80 }, { lat: 25, lon: -80 },
-    { lat: 15, lon: -90 }, { lat: 20, lon: -105 }, { lat: 32, lon: -117 },
-    { lat: 48, lon: -125 }, { lat: 60, lon: -140 }, { lat: 65, lon: -168 }
+    { lat: 70, lon: -160 },
+    { lat: 72, lon: -125 },
+    { lat: 60, lon: -75 },
+    { lat: 45, lon: -60 },
+    { lat: 30, lon: -80 },
+    { lat: 25, lon: -80 },
+    { lat: 15, lon: -90 },
+    { lat: 20, lon: -105 },
+    { lat: 32, lon: -117 },
+    { lat: 48, lon: -125 },
+    { lat: 60, lon: -140 },
+    { lat: 65, lon: -168 }
   ],
   // South America
   [
-    { lat: 12, lon: -75 }, { lat: 5, lon: -50 }, { lat: -5, lon: -35 },
-    { lat: -20, lon: -40 }, { lat: -35, lon: -55 }, { lat: -55, lon: -65 },
-    { lat: -50, lon: -75 }, { lat: -20, lon: -70 }, { lat: 0, lon: -80 }
+    { lat: 12, lon: -75 },
+    { lat: 5, lon: -50 },
+    { lat: -5, lon: -35 },
+    { lat: -20, lon: -40 },
+    { lat: -35, lon: -55 },
+    { lat: -55, lon: -65 },
+    { lat: -50, lon: -75 },
+    { lat: -20, lon: -70 },
+    { lat: 0, lon: -80 }
   ],
   // Europe
   [
-    { lat: 70, lon: 25 }, { lat: 65, lon: 40 }, { lat: 55, lon: 35 },
-    { lat: 45, lon: 30 }, { lat: 38, lon: 24 }, { lat: 36, lon: -5 },
-    { lat: 44, lon: -9 }, { lat: 50, lon: -5 }, { lat: 58, lon: 5 },
+    { lat: 70, lon: 25 },
+    { lat: 65, lon: 40 },
+    { lat: 55, lon: 35 },
+    { lat: 45, lon: 30 },
+    { lat: 38, lon: 24 },
+    { lat: 36, lon: -5 },
+    { lat: 44, lon: -9 },
+    { lat: 50, lon: -5 },
+    { lat: 58, lon: 5 },
     { lat: 70, lon: 15 }
   ],
   // Africa
   [
-    { lat: 35, lon: -5 }, { lat: 37, lon: 10 }, { lat: 32, lon: 32 },
-    { lat: 12, lon: 43 }, { lat: -5, lon: 40 }, { lat: -25, lon: 33 },
-    { lat: -34, lon: 20 }, { lat: -18, lon: 12 }, { lat: 5, lon: 8 },
-    { lat: 15, lon: -17 }, { lat: 28, lon: -13 }
+    { lat: 35, lon: -5 },
+    { lat: 37, lon: 10 },
+    { lat: 32, lon: 32 },
+    { lat: 12, lon: 43 },
+    { lat: -5, lon: 40 },
+    { lat: -25, lon: 33 },
+    { lat: -34, lon: 20 },
+    { lat: -18, lon: 12 },
+    { lat: 5, lon: 8 },
+    { lat: 15, lon: -17 },
+    { lat: 28, lon: -13 }
   ],
   // Asia
   [
-    { lat: 75, lon: 100 }, { lat: 70, lon: 170 }, { lat: 60, lon: 160 },
-    { lat: 40, lon: 140 }, { lat: 25, lon: 120 }, { lat: 10, lon: 105 },
-    { lat: 8, lon: 77 }, { lat: 25, lon: 65 }, { lat: 30, lon: 48 },
-    { lat: 40, lon: 50 }, { lat: 50, lon: 60 }, { lat: 60, lon: 70 }
+    { lat: 75, lon: 100 },
+    { lat: 70, lon: 170 },
+    { lat: 60, lon: 160 },
+    { lat: 40, lon: 140 },
+    { lat: 25, lon: 120 },
+    { lat: 10, lon: 105 },
+    { lat: 8, lon: 77 },
+    { lat: 25, lon: 65 },
+    { lat: 30, lon: 48 },
+    { lat: 40, lon: 50 },
+    { lat: 50, lon: 60 },
+    { lat: 60, lon: 70 }
   ],
   // Australia
   [
-    { lat: -12, lon: 132 }, { lat: -15, lon: 145 }, { lat: -28, lon: 153 },
-    { lat: -38, lon: 145 }, { lat: -35, lon: 115 }, { lat: -22, lon: 114 }
+    { lat: -12, lon: 132 },
+    { lat: -15, lon: 145 },
+    { lat: -28, lon: 153 },
+    { lat: -38, lon: 145 },
+    { lat: -35, lon: 115 },
+    { lat: -22, lon: 114 }
   ]
 ];
 
@@ -140,9 +179,7 @@ export default function GeoFencingMap() {
   const handleUpdatePolicy = async (countryCode, newAction, egressAllowed = true) => {
     try {
       const updated = await api.geofencing.updatePolicy(countryCode, newAction, egressAllowed);
-      setPolicies((prev) =>
-        prev.map((p) => (p.country_code === countryCode ? updated : p))
-      );
+      setPolicies((prev) => prev.map((p) => (p.country_code === countryCode ? updated : p)));
       if (selectedCountry?.country_code === countryCode) {
         setSelectedCountry(updated);
       }
@@ -487,16 +524,11 @@ export default function GeoFencingMap() {
               </div>
               <div className="text-[11px] text-slate-400">
                 Action:{' '}
-                <strong
-                  style={{ color: getPolicyColor(hoveredCountry.action) }}
-                  className="font-bold"
-                >
+                <strong style={{ color: getPolicyColor(hoveredCountry.action) }} className="font-bold">
                   {hoveredCountry.action}
                 </strong>
               </div>
-              <div className="text-[10px] text-slate-500">
-                {hoveredCountry.node_count} Active Nodes
-              </div>
+              <div className="text-[10px] text-slate-500">{hoveredCountry.node_count} Active Nodes</div>
             </div>
           )}
         </div>
@@ -517,9 +549,7 @@ export default function GeoFencingMap() {
                 className="pl-8 pr-3 py-1.5 text-xs bg-dark-canvas border border-dark-border rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-primary font-mono w-48 sm:w-64"
               />
             </div>
-            <span className="text-xs font-mono text-slate-500">
-              {filteredPolicies.length} Countries Configured
-            </span>
+            <span className="text-xs font-mono text-slate-500">{filteredPolicies.length} Countries Configured</span>
           </div>
 
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
@@ -625,9 +655,7 @@ export default function GeoFencingMap() {
                   <h3 className="font-bold text-sm text-slate-100 font-mono">
                     {selectedCountry.country_name} ({selectedCountry.country_code})
                   </h3>
-                  <div className="text-[11px] text-slate-400 font-mono">
-                    Country Rule Inspector
-                  </div>
+                  <div className="text-[11px] text-slate-400 font-mono">Country Rule Inspector</div>
                 </div>
                 <span
                   className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
@@ -665,7 +693,11 @@ export default function GeoFencingMap() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Egress Routing:</span>
-                    <span className={selectedCountry.egress_allowed ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
+                    <span
+                      className={
+                        selectedCountry.egress_allowed ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'
+                      }
+                    >
                       {selectedCountry.egress_allowed ? 'Allowed (Full WAN)' : 'Strictly Dropped'}
                     </span>
                   </div>

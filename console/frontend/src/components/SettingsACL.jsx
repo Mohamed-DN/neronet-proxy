@@ -100,7 +100,8 @@ export default function SettingsACL() {
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Declarative security access control matrix, regional subnet failover routes, and posture threshold safeguards.
+            Declarative security access control matrix, regional subnet failover routes, and posture threshold
+            safeguards.
           </p>
         </div>
 
@@ -127,10 +128,9 @@ export default function SettingsACL() {
           <div className="m-4 p-3 rounded-lg bg-neon-amber/10 border border-neon-amber/30 text-xs">
             <p className="text-neon-amber font-bold font-mono">No rule is defined — the mesh is open</p>
             <p className="text-slate-400 mt-1 leading-relaxed">
-              Node enforcement is default-deny, so an empty policy delivered to the
-              fleet would stop all traffic. The control plane compiles allow-all
-              while this table is empty: every node may reach every other. Writing
-              the first rule closes the mesh to everything it does not permit.
+              Node enforcement is default-deny, so an empty policy delivered to the fleet would stop all traffic. The
+              control plane compiles allow-all while this table is empty: every node may reach every other. Writing the
+              first rule closes the mesh to everything it does not permit.
             </p>
           </div>
         )}
@@ -167,11 +167,13 @@ export default function SettingsACL() {
                       : ` · ${r.port_start}-${r.port_end}`}
                   </td>
                   <td className="p-3.5">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      r.action === 'ACCEPT'
-                        ? 'bg-neon-emerald/20 text-neon-emerald border border-neon-emerald/40'
-                        : 'bg-neon-rose/20 text-neon-rose border border-neon-rose/40'
-                    }`}>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        r.action === 'ACCEPT'
+                          ? 'bg-neon-emerald/20 text-neon-emerald border border-neon-emerald/40'
+                          : 'bg-neon-rose/20 text-neon-rose border border-neon-rose/40'
+                      }`}
+                    >
                       {r.action}
                     </span>
                   </td>
@@ -310,9 +312,7 @@ export default function SettingsACL() {
                   placeholder="100.64.0.0/10"
                   className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded text-slate-100 focus:outline-none focus:border-neon-cyan"
                 />
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Overlay addresses. A single device is /32.
-                </p>
+                <p className="text-[10px] text-slate-500 mt-1">Overlay addresses. A single device is /32.</p>
               </div>
 
               <div>
@@ -344,7 +344,10 @@ export default function SettingsACL() {
                 <div>
                   <label className="block text-slate-400 mb-1">Port from</label>
                   <input
-                    type="number" min="0" max="65535" required
+                    type="number"
+                    min="0"
+                    max="65535"
+                    required
                     value={portStart}
                     onChange={(e) => setPortStart(e.target.value)}
                     className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded text-slate-100 tabular-nums focus:outline-none focus:border-neon-cyan"
@@ -353,7 +356,10 @@ export default function SettingsACL() {
                 <div>
                   <label className="block text-slate-400 mb-1">Port to</label>
                   <input
-                    type="number" min="0" max="65535" required
+                    type="number"
+                    min="0"
+                    max="65535"
+                    required
                     value={portEnd}
                     onChange={(e) => setPortEnd(e.target.value)}
                     className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded text-slate-100 tabular-nums focus:outline-none focus:border-neon-cyan"

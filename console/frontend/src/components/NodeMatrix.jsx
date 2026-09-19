@@ -72,7 +72,7 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
       (roleFilter === 'CLIENT_ORIGIN' && (n.role === 'CLIENT_ORIGIN' || n.role === 'EDGE_CLIENT'));
 
     const isQuarantined = Boolean(n.is_quarantined);
-    const isHealthy = Boolean(n.is_healthy !== undefined ? n.is_healthy : (n.status === 'active')) && !isQuarantined;
+    const isHealthy = Boolean(n.is_healthy !== undefined ? n.is_healthy : n.status === 'active') && !isQuarantined;
 
     const matchesPosture =
       postureFilter === 'ALL' ||
@@ -106,9 +106,7 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
           <div>
             <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2.5">
               <span>Mesh Node Matrix</span>
-              <span className="text-xs font-mono px-2 py-0.5 rounded bg-dark-border text-slate-400">
-                0 Total
-              </span>
+              <span className="text-xs font-mono px-2 py-0.5 rounded bg-dark-border text-slate-400">0 Total</span>
             </h1>
             <p className="text-xs text-slate-400 mt-1 font-mono">
               Cryptographic device inventory, posture verification, and Noise tunnel endpoints.
@@ -129,11 +127,10 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
             <Server className="w-8 h-8 text-accent-primary" />
           </div>
           <div className="max-w-md space-y-2">
-            <h3 className="text-base font-bold text-slate-100 font-mono">
-              No mesh nodes registered yet
-            </h3>
+            <h3 className="text-base font-bold text-slate-100 font-mono">No mesh nodes registered yet</h3>
             <p className="text-xs text-slate-400 font-sans leading-relaxed">
-              No active nodes found in this mesh workspace. Click '+ Enroll Node' to generate a cryptographic Noise profile or scan an onboarding QR code.
+              No active nodes found in this mesh workspace. Click '+ Enroll Node' to generate a cryptographic Noise
+              profile or scan an onboarding QR code.
             </p>
           </div>
           <button
@@ -160,7 +157,8 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Zero-Trust verified nodes with real-time heartbeat telemetry, overlay VIP assignments, and cryptographic posture.
+            Zero-Trust verified nodes with real-time heartbeat telemetry, overlay VIP assignments, and cryptographic
+            posture.
           </p>
         </div>
 
@@ -308,9 +306,7 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
                             )}
                           </button>
                         </div>
-                        <div className="text-[10px] text-slate-500 truncate max-w-[140px]">
-                          {n.overlay_ipv6}
-                        </div>
+                        <div className="text-[10px] text-slate-500 truncate max-w-[140px]">{n.overlay_ipv6}</div>
                       </td>
 
                       {/* Role & Class */}
@@ -322,10 +318,10 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
                                 n.role === 'RELAY'
                                   ? 'bg-neon-emerald/20 text-neon-emerald border border-neon-emerald/40'
                                   : n.role === 'EXIT_BRIDGE'
-                                  ? 'bg-neon-indigo/20 text-neon-indigo border border-neon-indigo/40'
-                                  : n.role === 'HYBRID'
-                                  ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/40'
-                                  : 'bg-dark-canvas text-slate-300 border border-dark-border'
+                                    ? 'bg-neon-indigo/20 text-neon-indigo border border-neon-indigo/40'
+                                    : n.role === 'HYBRID'
+                                      ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/40'
+                                      : 'bg-dark-canvas text-slate-300 border border-dark-border'
                               }`}
                             >
                               {n.role}
@@ -371,8 +367,8 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
                             n.latency_ms < 30
                               ? 'text-neon-emerald'
                               : n.latency_ms < 100
-                              ? 'text-neon-amber'
-                              : 'text-neon-rose'
+                                ? 'text-neon-amber'
+                                : 'text-neon-rose'
                           }`}
                         >
                           {n.latency_ms} ms
@@ -444,9 +440,7 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
                   </div>
                   <span
                     className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
-                      isQuarantined
-                        ? 'bg-neon-rose/20 text-neon-rose'
-                        : 'bg-neon-emerald/20 text-neon-emerald'
+                      isQuarantined ? 'bg-neon-rose/20 text-neon-rose' : 'bg-neon-emerald/20 text-neon-emerald'
                     }`}
                   >
                     {isQuarantined ? 'ISOLATED' : `${n.latency_ms}ms`}
@@ -455,7 +449,9 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
 
                 <div className="mt-4 pt-3 border-t border-dark-border/80 flex items-center justify-between text-xs font-mono text-slate-400">
                   <div className="flex items-center space-x-1.5">
-                    <span>Role: <strong className="text-slate-200">{n.role}</strong></span>
+                    <span>
+                      Role: <strong className="text-slate-200">{n.role}</strong>
+                    </span>
                     {isOnion && (
                       <span className="px-1 py-0.2 rounded text-[9px] bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30">
                         Onion

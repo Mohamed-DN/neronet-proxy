@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid
-} from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import {
   Server,
   Users,
@@ -77,7 +69,10 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
 
     loadData();
     const poll = setInterval(loadData, 30000);
-    return () => { cancelled = true; clearInterval(poll); };
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
   }, [timeRange]);
 
   const CustomTooltip = ({ active, payload, label }) => {
@@ -117,11 +112,13 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
               of the fleet. It now reports whether the console is reading live data. */}
           <h1 className="text-xl font-bold text-slate-100 flex items-center flex-wrap gap-x-2 gap-y-1">
             <span>Mesh Overview</span>
-            <span className={`text-xs font-mono font-normal px-2 py-0.5 rounded border ${
-              loadError
-                ? 'bg-neon-rose/20 text-neon-rose border-neon-rose/40'
-                : 'bg-neon-emerald/20 text-neon-emerald border-neon-emerald/40'
-            }`}>
+            <span
+              className={`text-xs font-mono font-normal px-2 py-0.5 rounded border ${
+                loadError
+                  ? 'bg-neon-rose/20 text-neon-rose border-neon-rose/40'
+                  : 'bg-neon-emerald/20 text-neon-emerald border-neon-emerald/40'
+              }`}
+            >
               {loadError ? 'Control plane unreachable' : 'Live'}
             </span>
           </h1>
@@ -153,7 +150,7 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
       {/* KPI Metric Cards */}
       {(() => {
         const activeNodes = stats?.active_nodes ?? 0;
-        const totalNodes = stats?.total_nodes ?? (stats?.active_nodes ?? 0);
+        const totalNodes = stats?.total_nodes ?? stats?.active_nodes ?? 0;
         const quarantinedNodes = stats?.quarantined_nodes ?? 0;
         const compliantNodes = Math.max(0, activeNodes - quarantinedNodes);
         const activeUsers = stats?.active_users ?? 0;
@@ -164,20 +161,27 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
         const haveRates = rxBandwidth !== null && txBandwidth !== null;
         const totalBandwidth = haveRates ? +(rxBandwidth + txBandwidth).toFixed(2) : null;
         const healthScore = stats?.network_health_score ?? null;
-        const dash = v => (v === null || v === undefined ? '—' : v);
+        const dash = (v) => (v === null || v === undefined ? '—' : v);
 
         const postureLabel =
-          healthScore === null ? 'Not measured'
-            : healthScore === 100 ? 'All nodes reachable'
-            : healthScore >= 80 ? 'Degraded'
-            : healthScore > 0 ? 'Impaired'
-            : 'Fleet offline';
+          healthScore === null
+            ? 'Not measured'
+            : healthScore === 100
+              ? 'All nodes reachable'
+              : healthScore >= 80
+                ? 'Degraded'
+                : healthScore > 0
+                  ? 'Impaired'
+                  : 'Fleet offline';
 
         const postureColour =
-          healthScore === null ? 'text-slate-400'
-            : healthScore === 100 ? 'text-neon-emerald'
-            : healthScore >= 80 ? 'text-neon-amber'
-            : 'text-neon-rose';
+          healthScore === null
+            ? 'text-slate-400'
+            : healthScore === 100
+              ? 'text-neon-emerald'
+              : healthScore >= 80
+                ? 'text-neon-amber'
+                : 'text-neon-rose';
 
         return (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -188,9 +192,7 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 <Server className="w-4 h-4 text-neon-cyan" />
               </div>
               <div className="flex items-baseline space-x-2">
-                <span className="text-2xl font-bold text-slate-100 font-mono">
-                  {activeNodes}
-                </span>
+                <span className="text-2xl font-bold text-slate-100 font-mono">{activeNodes}</span>
                 <span className="text-xs text-slate-500 font-mono">/ {totalNodes} Enrolled</span>
               </div>
               <div className="mt-3 flex items-center justify-between text-[11px] font-mono">
@@ -212,17 +214,13 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 <Users className="w-4 h-4 text-neon-indigo" />
               </div>
               <div className="flex items-baseline space-x-2">
-                <span className="text-2xl font-bold text-slate-100 font-mono">
-                  {activeUsers}
-                </span>
+                <span className="text-2xl font-bold text-slate-100 font-mono">{activeUsers}</span>
                 <span className="text-xs text-slate-500 font-mono">Active Tenants</span>
               </div>
               {/* This used to print activeUsers/2 as "Hybrid BYOS" and the other half as
                   "Cloud Managed" — a made-up split, not a count of anything. There are
                   no tiers now, and there was never data behind that line. */}
-              <div className="mt-3 text-[11px] font-mono text-slate-500">
-                All accounts have the same access
-              </div>
+              <div className="mt-3 text-[11px] font-mono text-slate-500">All accounts have the same access</div>
             </div>
 
             {/* Metric 3: Aggregate Bandwidth */}
@@ -232,9 +230,7 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 <Activity className="w-4 h-4 text-neon-emerald" />
               </div>
               <div className="flex items-baseline space-x-2">
-                <span className="text-2xl font-bold text-slate-100 font-mono tabular-nums">
-                  {dash(totalBandwidth)}
-                </span>
+                <span className="text-2xl font-bold text-slate-100 font-mono tabular-nums">{dash(totalBandwidth)}</span>
                 <span className="text-xs text-slate-400 font-mono">MB/s</span>
               </div>
               {haveRates ? (
@@ -249,9 +245,7 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                   </span>
                 </div>
               ) : (
-                <div className="mt-3 text-[11px] font-mono text-slate-500">
-                  Needs two samples a minute apart
-                </div>
+                <div className="mt-3 text-[11px] font-mono text-slate-500">Needs two samples a minute apart</div>
               )}
             </div>
 
@@ -289,9 +283,7 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 <TrendingUp className="w-4 h-4 text-neon-cyan" />
                 <span>Aggregate Network Throughput Timeseries</span>
               </h2>
-              <p className="text-xs text-slate-400">
-                Transfer rate across the fleet, sampled once a minute
-              </p>
+              <p className="text-xs text-slate-400">Transfer rate across the fleet, sampled once a minute</p>
             </div>
             <div className="flex items-center space-x-1 bg-dark-canvas p-1 rounded-lg border border-dark-border text-xs font-mono">
               {['1h', '6h', '24h', '7d'].map((r) => (
@@ -318,55 +310,54 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                 <TrendingUp className="w-6 h-6 text-slate-600 mb-2" />
                 <p className="text-sm text-slate-300 font-mono">No samples in this range yet</p>
                 <p className="text-xs text-slate-500 mt-1 max-w-xs">
-                  Throughput is sampled once a minute. Two samples are needed before a
-                  rate can be drawn.
+                  Throughput is sampled once a minute. Two samples are needed before a rate can be drawn.
                 </p>
               </div>
             ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={timeseries} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorRx" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
-                  </linearGradient>
-                  <linearGradient id="colorTx" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                <XAxis
-                  dataKey="time"
-                  stroke="#71717a"
-                  tick={{ fill: '#71717a', fontSize: 11, fontFamily: 'monospace' }}
-                />
-                <YAxis
-                  stroke="#71717a"
-                  tick={{ fill: '#71717a', fontSize: 11, fontFamily: 'monospace' }}
-                  unit=" MB/s"
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="rx"
-                  stroke="#06b6d4"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorRx)"
-                  name="Inbound (RX)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="tx"
-                  stroke="#6366f1"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorTx)"
-                  name="Outbound (TX)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={timeseries} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorRx" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+                    </linearGradient>
+                    <linearGradient id="colorTx" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                  <XAxis
+                    dataKey="time"
+                    stroke="#71717a"
+                    tick={{ fill: '#71717a', fontSize: 11, fontFamily: 'monospace' }}
+                  />
+                  <YAxis
+                    stroke="#71717a"
+                    tick={{ fill: '#71717a', fontSize: 11, fontFamily: 'monospace' }}
+                    unit=" MB/s"
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="rx"
+                    stroke="#06b6d4"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorRx)"
+                    name="Inbound (RX)"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="tx"
+                    stroke="#6366f1"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorTx)"
+                    name="Outbound (TX)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             )}
           </div>
 
@@ -409,9 +400,7 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
             {geoMatrix.length === 0 && (
               <div className="p-4 text-center border border-dashed border-dark-border rounded-lg">
                 <p className="text-sm text-slate-300 font-mono">No nodes enrolled</p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Countries appear here once a node registers from one.
-                </p>
+                <p className="text-xs text-slate-500 mt-1">Countries appear here once a node registers from one.</p>
               </div>
             )}
             {geoMatrix.map((g) => (
@@ -435,17 +424,21 @@ export default function Overview({ onSelectNode, onNavigateTab }) {
                   {/* A null latency means no node here has reported a measurement.
                       The previous build substituted 35ms for that case. */}
                   <div className="font-bold text-neon-cyan tabular-nums whitespace-nowrap">
-                    {g.avg_latency === null || g.avg_latency === undefined
-                      ? <span className="text-slate-500 font-normal text-[10px]">no RTT</span>
-                      : `${g.avg_latency}ms`}
+                    {g.avg_latency === null || g.avg_latency === undefined ? (
+                      <span className="text-slate-500 font-normal text-[10px]">no RTT</span>
+                    ) : (
+                      `${g.avg_latency}ms`
+                    )}
                   </div>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                    g.status === 'Online'
-                      ? 'bg-neon-emerald/20 text-neon-emerald'
-                      : g.status === 'Degraded'
-                        ? 'bg-neon-amber/20 text-neon-amber'
-                        : 'bg-neon-rose/20 text-neon-rose'
-                  }`}>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      g.status === 'Online'
+                        ? 'bg-neon-emerald/20 text-neon-emerald'
+                        : g.status === 'Degraded'
+                          ? 'bg-neon-amber/20 text-neon-amber'
+                          : 'bg-neon-rose/20 text-neon-rose'
+                    }`}
+                  >
                     {g.status}
                   </span>
                 </div>

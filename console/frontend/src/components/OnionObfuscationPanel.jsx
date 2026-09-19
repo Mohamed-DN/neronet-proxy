@@ -53,9 +53,7 @@ export default function OnionObfuscationPanel() {
       await api.nodes.action(nodeId, 'toggle_onion', { enabled: newEnabled });
       setNodes((prev) =>
         prev.map((n) =>
-          n.id === nodeId
-            ? { ...n, onion_routing_enabled: newEnabled ? 1 : 0, onion_hops: newEnabled ? 3 : 0 }
-            : n
+          n.id === nodeId ? { ...n, onion_routing_enabled: newEnabled ? 1 : 0, onion_hops: newEnabled ? 3 : 0 } : n
         )
       );
     } catch (err) {
@@ -67,13 +65,7 @@ export default function OnionObfuscationPanel() {
     try {
       const newKill = !currentKill;
       await api.nodes.action(nodeId, 'toggle_kill_switch', { enabled: newKill });
-      setNodes((prev) =>
-        prev.map((n) =>
-          n.id === nodeId
-            ? { ...n, kill_switch_enabled: newKill ? 1 : 0 }
-            : n
-        )
-      );
+      setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, kill_switch_enabled: newKill ? 1 : 0 } : n)));
     } catch (err) {
       console.error('Failed to toggle kill switch:', err);
     }
@@ -125,10 +117,9 @@ export default function OnionObfuscationPanel() {
         <div className="text-xs">
           <p className="font-bold text-neon-amber font-mono">Recorded, not yet routed</p>
           <p className="text-slate-400 mt-1 leading-relaxed">
-            The onion layering is implemented and tested in <code className="text-slate-300">pkg/routing</code>,
-            but the node daemon does not import it and the heartbeat carries no onion
-            field. Enabling a device here records the intent in the control plane; no
-            traffic is carried through a circuit yet.
+            The onion layering is implemented and tested in <code className="text-slate-300">pkg/routing</code>, but the
+            node daemon does not import it and the heartbeat carries no onion field. Enabling a device here records the
+            intent in the control plane; no traffic is carried through a circuit yet.
           </p>
         </div>
       </div>
@@ -145,12 +136,8 @@ export default function OnionObfuscationPanel() {
                 routing switched off everywhere still reported twelve circuits.
                 Circuits are built on request and never stored, so there is no
                 count of them; this is the figure the control plane does hold. */}
-            <span className="text-2xl font-bold text-slate-100 font-mono tabular-nums">
-              {onionEnabledCount}
-            </span>
-            <span className="text-xs text-slate-500 font-mono">
-              of {nodes.length} devices
-            </span>
+            <span className="text-2xl font-bold text-slate-100 font-mono tabular-nums">{onionEnabledCount}</span>
+            <span className="text-xs text-slate-500 font-mono">of {nodes.length} devices</span>
           </div>
           <div className="text-[11px] font-mono text-emerald-400 flex items-center space-x-1">
             <CheckCircle2 className="w-3 h-3" />

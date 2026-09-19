@@ -24,14 +24,7 @@ import {
   Sliders
 } from 'lucide-react';
 
-export default function NodeActions({
-  node,
-  isOpen,
-  onClose,
-  onNodeUpdated,
-  onNodeRevoked,
-  onNavigateTab
-}) {
+export default function NodeActions({ node, isOpen, onClose, onNodeUpdated, onNodeRevoked, onNavigateTab }) {
   const [currentNode, setCurrentNode] = useState(node);
   const [pingHistory, setPingHistory] = useState([]);
   const [isPinging, setIsPinging] = useState(false);
@@ -136,11 +129,7 @@ export default function NodeActions({
   };
 
   const handleRevoke = async () => {
-    if (
-      window.confirm(
-        `Are you sure you want to permanently revoke node "${currentNode.name}" from the mesh?`
-      )
-    ) {
+    if (window.confirm(`Are you sure you want to permanently revoke node "${currentNode.name}" from the mesh?`)) {
       await api.nodes.action(currentNode.id, 'revoke');
       if (onNodeRevoked) onNodeRevoked(currentNode.id);
       onClose();
@@ -154,9 +143,7 @@ export default function NodeActions({
   };
 
   const isExitNode = currentNode.role === 'EXIT_BRIDGE';
-  const isOnionEnabled = Boolean(
-    currentNode.onion_routing_enabled || (currentNode.onion_hops || 0) > 0
-  );
+  const isOnionEnabled = Boolean(currentNode.onion_routing_enabled || (currentNode.onion_hops || 0) > 0);
   const isKillSwitchEnabled = Boolean(currentNode.kill_switch_enabled);
   const isQuarantined = Boolean(currentNode.is_quarantined);
   const riskScore = currentNode.risk_score || (isQuarantined ? 85 : 12);
@@ -194,8 +181,7 @@ export default function NodeActions({
                 )}
               </div>
               <div className="text-xs font-mono text-slate-400">
-                {currentNode.overlay_ipv4} &bull; {currentNode.country_code} &bull; ASN{' '}
-                {currentNode.asn || 7922}
+                {currentNode.overlay_ipv4} &bull; {currentNode.country_code} &bull; ASN {currentNode.asn || 7922}
               </div>
             </div>
           </div>
@@ -207,8 +193,8 @@ export default function NodeActions({
                 riskScore > 75
                   ? 'bg-red-950/60 text-red-400 border-red-500/50'
                   : riskScore >= 40
-                  ? 'bg-amber-950/60 text-amber-400 border-amber-500/50'
-                  : 'bg-emerald-950/60 text-emerald-400 border-emerald-500/50'
+                    ? 'bg-amber-950/60 text-amber-400 border-amber-500/50'
+                    : 'bg-emerald-950/60 text-emerald-400 border-emerald-500/50'
               }`}
             >
               <Activity className="w-3.5 h-3.5" />
@@ -242,18 +228,12 @@ export default function NodeActions({
               <div>
                 <div className="text-[10px] text-slate-500">Public Key (Curve25519)</div>
                 <div className="flex items-center justify-between bg-dark-card p-1.5 rounded border border-dark-border mt-0.5">
-                  <span className="truncate text-slate-300 text-[11px]">
-                    {currentNode.public_key}
-                  </span>
+                  <span className="truncate text-slate-300 text-[11px]">{currentNode.public_key}</span>
                   <button
                     onClick={() => handleCopyKey(currentNode.public_key)}
                     className="p-1 text-slate-400 hover:text-white"
                   >
-                    {copiedKey ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5" />
-                    )}
+                    {copiedKey ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
@@ -267,9 +247,7 @@ export default function NodeActions({
                 </div>
                 <div>
                   <div className="text-[10px] text-slate-500">Traffic Class</div>
-                  <div className="text-[11px] text-slate-300">
-                    {currentNode.ip_class || 'RESIDENTIAL'}
-                  </div>
+                  <div className="text-[11px] text-slate-300">{currentNode.ip_class || 'RESIDENTIAL'}</div>
                 </div>
               </div>
             </div>
@@ -280,13 +258,9 @@ export default function NodeActions({
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Radio
-                  className={`w-4 h-4 ${
-                    isPinging ? 'text-accent-primary animate-spin' : 'text-accent-primary'
-                  }`}
+                  className={`w-4 h-4 ${isPinging ? 'text-accent-primary animate-spin' : 'text-accent-primary'}`}
                 />
-                <span className="text-xs font-semibold text-slate-200">
-                  Live ICMP Ping & Latency Sparkline
-                </span>
+                <span className="text-xs font-semibold text-slate-200">Live ICMP Ping & Latency Sparkline</span>
               </div>
               <button
                 onClick={handlePing}
@@ -331,9 +305,7 @@ export default function NodeActions({
                     </div>
                     <div>
                       <div className="text-[9px] text-slate-500">LOSS</div>
-                      <div className="text-emerald-400 font-bold">
-                        {pingStats.packet_loss_pct}%
-                      </div>
+                      <div className="text-emerald-400 font-bold">{pingStats.packet_loss_pct}%</div>
                     </div>
                   </div>
                 )}
@@ -351,11 +323,7 @@ export default function NodeActions({
           <div className="p-4 rounded-xl bg-dark-canvas border border-dark-border space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <PowerOff
-                  className={`w-4 h-4 ${
-                    isKillSwitchEnabled ? 'text-emerald-400' : 'text-slate-400'
-                  }`}
-                />
+                <PowerOff className={`w-4 h-4 ${isKillSwitchEnabled ? 'text-emerald-400' : 'text-slate-400'}`} />
                 <div>
                   <div className="text-xs font-semibold text-slate-200 flex items-center space-x-2">
                     <span>WireGuard Kill Switch</span>
@@ -386,8 +354,8 @@ export default function NodeActions({
                 {isTogglingKillSwitch
                   ? 'Updating...'
                   : isKillSwitchEnabled
-                  ? 'Active (Protected)'
-                  : 'Enable Kill Switch'}
+                    ? 'Active (Protected)'
+                    : 'Enable Kill Switch'}
               </button>
             </div>
             <div className="text-[10px] font-mono text-slate-500 bg-dark-card p-2 rounded border border-dark-border">
@@ -402,9 +370,7 @@ export default function NodeActions({
                 <Compass className="w-4 h-4 text-violet-400" />
                 <div>
                   <div className="text-xs font-semibold text-slate-200">Sovereign Exit Node</div>
-                  <div className="text-[11px] text-slate-400">
-                    Route WAN egress traffic through this physical node
-                  </div>
+                  <div className="text-[11px] text-slate-400">Route WAN egress traffic through this physical node</div>
                 </div>
               </div>
               <button
@@ -438,16 +404,10 @@ export default function NodeActions({
           <div className="p-4 rounded-xl bg-dark-canvas border border-dark-border space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <Zap
-                  className={`w-4 h-4 ${isOnionEnabled ? 'text-accent-primary' : 'text-slate-400'}`}
-                />
+                <Zap className={`w-4 h-4 ${isOnionEnabled ? 'text-accent-primary' : 'text-slate-400'}`} />
                 <div>
-                  <div className="text-xs font-semibold text-slate-200">
-                    3-Hop Onion Obfuscation
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    Tor-grade multi-hop traffic circuit routing
-                  </div>
+                  <div className="text-xs font-semibold text-slate-200">3-Hop Onion Obfuscation</div>
+                  <div className="text-[11px] text-slate-400">Tor-grade multi-hop traffic circuit routing</div>
                 </div>
               </div>
               <button
@@ -459,20 +419,14 @@ export default function NodeActions({
                     : 'bg-dark-card border-dark-border text-slate-400 hover:text-white'
                 } disabled:opacity-40`}
               >
-                {isTogglingOnion
-                  ? 'Toggling...'
-                  : isOnionEnabled
-                  ? '3 Hops Active'
-                  : 'Direct (0-Hop)'}
+                {isTogglingOnion ? 'Toggling...' : isOnionEnabled ? '3 Hops Active' : 'Direct (0-Hop)'}
               </button>
             </div>
 
             <div className="space-y-1.5 text-[11px] font-mono text-slate-400 bg-dark-card p-2.5 rounded-lg border border-dark-border">
               <div className="flex items-center justify-between">
                 <span>Circuit Hops:</span>
-                <span
-                  className={`font-bold ${isOnionEnabled ? 'text-accent-primary' : 'text-slate-300'}`}
-                >
+                <span className={`font-bold ${isOnionEnabled ? 'text-accent-primary' : 'text-slate-300'}`}>
                   {isOnionEnabled ? '3 Relays (Layered Noise)' : 'Direct Egress (0-Hop)'}
                 </span>
               </div>
@@ -488,22 +442,14 @@ export default function NodeActions({
           {/* Action 5: Quarantine / Posture Isolation (with Subnet 100.64.250.0/24 indicator) */}
           <div
             className={`p-4 rounded-xl border space-y-3 ${
-              isQuarantined
-                ? 'bg-red-500/10 border-red-500/50 shadow-lg'
-                : 'bg-dark-canvas border-dark-border'
+              isQuarantined ? 'bg-red-500/10 border-red-500/50 shadow-lg' : 'bg-dark-canvas border-dark-border'
             }`}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <ShieldAlert
-                  className={`w-4 h-4 ${isQuarantined ? 'text-red-400' : 'text-slate-400'}`}
-                />
+                <ShieldAlert className={`w-4 h-4 ${isQuarantined ? 'text-red-400' : 'text-slate-400'}`} />
                 <div>
-                  <div
-                    className={`text-xs font-semibold ${
-                      isQuarantined ? 'text-red-400' : 'text-slate-200'
-                    }`}
-                  >
+                  <div className={`text-xs font-semibold ${isQuarantined ? 'text-red-400' : 'text-slate-200'}`}>
                     Zero-Trust Quarantine & Subnet Isolation
                   </div>
                   <div className="text-[11px] text-slate-400">
@@ -521,13 +467,7 @@ export default function NodeActions({
                 }`}
               >
                 {isQuarantined ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                <span>
-                  {isQuarantining
-                    ? 'Processing...'
-                    : isQuarantined
-                    ? 'Lift Quarantine'
-                    : 'Quarantine Node'}
-                </span>
+                <span>{isQuarantining ? 'Processing...' : isQuarantined ? 'Lift Quarantine' : 'Quarantine Node'}</span>
               </button>
             </div>
 
@@ -538,8 +478,8 @@ export default function NodeActions({
                   <span>Subnet Reallocation Active: 100.64.250.0/24</span>
                 </div>
                 <p className="text-[11px] text-red-300/80">
-                  Node ingress/egress is isolated into the Zero-Trust sandbox subnet{' '}
-                  <code>100.64.250.0/24</code>. All lateral mesh communications are dropped.
+                  Node ingress/egress is isolated into the Zero-Trust sandbox subnet <code>100.64.250.0/24</code>. All
+                  lateral mesh communications are dropped.
                 </p>
                 {currentNode.quarantine_reason && (
                   <div className="text-[10px] text-red-400 pt-1 border-t border-red-800/60">
@@ -549,7 +489,8 @@ export default function NodeActions({
               </div>
             ) : (
               <div className="text-[10px] font-mono text-slate-500">
-                Triggering quarantine immediately reassigns VIP to <code>100.64.250.0/24</code> and revokes lateral routing.
+                Triggering quarantine immediately reassigns VIP to <code>100.64.250.0/24</code> and revokes lateral
+                routing.
               </div>
             )}
           </div>

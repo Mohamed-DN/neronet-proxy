@@ -87,7 +87,8 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                 come from the rules in services/RiskEngine.js. */}
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time telemetry analysis: impossible travel detection (&gt;1000 km/h), wire RTT drift, and automated quarantine triggers.
+            Real-time telemetry analysis: impossible travel detection (&gt;1000 km/h), wire RTT drift, and automated
+            quarantine triggers.
           </p>
         </div>
 
@@ -108,9 +109,7 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
             <span>Low Risk (&lt; 40)</span>
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-2xl font-bold text-emerald-400">
-            {summary?.distribution?.low ?? '—'} Nodes
-          </div>
+          <div className="text-2xl font-bold text-emerald-400">{summary?.distribution?.low ?? '—'} Nodes</div>
           <div className="text-[10px] text-slate-500">Fully compliant posture</div>
         </div>
 
@@ -120,9 +119,7 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
             <span>Elevated (40 - 75)</span>
             <AlertTriangle className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-2xl font-bold text-amber-400">
-            {summary?.distribution?.medium ?? '—'} Nodes
-          </div>
+          <div className="text-2xl font-bold text-amber-400">{summary?.distribution?.medium ?? '—'} Nodes</div>
           <div className="text-[10px] text-slate-500">Above the quarantine threshold</div>
         </div>
 
@@ -132,9 +129,7 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
             <span>Critical (&gt; 75)</span>
             <Flame className="w-4 h-4 text-red-400 animate-bounce" />
           </div>
-          <div className="text-2xl font-bold text-red-400">
-            {summary?.distribution?.high ?? '—'} Nodes
-          </div>
+          <div className="text-2xl font-bold text-red-400">{summary?.distribution?.high ?? '—'} Nodes</div>
           <div className="text-[10px] text-red-400/80">Auto-quarantined to 100.64.250.0/24</div>
         </div>
 
@@ -144,11 +139,9 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
             <span>Avg Risk Score</span>
             <Activity className="w-4 h-4 text-accent-primary" />
           </div>
-          <div className="text-2xl font-bold text-slate-100">
-            {summary?.average_risk_score ?? '—'} / 100
-          </div>
+          <div className="text-2xl font-bold text-slate-100">{summary?.average_risk_score ?? '—'} / 100</div>
           {/* There is no moving window: the score is the value stored on the node row. */}
-            <div className="text-[10px] text-slate-500">Mean across enrolled nodes</div>
+          <div className="text-[10px] text-slate-500">Mean across enrolled nodes</div>
         </div>
       </div>
 
@@ -200,11 +193,7 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                       <td className="p-3.5 min-w-[140px]">
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs font-bold">
-                            <span
-                              className={
-                                isHigh ? 'text-red-400' : isMed ? 'text-amber-400' : 'text-emerald-400'
-                              }
-                            >
+                            <span className={isHigh ? 'text-red-400' : isMed ? 'text-amber-400' : 'text-emerald-400'}>
                               {score} / 100
                             </span>
                           </div>
@@ -327,7 +316,9 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                   <p className="text-[11px] text-slate-300">{evt.description || evt.message}</p>
 
                   <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-dark-border/60">
-                    <span>Node: <strong className="text-slate-200">{evt.node_name || evt.target_id}</strong></span>
+                    <span>
+                      Node: <strong className="text-slate-200">{evt.node_name || evt.target_id}</strong>
+                    </span>
                     <span className="font-bold text-red-400">+{evt.risk_delta || 50} pts</span>
                   </div>
                 </div>

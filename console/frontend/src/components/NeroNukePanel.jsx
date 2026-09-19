@@ -23,13 +23,7 @@ import {
   Sliders
 } from 'lucide-react';
 
-export default function NeroNukePanel({
-  nukeArmed,
-  nukeScheduledAt,
-  onArmNuke,
-  onDisarmNuke,
-  onOpenSecretModal
-}) {
+export default function NeroNukePanel({ nukeArmed, nukeScheduledAt, onArmNuke, onDisarmNuke, onOpenSecretModal }) {
   const { role, user } = useAuth();
   const isSuperAdmin = role === 'super-admin';
 
@@ -99,7 +93,9 @@ export default function NeroNukePanel({
         if (onArmNuke) onArmNuke(null);
         setTier1Stage(3);
       } else {
-        const scheduledTime = scheduledDateTime ? new Date(scheduledDateTime).toISOString() : new Date(Date.now() + 86400000).toISOString();
+        const scheduledTime = scheduledDateTime
+          ? new Date(scheduledDateTime).toISOString()
+          : new Date(Date.now() + 86400000).toISOString();
         await api.nuke.scheduleSelfDestruct(scheduledTime);
         if (onArmNuke) onArmNuke(scheduledTime);
         setTier1Stage(3);
@@ -136,7 +132,7 @@ export default function NeroNukePanel({
       await api.nuke.setupPersonalDms(dmsPassphrase, intervalSec, stegoMode);
       setDmsPassphrase('');
       loadNukeState();
-      alert('Personal Dead Man\'s Switch armed silently. Zero visual indicators will be shown.');
+      alert("Personal Dead Man's Switch armed silently. Zero visual indicators will be shown.");
     } catch (err) {
       alert('Failed to setup personal DMS.');
     } finally {
@@ -216,7 +212,8 @@ export default function NeroNukePanel({
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Military-grade cryptographic erasure protocols engineered for journalists, whistleblowers, and sovereign enterprises.
+            Military-grade cryptographic erasure protocols engineered for journalists, whistleblowers, and sovereign
+            enterprises.
           </p>
         </div>
 
@@ -295,15 +292,21 @@ export default function NeroNukePanel({
                 <span>Tier 1: Account Self-Destruct Protocol</span>
               </div>
               <div className="flex items-center space-x-1.5 font-mono text-[10px]">
-                <span className={`px-2 py-0.5 rounded font-bold ${tier1Stage === 1 ? 'bg-red-500 text-white' : 'bg-dark-canvas text-slate-400'}`}>
+                <span
+                  className={`px-2 py-0.5 rounded font-bold ${tier1Stage === 1 ? 'bg-red-500 text-white' : 'bg-dark-canvas text-slate-400'}`}
+                >
                   1. Confirm
                 </span>
                 <span className="text-slate-600">&rarr;</span>
-                <span className={`px-2 py-0.5 rounded font-bold ${tier1Stage === 2 ? 'bg-amber-500 text-slate-950' : 'bg-dark-canvas text-slate-400'}`}>
+                <span
+                  className={`px-2 py-0.5 rounded font-bold ${tier1Stage === 2 ? 'bg-amber-500 text-slate-950' : 'bg-dark-canvas text-slate-400'}`}
+                >
                   2. Sign
                 </span>
                 <span className="text-slate-600">&rarr;</span>
-                <span className={`px-2 py-0.5 rounded font-bold ${tier1Stage === 3 ? 'bg-red-600 text-white animate-pulse' : 'bg-dark-canvas text-slate-400'}`}>
+                <span
+                  className={`px-2 py-0.5 rounded font-bold ${tier1Stage === 3 ? 'bg-red-600 text-white animate-pulse' : 'bg-dark-canvas text-slate-400'}`}
+                >
                   3. Armed
                 </span>
               </div>
@@ -313,7 +316,8 @@ export default function NeroNukePanel({
             {tier1Stage === 1 && (
               <form onSubmit={handleProceedToSignature} className="space-y-4 text-xs font-mono">
                 <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                  Permanently delete your account, personal WireGuard/Noise keypairs, device registrations, and files. Rows are hard-deleted in PostgreSQL with zero recoverable traces.
+                  Permanently delete your account, personal WireGuard/Noise keypairs, device registrations, and files.
+                  Rows are hard-deleted in PostgreSQL with zero recoverable traces.
                 </p>
 
                 {/* Legal Disclaimer */}
@@ -323,7 +327,9 @@ export default function NeroNukePanel({
                     <span>Legal Disclaimer & Warning</span>
                   </div>
                   <p className="text-[11px] text-slate-300 leading-relaxed">
-                    By executing account self-destruct, all encrypted session keys and storage records will be overwritten with random bytes. This process cannot be halted, refunded, or restored by administrators.
+                    By executing account self-destruct, all encrypted session keys and storage records will be
+                    overwritten with random bytes. This process cannot be halted, refunded, or restored by
+                    administrators.
                   </p>
                   <label className="flex items-start space-x-2 pt-1 cursor-pointer">
                     <input
@@ -498,8 +504,8 @@ export default function NeroNukePanel({
                       {isExecutingTier1
                         ? 'Arming Protocol...'
                         : destructMode === 'instant'
-                        ? 'Digitally Sign & Arm Instant Kill'
-                        : 'Digitally Sign & Arm Scheduled Kill'}
+                          ? 'Digitally Sign & Arm Instant Kill'
+                          : 'Digitally Sign & Arm Scheduled Kill'}
                     </span>
                   </button>
                 </div>
@@ -521,17 +527,19 @@ export default function NeroNukePanel({
                   </div>
 
                   <p className="text-[11px] text-red-200 leading-relaxed font-sans">
-                    The persistent glowing red button <strong>"☢ DESTROY NOW"</strong> is now pinned to your sidebar across all console views.
+                    The persistent glowing red button <strong>"☢ DESTROY NOW"</strong> is now pinned to your sidebar
+                    across all console views.
                   </p>
 
                   <div className="p-2.5 rounded-lg bg-black/60 border border-red-500/40 text-[11px] text-red-300 space-y-1">
                     <div>
-                      Destruction Mode:{' '}
-                      <strong className="text-white uppercase">{destructMode}</strong>
+                      Destruction Mode: <strong className="text-white uppercase">{destructMode}</strong>
                     </div>
                     <div>
                       Target Timestamp:{' '}
-                      <strong>{nukeScheduledAt ? new Date(nukeScheduledAt).toLocaleString() : 'INSTANT STANDBY'}</strong>
+                      <strong>
+                        {nukeScheduledAt ? new Date(nukeScheduledAt).toLocaleString() : 'INSTANT STANDBY'}
+                      </strong>
                     </div>
                   </div>
 
@@ -569,7 +577,8 @@ export default function NeroNukePanel({
             <div className="p-5 rounded-2xl bg-dark-card border border-dark-border space-y-2 shadow-xl">
               <div className="font-bold text-slate-200">Persistent Sidebar Red Button Rule</div>
               <p className="text-slate-400 text-[11px] leading-relaxed">
-                When Scheduled Kill is armed, a glowing red <strong>"☢ DESTROY NOW"</strong> button stays permanently pinned above all sidebar navigation links on every page with a live tick countdown.
+                When Scheduled Kill is armed, a glowing red <strong>"☢ DESTROY NOW"</strong> button stays permanently
+                pinned above all sidebar navigation links on every page with a live tick countdown.
               </p>
             </div>
           </div>
@@ -586,7 +595,8 @@ export default function NeroNukePanel({
             </div>
 
             <p className="text-xs text-slate-400 leading-relaxed">
-              Configure a personal countdown clock. If you fail to re-confirm your presence before the interval expires, only your personal account and devices are wiped silently without administrator notification.
+              Configure a personal countdown clock. If you fail to re-confirm your presence before the interval expires,
+              only your personal account and devices are wiped silently without administrator notification.
             </p>
 
             <form onSubmit={handleSetupPersonalDms} className="space-y-4 text-xs font-mono">
@@ -648,7 +658,8 @@ export default function NeroNukePanel({
               <span>Zero-Indicator Stealth Mode</span>
             </div>
             <p className="text-slate-400 text-[11px] leading-relaxed">
-              When Tier 1b DMS is active, NO badge, NO countdown, and NO icon is shown anywhere in the console. You must use the secret Steganographic Access Gateway to check in.
+              When Tier 1b DMS is active, NO badge, NO countdown, and NO icon is shown anywhere in the console. You must
+              use the secret Steganographic Access Gateway to check in.
             </p>
             <div className="pt-3 border-t border-dark-border">
               <button
@@ -673,7 +684,8 @@ export default function NeroNukePanel({
             </div>
 
             <p className="text-xs text-slate-400 leading-relaxed">
-              Super-Admin Dead Man's Switch: If the network owner is compromised or incapacitated, triggers a cascading wipe of all user accounts, PostgreSQL rows, Valkey sessions, and sends a single canary alert webhook.
+              Super-Admin Dead Man's Switch: If the network owner is compromised or incapacitated, triggers a cascading
+              wipe of all user accounts, PostgreSQL rows, Valkey sessions, and sends a single canary alert webhook.
             </p>
 
             <form onSubmit={handleSetupOwnerDms} className="space-y-4 text-xs font-mono">
@@ -724,7 +736,10 @@ export default function NeroNukePanel({
 
           <div className="space-y-4 font-mono text-xs">
             {/* Owner Heartbeat Re-confirmation */}
-            <form onSubmit={handleResetOwnerHeartbeat} className="p-5 rounded-2xl bg-dark-card border border-dark-border space-y-3 shadow-xl">
+            <form
+              onSubmit={handleResetOwnerHeartbeat}
+              className="p-5 rounded-2xl bg-dark-card border border-dark-border space-y-3 shadow-xl"
+            >
               <div className="font-bold text-slate-200 flex items-center space-x-2">
                 <RefreshCw className="w-4 h-4 text-emerald-400" />
                 <span>Confirm Owner Heartbeat & Reset Timer</span>
@@ -799,7 +814,8 @@ export default function NeroNukePanel({
               <span className="text-[10px] text-slate-500">Updated weekly</span>
             </div>
             <pre className="text-slate-300 text-xs leading-relaxed overflow-x-auto whitespace-pre-wrap p-2">
-              {warrantCanaryText || `-----BEGIN NERONET WARRANT CANARY-----
+              {warrantCanaryText ||
+                `-----BEGIN NERONET WARRANT CANARY-----
 Timestamp: ${new Date().toISOString()}
 Status: COMPLIANT - ZERO SUBPOENAS OR GAG ORDERS RECEIVED
 

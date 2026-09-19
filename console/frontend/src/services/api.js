@@ -4,12 +4,7 @@
  */
 
 import QRCode from 'qrcode';
-import {
-  markReachable,
-  markUnreachable,
-  resolveList,
-  resolveOne
-} from './dataSource.js';
+import { markReachable, markUnreachable, resolveList, resolveOne } from './dataSource.js';
 import {
   MOCK_USERS,
   MOCK_NODES,
@@ -32,12 +27,25 @@ let inMemoryNodes = MOCK_NODES.map((n, index) => {
   const name = n.name || n.hostname || n.id;
   const overlay_ipv4 = n.overlay_ipv4 || n.mesh_ip || `100.64.0.${index + 1}`;
   const mesh_ip = n.mesh_ip || n.overlay_ipv4 || `100.64.0.${index + 1}`;
-  const role = n.role === 'EDGE_CLIENT' ? 'CLIENT_ORIGIN' : (n.role || 'CLIENT_ORIGIN');
+  const role = n.role === 'EDGE_CLIENT' ? 'CLIENT_ORIGIN' : n.role || 'CLIENT_ORIGIN';
   const is_quarantined = n.is_quarantined ? 1 : 0;
-  const is_healthy = n.is_healthy !== undefined ? (n.is_healthy ? 1 : 0) : (n.status === 'active' ? 1 : 0);
+  const is_healthy = n.is_healthy !== undefined ? (n.is_healthy ? 1 : 0) : n.status === 'active' ? 1 : 0;
   const country_code = n.country_code || 'US';
-  const city = n.city || (country_code === 'US' ? 'Ashburn' : country_code === 'DE' ? 'Frankfurt' : country_code === 'GB' ? 'London' : country_code === 'FR' ? 'Paris' : country_code === 'NL' ? 'Amsterdam' : 'Regional');
-  const asn = n.asn || (country_code === 'US' ? 7922 : country_code === 'DE' ? 3320 : country_code === 'GB' ? 5089 : 13335);
+  const city =
+    n.city ||
+    (country_code === 'US'
+      ? 'Ashburn'
+      : country_code === 'DE'
+        ? 'Frankfurt'
+        : country_code === 'GB'
+          ? 'London'
+          : country_code === 'FR'
+            ? 'Paris'
+            : country_code === 'NL'
+              ? 'Amsterdam'
+              : 'Regional');
+  const asn =
+    n.asn || (country_code === 'US' ? 7922 : country_code === 'DE' ? 3320 : country_code === 'GB' ? 5089 : 13335);
 
   return {
     id: n.id,
@@ -67,10 +75,10 @@ let inMemoryNodes = MOCK_NODES.map((n, index) => {
     onion_routing_enabled: n.onion_routing_enabled ? 1 : 0,
     onion_hops: n.onion_hops || 0,
     kill_switch_enabled: n.kill_switch_enabled ? 1 : 0,
-    cpu_usage_pct: n.cpu_usage_pct ?? +(10 + (index * 7) % 30).toFixed(1),
-    memory_usage_pct: n.memory_usage_pct ?? +(20 + (index * 11) % 40).toFixed(1),
-    battery_pct: n.battery_pct ?? (role === 'RELAY' ? 100 : (70 + (index * 13) % 30)),
-    os_type: n.os_type || (role === 'RELAY' ? 'linux' : (['macos', 'windows', 'linux', 'ios', 'android'][index % 5])),
+    cpu_usage_pct: n.cpu_usage_pct ?? +(10 + ((index * 7) % 30)).toFixed(1),
+    memory_usage_pct: n.memory_usage_pct ?? +(20 + ((index * 11) % 40)).toFixed(1),
+    battery_pct: n.battery_pct ?? (role === 'RELAY' ? 100 : 70 + ((index * 13) % 30)),
+    os_type: n.os_type || (role === 'RELAY' ? 'linux' : ['macos', 'windows', 'linux', 'ios', 'android'][index % 5]),
     last_heartbeat: n.last_heartbeat || new Date().toISOString(),
     created_at: n.created_at || new Date().toISOString()
   };
@@ -88,19 +96,20 @@ let inMemoryCustomDomains = [...MOCK_CUSTOM_DOMAINS];
 let inMemoryNukeConfig = JSON.parse(JSON.stringify(MOCK_NERONUKE_CONFIG));
 let inMemoryShareLinks = [
   {
-    id: "shlink-seed-01",
-    app_id: "app-seed-guac",
-    user_id: "usr-admin",
-    share_token: "tok_guac_demo_clientless_rdp_2026",
-    public_url: "https://workspace.neronet.darknero.com/#/clientless/app-seed-guac?token=tok_guac_demo_clientless_rdp_2026",
-    auth_mode: "temporary_password",
-    temporary_password: "SVRN-DEMO-2026",
+    id: 'shlink-seed-01',
+    app_id: 'app-seed-guac',
+    user_id: 'usr-admin',
+    share_token: 'tok_guac_demo_clientless_rdp_2026',
+    public_url:
+      'https://workspace.neronet.darknero.com/#/clientless/app-seed-guac?token=tok_guac_demo_clientless_rdp_2026',
+    auth_mode: 'temporary_password',
+    temporary_password: 'SVRN-DEMO-2026',
     expires_at: new Date(Date.now() + 86400000 * 7).toISOString(),
     max_uses: 10,
     use_count: 1,
     is_revoked: false,
     is_expired: false,
-    status: "active",
+    status: 'active',
     created_at: new Date().toISOString()
   }
 ];
@@ -175,7 +184,9 @@ async function refreshAccessToken() {
       } finally {
         // Cleared on the next tick so callers awaiting this promise all observe the
         // same result before a new attempt can start.
-        setTimeout(() => { refreshInFlight = null; }, 0);
+        setTimeout(() => {
+          refreshInFlight = null;
+        }, 0);
       }
     })();
   }
@@ -316,7 +327,7 @@ export const api = {
 
     async get(id) {
       const live = await request(`/nodes/${id}`);
-      return resolveOne(`/nodes/${id}`, live?.node ?? null, inMemoryNodes.find(n => n.id === id) ?? null);
+      return resolveOne(`/nodes/${id}`, live?.node ?? null, inMemoryNodes.find((n) => n.id === id) ?? null);
     },
 
     async action(id, actionType, params = {}) {
@@ -327,30 +338,30 @@ export const api = {
       if (live) return live;
 
       // In-Memory state update
-      const nodeIndex = inMemoryNodes.findIndex(n => n.id === id);
+      const nodeIndex = inMemoryNodes.findIndex((n) => n.id === id);
       if (nodeIndex !== -1) {
         if (actionType === 'quarantine') {
           inMemoryNodes[nodeIndex] = {
             ...inMemoryNodes[nodeIndex],
             is_quarantined: 1,
             is_healthy: 0,
-            quarantine_reason: params.reason || "Manual Zero-Trust Security Isolation"
+            quarantine_reason: params.reason || 'Manual Zero-Trust Security Isolation'
           };
           inMemoryAuditLogs.unshift({
             id: Date.now(),
-            event_type: "QUARANTINE_TRIGGER",
-            severity: "critical",
-            actor_user_id: "usr_admin_01",
-            actor_username: "admin",
+            event_type: 'QUARANTINE_TRIGGER',
+            severity: 'critical',
+            actor_user_id: 'usr_admin_01',
+            actor_username: 'admin',
             target_id: id,
-            target_type: "node",
+            target_type: 'node',
             message: `Node '${inMemoryNodes[nodeIndex].name}' was quarantined by security admin`,
-            ip_address: "100.64.0.1",
-            user_agent: "NeroNet-Console/4.0.0",
-            metadata_json: JSON.stringify({ action: "quarantine", reason: params.reason || "Manual" }),
+            ip_address: '100.64.0.1',
+            user_agent: 'NeroNet-Console/4.0.0',
+            metadata_json: JSON.stringify({ action: 'quarantine', reason: params.reason || 'Manual' }),
             created_at: new Date().toISOString()
           });
-          return { success: true, message: "Node quarantined successfully", node: inMemoryNodes[nodeIndex] };
+          return { success: true, message: 'Node quarantined successfully', node: inMemoryNodes[nodeIndex] };
         } else if (actionType === 'lift_quarantine') {
           inMemoryNodes[nodeIndex] = {
             ...inMemoryNodes[nodeIndex],
@@ -358,7 +369,7 @@ export const api = {
             is_healthy: 1,
             quarantine_reason: null
           };
-          return { success: true, message: "Quarantine lifted", node: inMemoryNodes[nodeIndex] };
+          return { success: true, message: 'Quarantine lifted', node: inMemoryNodes[nodeIndex] };
         } else if (actionType === 'set_exit') {
           const currentRole = inMemoryNodes[nodeIndex].role;
           const newRole = currentRole === 'EXIT_BRIDGE' ? 'CLIENT_ORIGIN' : 'EXIT_BRIDGE';
@@ -414,11 +425,11 @@ export const api = {
             }
           };
         } else if (actionType === 'revoke') {
-          inMemoryNodes = inMemoryNodes.filter(n => n.id !== id);
-          return { success: true, message: "Node revoked and removed from mesh" };
+          inMemoryNodes = inMemoryNodes.filter((n) => n.id !== id);
+          return { success: true, message: 'Node revoked and removed from mesh' };
         }
       }
-      return { success: false, error: "Node not found" };
+      return { success: false, error: 'Node not found' };
     }
   },
 
@@ -459,33 +470,33 @@ export const api = {
       });
       if (live && live.user) return live.user;
 
-      const idx = inMemoryUsers.findIndex(u => u.id === id);
+      const idx = inMemoryUsers.findIndex((u) => u.id === id);
       if (idx !== -1) {
         inMemoryUsers[idx] = { ...inMemoryUsers[idx], ...updates, updated_at: new Date().toISOString() };
         return inMemoryUsers[idx];
       }
-      throw new Error("User not found");
+      throw new Error('User not found');
     },
 
     async delete(id) {
       const live = await request(`/users/${id}`, { method: 'DELETE' });
       if (live) return live;
-      inMemoryUsers = inMemoryUsers.filter(u => u.id !== id);
+      inMemoryUsers = inMemoryUsers.filter((u) => u.id !== id);
       return { success: true };
     },
 
     async revokeSessions(id) {
       const live = await request(`/users/${id}/revoke-sessions`, { method: 'POST' });
-      return live || { success: true, message: "All user refresh tokens revoked" };
+      return live || { success: true, message: 'All user refresh tokens revoked' };
     },
 
     async generateQrOnboarding(userId) {
       const live = await request(`/users/${userId}/onboard-qr`);
       if (live && live.qr_code_data_url) return live;
 
-      const user = inMemoryUsers.find(u => u.id === userId) || inMemoryUsers[0];
+      const user = inMemoryUsers.find((u) => u.id === userId) || inMemoryUsers[0];
       const privateKey = generateRandomBase64Key();
-      const serverPubKey = "K7lF8X+q32M4r1Z4w9v9G5e1bL3mN7oP9qR2sT4uV8w=";
+      const serverPubKey = 'K7lF8X+q32M4r1Z4w9v9G5e1bL3mN7oP9qR2sT4uV8w=';
       const psk = generateRandomBase64Key();
       const randomOctet = Math.floor(Math.random() * 200) + 20;
       const overlayIp = `100.64.0.${randomOctet}`;
@@ -508,7 +519,7 @@ AllowedIPs = 100.64.0.0/10, 0.0.0.0/0
 PersistentKeepalive = 25
 `;
 
-      let qrCodeUrl = "";
+      let qrCodeUrl = '';
       try {
         qrCodeUrl = await QRCode.toDataURL(clientConfig, {
           errorCorrectionLevel: 'M',
@@ -519,7 +530,8 @@ PersistentKeepalive = 25
           }
         });
       } catch (err) {
-        qrCodeUrl = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><rect fill='%230f172a' width='120' height='120'/><text fill='%2338bdf8' x='10' y='60'>QR Code</text></svg>";
+        qrCodeUrl =
+          "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><rect fill='%230f172a' width='120' height='120'/><text fill='%2338bdf8' x='10' y='60'>QR Code</text></svg>";
       }
 
       return {
@@ -538,7 +550,7 @@ PersistentKeepalive = 25
       });
       if (live && live.user) return live.user;
 
-      const idx = inMemoryUsers.findIndex(u => u.id === userId);
+      const idx = inMemoryUsers.findIndex((u) => u.id === userId);
       if (idx !== -1) {
         inMemoryUsers[idx] = {
           ...inMemoryUsers[idx],
@@ -547,7 +559,7 @@ PersistentKeepalive = 25
         };
         return inMemoryUsers[idx];
       }
-      throw new Error("User not found");
+      throw new Error('User not found');
     }
   },
 
@@ -594,7 +606,7 @@ PersistentKeepalive = 25
       });
       if (live) return live;
 
-      const idx = inMemoryApps.findIndex(a => a.id === id);
+      const idx = inMemoryApps.findIndex((a) => a.id === id);
       if (idx !== -1) {
         if (actionType === 'start') {
           inMemoryApps[idx].status = 'running';
@@ -606,14 +618,14 @@ PersistentKeepalive = 25
         }
         return { success: true, app: inMemoryApps[idx] };
       }
-      return { success: false, error: "App not found" };
+      return { success: false, error: 'App not found' };
     },
 
     async launch(id) {
       const live = await request(`/apps/${id}/launch`);
       if (live) return live;
 
-      const app = inMemoryApps.find(a => a.id === id);
+      const app = inMemoryApps.find((a) => a.id === id);
       const ssoToken = `sso_neronet_${Math.random().toString(36).substring(2, 15)}`;
       return {
         launch_url: app ? `${app.endpoint_url}?sso_token=${ssoToken}` : 'https://guac.internal.darknero.net',
@@ -625,7 +637,7 @@ PersistentKeepalive = 25
     async listShareLinks(appId) {
       const live = await request(`/apps/${appId}/share-links`);
       if (live && live.share_links) return live.share_links;
-      return inMemoryShareLinks.filter(l => l.app_id === appId);
+      return inMemoryShareLinks.filter((l) => l.app_id === appId);
     },
 
     async createShareLink(appId, shareData) {
@@ -638,17 +650,22 @@ PersistentKeepalive = 25
       const newLink = {
         id: `shlink-${Math.random().toString(36).substring(2, 10)}`,
         app_id: appId,
-        user_id: "usr_admin_01",
+        user_id: 'usr_admin_01',
         share_token: `tok_pub_${Math.random().toString(36).substring(2, 15)}`,
         public_url: `https://workspace.neronet.darknero.com/#/clientless/${appId}?token=tok_pub_${Math.random().toString(36).substring(2, 15)}`,
-        auth_mode: shareData.auth_mode || "temporary_password",
-        temporary_password: shareData.auth_mode === 'temporary_password' ? (shareData.temporary_password || `SVRN-${Math.random().toString(36).substring(2, 6).toUpperCase()}`) : null,
-        expires_at: shareData.expires_at || new Date(Date.now() + (Number(shareData.expires_in_hours) || 24) * 3600 * 1000).toISOString(),
+        auth_mode: shareData.auth_mode || 'temporary_password',
+        temporary_password:
+          shareData.auth_mode === 'temporary_password'
+            ? shareData.temporary_password || `SVRN-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
+            : null,
+        expires_at:
+          shareData.expires_at ||
+          new Date(Date.now() + (Number(shareData.expires_in_hours) || 24) * 3600 * 1000).toISOString(),
         max_uses: Number(shareData.max_uses) || 0,
         use_count: 0,
         is_revoked: false,
         is_expired: false,
-        status: "active",
+        status: 'active',
         created_at: new Date().toISOString()
       };
       inMemoryShareLinks.unshift(newLink);
@@ -661,7 +678,7 @@ PersistentKeepalive = 25
       });
       if (live) return live;
 
-      const idx = inMemoryShareLinks.findIndex(l => l.id === linkId);
+      const idx = inMemoryShareLinks.findIndex((l) => l.id === linkId);
       if (idx !== -1) {
         inMemoryShareLinks[idx].is_revoked = true;
         inMemoryShareLinks[idx].status = 'revoked';
@@ -674,25 +691,25 @@ PersistentKeepalive = 25
       const live = await request(`/apps/public/verify/${token}`);
       if (live) return live;
 
-      const link = inMemoryShareLinks.find(l => l.share_token === token);
-      if (!link) return { valid: false, error: "Share link not found" };
-      if (link.is_revoked) return { valid: false, error: "Share link is revoked", is_revoked: true };
+      const link = inMemoryShareLinks.find((l) => l.share_token === token);
+      if (!link) return { valid: false, error: 'Share link not found' };
+      if (link.is_revoked) return { valid: false, error: 'Share link is revoked', is_revoked: true };
       link.use_count += 1;
       return {
         valid: true,
         share_id: link.id,
         app_id: link.app_id,
-        app_name: "Guacamole Bastion",
-        app_type: "guacamole",
+        app_name: 'Guacamole Bastion',
+        app_type: 'guacamole',
         auth_mode: link.auth_mode,
         public_url: link.public_url,
-        gateway_protocol: "guacamole_clientless_rdp",
+        gateway_protocol: 'guacamole_clientless_rdp',
         websocket_endpoint: `wss://workspace.neronet.darknero.com/guac-tunnel/${link.app_id}`,
         session_token: `sess_pub_${Math.random().toString(36).substring(2, 12)}`,
         expires_at: link.expires_at,
         use_count: link.use_count,
         max_uses: link.max_uses,
-        requires_password: link.auth_mode === "temporary_password"
+        requires_password: link.auth_mode === 'temporary_password'
       };
     }
   },
@@ -713,10 +730,10 @@ PersistentKeepalive = 25
       const randomOctet = Math.floor(Math.random() * 200) + 20;
       const ipv4 = `100.64.0.${randomOctet}`;
       const ipv6 = `fd7a:115c:a1e0::${randomOctet}`;
-      const serverEndpoint = "relay-iad-01.darknero.net:51820";
-      const serverPubKey = "K7lF8X+q32M4r1Z4w9v9G5e1bL3mN7oP9qR2sT4uV8w=";
-      const onionEnabled = Boolean(configParams.onion_routing_enabled || (Number(configParams.onion_hops) > 0));
-      const onionHops = onionEnabled ? (Number(configParams.onion_hops) || 3) : 0;
+      const serverEndpoint = 'relay-iad-01.darknero.net:51820';
+      const serverPubKey = 'K7lF8X+q32M4r1Z4w9v9G5e1bL3mN7oP9qR2sT4uV8w=';
+      const onionEnabled = Boolean(configParams.onion_routing_enabled || Number(configParams.onion_hops) > 0);
+      const onionHops = onionEnabled ? Number(configParams.onion_hops) || 3 : 0;
 
       const wireguardConf = `# =========================================================
 # NeroNet Sovereign Mesh DirectFrame v4.0 WireGuard Profile
@@ -741,46 +758,46 @@ PersistentKeepalive = 25
 `;
 
       const jsonProfile = {
-        version: "4.0.0",
-        schema: "neronet_directframe_v4",
+        version: '4.0.0',
+        schema: 'neronet_directframe_v4',
         identity: {
           node_id: `svrn-node-${Math.random().toString(36).substring(2, 9)}`,
-          name: configParams.name || "New-Device",
-          role: configParams.role || "CLIENT_ORIGIN",
-          country_code: configParams.country_code || "US"
+          name: configParams.name || 'New-Device',
+          role: configParams.role || 'CLIENT_ORIGIN',
+          country_code: configParams.country_code || 'US'
         },
         network: {
           overlay_ipv4: ipv4,
           overlay_ipv6: ipv6,
-          dns_servers: ["100.64.0.1", "1.1.1.1"],
+          dns_servers: ['100.64.0.1', '1.1.1.1'],
           mtu: 1380,
           keepalive_interval_sec: 25
         },
         crypto: {
-          handshake_protocol: "Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s",
-          curve: "Curve25519",
-          cipher: "ChaCha20-Poly1305",
-          hash: "BLAKE2s",
+          handshake_protocol: 'Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s',
+          curve: 'Curve25519',
+          cipher: 'ChaCha20-Poly1305',
+          hash: 'BLAKE2s',
           clamped_public_key: publicKey,
           preshared_key: psk
         },
         relays: [
           {
-            name: "neronet-relay-iad-01",
+            name: 'neronet-relay-iad-01',
             endpoint: serverEndpoint,
             public_key: serverPubKey
           }
         ],
         routing: {
-          egress_mode: configParams.role || "CLIENT_ORIGIN",
-          preferred_countries: configParams.country_code ? [configParams.country_code, "US", "DE"] : ["US", "DE", "CH"],
+          egress_mode: configParams.role || 'CLIENT_ORIGIN',
+          preferred_countries: configParams.country_code ? [configParams.country_code, 'US', 'DE'] : ['US', 'DE', 'CH'],
           onion_hops: onionHops,
           onion_routing_enabled: onionEnabled
         }
       };
 
       // Generate Base64 QR Code using QRCode library
-      let qrCodeUrl = "";
+      let qrCodeUrl = '';
       try {
         qrCodeUrl = await QRCode.toDataURL(wireguardConf, {
           errorCorrectionLevel: 'M',
@@ -791,22 +808,23 @@ PersistentKeepalive = 25
           }
         });
       } catch (err) {
-        qrCodeUrl = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect fill='%23000' width='100' height='100'/><text fill='%23fff' x='10' y='50'>QR Code</text></svg>";
+        qrCodeUrl =
+          "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect fill='%23000' width='100' height='100'/><text fill='%23fff' x='10' y='50'>QR Code</text></svg>";
       }
 
       // Add to in-memory nodes list
       const newNode = {
         id: jsonProfile.identity.node_id,
-        user_id: "usr_admin_01",
-        name: configParams.name || "New-Device",
+        user_id: 'usr_admin_01',
+        name: configParams.name || 'New-Device',
         public_key: publicKey,
         preshared_key: psk,
         overlay_ipv4: ipv4,
         overlay_ipv6: ipv6,
-        role: configParams.role || "CLIENT_ORIGIN",
-        ip_class: configParams.ip_class || "RESIDENTIAL",
-        country_code: configParams.country_code || "US",
-        city: configParams.city || "San Francisco",
+        role: configParams.role || 'CLIENT_ORIGIN',
+        ip_class: configParams.ip_class || 'RESIDENTIAL',
+        country_code: configParams.country_code || 'US',
+        city: configParams.city || 'San Francisco',
         asn: 7922,
         endpoints: [`192.168.1.${randomOctet}:51820`],
         onion_routing_enabled: onionEnabled ? 1 : 0,
@@ -821,7 +839,7 @@ PersistentKeepalive = 25
         cpu_usage_pct: 12.0,
         memory_usage_pct: 35.0,
         battery_pct: 100.0,
-        os_type: configParams.os_type || "macos",
+        os_type: configParams.os_type || 'macos',
         created_at: new Date().toISOString()
       };
       inMemoryNodes.push(newNode);
@@ -858,14 +876,14 @@ PersistentKeepalive = 25
 
       return {
         session_id: sessionId,
-        status: "ready",
+        status: 'ready',
         chunk_size_bytes: chunkSize,
         total_chunks: totalChunks,
         blake3_hash: sessionData.blake3_hash,
         webrtc_signal: {
-          sdp_type: "offer",
-          dtls_fingerprint: "SHA-256 89:3B:4E:...:9A",
-          ice_candidates: ["candidate:1 1 UDP 2130706431 100.64.0.10 54321 typ host"]
+          sdp_type: 'offer',
+          dtls_fingerprint: 'SHA-256 89:3B:4E:...:9A',
+          ice_candidates: ['candidate:1 1 UDP 2130706431 100.64.0.10 54321 typ host']
         }
       };
     },
@@ -878,15 +896,15 @@ PersistentKeepalive = 25
       inMemoryNeroDropHistory.unshift(transfer);
       inMemoryAuditLogs.unshift({
         id: Date.now(),
-        event_type: "NERODROP_SESSION",
-        severity: "info",
-        actor_user_id: "usr_alice_01",
-        actor_username: "alice_dev",
+        event_type: 'NERODROP_SESSION',
+        severity: 'info',
+        actor_user_id: 'usr_alice_01',
+        actor_username: 'alice_dev',
         target_id: transfer.target_node_name,
-        target_type: "file_transfer",
+        target_type: 'file_transfer',
         message: `P2P NeroDrop completed: '${transfer.file_name}' (${(transfer.file_size_bytes / 1024 / 1024).toFixed(2)} MB)`,
-        ip_address: "100.64.0.10",
-        user_agent: "NeroNet-Client/4.0.0",
+        ip_address: '100.64.0.10',
+        user_agent: 'NeroNet-Client/4.0.0',
         metadata_json: JSON.stringify(transfer),
         created_at: new Date().toISOString()
       });
@@ -997,14 +1015,14 @@ PersistentKeepalive = 25
 
       const newAg = {
         id: `peer_ag_${Math.random().toString(36).substring(2, 7)}`,
-        remote_mesh_name: data.remote_mesh_name || "Custom-Peer-Mesh",
+        remote_mesh_name: data.remote_mesh_name || 'Custom-Peer-Mesh',
         remote_endpoint: data.remote_endpoint,
         remote_public_key: data.remote_public_key || `ed25519_${Math.random().toString(36).substring(2, 20)}`,
-        scope_mode: data.scope_mode || "ALL",
-        shared_subnets: data.shared_subnets || ["100.64.0.0/16"],
+        scope_mode: data.scope_mode || 'ALL',
+        shared_subnets: data.shared_subnets || ['100.64.0.0/16'],
         shared_devices_count: data.shared_devices_count || 1,
         latency_ms: +(15 + Math.random() * 25).toFixed(1),
-        status: "active",
+        status: 'active',
         expires_at: data.expires_at || new Date(Date.now() + 30 * 86400000).toISOString(),
         created_at: new Date().toISOString()
       };
@@ -1016,7 +1034,7 @@ PersistentKeepalive = 25
       const live = await request(`/peering/${id}/accept`, { method: 'POST' });
       if (live) return live;
 
-      const idx = inMemoryPeering.findIndex(p => p.id === id);
+      const idx = inMemoryPeering.findIndex((p) => p.id === id);
       if (idx !== -1) {
         inMemoryPeering[idx] = { ...inMemoryPeering[idx], status: 'active' };
         return { success: true, agreement: inMemoryPeering[idx] };
@@ -1028,7 +1046,7 @@ PersistentKeepalive = 25
       const live = await request(`/peering/${id}/revoke`, { method: 'POST' });
       if (live) return live;
 
-      const idx = inMemoryPeering.findIndex(p => p.id === id);
+      const idx = inMemoryPeering.findIndex((p) => p.id === id);
       if (idx !== -1) {
         inMemoryPeering[idx] = { ...inMemoryPeering[idx], status: 'revoked' };
         return { success: true, agreement: inMemoryPeering[idx] };
@@ -1044,13 +1062,13 @@ PersistentKeepalive = 25
       if (live && live.token) return live;
 
       const tokenPayload = {
-        version: "1.0",
+        version: '1.0',
         peering_id: `peer_req_${Math.random().toString(36).substring(2, 9)}`,
-        initiator_endpoint: "https://console.neronet.darknero.com",
+        initiator_endpoint: 'https://console.neronet.darknero.com',
         initiator_public_key: generateRandomBase64Key(),
-        scope_mode: params.scope_mode || "ALL",
+        scope_mode: params.scope_mode || 'ALL',
         shared_device_ids: params.shared_device_ids || [],
-        shared_subnets: params.shared_subnets || ["100.64.0.0/16"],
+        shared_subnets: params.shared_subnets || ['100.64.0.0/16'],
         expires_at: params.expires_at || new Date(Date.now() + 7 * 86400000).toISOString(),
         signature: generateRandomBase64Key() + generateRandomBase64Key()
       };
@@ -1084,7 +1102,7 @@ PersistentKeepalive = 25
 
     async quarantine(nodeId, reason) {
       const res = await api.nodes.action(nodeId, 'quarantine', { reason });
-      const nodeIndex = inMemoryNodes.findIndex(n => n.id === nodeId);
+      const nodeIndex = inMemoryNodes.findIndex((n) => n.id === nodeId);
       if (nodeIndex !== -1) {
         inMemoryNodes[nodeIndex].risk_score = Math.max(80, inMemoryNodes[nodeIndex].risk_score || 85);
       }
@@ -1095,7 +1113,7 @@ PersistentKeepalive = 25
       const live = await request(`/risk/nodes/${nodeId}/clear`, { method: 'POST' });
       if (live) return live;
 
-      const nodeIndex = inMemoryNodes.findIndex(n => n.id === nodeId);
+      const nodeIndex = inMemoryNodes.findIndex((n) => n.id === nodeId);
       if (nodeIndex !== -1) {
         inMemoryNodes[nodeIndex] = {
           ...inMemoryNodes[nodeIndex],
@@ -1105,7 +1123,7 @@ PersistentKeepalive = 25
           is_healthy: 1,
           quarantine_reason: null
         };
-        inMemoryRiskEvents = inMemoryRiskEvents.filter(e => e.node_id !== nodeId);
+        inMemoryRiskEvents = inMemoryRiskEvents.filter((e) => e.node_id !== nodeId);
         return { success: true, node: inMemoryNodes[nodeIndex] };
       }
       return { success: false, error: 'Node not found' };
@@ -1117,9 +1135,9 @@ PersistentKeepalive = 25
     async listPolicies() {
       const live = await request('/geofencing/policies');
       if (live?.policies && Array.isArray(live.policies) && live.policies.length > 0) return live.policies;
-      return inMemoryGeoPolicies.map(p => ({
+      return inMemoryGeoPolicies.map((p) => ({
         ...p,
-        node_count: inMemoryNodes.filter(n => n.country_code === p.country_code).length
+        node_count: inMemoryNodes.filter((n) => n.country_code === p.country_code).length
       }));
     },
 
@@ -1130,7 +1148,7 @@ PersistentKeepalive = 25
       });
       if (live && live.policy) return live.policy;
 
-      const idx = inMemoryGeoPolicies.findIndex(p => p.country_code === countryCode);
+      const idx = inMemoryGeoPolicies.findIndex((p) => p.country_code === countryCode);
       if (idx !== -1) {
         inMemoryGeoPolicies[idx] = {
           ...inMemoryGeoPolicies[idx],
@@ -1144,7 +1162,7 @@ PersistentKeepalive = 25
         country_code: countryCode,
         country_name: countryCode,
         action,
-        node_count: inMemoryNodes.filter(n => n.country_code === countryCode).length,
+        node_count: inMemoryNodes.filter((n) => n.country_code === countryCode).length,
         egress_allowed: egressAllowed,
         updated_at: new Date().toISOString()
       };
@@ -1159,8 +1177,8 @@ PersistentKeepalive = 25
       });
       if (live && live.policies) return live.policies;
 
-      policies.forEach(p => {
-        const idx = inMemoryGeoPolicies.findIndex(g => g.country_code === p.country_code);
+      policies.forEach((p) => {
+        const idx = inMemoryGeoPolicies.findIndex((g) => g.country_code === p.country_code);
         if (idx !== -1) {
           inMemoryGeoPolicies[idx] = { ...inMemoryGeoPolicies[idx], ...p, updated_at: new Date().toISOString() };
         } else {
@@ -1182,7 +1200,7 @@ PersistentKeepalive = 25
       const live = await request(`/cloud-pc/${id}/project`, { method: 'POST' });
       if (live) return live;
 
-      const instance = inMemoryCloudPc.find(c => c.id === id) || inMemoryCloudPc[0];
+      const instance = inMemoryCloudPc.find((c) => c.id === id) || inMemoryCloudPc[0];
       const streamToken = `stream_tok_${Math.random().toString(36).substring(2, 16)}`;
       return {
         session_id: `sess_webrtc_${Math.random().toString(36).substring(2, 10)}`,
@@ -1200,7 +1218,11 @@ PersistentKeepalive = 25
 
     async listCustomDomains() {
       const live = await request('/cloud-pc/custom-domains');
-      return resolveList('/custom-domains', Array.isArray(live?.custom_domains) ? live.custom_domains : null, inMemoryCustomDomains);
+      return resolveList(
+        '/custom-domains',
+        Array.isArray(live?.custom_domains) ? live.custom_domains : null,
+        inMemoryCustomDomains
+      );
     },
 
     async addCustomDomain(domainData) {
@@ -1213,12 +1235,12 @@ PersistentKeepalive = 25
       const newDom = {
         domain: domainData.domain,
         cpc_id: domainData.cpc_id,
-        cpc_name: domainData.cpc_name || "Sovereign Cloud PC",
-        dns_status: "verified",
-        ssl_status: "active",
+        cpc_name: domainData.cpc_name || 'Sovereign Cloud PC',
+        dns_status: 'verified',
+        ssl_status: 'active',
         sso_enforced: domainData.sso_enforced ?? true,
         otp_gateway_required: domainData.otp_gateway_required ?? true,
-        cname_target: "cpc-ingress.neronet.darknero.com",
+        cname_target: 'cpc-ingress.neronet.darknero.com',
         created_at: new Date().toISOString()
       };
       inMemoryCustomDomains.unshift(newDom);
@@ -1228,14 +1250,14 @@ PersistentKeepalive = 25
     async deleteCustomDomain(domain) {
       const live = await request(`/cloud-pc/custom-domains/${domain}`, { method: 'DELETE' });
       if (live) return live;
-      inMemoryCustomDomains = inMemoryCustomDomains.filter(d => d.domain !== domain);
+      inMemoryCustomDomains = inMemoryCustomDomains.filter((d) => d.domain !== domain);
       return { success: true };
     },
 
     async verifyCustomDomain(domain) {
       const live = await request(`/cloud-pc/custom-domains/${domain}/verify`, { method: 'POST' });
       if (live) return live;
-      const item = inMemoryCustomDomains.find(d => d.domain === domain);
+      const item = inMemoryCustomDomains.find((d) => d.domain === domain);
       if (item) item.dns_status = 'verified';
       return { verified: true, ssl_status: 'active' };
     }
@@ -1254,7 +1276,7 @@ PersistentKeepalive = 25
 
     // Tier 1: User Account Self-Destruct (Immediate)
     async userSelfDestruct(confirmationText, disclaimerAccepted) {
-      if (confirmationText !== "DELETE MY ACCOUNT" || !disclaimerAccepted) {
+      if (confirmationText !== 'DELETE MY ACCOUNT' || !disclaimerAccepted) {
         throw new Error("Must accept disclaimer and type exact confirmation 'DELETE MY ACCOUNT'");
       }
       const live = await request('/nuke/user/self-destruct', {
@@ -1264,11 +1286,11 @@ PersistentKeepalive = 25
       if (live) return live;
 
       // In-Memory destruction
-      inMemoryNodes = inMemoryNodes.filter(n => n.user_id !== 'usr_alice_01');
-      inMemoryUsers = inMemoryUsers.filter(u => u.id !== 'usr_alice_01');
+      inMemoryNodes = inMemoryNodes.filter((n) => n.user_id !== 'usr_alice_01');
+      inMemoryUsers = inMemoryUsers.filter((u) => u.id !== 'usr_alice_01');
       return {
         success: true,
-        message: "Account and personal keys hard-deleted. Cryptographic wipe executed."
+        message: 'Account and personal keys hard-deleted. Cryptographic wipe executed.'
       };
     },
 
@@ -1283,7 +1305,7 @@ PersistentKeepalive = 25
       inMemoryNukeConfig.tier1_scheduled_kill = {
         armed: true,
         scheduled_at: scheduledAt,
-        phrase: "DELETE MY ACCOUNT"
+        phrase: 'DELETE MY ACCOUNT'
       };
       return inMemoryNukeConfig.tier1_scheduled_kill;
     },
@@ -1299,7 +1321,7 @@ PersistentKeepalive = 25
       inMemoryNukeConfig.tier1_scheduled_kill = {
         armed: false,
         scheduled_at: null,
-        phrase: "DELETE MY ACCOUNT"
+        phrase: 'DELETE MY ACCOUNT'
       };
       return { success: true };
     },
@@ -1308,7 +1330,11 @@ PersistentKeepalive = 25
     async setupPersonalDms(passphrase, heartbeatIntervalSeconds, steganographyMode) {
       const live = await request('/nuke/personal-dms/setup', {
         method: 'POST',
-        body: JSON.stringify({ passphrase, heartbeat_interval_seconds: heartbeatIntervalSeconds, steganography_mode: steganographyMode })
+        body: JSON.stringify({
+          passphrase,
+          heartbeat_interval_seconds: heartbeatIntervalSeconds,
+          steganography_mode: steganographyMode
+        })
       });
       if (live) return live;
 
@@ -1333,9 +1359,11 @@ PersistentKeepalive = 25
       if (method === 'reverse_password' && credential && credential.length >= 3) isValid = true;
       else if (method === 'split_reverse' && credential && credential.length >= 3) isValid = true;
       else if (method === 'shadow_password' && credential === 'nero_shadow_secret_2026') isValid = true;
-      else if (method === 'hardware_key' && (credential.includes('fido2') || credential === 'yubikey_tap_ok')) isValid = true;
+      else if (method === 'hardware_key' && (credential.includes('fido2') || credential === 'yubikey_tap_ok'))
+        isValid = true;
       else if (method === 'mobile_otp' && credential && credential.length === 6) isValid = true;
-      else if (credential === 'admin' || credential === 'admin123' || credential === 'demo' || credential === 'secret') isValid = true;
+      else if (credential === 'admin' || credential === 'admin123' || credential === 'demo' || credential === 'secret')
+        isValid = true;
 
       return {
         authenticated: isValid,
@@ -1354,7 +1382,7 @@ PersistentKeepalive = 25
       inMemoryNukeConfig.tier1b_personal_dms.last_heartbeat_at = new Date().toISOString();
       return {
         success: true,
-        message: "Personal DMS heartbeat re-confirmed. Timer reset.",
+        message: 'Personal DMS heartbeat re-confirmed. Timer reset.',
         last_heartbeat_at: inMemoryNukeConfig.tier1b_personal_dms.last_heartbeat_at
       };
     },
@@ -1363,7 +1391,11 @@ PersistentKeepalive = 25
     async setupOwnerDms(passphrase, heartbeatIntervalSeconds, webhookUrl) {
       const live = await request('/nuke/owner-dms/setup', {
         method: 'POST',
-        body: JSON.stringify({ passphrase, heartbeat_interval_seconds: heartbeatIntervalSeconds, webhook_url: webhookUrl })
+        body: JSON.stringify({
+          passphrase,
+          heartbeat_interval_seconds: heartbeatIntervalSeconds,
+          webhook_url: webhookUrl
+        })
       });
       if (live) return live;
 
@@ -1386,7 +1418,7 @@ PersistentKeepalive = 25
       inMemoryNukeConfig.tier2_owner_dms.last_heartbeat_at = new Date().toISOString();
       return {
         success: true,
-        message: "Network Owner DMS heartbeat confirmed. Global wipe timer reset.",
+        message: 'Network Owner DMS heartbeat confirmed. Global wipe timer reset.',
         last_heartbeat_at: inMemoryNukeConfig.tier2_owner_dms.last_heartbeat_at
       };
     },
@@ -1412,7 +1444,7 @@ PersistentKeepalive = 25
       inMemoryRiskEvents = [];
       return {
         success: true,
-        message: "Cascading global wipe executed. Canary webhook alerted."
+        message: 'Cascading global wipe executed. Canary webhook alerted.'
       };
     },
 

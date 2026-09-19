@@ -98,7 +98,10 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
           {/* Form */}
-          <form onSubmit={handleGenerate} className="p-4 rounded-xl bg-dark-canvas/80 border border-dark-border space-y-4">
+          <form
+            onSubmit={handleGenerate}
+            className="p-4 rounded-xl bg-dark-canvas/80 border border-dark-border space-y-4"
+          >
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-mono text-slate-400 mb-1.5">Device Hostname</label>
@@ -149,9 +152,7 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
                   type="button"
                   onClick={() => setOnionEnabled(!onionEnabled)}
                   className={`w-10 h-5 rounded-full transition-colors relative p-0.5 border ${
-                    onionEnabled
-                      ? 'bg-neon-cyan/20 border-neon-cyan'
-                      : 'bg-dark-card border-dark-border'
+                    onionEnabled ? 'bg-neon-cyan/20 border-neon-cyan' : 'bg-dark-card border-dark-border'
                   }`}
                 >
                   <div
@@ -165,9 +166,13 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
                 <div>
                   <div className="text-xs font-mono font-semibold text-slate-200 flex items-center space-x-2">
                     <span>3-Hop Onion Obfuscation</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
-                      onionEnabled ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30' : 'bg-dark-card text-slate-500 border border-dark-border'
-                    }`}>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                        onionEnabled
+                          ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30'
+                          : 'bg-dark-card text-slate-500 border border-dark-border'
+                      }`}
+                    >
                       {onionEnabled ? '3 Hops Active' : 'Direct Egress'}
                     </span>
                   </div>
@@ -197,20 +202,30 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border">
                   <div className="text-[10px] font-mono text-slate-500 uppercase">Overlay IPv4</div>
-                  <div className="text-xs font-mono font-bold text-neon-cyan mt-0.5">{generatedConfig.overlay_ipv4}</div>
+                  <div className="text-xs font-mono font-bold text-neon-cyan mt-0.5">
+                    {generatedConfig.overlay_ipv4}
+                  </div>
                 </div>
                 <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border">
                   <div className="text-[10px] font-mono text-slate-500 uppercase">Overlay IPv6</div>
-                  <div className="text-xs font-mono font-bold text-neon-indigo mt-0.5 truncate">{generatedConfig.overlay_ipv6}</div>
+                  <div className="text-xs font-mono font-bold text-neon-indigo mt-0.5 truncate">
+                    {generatedConfig.overlay_ipv6}
+                  </div>
                 </div>
                 <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border">
                   <div className="text-[10px] font-mono text-slate-500 uppercase">Curve25519 Public Key</div>
-                  <div className="text-xs font-mono font-bold text-neon-emerald mt-0.5 truncate">{generatedConfig.public_key}</div>
+                  <div className="text-xs font-mono font-bold text-neon-emerald mt-0.5 truncate">
+                    {generatedConfig.public_key}
+                  </div>
                 </div>
                 <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border">
                   <div className="text-[10px] font-mono text-slate-500 uppercase">Routing Circuit</div>
-                  <div className={`text-xs font-mono font-bold mt-0.5 ${generatedConfig.onion_routing_enabled || generatedConfig.onion_hops > 0 ? 'text-neon-cyan' : 'text-slate-400'}`}>
-                    {generatedConfig.onion_routing_enabled || generatedConfig.onion_hops > 0 ? '3-Hop Onion' : 'Direct (0-Hop)'}
+                  <div
+                    className={`text-xs font-mono font-bold mt-0.5 ${generatedConfig.onion_routing_enabled || generatedConfig.onion_hops > 0 ? 'text-neon-cyan' : 'text-slate-400'}`}
+                  >
+                    {generatedConfig.onion_routing_enabled || generatedConfig.onion_hops > 0
+                      ? '3-Hop Onion'
+                      : 'Direct (0-Hop)'}
                   </div>
                 </div>
               </div>
@@ -260,7 +275,11 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
                         onClick={() => handleCopy(generatedConfig.wireguard_conf)}
                         className="flex items-center space-x-1 px-2.5 py-1 rounded bg-dark-canvas border border-dark-border text-slate-300 hover:text-white text-xs font-mono"
                       >
-                        {copied ? <Check className="w-3.5 h-3.5 text-neon-emerald" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copied ? (
+                          <Check className="w-3.5 h-3.5 text-neon-emerald" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
                         <span>{copied ? 'Copied' : 'Copy'}</span>
                       </button>
                       <button
@@ -279,11 +298,20 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
                         onClick={() => handleCopy(JSON.stringify(generatedConfig.json_profile, null, 2))}
                         className="flex items-center space-x-1 px-2.5 py-1 rounded bg-dark-canvas border border-dark-border text-slate-300 hover:text-white text-xs font-mono"
                       >
-                        {copied ? <Check className="w-3.5 h-3.5 text-neon-emerald" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copied ? (
+                          <Check className="w-3.5 h-3.5 text-neon-emerald" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
                         <span>{copied ? 'Copied' : 'Copy'}</span>
                       </button>
                       <button
-                        onClick={() => handleDownload(`${name || 'neronet'}.json`, JSON.stringify(generatedConfig.json_profile, null, 2))}
+                        onClick={() =>
+                          handleDownload(
+                            `${name || 'neronet'}.json`,
+                            JSON.stringify(generatedConfig.json_profile, null, 2)
+                          )
+                        }
                         className="flex items-center space-x-1 px-2.5 py-1 rounded bg-dark-canvas border border-dark-border text-neon-indigo hover:text-white text-xs font-mono"
                       >
                         <Download className="w-3.5 h-3.5" />
@@ -332,7 +360,8 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
             <div className="py-12 border border-dashed border-dark-border rounded-xl flex flex-col items-center justify-center text-center space-y-3">
               <Shield className="w-10 h-10 text-slate-600" />
               <div className="text-xs font-mono text-slate-400">
-                Click <span className="text-neon-cyan">"Generate Profile"</span> to construct a sovereign cryptographic keypair.
+                Click <span className="text-neon-cyan">"Generate Profile"</span> to construct a sovereign cryptographic
+                keypair.
               </div>
             </div>
           )}

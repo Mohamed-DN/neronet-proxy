@@ -33,7 +33,7 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
     this.setState({ errorInfo });
   }
 
@@ -96,7 +96,10 @@ function MeshSettingsView() {
       });
       setPwdSaveStatus('✅ Passwords Updated Successfully!');
       setTimeout(() => setPwdSaveStatus(''), 3000);
-      setPwdStandard(''); setPwdRoot(''); setPwdStealth(''); setPwdNuclear('');
+      setPwdStandard('');
+      setPwdRoot('');
+      setPwdStealth('');
+      setPwdNuclear('');
     } catch (err) {
       setPwdSaveStatus('❌ Error: ' + err.message);
     }
@@ -121,7 +124,6 @@ function MeshSettingsView() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
         {/* Advanced Traffic & Onion Routing */}
         <div className="p-5 rounded-2xl bg-dark-card border border-dark-border space-y-4 shadow-xl">
           <div className="flex items-center space-x-2 font-bold text-slate-100 text-sm">
@@ -207,7 +209,6 @@ function MeshSettingsView() {
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );
@@ -248,7 +249,11 @@ function MainConsole() {
   const highRiskCount = nodes.filter((n) => (n.risk_score || 0) > 75).length;
 
   const handleExecuteWipe = async () => {
-    if (window.confirm('FINAL WARNING: This is the Point of No Return. Executing will PERMANENTLY DESTROY the account and network assets. Execute?')) {
+    if (
+      window.confirm(
+        'FINAL WARNING: This is the Point of No Return. Executing will PERMANENTLY DESTROY the account and network assets. Execute?'
+      )
+    ) {
       try {
         await api.nuke.userSelfDestruct('DELETE MY ACCOUNT', true);
         alert('DESTRUCTION COMPLETE. System wiped. Logging out.');
@@ -290,12 +295,7 @@ function MainConsole() {
   const renderActiveView = () => {
     switch (activeTab) {
       case 'overview':
-        return (
-          <Overview
-            onSelectNode={(node) => setSelectedNode(node)}
-            onNavigateTab={(tab) => setActiveTab(tab)}
-          />
-        );
+        return <Overview onSelectNode={(node) => setSelectedNode(node)} onNavigateTab={(tab) => setActiveTab(tab)} />;
       case 'topology':
         return <Topology3D onSelectNode={(node) => setSelectedNode(node)} />;
       case 'nodes':
@@ -359,19 +359,14 @@ function MainConsole() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top HUD Header */}
-        <Header
-          onOpenEnrollModal={() => setIsEnrollModalOpen(true)}
-          activeTab={activeTab}
-        />
+        <Header onOpenEnrollModal={() => setIsEnrollModalOpen(true)} activeTab={activeTab} />
 
         {/* Dynamic Tab Body */}
         <main className="p-6 flex-1 max-w-7xl w-full mx-auto">
           <div className="mb-4">
             <DataSourceBanner />
           </div>
-          <ErrorBoundary>
-            {renderActiveView()}
-          </ErrorBoundary>
+          <ErrorBoundary>{renderActiveView()}</ErrorBoundary>
         </main>
       </div>
 
@@ -440,12 +435,8 @@ function LoginPage() {
           <div className="w-12 h-12 mx-auto rounded-xl bg-accent-primary/10 border border-accent-primary/30 flex items-center justify-center text-accent-primary text-2xl shadow-lg glow-sky">
             🕸️
           </div>
-          <h1 className="text-xl font-bold text-slate-100 font-mono tracking-wider">
-            NeroNet Enterprise
-          </h1>
-          <p className="text-xs text-slate-400 font-mono">
-            Sovereign Mesh Control Plane &mdash; v4.0
-          </p>
+          <h1 className="text-xl font-bold text-slate-100 font-mono tracking-wider">NeroNet Enterprise</h1>
+          <p className="text-xs text-slate-400 font-mono">Sovereign Mesh Control Plane &mdash; v4.0</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

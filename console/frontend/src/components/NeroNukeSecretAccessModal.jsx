@@ -34,11 +34,13 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
     try {
       const res = await api.nuke.verifyPersonalDmsSecret(method, credential);
       if (res && res.authenticated) {
-        setSecretDmsState(res.dms_state || {
-          armed: true,
-          heartbeat_interval_seconds: 2592000,
-          last_heartbeat_at: new Date().toISOString()
-        });
+        setSecretDmsState(
+          res.dms_state || {
+            armed: true,
+            heartbeat_interval_seconds: 2592000,
+            last_heartbeat_at: new Date().toISOString()
+          }
+        );
         if (onAuthenticated) onAuthenticated();
       } else {
         setAuthError('Authentication rejected. Zero indicator logged.');
@@ -75,12 +77,8 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
               <EyeOff className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-100 font-mono">
-                Steganographic Access Gateway (Tier 1b)
-              </h3>
-              <div className="text-[11px] text-slate-500 font-mono">
-                Zero-Knowledge Hidden Dead Man's Switch Panel
-              </div>
+              <h3 className="text-sm font-bold text-slate-100 font-mono">Steganographic Access Gateway (Tier 1b)</h3>
+              <div className="text-[11px] text-slate-500 font-mono">Zero-Knowledge Hidden Dead Man's Switch Panel</div>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-white">
@@ -115,8 +113,8 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
                   {method === 'hardware_key'
                     ? 'Security Key Confirmation'
                     : method === 'mobile_otp'
-                    ? '6-Digit TOTP Token'
-                    : 'Secret Passphrase / Input'}
+                      ? '6-Digit TOTP Token'
+                      : 'Secret Passphrase / Input'}
                 </label>
                 <input
                   type="password"
@@ -125,8 +123,8 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
                     method === 'hardware_key'
                       ? 'Tap hardware key or type "yubikey_tap_ok"'
                       : method === 'mobile_otp'
-                      ? '6-digit OTP'
-                      : 'Enter secret...'
+                        ? '6-digit OTP'
+                        : 'Enter secret...'
                   }
                   value={credential}
                   onChange={(e) => setCredential(e.target.value)}
@@ -190,7 +188,10 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
               </div>
 
               {/* Reset Clock Form */}
-              <form onSubmit={handleResetHeartbeat} className="p-4 rounded-xl bg-dark-canvas border border-dark-border space-y-3">
+              <form
+                onSubmit={handleResetHeartbeat}
+                className="p-4 rounded-xl bg-dark-canvas border border-dark-border space-y-3"
+              >
                 <div className="font-bold text-slate-200 flex items-center space-x-1.5">
                   <RefreshCw className="w-3.5 h-3.5 text-accent-primary" />
                   <span>Confirm Heartbeat & Reset Clock</span>

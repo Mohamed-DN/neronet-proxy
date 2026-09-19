@@ -41,25 +41,20 @@ export default function DataSourceBanner() {
             <p className="font-semibold">Showing demo data, not your mesh</p>
             <p className="mt-1 opacity-90">
               The control plane did not answer, so {state.mockedEndpoints.length}{' '}
-              {state.mockedEndpoints.length === 1 ? 'panel is' : 'panels are'} filled with
-              sample fixtures. Nothing here reflects real devices.
+              {state.mockedEndpoints.length === 1 ? 'panel is' : 'panels are'} filled with sample fixtures. Nothing here
+              reflects real devices.
             </p>
-            <p className="mt-1 font-mono text-xs opacity-75 break-words">
-              {state.mockedEndpoints.join(', ')}
-            </p>
+            <p className="mt-1 font-mono text-xs opacity-75 break-words">{state.mockedEndpoints.join(', ')}</p>
           </>
         ) : (
           <>
             <p className="font-semibold">Control plane unreachable</p>
             <p className="mt-1 opacity-90">
-              Panels below may be empty because the API did not respond, not because
-              your mesh is empty.
+              Panels below may be empty because the API did not respond, not because your mesh is empty.
             </p>
           </>
         )}
-        {state.lastError ? (
-          <p className="mt-1 font-mono text-xs opacity-75 break-words">{state.lastError}</p>
-        ) : null}
+        {state.lastError ? <p className="mt-1 font-mono text-xs opacity-75 break-words">{state.lastError}</p> : null}
       </div>
     </div>
   );

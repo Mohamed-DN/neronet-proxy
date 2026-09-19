@@ -247,9 +247,7 @@ export default function NeroDrop() {
               </div>
             ) : (
               <div className="space-y-1">
-                <div className="text-xs font-mono font-bold text-slate-200">
-                  Drop file here or click to select
-                </div>
+                <div className="text-xs font-mono font-bold text-slate-200">Drop file here or click to select</div>
                 <p className="text-[11px] text-slate-500 font-mono">
                   End-to-End Encrypted &bull; Direct socket chunking &bull; Zero Cloud Staging
                 </p>
@@ -265,11 +263,12 @@ export default function NeroDrop() {
                   <ShieldCheck className="w-4 h-4 text-neon-emerald" />
                   <span className="text-slate-400">BLAKE3 Hash:</span>
                   <span className="text-slate-200 truncate max-w-[280px]">{blake3Hash}</span>
-                  <button
-                    onClick={() => handleCopyHash(blake3Hash)}
-                    className="p-1 text-slate-500 hover:text-white"
-                  >
-                    {copiedHash ? <Check className="w-3.5 h-3.5 text-neon-emerald" /> : <Copy className="w-3.5 h-3.5" />}
+                  <button onClick={() => handleCopyHash(blake3Hash)} className="p-1 text-slate-500 hover:text-white">
+                    {copiedHash ? (
+                      <Check className="w-3.5 h-3.5 text-neon-emerald" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
                   </button>
                 </div>
 
@@ -307,7 +306,9 @@ export default function NeroDrop() {
                   </div>
 
                   <div className="flex justify-between text-[11px] font-mono text-slate-400">
-                    <span>Speed: <strong className="text-neon-emerald">{transferSpeed || 48.2} MB/s</strong></span>
+                    <span>
+                      Speed: <strong className="text-neon-emerald">{transferSpeed || 48.2} MB/s</strong>
+                    </span>
                     <span>Protocol: WebRTC DataChannel (SCTP/DTLS)</span>
                   </div>
                 </div>
@@ -373,9 +374,7 @@ export default function NeroDrop() {
               {history.map((h) => (
                 <tr key={h.id} className="hover:bg-dark-card-hover transition-colors">
                   <td className="p-3.5 font-bold text-slate-100">{h.file_name}</td>
-                  <td className="p-3.5 text-slate-400">
-                    {(h.file_size_bytes / 1024 / 1024).toFixed(2)} MB
-                  </td>
+                  <td className="p-3.5 text-slate-400">{(h.file_size_bytes / 1024 / 1024).toFixed(2)} MB</td>
                   <td className="p-3.5 text-slate-300">
                     {h.source_node_name} &rarr; <span className="text-neon-cyan">{h.target_node_name}</span>
                   </td>

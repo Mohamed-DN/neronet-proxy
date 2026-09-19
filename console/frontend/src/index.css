@@ -6,14 +6,23 @@
   :root {
     color-scheme: dark;
   }
-  
+
   body {
     background-color: #0f172a;
     color: #f1f5f9;
-    font-family: 'Geist', 'Inter', 'DM Sans', system-ui, -apple-system, sans-serif;
+    font-family:
+      'Geist',
+      'Inter',
+      'DM Sans',
+      system-ui,
+      -apple-system,
+      sans-serif;
   }
-  
-  code, pre, kbd, samp {
+
+  code,
+  pre,
+  kbd,
+  samp {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
   }
 }
@@ -38,11 +47,13 @@
 }
 
 /* Custom glow and backdrop effects */
-.glow-cyan, .glow-sky {
+.glow-cyan,
+.glow-sky {
   box-shadow: 0 0 20px -5px rgba(56, 189, 248, 0.45);
 }
 
-.glow-purple, .glow-violet {
+.glow-purple,
+.glow-violet {
   box-shadow: 0 0 20px -5px rgba(139, 92, 246, 0.45);
 }
 
@@ -54,7 +65,8 @@
   box-shadow: 0 0 20px -5px rgba(99, 102, 241, 0.45);
 }
 
-.glow-rose, .glow-red {
+.glow-rose,
+.glow-red {
   box-shadow: 0 0 25px -3px rgba(239, 68, 68, 0.65);
 }
 
@@ -70,8 +82,15 @@
 }
 
 @keyframes pulse-subtle {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.75; transform: scale(0.98); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(0.98);
+  }
 }
 
 .animate-pulse-subtle {
@@ -79,12 +98,17 @@
 }
 
 @keyframes pulse-red-glow {
-  0%, 100% {
-    box-shadow: 0 0 10px rgba(239, 68, 68, 0.5), inset 0 0 10px rgba(239, 68, 68, 0.2);
+  0%,
+  100% {
+    box-shadow:
+      0 0 10px rgba(239, 68, 68, 0.5),
+      inset 0 0 10px rgba(239, 68, 68, 0.2);
     border-color: rgba(239, 68, 68, 0.8);
   }
   50% {
-    box-shadow: 0 0 25px rgba(239, 68, 68, 0.9), inset 0 0 15px rgba(239, 68, 68, 0.4);
+    box-shadow:
+      0 0 25px rgba(239, 68, 68, 0.9),
+      inset 0 0 15px rgba(239, 68, 68, 0.4);
     border-color: rgba(239, 68, 68, 1);
   }
 }

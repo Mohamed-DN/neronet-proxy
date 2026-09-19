@@ -25,16 +25,25 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
 
   useEffect(() => {
     let cancelled = false;
-    const load = () => api.stats.getOverview()
-      .then(s => { if (!cancelled) setLive(s); })
-      .catch(() => { if (!cancelled) setLive(null); });
+    const load = () =>
+      api.stats
+        .getOverview()
+        .then((s) => {
+          if (!cancelled) setLive(s);
+        })
+        .catch(() => {
+          if (!cancelled) setLive(null);
+        });
 
     load();
     const poll = setInterval(load, 30000);
-    return () => { cancelled = true; clearInterval(poll); };
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
   }, []);
 
-  const rate = v => (v === null || v === undefined ? '—' : `${v} MB/s`);
+  const rate = (v) => (v === null || v === undefined ? '—' : `${v} MB/s`);
 
   const isSuperAdmin = role === 'super-admin';
 
@@ -71,9 +80,7 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
           <div className="flex items-center space-x-1.5 text-neon-emerald">
             <Zap className="w-3.5 h-3.5" />
             <span className="text-slate-400">Nodes up:</span>
-            <span className="font-bold tabular-nums">
-              {live ? `${live.active_nodes}/${live.total_nodes}` : '—'}
-            </span>
+            <span className="font-bold tabular-nums">{live ? `${live.active_nodes}/${live.total_nodes}` : '—'}</span>
           </div>
         </div>
       </div>

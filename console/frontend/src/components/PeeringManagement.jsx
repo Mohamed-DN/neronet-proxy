@@ -63,7 +63,10 @@ export default function PeeringManagement() {
     setIsSubmitting(true);
     try {
       const expiresAt = new Date(Date.now() + agreementTtlDays * 86400000).toISOString();
-      const subnetsArr = sharedSubnets.split(',').map((s) => s.trim()).filter(Boolean);
+      const subnetsArr = sharedSubnets
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
 
       await api.peering.create({
         remote_mesh_name: remoteMeshName,
@@ -163,7 +166,8 @@ export default function PeeringManagement() {
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Establish zero-trust bilateral peering agreements between independent sovereign NeroNet networks using Ed25519 signed tokens.
+            Establish zero-trust bilateral peering agreements between independent sovereign NeroNet networks using
+            Ed25519 signed tokens.
           </p>
         </div>
 
@@ -192,7 +196,8 @@ export default function PeeringManagement() {
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Peered nodes appear in your 3D graph with a distinct purple color and route traffic through bilateral encrypted noise channels.
+              Peered nodes appear in your 3D graph with a distinct purple color and route traffic through bilateral
+              encrypted noise channels.
             </p>
           </div>
         </div>
@@ -305,8 +310,8 @@ export default function PeeringManagement() {
                             ag.status === 'active'
                               ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
                               : ag.status === 'pending'
-                              ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
-                              : 'bg-red-500/20 text-red-400 border-red-500/40'
+                                ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                                : 'bg-red-500/20 text-red-400 border-red-500/40'
                           }`}
                         >
                           <span className="uppercase">{ag.status}</span>
@@ -351,7 +356,8 @@ export default function PeeringManagement() {
               <span>Export Signed Peering Offer Token</span>
             </div>
             <p className="text-xs text-slate-400">
-              Generate a cryptographically signed Ed25519 token to send to the administrator of another NeroNet instance.
+              Generate a cryptographically signed Ed25519 token to send to the administrator of another NeroNet
+              instance.
             </p>
 
             <button

@@ -118,7 +118,8 @@ export default function AuditLogs() {
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time telemetry stream capturing authentication, cryptographic handshakes, posture violations, and NeroDrop sessions.
+            Real-time telemetry stream capturing authentication, cryptographic handshakes, posture violations, and
+            NeroDrop sessions.
           </p>
         </div>
 
@@ -215,21 +216,28 @@ export default function AuditLogs() {
                 <Code className="w-4 h-4 text-neon-cyan" />
                 <span>Forensic JSON Metadata Inspector</span>
               </div>
-              <button
-                onClick={() => setSelectedLog(null)}
-                className="text-slate-400 hover:text-white"
-              >
+              <button onClick={() => setSelectedLog(null)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-2 text-xs font-mono">
               <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border space-y-1">
-                <div>Event ID: <span className="text-slate-200 font-bold">{selectedLog.id}</span></div>
-                <div>Event Type: <span className="text-neon-cyan font-bold">{selectedLog.event_type}</span></div>
-                <div>Actor: <span className="text-neon-emerald font-bold">{selectedLog.actor_username || 'System'}</span></div>
-                <div>IP Address: <span className="text-slate-300">{selectedLog.ip_address || '100.64.0.1'}</span></div>
-                <div>Timestamp: <span className="text-slate-400">{selectedLog.created_at}</span></div>
+                <div>
+                  Event ID: <span className="text-slate-200 font-bold">{selectedLog.id}</span>
+                </div>
+                <div>
+                  Event Type: <span className="text-neon-cyan font-bold">{selectedLog.event_type}</span>
+                </div>
+                <div>
+                  Actor: <span className="text-neon-emerald font-bold">{selectedLog.actor_username || 'System'}</span>
+                </div>
+                <div>
+                  IP Address: <span className="text-slate-300">{selectedLog.ip_address || '100.64.0.1'}</span>
+                </div>
+                <div>
+                  Timestamp: <span className="text-slate-400">{selectedLog.created_at}</span>
+                </div>
               </div>
 
               <div className="flex items-center justify-between pt-2">

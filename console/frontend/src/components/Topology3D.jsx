@@ -121,10 +121,7 @@ export default function Topology3D({ onSelectNode }) {
 
   const loadNodes = useCallback(async () => {
     try {
-      const [nodeList, topology] = await Promise.all([
-        api.nodes.list(role),
-        api.stats.getTopology()
-      ]);
+      const [nodeList, topology] = await Promise.all([api.nodes.list(role), api.stats.getTopology()]);
       setNodes(Array.isArray(nodeList) ? nodeList : []);
       setMeshLinks(topology.links);
       setPolicyIsOpen(topology.policyIsOpen);
@@ -148,9 +145,7 @@ export default function Topology3D({ onSelectNode }) {
     const filtered = nodes.filter((n) => {
       const nodeName = n.name || n.hostname || '';
       const nodeIp = n.overlay_ipv4 || n.mesh_ip || '';
-      const matchesSearch =
-        nodeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        nodeIp.includes(searchQuery);
+      const matchesSearch = nodeName.toLowerCase().includes(searchQuery.toLowerCase()) || nodeIp.includes(searchQuery);
       const matchesRole =
         selectedRoleFilter === 'ALL' ||
         (selectedRoleFilter === 'PEERED' && (n.is_peered || n.role === 'PEERED')) ||
@@ -192,7 +187,7 @@ export default function Topology3D({ onSelectNode }) {
       graphNodes.push({
         id: node.id,
         name: node.name || node.hostname || node.id,
-        role: node.role === 'EDGE_CLIENT' ? 'CLIENT_ORIGIN' : (node.role || 'CLIENT_ORIGIN'),
+        role: node.role === 'EDGE_CLIENT' ? 'CLIENT_ORIGIN' : node.role || 'CLIENT_ORIGIN',
         overlay_ipv4: node.overlay_ipv4 || node.mesh_ip || '',
         country_code: node.country_code,
         city: node.city,
@@ -373,7 +368,10 @@ export default function Topology3D({ onSelectNode }) {
         </div>
       </div>
 
-      <div ref={containerRef} className="relative w-full h-[580px] rounded-2xl bg-dark-canvas border border-dark-border overflow-hidden shadow-2xl">
+      <div
+        ref={containerRef}
+        className="relative w-full h-[580px] rounded-2xl bg-dark-canvas border border-dark-border overflow-hidden shadow-2xl"
+      >
         <ForceGraph3D
           ref={fgRef}
           width={dimensions.width}
@@ -407,8 +405,8 @@ export default function Topology3D({ onSelectNode }) {
               of a policy, not a policy, and the distinction matters enough to name. */}
           {policyIsOpen && (
             <div className="mt-1.5 px-2 py-1 rounded bg-neon-amber/15 border border-neon-amber/40 text-[10px] text-neon-amber leading-snug max-w-[15rem]">
-              No ACL rule is defined, so every node may reach every other. These
-              edges are the default, not a configured policy.
+              No ACL rule is defined, so every node may reach every other. These edges are the default, not a configured
+              policy.
             </div>
           )}
           <div className="text-[11px] text-slate-400 space-y-0.5 pt-1">
@@ -500,8 +498,8 @@ export default function Topology3D({ onSelectNode }) {
                   hoveredNode.is_quarantined
                     ? 'bg-red-500/20 text-red-400 border-red-500/40'
                     : hoveredNode.is_peered
-                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-                    : 'bg-accent-primary/20 text-accent-primary border-accent-primary/40'
+                      ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                      : 'bg-accent-primary/20 text-accent-primary border-accent-primary/40'
                 }`}
               >
                 {hoveredNode.is_peered ? 'PEERED' : hoveredNode.role}
@@ -529,8 +527,8 @@ export default function Topology3D({ onSelectNode }) {
                     (hoveredNode.risk_score || 0) > 75
                       ? 'text-red-400 font-bold'
                       : (hoveredNode.risk_score || 0) >= 40
-                      ? 'text-amber-400 font-bold'
-                      : 'text-emerald-400'
+                        ? 'text-amber-400 font-bold'
+                        : 'text-emerald-400'
                   }
                 >
                   {hoveredNode.risk_score || 0} / 100
