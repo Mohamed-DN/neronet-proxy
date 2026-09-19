@@ -290,6 +290,18 @@ router.post('/register', async (req, res) => {
 // POST /v4/control/heartbeat
 router.post('/heartbeat', async (req, res) => {
   try {
+    // Authenticated before anything else, and before the database is touched.
+    //
+    // This was the only /v4/control handler that required no credential. It looked
+    // the node up first and answered 404 for an id it did not know against 200 for
+    // one it did, so an anonymous caller could enumerate node ids, then forge that
+    // node's telemetry and read back its quarantine state. Rejecting after the
+    // lookup would close the forgery and keep the oracle.
+    const auth = checkRegistrationToken(req);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
     const nodeId = String(req.body.node_id || '').trim();
     if (!nodeId) {
       // Answering 200 to a heartbeat that was thrown away is how this went unnoticed
