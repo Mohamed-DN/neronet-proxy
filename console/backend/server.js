@@ -29,6 +29,7 @@ const aclRoutes = require('./routes/acl');
 const geofencingRoutes = require('./routes/geofencing');
 const cloudPcRoutes = require('./routes/cloudPc');
 const nukeRoutes = require('./routes/nuke');
+const canaryRoutes = require('./routes/canary');
 const securityHeaders = require('./middleware/securityHeaders');
 const { requireFeature } = require('./middleware/featureFlag');
 const { apiLimiter, enrolmentLimiter } = require('./middleware/rateLimit');
@@ -80,7 +81,14 @@ function createApp() {
   app.use('/api/geofencing', geofencingRoutes);
   app.use('/api/cloud-pc', requireFeature('cloud_pc'), cloudPcRoutes);
   app.use('/api/nuke', nukeRoutes);
-  app.use('/', nukeRoutes);
+  // The nuke router is mounted at /api/nuke and nowhere else. It used to be mounted
+  // at the root as well, so that the warrant canary could be fetched from
+  // /.well-known/canary.txt -- which also published every self-destruct and dead
+  // man's switch route outside /api, and therefore outside the API rate limiter.
+  // Only the canary needs a root address; it keeps its /api/nuke address too,
+  // because that is the one /api/nuke/state advertises and the console follows.
+  app.use('/api/nuke', canaryRoutes);
+  app.use('/', canaryRoutes);
 
   // 404 & Global Error Handling
   app.use(notFoundHandler);

@@ -9,35 +9,12 @@ const { logAuditEvent } = require('../utils/audit');
 const { dmsUnlockLimiter } = require('../middleware/rateLimit');
 
 // =============================================================================
-// TIER 3: Warrant Canary (Public Endpoints - No Auth Required)
+// TIER 3: Warrant Canary
+//
+// The three public canary handlers moved to routes/canary.js. They were the only
+// reason this router was also mounted at the root of the origin, which published
+// every route below outside /api and its rate limiter.
 // =============================================================================
-
-async function handleCanaryRequest(req, res, next) {
-  try {
-    const canary = await CanaryService.getLatestCanary();
-
-    if (req.headers.accept === 'text/plain' && !req.headers.accept.includes('json')) {
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      return res.status(200).send(canary.raw);
-    }
-
-    return res.status(200).json({
-      valid: Boolean(canary.valid),
-      raw: canary.raw,
-      statement_text: canary.statement_text,
-      signature: canary.ed25519_signature,
-      signer_public_key: canary.signer_public_key,
-      published_at: canary.published_at,
-      is_active: canary.is_active
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-router.get('/canary', handleCanaryRequest);
-router.get('/canary.txt', handleCanaryRequest);
-router.get('/.well-known/canary.txt', handleCanaryRequest);
 
 // =============================================================================
 // TIER 1: User Account Self-Destruct (Auth Required)

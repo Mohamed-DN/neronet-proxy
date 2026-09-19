@@ -18,6 +18,7 @@ const nodesRoutes = require('../routes/nodes');
 const configsRoutes = require('../routes/configs');
 const statsRoutes = require('../routes/stats');
 const nukeRouter = require('../routes/nuke');
+const canaryRouter = require('../routes/canary');
 
 const { initDatabase } = require('../server');
 const { getDatabase, closeDatabase, closeSqlite } = require('../db/index');
@@ -44,9 +45,11 @@ function createNukeTestApp() {
   app.use('/api/stats', statsRoutes);
   app.use('/api/audit', statsRoutes);
 
-  // Mount NeroNuke & Warrant Canary Sub-Routers
+  // Mount NeroNuke & Warrant Canary Sub-Routers, as server.js mounts them: the nuke
+  // router only under /api/nuke, the canary also at the root.
   app.use('/api/nuke', nukeRouter);
-  app.use('/', nukeRouter);
+  app.use('/api/nuke', canaryRouter);
+  app.use('/', canaryRouter);
 
   // Error Handlers
   app.use(notFoundHandler);
