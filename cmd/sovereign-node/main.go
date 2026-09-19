@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -30,8 +31,9 @@ func main() {
 	httpAddr := config.BindStringFlag(flag.CommandLine, "http-addr", "SOVEREIGN_HTTP_LISTEN_ADDR", "127.0.0.1:8080", "Local HTTP CONNECT proxy inbound listen address")
 	controlURL := config.BindStringFlag(flag.CommandLine, "control-url", "SOVEREIGN_CONTROL_PLANE_URL", "http://127.0.0.1:8443", "SovereignMesh Control Plane URL")
 	enableExit := config.BindBoolFlag(flag.CommandLine, "enable-exit", "SOVEREIGN_ENABLE_EXIT_BRIDGE", false, "Enable sandboxed egress exit node bridge")
-	countryCode := config.BindStringFlag(flag.CommandLine, "country", "SOVEREIGN_COUNTRY_CODE", "US", "ISO Country Code for bridge registration")
+	countryCode := config.BindStringFlag(flag.CommandLine, "country", "SOVEREIGN_COUNTRY_CODE", "US", "Self-declared ISO country code for bridge registration (not measured)")
 	identityPath := config.BindStringFlag(flag.CommandLine, "identity", "SOVEREIGN_NODE_KEY_PATH", "/var/lib/neronet/node_identity.key", "Path to this node's persistent identity key")
+	maxBandwidthKbps := config.BindIntFlag(flag.CommandLine, "max-bandwidth-kbps", "SOVEREIGN_MAX_BANDWIDTH_KBPS", 0, "Self-declared uplink capacity in kbps; 0 means not declared")
 	flag.Parse()
 
 	log.Printf("[SOVEREIGN-NODE] Initializing SovereignMesh client daemon (%s)...", ClientVersion)
@@ -82,13 +84,10 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	log.Printf("[SOVEREIGN-NODE] Country %s is self-declared by the operator, not measured", *countryCode)
+
 	regCtx, regCancel := context.WithTimeout(ctx, 5*time.Second)
-	regResp, err := ctrlClient.Register(regCtx, keypair.PublicKey, role, nil, control.CapabilityDesc{
-		Enabled:          *enableExit,
-		CountryCode:      *countryCode,
-		IPClass:          "RESIDENTIAL",
-		MaxBandwidthKbps: 50000,
-	})
+	regResp, err := ctrlClient.Register(regCtx, keypair.PublicKey, role, nil, capability(*enableExit, *countryCode, *maxBandwidthKbps))
 	regCancel()
 
 	if err != nil {
@@ -139,18 +138,7 @@ func main() {
 			for {
 				select {
 				case <-ticker.C:
-					att := &posture.PeerAttestation{
-						NodeID:         nodeID,
-						OSName:         runtime.GOOS,
-						OSVersion:      "14.5.0",
-						ClientVersion:  ClientVersion,
-						CountryCode:    *countryCode,
-						ASN:            7018,
-						DiskEncrypted:  true,
-						FirewallActive: true,
-						IsRootless:     isRootless,
-						TimestampUTC:   time.Now().UTC(),
-					}
+					att := buildAttestation(nodeID, *countryCode, isRootless, time.Now().UTC())
 
 					// Report measured memory rather than a constant. The previous call
 					// passed cpu=5, mem=32, battery=100 on every beat for every node, so
@@ -178,7 +166,7 @@ func main() {
 						// rather than beating into the void until someone restarts the
 						// process by hand.
 						if errors.Is(hbErr, control.ErrNodeUnknown) {
-							newID, reErr := reregister(ctx, ctrlClient, keypair.PublicKey, role, *countryCode, *enableExit)
+							newID, reErr := reregister(ctx, ctrlClient, keypair.PublicKey, role, capability(*enableExit, *countryCode, *maxBandwidthKbps))
 							if reErr != nil {
 								log.Printf("[SOVEREIGN-NODE] Re-enrolment failed: %v", reErr)
 								continue
@@ -275,6 +263,89 @@ func main() {
 	fmt.Println("Sovereign node stopped cleanly.")
 }
 
+// osReleasePath is the file the OS version is read from on Linux. It is a variable
+// so a test can point it at a fixture without root.
+var osReleasePath = "/etc/os-release"
+
+// capability describes what this node offers the mesh.
+//
+// Every field here used to be a constant in the binary: IP class "RESIDENTIAL" and an
+// uplink of 50,000 kbps were reported by a container in a data centre as readily as by
+// a laptop. Nothing on the node measures either, so both are declared or absent.
+func capability(enableExit bool, countryCode string, maxBandwidthKbps int) control.CapabilityDesc {
+	kbps := 0
+	if maxBandwidthKbps > 0 {
+		kbps = maxBandwidthKbps
+	}
+
+	return control.CapabilityDesc{
+		Enabled:     enableExit,
+		CountryCode: countryCode,
+		// The node cannot tell a residential line from a data centre one. UNKNOWN is
+		// in the schema's CHECK constraint precisely for this.
+		IPClass:          "UNKNOWN",
+		ASN:              0,
+		MaxBandwidthKbps: uint32(kbps),
+	}
+}
+
+// buildAttestation assembles the posture attestation sent with each heartbeat.
+//
+// It reports only what this process can establish. Host disk encryption and firewall
+// state are left nil because nothing measures them yet, and a nil travels to the
+// control plane as JSON null; the previous code sent `true` for both on every beat
+// from every node, which is what made the console describe the whole fleet as
+// hardened without a single measurement.
+func buildAttestation(nodeID, countryCode string, isRootless bool, now time.Time) *posture.PeerAttestation {
+	return &posture.PeerAttestation{
+		NodeID:        nodeID,
+		OSName:        runtime.GOOS,
+		OSVersion:     detectOSVersion(),
+		ClientVersion: ClientVersion,
+		CountryCode:   countryCode,
+		// Not measured: the node does not resolve its own ASN.
+		ASN:            0,
+		DiskEncrypted:  nil,
+		FirewallActive: nil,
+		IsRootless:     isRootless,
+		TimestampUTC:   now,
+	}
+}
+
+// detectOSVersion returns the host OS version, or "" when it cannot be established.
+//
+// Linux is the only platform with a location worth reading; elsewhere, and on any
+// read or parse failure, the answer is "not measured" rather than a guess.
+func detectOSVersion() string {
+	if runtime.GOOS != "linux" {
+		return ""
+	}
+
+	raw, err := os.ReadFile(osReleasePath)
+	if err != nil {
+		return ""
+	}
+	return parseOSReleaseVersionID(string(raw))
+}
+
+// parseOSReleaseVersionID extracts VERSION_ID from os-release content.
+//
+// The format is defined by os-release(5): KEY=VALUE per line, the value optionally
+// quoted. An absent or empty VERSION_ID yields "", which means not measured.
+func parseOSReleaseVersionID(content string) string {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "VERSION_ID=") {
+			continue
+		}
+
+		value := strings.TrimSpace(strings.TrimPrefix(line, "VERSION_ID="))
+		value = strings.Trim(value, `"'`)
+		return value
+	}
+	return ""
+}
+
 // loadOrCreateIdentity reads this node's keypair from disk, creating it on first run.
 //
 // The identity used to be generated on every start. A node's id and public key derive
@@ -342,18 +413,12 @@ func reregister(
 	client *control.Client,
 	publicKey [crypto.KeySize]byte,
 	role string,
-	countryCode string,
-	enableExit bool,
+	cap control.CapabilityDesc,
 ) (string, error) {
 	regCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	resp, err := client.Register(regCtx, publicKey, role, nil, control.CapabilityDesc{
-		Enabled:          enableExit,
-		CountryCode:      countryCode,
-		IPClass:          "RESIDENTIAL",
-		MaxBandwidthKbps: 50000,
-	})
+	resp, err := client.Register(regCtx, publicKey, role, nil, cap)
 	if err != nil {
 		return "", err
 	}

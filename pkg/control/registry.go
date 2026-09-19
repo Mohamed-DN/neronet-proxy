@@ -25,11 +25,21 @@ type EndpointDesc struct {
 
 // CapabilityDesc describes exit bridge capabilities
 type CapabilityDesc struct {
-	Enabled              bool   `json:"enabled"`
-	CountryCode          string `json:"country_code"`
-	City                 string `json:"city"`
-	ASN                  uint32 `json:"asn"`
-	IPClass              string `json:"ip_class"` // "RESIDENTIAL", "MOBILE_5G", "DATACENTER"
+	Enabled bool `json:"enabled"`
+
+	// CountryCode is declared by the operator, not measured. The node has no way to
+	// establish where it is.
+	CountryCode string `json:"country_code"`
+	City        string `json:"city"`
+
+	// ASN is 0 when it was not measured. The node does not resolve its own ASN.
+	ASN uint32 `json:"asn"`
+
+	// IPClass is "UNKNOWN" unless the operator declares otherwise.
+	IPClass string `json:"ip_class"` // "RESIDENTIAL", "MOBILE_5G", "DATACENTER", "UNKNOWN"
+
+	// MaxBandwidthKbps is 0 when it was not measured or declared. Nothing on the
+	// node measures a line rate.
 	MaxBandwidthKbps     uint32 `json:"max_bandwidth_kbps"`
 	MaxConcurrentStreams uint32 `json:"max_concurrent_streams"`
 	AllowUDP             bool   `json:"allow_udp"`
