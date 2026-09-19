@@ -1,9 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {
@@ -40,15 +37,15 @@ export default {
       animation: {
         'pulse-subtle': 'pulse-subtle 3s ease-in-out infinite',
         'pulse-danger': 'pulse-danger 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'radar': 'radar 4s linear infinite',
+        radar: 'radar 4s linear infinite'
       },
       keyframes: {
         'pulse-danger': {
           '0%, 100%': { opacity: '1', transform: 'scale(1)', boxShadow: '0 0 15px rgba(239, 68, 68, 0.6)' },
-          '50%': { opacity: '0.85', transform: 'scale(1.02)', boxShadow: '0 0 25px rgba(239, 68, 68, 0.9)' },
+          '50%': { opacity: '0.85', transform: 'scale(1.02)', boxShadow: '0 0 25px rgba(239, 68, 68, 0.9)' }
         }
       }
-    },
+    }
   },
-  plugins: [],
-}
+  plugins: []
+};
