@@ -1137,22 +1137,9 @@ PersistentKeepalive = 25
       });
       if (live) return live;
 
-      // Realistic mock validation of 5 steganographic methods
-      let isValid = false;
-      if (method === 'reverse_password' && credential && credential.length >= 3) isValid = true;
-      else if (method === 'split_reverse' && credential && credential.length >= 3) isValid = true;
-      else if (method === 'shadow_password' && credential === 'nero_shadow_secret_2026') isValid = true;
-      else if (method === 'hardware_key' && (credential.includes('fido2') || credential === 'yubikey_tap_ok'))
-        isValid = true;
-      else if (method === 'mobile_otp' && credential && credential.length === 6) isValid = true;
-      else if (credential === 'admin' || credential === 'admin123' || credential === 'demo' || credential === 'secret')
-        isValid = true;
-
-      return {
-        authenticated: isValid,
-        dms_state: isValid ? inMemoryNukeConfig.tier1b_personal_dms : null,
-        time_remaining_seconds: isValid ? inMemoryNukeConfig.tier1b_personal_dms.heartbeat_interval_seconds : 0
-      };
+      // The credential is verified by the server only. When the server cannot be reached
+      // the switch stays locked; a client-side check would accept values the server never saw.
+      return { authenticated: false, dms_state: null, time_remaining_seconds: 0 };
     },
 
     async resetPersonalDmsHeartbeat(passphrase) {
