@@ -39,6 +39,10 @@ data/*.db-shm
 **/data/*.db-shm
 !**/data/.gitkeep
 
+# Ed25519 federation private key, written to the data directory on first start
+# in SQLite mode and by the backend test suite.
+**/data/*.pem
+
 # Environment Local Overrides
 .env
 .env.local
