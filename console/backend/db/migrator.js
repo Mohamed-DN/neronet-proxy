@@ -380,6 +380,25 @@ const SQLITE_MIGRATION_012 = {
   }
 };
 
+const SQLITE_MIGRATION_013 = {
+  name: '013_netmap',
+  // Mirrors migration 013 on the PostgreSQL side.
+  //
+  // SQLite has no ADD COLUMN IF NOT EXISTS, and a database that reached this point
+  // through the schema-healing path may already carry the column, so the presence
+  // check is done by hand rather than by swallowing the error: a caught-and-ignored
+  // ALTER would also hide a genuinely failed migration.
+  sql: `
+      INSERT OR IGNORE INTO mesh_epochs (name, epoch) VALUES ('netmap', 1);
+  `,
+  run(db) {
+    const columns = db.pragma('table_info(nodes)').map((c) => c.name);
+    if (!columns.includes('endpoints_bumped_at')) {
+      db.exec('ALTER TABLE nodes ADD COLUMN endpoints_bumped_at DATETIME;');
+    }
+  }
+};
+
 const SQLITE_MIGRATION_011 = {
   name: '011_remove_tiering',
   sql: `
@@ -662,7 +681,8 @@ function runSQLiteMigrations(db) {
     SQLITE_MIGRATION_009,
     SQLITE_MIGRATION_010,
     SQLITE_MIGRATION_011,
-    SQLITE_MIGRATION_012
+    SQLITE_MIGRATION_012,
+    SQLITE_MIGRATION_013
   ];
 
   for (const migration of migrations) {
@@ -709,6 +729,7 @@ module.exports = {
   SQLITE_MIGRATION_010,
   SQLITE_MIGRATION_011,
   SQLITE_MIGRATION_012,
+  SQLITE_MIGRATION_013,
   runMigrations,
   runPostgresMigrations,
   runSQLiteMigrations,
