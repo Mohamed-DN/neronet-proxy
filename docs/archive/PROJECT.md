@@ -1,3 +1,5 @@
+> Historical document, not maintained. It is the console feature inventory of an earlier development phase and does not describe the current code. For the current state read [the handbook](../HANDBOOK.md).
+
 # Project: NeroNet Enterprise Management Console
 
 ## Architecture

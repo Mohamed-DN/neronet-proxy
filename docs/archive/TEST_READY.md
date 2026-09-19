@@ -1,3 +1,5 @@
+> Historical document, not maintained. It is a test run report of an earlier development phase and does not describe the current code. For the current state read [the handbook](../HANDBOOK.md).
+
 # NeroNet Enterprise Management Console — Test Readiness Signal (TEST_READY.md)
 
 ## 1. Test Suite Status & Readiness Overview

@@ -1,3 +1,5 @@
+> Historical document, not maintained. It is the design of an end-to-end test harness of an earlier phase and does not describe the current code. For the current state read [the handbook](../HANDBOOK.md).
+
 # NeroNet Enterprise Management Console — E2E Test Infrastructure & Blueprint (TEST_INFRA.md)
 
 ## 1. Executive Overview & Test Architecture

@@ -1,3 +1,5 @@
+> Historical document, not maintained. It is a version 5 wish list written before the current plan and does not describe the current code. For the current state read [the handbook](../HANDBOOK.md).
+
 # Sovereign Proxy - Version 5.0 (Future Roadmap)
 
 While v4.0 establishes the definitive Enterprise Proxy & Mesh Dashboard platform, v5.0 will focus on "Nation-State" level cyber-intelligence technologies.

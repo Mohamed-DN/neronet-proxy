@@ -1,3 +1,5 @@
+> Historical document, not maintained. It is the task statement of an earlier development phase and does not describe the current code. For the current state read [the handbook](../HANDBOOK.md).
+
 # Original User Request
 
 ## 2026-08-27T03:44:22Z
