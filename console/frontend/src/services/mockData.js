@@ -5,11 +5,8 @@ export const MOCK_USERS = [
     username: 'admin',
     email: 'admin@darknero.net',
     role: 'super-admin',
-    tier: 'cloud_managed',
     status: 'active',
-    bandwidth_quota_gb: 1000,
     bandwidth_used_bytes: 48318382080,
-    max_nodes: 10,
     bypass_apps: ['com.apple.Music', 'com.spotify.client']
   },
   {
@@ -17,11 +14,8 @@ export const MOCK_USERS = [
     username: 'alice',
     email: 'alice@company.com',
     role: 'user',
-    tier: 'hybrid_byos',
     status: 'active',
-    bandwidth_quota_gb: 500,
     bandwidth_used_bytes: 12884901888,
-    max_nodes: 5,
     bypass_apps: ['com.spotify.client']
   },
   {
@@ -29,11 +23,8 @@ export const MOCK_USERS = [
     username: 'bob_engineer',
     email: 'bob@company.com',
     role: 'user',
-    tier: 'cloud_managed',
     status: 'active',
-    bandwidth_quota_gb: 1000,
     bandwidth_used_bytes: 322122547200,
-    max_nodes: 5,
     bypass_apps: []
   },
   {
@@ -41,11 +32,8 @@ export const MOCK_USERS = [
     username: 'carol_ops',
     email: 'carol@company.com',
     role: 'user',
-    tier: 'hybrid_byos',
     status: 'active',
-    bandwidth_quota_gb: 500,
     bandwidth_used_bytes: 53687091200,
-    max_nodes: 5,
     bypass_apps: ['com.netflix.Netflix']
   }
 ];
