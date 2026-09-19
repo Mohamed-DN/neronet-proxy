@@ -32,6 +32,7 @@ const AclEngine = require('../services/AclEngine');
 const RouteEngine = require('../services/RouteEngine');
 const CircuitEngine = require('../services/CircuitEngine');
 const RevocationEngine = require('../services/RevocationEngine');
+const NetmapService = require('../services/NetmapService');
 const config = require('../config/env');
 const logger = require('../utils/logger');
 const { logAuditEvent } = require('../utils/audit');
@@ -417,6 +418,25 @@ router.post('/heartbeat', async (req, res) => {
       );
     }
 
+    // Endpoint intake. Nothing told a node where a peer actually is: the registration
+    // accepted an endpoint list and then nothing ever updated it, so a node that moved
+    // was unreachable until it re-enrolled. The node now reports its candidates on
+    // every beat, and the control plane validates them before any other node is told
+    // to dial them.
+    //
+    // A rejected candidate is logged with its reason rather than silently dropped, and
+    // it never fails the heartbeat: telemetry from a node with one bad address is
+    // still telemetry.
+    const endpointResult = await NetmapService.recordEndpoints(nodeId, req.body.endpoints);
+    if (endpointResult.rejected.length > 0 || endpointResult.truncated) {
+      const reasons = endpointResult.rejected.map((r) => `${r.entry} (${r.reason})`).join(', ');
+      logger.warn(
+        `[GO-BRIDGE] ${nodeId} reported ${endpointResult.rejected.length} unusable endpoint(s)` +
+          `${endpointResult.truncated ? ` and more than ${NetmapService.MAX_ENDPOINTS}` : ''}` +
+          `${reasons ? `: ${reasons}` : ''}`
+      );
+    }
+
     const quarantined = Boolean(known[0].is_quarantined);
     const quarantineReason = known[0].quarantine_reason || '';
 
@@ -432,7 +452,11 @@ router.post('/heartbeat', async (req, res) => {
       quarantine_reason: quarantineReason,
       // This is the only channel that tells a running node its policy is stale.
       policy_epoch: await AclEngine.getEpoch('acl'),
-      route_epoch: await AclEngine.getEpoch('routes')
+      route_epoch: await AclEngine.getEpoch('routes'),
+      // The one number a node with the data plane on compares against what it holds.
+      // It replaces both epochs above on the node side; they stay on the wire for a
+      // node running without the data plane.
+      netmap_version: await NetmapService.getVersion()
     });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Heartbeat failed: ${err.message}`);
@@ -611,6 +635,57 @@ router.post('/sync-routes', async (req, res) => {
     return res.json({ new_route_epoch: epoch, routes: await RouteEngine.routesFor(nodeId) });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Route sync failed: ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /v4/control/netmap
+//
+// One complete document per node: this node's overlay addresses, the peers it may
+// talk to with their keys and endpoints, the compiled policy its filter enforces, the
+// routes it installs, and the keys it must drop. It is what replaces the peer file
+// the WP-201 spike read from disk.
+//
+// The node sends the version it holds. An unchanged version is answered with a flag
+// and nothing else: at fleet scale the alternative is every node pulling its whole
+// peer set every fifteen seconds.
+//
+// Authenticated like /v4/control/sync-acls, which is the fleet-wide enrolment token.
+// That token does not bind a request to a node, so any node holding it can ask for
+// any other node's netmap. This is the same limitation the ACL and route endpoints
+// already have and it is WP-103's to close; it is recorded in ADR 0020 rather than
+// papered over here.
+router.post('/netmap', async (req, res) => {
+  try {
+    const auth = checkRegistrationToken(req);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    const nodeId = String(req.body.node_id || '').trim();
+    if (!nodeId) {
+      return res.status(400).json({ error: 'node_id is required' });
+    }
+
+    const held = Number(req.body.version) || 0;
+    const version = await NetmapService.getVersion();
+
+    if (held === version) {
+      return res.json({ version, unchanged: true });
+    }
+
+    const netmap = await NetmapService.buildNetmap(nodeId);
+    if (!netmap) {
+      return res.status(404).json({ error: `unknown node_id ${nodeId}` });
+    }
+
+    // Added here rather than in the service so that two builds of the same database
+    // state are byte-identical and the determinism can be asserted on the bytes.
+    netmap.generated_at_unix = Math.floor(Date.now() / 1000);
+
+    return res.json(netmap);
+  } catch (err) {
+    logger.error(`[GO-BRIDGE] Netmap build failed: ${err.message}`);
     return res.status(500).json({ error: err.message });
   }
 });

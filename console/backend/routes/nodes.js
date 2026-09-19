@@ -8,6 +8,7 @@ const { logAuditEvent } = require('../utils/audit');
 const { allocateNextVip, generateCurve25519Keypair } = require('../utils/crypto');
 const { broadcastNodeEvent } = require('../services/TopologySync');
 const { derivePostureStatus } = require('../utils/posture');
+const { bumpNetmap } = require('../services/AclEngine');
 
 router.use(authenticateToken);
 
@@ -455,6 +456,13 @@ router.put('/:id', async (req, res, next) => {
       updatedNode = formatNode(db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id));
     }
 
+    // Quarantine and health decide who appears in whose peer set, so a change here
+    // has to reach the data plane. Without the bump the fleet keeps the peer until
+    // something unrelated moves the version.
+    if (req.body.status !== undefined || req.body.is_healthy !== undefined) {
+      await bumpNetmap();
+    }
+
     await broadcastNodeEvent('NODE_UPDATE', updatedNode, req.user);
 
     return res.status(200).json({ node: updatedNode });
@@ -491,6 +499,9 @@ router.delete('/:id', async (req, res, next) => {
 
       db.prepare('DELETE FROM nodes WHERE id = ?').run(req.params.id);
     }
+
+    // A removed node has to disappear from every other node's peer set.
+    await bumpNetmap();
 
     logAuditEvent({
       eventType: 'NODE_REVOKE',
@@ -683,6 +694,8 @@ router.post('/:id/action', async (req, res, next) => {
         ).run(reason, node.id);
       }
 
+      await bumpNetmap();
+
       logAuditEvent({
         eventType: 'NODE_QUARANTINE',
         severity: 'warn',
@@ -732,6 +745,8 @@ router.post('/:id/action', async (req, res, next) => {
         `
         ).run(node.id);
       }
+
+      await bumpNetmap();
 
       logAuditEvent({
         eventType: 'NODE_LIFT_QUARANTINE',

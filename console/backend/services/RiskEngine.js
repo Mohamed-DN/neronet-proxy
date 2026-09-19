@@ -15,6 +15,7 @@ const { getDatabase, isPostgres, getPgPool } = require('../db/index');
 const { logAuditEvent } = require('../utils/audit');
 const { publishTopologyEvent } = require('../db/valkey');
 const { broadcastNodeEvent } = require('./TopologySync');
+const { bumpNetmap } = require('./AclEngine');
 const logger = require('../utils/logger');
 
 const EARTH_RADIUS_KM = 6371.0;
@@ -288,6 +289,13 @@ async function ingestTelemetry(nodeId, telemetry) {
     );
   }
 
+  // The overlay address moves when a node is quarantined, and a quarantined node
+  // leaves every peer set: both are peer-visible, so the netmap version has to move
+  // with them.
+  if (isQuarantined !== Boolean(node.is_quarantined) || node.overlay_ipv4 !== newOverlayIp) {
+    await bumpNetmap();
+  }
+
   // If newly quarantined, record audit log and broadcast topology events
   if (shouldQuarantine && (!node.is_quarantined || node.overlay_ipv4 !== newOverlayIp)) {
     logger.warn(`Node ${nodeId} (${node.name}) auto-quarantined due to risk score ${finalRiskScore}`);
@@ -434,6 +442,9 @@ async function attestNode(nodeId, actor) {
        WHERE id = ?`
     ).run(nowIso, nodeId);
   }
+
+  // The node rejoins every peer set it was removed from.
+  await bumpNetmap();
 
   logAuditEvent({
     eventType: 'RISK_ATTESTATION',
