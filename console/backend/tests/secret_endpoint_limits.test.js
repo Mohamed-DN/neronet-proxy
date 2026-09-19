@@ -25,7 +25,9 @@ describe('Limits on the endpoints that verify a secret', () => {
       [path.join(BACKEND_DIR, 'tests', 'helpers', 'secretEndpointProbe.js'), scenario],
       {
         cwd: BACKEND_DIR,
-        env: { ...process.env, SOVEREIGN_RATE_LIMIT_DISABLED: 'false' },
+        // Cloud PC is frozen behind a feature flag that is off by default; the gateway
+        // limiter cannot be reached with it off, and it must hold whenever the route exists.
+        env: { ...process.env, SOVEREIGN_RATE_LIMIT_DISABLED: 'false', SOVEREIGN_FEATURE_CLOUD_PC: 'true' },
         encoding: 'utf8'
       }
     );
