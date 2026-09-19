@@ -372,7 +372,8 @@ Known gaps, stated rather than omitted:
   there is planned via Rosenpass.
 - `pkg/crypto` and `pkg/routing` have had no external audit. A nonce-reuse defect was
   found and fixed in the onion layer on 2026-09-12; treat the rest accordingly.
-- NeroDrop, Cloud PC and App Bundles are interface without implementation. See
+- Cloud PC is interface without implementation and is switched off by default
+  (`SOVEREIGN_FEATURE_CLOUD_PC`). NeroDrop and App Bundles were removed. See
   [the roadmap](docs/ROADMAP.md) § 3.
 - Honeypot and zero-trust egress filtering exist as Go code but have not been
   exercised against a real deployment.

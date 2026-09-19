@@ -5,6 +5,7 @@
 
 import QRCode from 'qrcode';
 import { markReachable, markUnreachable, resolveList, resolveOne } from './dataSource.js';
+import { parseFeatures } from './features.js';
 import {
   MOCK_USERS,
   MOCK_NODES,
@@ -250,6 +251,14 @@ function generateRandomBase64Key() {
 }
 
 export const api = {
+  // Which optional features the server has switched on. A failed request reads as
+  // "all off", never as a fixture.
+  features: {
+    async get() {
+      return parseFeatures(await request('/features'));
+    }
+  },
+
   // Authentication
   auth: {
     async login(username, password) {

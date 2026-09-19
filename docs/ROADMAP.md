@@ -275,9 +275,13 @@ routes, the client methods, the fixtures and the seeded rows are removed; the
 labelled "Sovereign Cloud PC" rendered `components/AppBundles.jsx`, which despite its
 filename calls `/cloud-pc`; that component is Cloud PC and is handled separately.
 
-Cloud PC works and stays. Its instances still point at `wss://signal.internal.
-darknero.com`, which does not resolve, so streaming cannot connect — the listing and
-the custom-domain management are real, the session is not.
+Cloud PC is frozen (D4). Its instances still point at `wss://signal.internal.
+darknero.com`, which does not resolve, so streaming cannot connect: the listing and
+the custom-domain management are real, the session is not. The code stays behind the
+server-side flag `SOVEREIGN_FEATURE_CLOUD_PC`, off by default. With the flag off every
+`/api/cloud-pc` path answers 404, including the public custom-domain gateway, and the
+console hides the menu entry because `/api/features` reports it off. The component is
+`components/CloudPc.jsx`.
 
 ---
 

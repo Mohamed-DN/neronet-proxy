@@ -31,7 +31,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 
-export default function AppBundles() {
+export default function CloudPc() {
   const [activeTab, setActiveTab] = useState('cloudpc'); // 'cloudpc' | 'domains'
   const [cloudPcs, setCloudPcs] = useState([]);
   const [customDomains, setCustomDomains] = useState([]);

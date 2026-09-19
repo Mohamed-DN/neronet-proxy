@@ -8,7 +8,7 @@ import Topology3D from './components/Topology3D';
 import NodeMatrix from './components/NodeMatrix';
 import NodeActions from './components/NodeActions';
 import UserManagement from './components/UserManagement';
-import AppBundles from './components/AppBundles';
+import CloudPc from './components/CloudPc';
 import PeeringManagement from './components/PeeringManagement';
 import BehavioralRiskDashboard from './components/BehavioralRiskDashboard';
 import GeoFencingMap from './components/GeoFencingMap';
@@ -19,6 +19,7 @@ import SettingsACL from './components/SettingsACL';
 import AuditLogs from './components/AuditLogs';
 import OnionObfuscationPanel from './components/OnionObfuscationPanel';
 import DataSourceBanner from './components/DataSourceBanner';
+import { parseFeatures } from './services/features';
 import { Settings, Shield, Terminal, Cpu, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 class ErrorBoundary extends React.Component {
@@ -216,6 +217,7 @@ function MeshSettingsView() {
 function MainConsole() {
   const [activeTab, setActiveTab] = useState('overview');
   const [nodes, setNodes] = useState([]);
+  const [features, setFeatures] = useState(() => parseFeatures(null));
   const { logout } = useAuth();
 
   const loadNodes = React.useCallback(async () => {
@@ -235,6 +237,18 @@ function MainConsole() {
     const poll = setInterval(loadNodes, 30000);
     return () => clearInterval(poll);
   }, [loadNodes]);
+
+  // Loaded once per session. The server owns the answer; until it arrives every
+  // optional entry stays hidden.
+  React.useEffect(() => {
+    let cancelled = false;
+    api.features.get().then((f) => {
+      if (!cancelled) setFeatures(f);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const nodeCount = nodes.length;
   const quarantinedCount = nodes.filter((n) => Boolean(n.is_quarantined)).length;
@@ -310,8 +324,8 @@ function MainConsole() {
         return <PeeringManagement />;
       case 'geofencing':
         return <GeoFencingMap />;
-      case 'apps':
-        return <AppBundles />;
+      case 'cloudpc':
+        return features.cloud_pc ? <CloudPc /> : null;
       case 'risk':
         return <BehavioralRiskDashboard onSelectNode={(node) => setSelectedNode(node)} />;
       case 'acls':
@@ -343,6 +357,7 @@ function MainConsole() {
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        features={features}
         nodeCount={nodeCount}
         reachableCount={reachableCount}
         quarantinedCount={quarantinedCount}

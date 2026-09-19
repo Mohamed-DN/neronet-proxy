@@ -199,8 +199,8 @@ is computed correctly and thrown away.
 **Decision: NeroDrop is deferred.** File transfer over a mesh is solved (Syncthing,
 Magic Wormhole, scp over the overlay). It does not differentiate.
 
-Cloud PC and App Bundles: under evaluation. All three must be labelled in the console
-as not implemented until they are.
+Cloud PC is frozen behind `SOVEREIGN_FEATURE_CLOUD_PC` (off by default). NeroDrop and
+App Bundles are deleted.
 
 ---
 

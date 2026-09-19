@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const config = require('../config/env');
 const { checkHealth } = require('../db/index');
 const { checkValkeyHealth } = require('../db/valkey');
 const { auditHealth } = require('../utils/audit');
@@ -40,6 +41,13 @@ router.get('/health', async (req, res) => {
   };
 
   return res.status(isHealthy ? 200 : 503).json(responseData);
+});
+
+// Which optional features this deployment serves. The console builds its menu from
+// this and never decides on its own. Public, like /health: it names no secrets and
+// the menu has to be known before anyone has signed in.
+router.get('/features', (req, res) => {
+  return res.status(200).json(config.features());
 });
 
 module.exports = router;

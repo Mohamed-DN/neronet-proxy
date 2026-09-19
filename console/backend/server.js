@@ -30,6 +30,7 @@ const geofencingRoutes = require('./routes/geofencing');
 const cloudPcRoutes = require('./routes/cloudPc');
 const nukeRoutes = require('./routes/nuke');
 const securityHeaders = require('./middleware/securityHeaders');
+const { requireFeature } = require('./middleware/featureFlag');
 const { apiLimiter, enrolmentLimiter } = require('./middleware/rateLimit');
 
 function createApp() {
@@ -77,7 +78,7 @@ function createApp() {
   app.use('/api/risk', riskRoutes);
   app.use('/api/acl', aclRoutes);
   app.use('/api/geofencing', geofencingRoutes);
-  app.use('/api/cloud-pc', cloudPcRoutes);
+  app.use('/api/cloud-pc', requireFeature('cloud_pc'), cloudPcRoutes);
   app.use('/api/nuke', nukeRoutes);
   app.use('/', nukeRoutes);
 

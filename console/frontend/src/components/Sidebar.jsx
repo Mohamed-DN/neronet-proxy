@@ -24,9 +24,12 @@ import {
   Shield
 } from 'lucide-react';
 
+import { filterNavSections } from '../services/features';
+
 export default function Sidebar({
   activeTab,
   setActiveTab,
+  features,
   nodeCount = 0,
   reachableCount = 0,
   quarantinedCount = 0,
@@ -96,7 +99,7 @@ export default function Sidebar({
     {
       key: 'compute',
       title: 'Compute & Storage',
-      items: [{ id: 'apps', label: 'Sovereign Cloud PC', icon: Monitor, badge: 'WebRTC' }]
+      items: [{ id: 'cloudpc', label: 'Sovereign Cloud PC', icon: Monitor, badge: 'WebRTC', feature: 'cloud_pc' }]
     },
     {
       key: 'security',
@@ -184,7 +187,7 @@ export default function Sidebar({
 
         {/* Linear/Vercel Collapsible Navigation Sections */}
         <nav className="px-3 space-y-4 pb-4">
-          {navSections.map((section) => {
+          {filterNavSections(navSections, features).map((section) => {
             const isCollapsed = collapsedSections[section.key];
             return (
               <div key={section.key} className="space-y-1">

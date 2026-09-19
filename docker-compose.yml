@@ -95,6 +95,7 @@ services:
       # table and hands out overlay addresses.
       - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
       - SOVEREIGN_DATA_DIR=/app/data
+      - SOVEREIGN_FEATURE_CLOUD_PC=${SOVEREIGN_FEATURE_CLOUD_PC:-false}
       - CORS_ORIGIN=http://127.0.0.1:8443,http://localhost:8443,http://127.0.0.1:8081,http://localhost:8081
     # Unprivileged, with a read-only root filesystem. Only /app/data is writable,
     # and only because the federation identity and the SQLite file live there.

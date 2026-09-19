@@ -650,6 +650,19 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
     let customDomainName;
     let registeredOtpSecret;
 
+    // Cloud PC is frozen behind a flag and answers 404 without it. These tests
+    // cover the feature as it behaves when an operator switches it on; the off
+    // state is covered in feature_flags.test.js.
+    let previousFlag;
+    before(() => {
+      previousFlag = process.env.SOVEREIGN_FEATURE_CLOUD_PC;
+      process.env.SOVEREIGN_FEATURE_CLOUD_PC = 'true';
+    });
+    after(() => {
+      if (previousFlag === undefined) delete process.env.SOVEREIGN_FEATURE_CLOUD_PC;
+      else process.env.SOVEREIGN_FEATURE_CLOUD_PC = previousFlag;
+    });
+
     it('should reject Cloud PC provisioning with missing required fields (400)', async () => {
       const badReq = await request(app)
         .post('/api/cloud-pc')

@@ -119,6 +119,31 @@ const config = {
 };
 
 /**
+ * Feature flags for surface that is built but not supported.
+ *
+ * Read on every call rather than once at load so a test can flip a flag without
+ * re-requiring the module, and so the value reported to the console and the value
+ * enforced by the router come from the same place.
+ *
+ * Only the literal strings "true" and "1" enable a flag. An unset or misspelt value
+ * leaves the feature off, which is the safe direction for frozen code.
+ */
+function readFlag(name) {
+  const value = String(process.env[name] || '')
+    .trim()
+    .toLowerCase();
+  return value === 'true' || value === '1';
+}
+
+function features() {
+  return {
+    // Cloud PC has no working data path: sessions point at a signalling host that
+    // does not resolve. The code is kept, frozen, until the decision is revisited.
+    cloud_pc: readFlag('SOVEREIGN_FEATURE_CLOUD_PC')
+  };
+}
+
+/**
  * Abort startup if any security-critical setting is missing in production.
  *
  * Exported rather than run at import time so that tooling which only needs to read
@@ -145,6 +170,7 @@ function assertProductionSecrets() {
   );
 }
 
+config.features = features;
 config.assertProductionSecrets = assertProductionSecrets;
 config.missingSecrets = missingSecrets;
 config.compromisedSecrets = compromisedSecrets;
