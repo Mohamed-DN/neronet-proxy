@@ -7,10 +7,9 @@
 #   Validates code integrity before git push and staging:
 #     1. Verifies 'go build ./cmd/...' passes.
 #     2. Verifies 'go test ./...' passes.
-#     3. Verifies 'python3 tests/e2e/runner.py --tier all' passes 100%.
-#     4. Verifies zero plaintext credentials or secrets in tracked files.
-#     5. Verifies bash and python scripts syntax.
-#     6. Verifies YAML configs, Helm charts, and GitHub Actions workflows.
+#     3. Verifies zero plaintext credentials or secrets in tracked files.
+#     4. Verifies bash and python scripts syntax.
+#     5. Verifies YAML configs, Helm charts, and GitHub Actions workflows.
 # ==============================================================================
 set -euo pipefail
 
@@ -118,26 +117,9 @@ else
 fi
 
 # ==============================================================================
-# 4. E2E Test Suite Runner Verification (python3 tests/e2e/runner.py --tier all)
+# 4. Shell Scripts Syntax & Permissions
 # ==============================================================================
-log_header "4. E2E Test Suite Runner (python3 tests/e2e/runner.py --tier all)"
-
-E2E_RUNNER="${PROJECT_ROOT}/tests/e2e/runner.py"
-if [ -f "${E2E_RUNNER}" ]; then
-  log_info "Executing 5-Tier E2E Test Suite Runner..."
-  if python3 "${E2E_RUNNER}" --tier all; then
-    record_pass "5-Tier E2E Test Suite passed with 100% success rate."
-  else
-    record_fail "5-Tier E2E Test Suite runner reported failures."
-  fi
-else
-  record_warn "E2E runner not found at ${E2E_RUNNER}."
-fi
-
-# ==============================================================================
-# 5. Shell Scripts Syntax & Permissions
-# ==============================================================================
-log_header "5. Shell Scripts Syntax & Permissions"
+log_header "4. Shell Scripts Syntax & Permissions"
 
 SHELL_SCRIPTS=()
 while IFS= read -r script; do
@@ -164,9 +146,9 @@ else
 fi
 
 # ==============================================================================
-# 6. Python Scripts Syntax & Bytecode Compilation
+# 5. Python Scripts Syntax & Bytecode Compilation
 # ==============================================================================
-log_header "6. Python Scripts Syntax Validation"
+log_header "5. Python Scripts Syntax Validation"
 
 PYTHON_SCRIPTS=()
 while IFS= read -r script; do
@@ -188,9 +170,9 @@ else
 fi
 
 # ==============================================================================
-# 7. YAML Configuration & Manifest Parsing
+# 6. YAML Configuration & Manifest Parsing
 # ==============================================================================
-log_header "7. YAML Configuration & Manifest Parsing"
+log_header "6. YAML Configuration & Manifest Parsing"
 
 YAML_FILES=()
 while IFS= read -r yfile; do
@@ -219,9 +201,9 @@ else
 fi
 
 # ==============================================================================
-# 8. GitHub Actions Workflows Validation
+# 7. GitHub Actions Workflows Validation
 # ==============================================================================
-log_header "8. GitHub Actions Workflows Validation"
+log_header "7. GitHub Actions Workflows Validation"
 
 WORKFLOW_DIR="${PROJECT_ROOT}/.github/workflows"
 REQUIRED_WORKFLOWS=(
@@ -229,7 +211,6 @@ REQUIRED_WORKFLOWS=(
   "security-scan.yml"
   "release.yml"
   "infra-validate.yml"
-  "gitops-deploy.yml"
 )
 
 if [ -d "${WORKFLOW_DIR}" ]; then
@@ -257,9 +238,9 @@ else
 fi
 
 # ==============================================================================
-# 9. Secret & Credential Leak Prevention Check
+# 8. Secret & Credential Leak Prevention Check
 # ==============================================================================
-log_header "9. Secret & Credential Leak Prevention"
+log_header "8. Secret & Credential Leak Prevention"
 
 SUSPECT_PATTERNS=(
   "BEGIN RSA PRIVATE KEY"

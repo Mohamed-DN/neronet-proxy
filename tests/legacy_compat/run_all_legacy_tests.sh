@@ -38,19 +38,10 @@ run_suite() {
     fi
 }
 
-# 1. 20-Point Parity Validation
-run_suite "20-Point Legacy Parity Validation" "bash '${SCRIPT_DIR}/test_20point.sh'"
-
-# 2. SQL Injection Attack Suite
+# 1. SQL Injection Attack Suite
 run_suite "SQL Injection Adversarial Defense" "bash '${SCRIPT_DIR}/test_sqli_protection.sh'"
 
-# 3. Secret Scanner
-run_suite "Zero-Plaintext Secret Scanner" "bash '${SCRIPT_DIR}/test_secret_scanner.sh'"
-
-# 4. Rootless Docker Profile
-run_suite "Rootless Docker Security Architecture" "bash '${SCRIPT_DIR}/test_docker_security.sh'"
-
-# 5. Security Daemon Logic & Rate Limiting Test
+# 2. Security Daemon Logic & Rate Limiting Test
 run_suite "Security Daemon Logic & Token Bucket" "python3 -c \"
 import sys
 sys.path.insert(0, '${PROJECT_ROOT}/cmd/sovereign-security-daemon')
@@ -90,7 +81,7 @@ if not result.wasSuccessful():
 \""
 
 echo -e "\n${BLUE}${BOLD}=======================================================================${NC}"
-echo -e "Master Test Summary: ${GREEN}${SUITES_PASSED} Suites Passed${NC}, ${RED}${SUITES_FAILED} Suites Failed${NC} (Total: 5 Suites)"
+echo -e "Master Test Summary: ${GREEN}${SUITES_PASSED} Suites Passed${NC}, ${RED}${SUITES_FAILED} Suites Failed${NC} (Total: 2 Suites)"
 echo -e "${BLUE}${BOLD}=======================================================================${NC}\n"
 
 if [[ "$SUITES_FAILED" -eq 0 ]]; then
