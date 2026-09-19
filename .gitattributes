@@ -1,0 +1,28 @@
+# Store text as LF and check it out as LF on every platform. Shell scripts, nginx
+# configs and entrypoints are copied into Linux images; a CRLF checkout on Windows
+# (core.autocrlf=true) breaks them.
+* text=auto eol=lf
+
+# Binary formats: never normalise, never diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.tar binary
+*.bz2 binary
+*.xz binary
+*.7z binary
+*.jar binary
+*.wasm binary
+*.mmdb binary
