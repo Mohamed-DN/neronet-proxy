@@ -1,102 +1,50 @@
-name: Infrastructure, Terraform & Kubernetes Manifest Validation
+name: Infrastructure validation
+
+# Decision D6: the first deployment target is a single VM with Compose; Kubernetes
+# and OpenShift come later. The Helm chart stays validated. OpenTofu, Terraform and
+# Kustomize validation was removed with the decision. Those checks swallowed their
+# own exit status and could not fail.
 
 on:
   push:
-    branches:
-      - main
-      - v4-staging
-    paths:
-      - 'terraform/**'
-      - 'charts/**'
-      - 'k8s/**'
-      - 'configs/**'
-      - '.github/workflows/infra-validate.yml'
+    branches: [main]
   pull_request:
-    branches:
-      - main
-      - v4-staging
-    paths:
-      - 'terraform/**'
-      - 'charts/**'
-      - 'k8s/**'
-      - 'configs/**'
-      - '.github/workflows/infra-validate.yml'
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  terraform-validate:
-    name: Terraform & OpenTofu Matrix Validation
+  helm:
+    name: helm
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        module:
-          - oci
-          - aws
-          - gcp
-          - digitalocean
-          - hetzner
-          - vultr
+    timeout-minutes: 10
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu-version: 1.6.2
-
-      - name: Initialize and Validate Module ${{ matrix.module }}
-        run: |
-          terraform fmt -check || tofu fmt -check || true
-          terraform validate || tofu validate || true
-
-  helm-lint:
-    name: Helm Lint & Kubernetes Schema Validation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.14.0
 
-      - name: Lint SovereignMesh Helm Chart
-        run: |
-          if [ -d "charts/sovereign-mesh" ]; then
-            echo "Linting Helm chart..."
-            helm lint ./charts/sovereign-mesh
-            helm template test-instance ./charts/sovereign-mesh > /dev/null
-          fi
+      - name: helm lint
+        run: helm lint ./charts/sovereign-mesh
 
-      - name: Build Kustomize Overlays
-        run: |
-          if [ -d "k8s/overlays/prod-oci" ]; then
-            kustomize build ./k8s/overlays/prod-oci || kubectl kustomize ./k8s/overlays/prod-oci > /dev/null || true
-          fi
+      - name: helm template
+        run: helm template test-instance ./charts/sovereign-mesh > /dev/null
 
-  cluster-schema-validate:
-    name: Unified Multi-Cloud Schema Validation
+  cluster-spec:
+    name: cluster-spec
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - run: python3 -m pip install --quiet pyyaml
 
-      - name: Install Dependencies
-        run: pip install pyyaml
-
-      - name: Validate Unified Cluster Spec
-        run: |
-          if [ -f "scripts/gitops/sync_cluster_state.py" ] && [ -f "configs/mesh-cluster.yaml" ]; then
-            python3 scripts/gitops/sync_cluster_state.py --config configs/mesh-cluster.yaml --command validate
-          fi
+      - name: Validate configs/mesh-cluster.yaml
+        run: python3 scripts/gitops/sync_cluster_state.py --config configs/mesh-cluster.yaml --command validate
