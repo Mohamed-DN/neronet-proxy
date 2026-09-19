@@ -1,10 +1,23 @@
 # BUSINESS_AND_ROADMAP.md: NeroNet Sovereign Private Cloud & App Bundles Integration Architecture
 
-**Document Version**: `4.2.0-PROD`  
-**Classification**: Technical Architecture, Business Plan & Sovereign Cloud Ecosystem Reference  
+**Classification**: Design study  
 **Target Platform**: NeroNet v4.0 (DarkNero Mesh / Sovereign Proxy Ecosystem)  
 **Author**: NeroNet Architecture Working Group  
-**Status**: Authoritative Reference Specification  
+**Status**: Design study. Nothing in this document is implemented.  
+
+
+> This document is a design study for a private-cloud offering built on the mesh.
+> It does not describe the code. Three parts of it are superseded:
+>
+> - The application bundles (sections 2.4 to 2.6, chapters 3 and 4, and phases 2 to 4
+>   of chapter 7) describe a feature that was deleted. See
+>   [ADR 0014](docs/adr/0014-confirm-earlier-decisions.md).
+> - The commercial model (former chapter 6 and section 5.5) was removed. See
+>   [ADR 0004](docs/adr/0004-remove-monetisation.md). The numbering skips chapter 6.
+> - The Cloud PC design (section 2.7) is frozen. See
+>   [ADR 0010](docs/adr/0010-freeze-cloud-pc.md).
+>
+> For what runs today, read [the handbook](docs/HANDBOOK.md).
 
 ---
 
@@ -41,12 +54,6 @@
    - [5.2 Legal & Liability Separation Matrix](#52-legal-liability-separation-matrix)
    - [5.3 GDPR (Articles 4, 17, 28) & HIPAA (45 CFR § 164.312) Compliance by Design](#53-gdpr-articles-4-17-28-hipaa-45-cfr-164312-compliance-by-design)
    - [5.4 BYOS 1-Line Automated Installer & Ansible Playbook Architecture](#54-byos-1-line-automated-installer-ansible-playbook-architecture)
-   - [5.5 Telemetry-Free Offline Ed25519 Cryptographic Licensing](#55-telemetry-free-offline-ed25519-cryptographic-licensing)
-6. [Chapter 6: Business Model, Monetization & Unit Economics](#chapter-6-business-model-monetization-unit-economics)
-   - [6.1 Tiered Subscription Matrix & Packaging](#61-tiered-subscription-matrix-packaging)
-   - [6.2 Granular Unit Economics & Infrastructure COGS Analysis](#62-granular-unit-economics-infrastructure-cogs-analysis)
-   - [6.3 Multi-Rail Payment Gateway (Stripe Fiat & BTCPay / Monero Crypto)](#63-multi-rail-payment-gateway-stripe-fiat-btcpay-monero-crypto)
-   - [6.4 Subscription Lifecycle, Grace Periods & Cryptographic Purge Policy](#64-subscription-lifecycle-grace-periods-cryptographic-purge-policy)
 7. [Chapter 7: Phased Engineering Roadmap & Delivery Milestones (2026-2027)](#chapter-7-phased-engineering-roadmap-delivery-milestones-2026-2027)
    - [7.1 Phase 1: Foundation & Identity Core (Target: Q1 2026)](#71-phase-1-foundation-identity-core-target-q1-2026)
    - [7.2 Phase 2: Dynamic Orchestrator & Nextcloud MVP (Target: Q2 2026)](#72-phase-2-dynamic-orchestrator-nextcloud-mvp-target-q2-2026)
@@ -76,7 +83,7 @@ The global digital ecosystem is confronted by an acute crisis of digital soverei
 |  +---------------------------------------------------------------------------------------------+  |
 |  |                   NERONET NATIVE MULTI-PLATFORM CLIENT (iOS / macOS / Android / Desktop)    |  |
 |  |  * Userspace Netstack Engine               * 1-Click App & Cloud PC Launcher HUD            |  |
-|  |  * Noise IKpsk2 Mesh Tunnel                * Offline Ed25519 Entitlement Keyring            |  |
+|  |  * Noise IKpsk2 Mesh Tunnel                                                                 |  |
 |  |  * Auto OIDC Token Injection               * Client-Side Argon2id Key Derivation Engine     |  |
 |  +---------------------------------------------------------------------------------------------+  |
 |                                                |                                                  |
@@ -85,8 +92,8 @@ The global digital ecosystem is confronted by an acute crisis of digital soverei
 |  +---------------------------------------------v-----------------------------------------------+  |
 |  |             NERONET CONTROL PLANE & IDENTITY FEDERATION (neronet.darknero.com)              |  |
 |  |  * OpenID Connect (OIDC 1.0) / OAuth 2.0 Core     * Authentik SSO & Forward-Auth Engine     |  |
-|  |  * step-ca Automated Internal ACME PKI            * Ed25519 Entitlement Minting Engine      |  |
-|  |  * Peer Topology & CGNAT VIP Allocator           * Stripe & Self-Hosted BTCPay/XMR Webhooks|  |
+|  |  * step-ca Automated Internal ACME PKI                                                      |  |
+|  |  * Peer Topology & CGNAT VIP Allocator                                                     |  |
 |  |  * NATS JetStream Event Orchestration Bus         * Zero-Trust Access Control Policies      |  |
 |  +---------------------------------------------+-----------------------------------------------+  |
 |                                                |                                                  |
@@ -116,7 +123,7 @@ The global digital ecosystem is confronted by an acute crisis of digital soverei
 |  +---------------------------------------------v-----------------------------------------------+  |
 |  |              BRING YOUR OWN SERVER (BYOS) NODES (Customer Self-Hosted Hardware)              |  |
 |  |  * 1-Line Automated Curl / Ansible Playbook       * Customer Own Hardware & Storage         |  |
-|  |  * 100% Free Open-Source Core ($0/mo)             * ZERO Operator Liability / Access        |  |
+|  |  * Open-Source Core                               * ZERO Operator Liability / Access        |  |
 |  +---------------------------------------------------------------------------------------------+  |
 +---------------------------------------------------------------------------------------------------+
 ```
@@ -128,10 +135,10 @@ The global digital ecosystem is confronted by an acute crisis of digital soverei
 The sovereign cloud platform comprises six tightly integrated subsystems:
 
 1. **The Userspace Mesh Network**: Encrypted node-to-node overlay operating on Carrier-Grade NAT (CGNAT `100.64.0.0/10`) VIPs. Client communication uses the 24-byte SVRN binary wire framing with ChaCha20-Poly1305 AEAD encryption and sliding-window anti-replay protection.
-2. **The Control Plane & Identity Core**: A globally distributed, Raft-replicated control plane (`neronet.darknero.com`) coupled with `Authentik` for identity federation and `step-ca` for automated internal ACME PKI. It signs JSON Web Key Sets (JWKS) and mints cryptographically signed offline Ed25519 entitlement tokens.
+2. **The Control Plane & Identity Core**: A globally distributed, Raft-replicated control plane (`neronet.darknero.com`) coupled with `Authentik` for identity federation and `step-ca` for automated internal ACME PKI. It signs JSON Web Key Sets (JWKS).
 3. **The Dynamic Container Orchestrator (`sovereign-bundle-orchestrator`)**: A modular daemon managing per-tenant isolated application stacks (Nextcloud, Immich, Seafile, Guacamole Cloud PC). It provisions dedicated rootless container groups, manages LUKS2-encrypted ZFS datasets, executes `gVisor` (`runsc`) isolation, and operates a sub-2.5-second scale-to-zero wake-up mechanism.
 4. **The Sovereign Guacamole Cloud PC**: High-performance browser-based and native-wrapped virtual desktop environment powered by `guacd`, `xrdp`, and hardware GPU acceleration (NVIDIA CUDA / Intel QuickSync) for seamless remote computing.
-5. **The Hybrid Data Residency Engine**: A dual-model checkout and provisioning architecture that cleanly separates Managed Cloud (paid subscription on zero-knowledge encrypted OCI/Hetzner infrastructure) from Self-Hosted BYOS (free open-core running on user hardware with zero operator liability).
+5. **The Hybrid Data Residency Engine**: A dual-model checkout and provisioning architecture that cleanly separates Managed Cloud (hosted on zero-knowledge encrypted infrastructure) from Self-Hosted BYOS (running on user hardware with zero operator liability).
 6. **The NeroNet Native Multi-Platform Client**: Cross-platform desktop and mobile clients (iOS, macOS, Android, Windows, Linux) providing transparent split-tunnel netstack routing, a 1-click bundle launcher HUD, automated SSO credential injection, and client-side Argon2id key derivation.
 
 ---
@@ -577,7 +584,7 @@ To protect the host kernel from potential container escape vulnerabilities durin
 |  +---------------------------------------------v-----------------------------------------------+  |
 |  |               PER-TENANT LUKS2 ENCRYPTED CONTAINER (`/dev/mapper/tenant-<user_id>`)         |  |
 |  |  * Cipher: AES-XTS-256 (512-bit key)         * KDF: Argon2id (1GB RAM, 4 Iterations)        |  |
-|  |  * Key derivation via Control Plane Entitlement Master Key + Tenant Biometric Passkey       |  |
+|  |  * Key derivation via Control Plane Master Key             + Tenant Biometric Passkey       |  |
 |  +---------------------------------------------------------------------------------------------+  |
 |                                                |                                                  |
 |  +---------------------------------------------v-----------------------------------------------+  |
@@ -665,7 +672,7 @@ To achieve sustainable unit economics on cloud compute, idle application stacks 
 |                            SCALE-TO-ZERO & FAST WAKE-UP STATE MACHINE                             |
 +---------------------------------------------------------------------------------------------------+
 |                                                                                                   |
-|     +------------------+         Entitlement Clear         +-------------------+                  |
+|     +------------------+         Access Cleared            +-------------------+                  |
 |     |  UNPROVISIONED   | --------------------------------> |   PROVISIONING    |                  |
 |     +------------------+                                   +-------------------+                  |
 |                                                                      |                            |
@@ -744,7 +751,7 @@ The NeroNet client is implemented natively across all major platforms:
 |  +--------------------+ +--------------------+ +--------------------+ +------------------------+  |
 |                                                                                                   |
 |  -----------------------------------------------------------------------------------------------  |
-|  * Entitlement: ULTIMATE SOVEREIGN (Valid until Dec 2026)      * Mesh VIP Latency: 18ms           |
+|                                                                * Mesh VIP Latency: 18ms           |
 +---------------------------------------------------------------------------------------------------+
 ```
 
@@ -788,7 +795,7 @@ Requirement R4 dictates a **liability-reducing checkout and operational architec
 +---------------------------------------------------------------------------------------------------+
 |                              HYBRID DATA RESIDENCY & LIABILITY SEPARATION                         |
 +---------------------------------------------------------------------------------------------------+
-|  Dimension                  | Managed Cloud (Paid Subscription)   | Self-Hosted / BYOS (Free Core)|
+|  Dimension                  | Managed Cloud                       | Self-Hosted / BYOS            |
 +-----------------------------+-------------------------------------+-------------------------------+
 |  Target Hardware            | NeroNet High-Performance NVMe Nodes | User's Own Server / Home Lab  |
 |                             | (OCI / Hetzner Bare Metal)          | (Proxmox, TrueNAS, unRAID)    |
@@ -798,7 +805,6 @@ Requirement R4 dictates a **liability-reducing checkout and operational architec
 |  Operator Data Liability    | Disclaimed via Zero-Knowledge E2EE  | ZERO (NeroNet is mere conduit)|
 |  GDPR / HIPAA Role          | Zero-Knowledge Processor (Art. 28)  | Customer is Controller & Proc |
 |  Installation Method        | 1-Click Client Provisioning         | 1-Line Curl / Ansible Playbook|
-|  Pricing Model              | $4.99 - $29.99 / month              | $0 (Open-Source Core)         |
 +---------------------------------------------------------------------------------------------------+
 ```
 
@@ -815,10 +821,9 @@ Option 1: [ MANAGED SOVEREIGN CLOUD (Turnkey Hosted) ]
 - Hosted on NeroNet Tier-4 Secure European & Global Datacenters
 - 100% Zero-Knowledge Encrypted: We cannot decrypt or inspect your files
 - Automatic daily offsite backups & 99.99% uptime SLA
-- Price: From $4.99/mo (Includes NVMe storage & compute)
 
 Option 2: [ BRING YOUR OWN SERVER (BYOS - 100% Self-Hosted) ]
-- Free & Open-Source Core ($0/month)
+- Open-Source Core
 - Runs on your own hardware (Raspberry Pi, Mini PC, Home Server)
 - NeroNet provides encrypted mesh overlay, dynamic DNS & NAT punch
 - Zero data touches NeroNet servers: Absolute legal & privacy autonomy
@@ -887,166 +892,6 @@ curl -fsSL https://get.darknero.com/byos.sh | bash -s -- \
 
 ---
 
-## 5.5 Telemetry-Free Offline Ed25519 Cryptographic Licensing
-
-To ensure absolute privacy, NeroNet utilizes **offline verifiable Ed25519 entitlement tokens** instead of intrusive online telemetry phone-home systems:
-
-```
-+---------------------------------------------------------------------------------------------------+
-|                        OFFLINE CRYPTOGRAPHIC ENTITLEMENT VALIDATION                               |
-+---------------------------------------------------------------------------------------------------+
-|                                                                                                   |
-|  [ CONTROL PLANE (DarkNero Mint) ]                   [ TENANT HOMELAB / CLIENT NODE ]             |
-|  1. Mints JWT with Ed25519 signature  -------------> 2. Ingests Token on Setup                    |
-|  2. Encodes tier, quotas & expiry                    3. Validates against embedded Public Key     |
-|                                                      4. ZERO continuous phone-home pings required |
-|                                                      5. 100% telemetry-free operation             |
-+---------------------------------------------------------------------------------------------------+
-```
-
-- **Local Verification**: The local node validates the JWT against the Control Plane's hardcoded Ed25519 public key. No external network requests or user tracking occur during license checks.
-- **Privacy-Preserving Diagnostics**: Aggregate network health checks (e.g. STUN round-trip times) utilize local differential privacy noise injection and can be disabled with a single toggle (`--no-telemetry`).
-
----
-
-# Chapter 6: Business Model, Monetization & Unit Economics
-
-## 6.1 Tiered Subscription Matrix & Packaging
-
-```
-+-------------------------------------------------------------------------------------------------------------------------+
-|                                        EXPANDED NERONET SUBSCRIPTION MATRIX                                             |
-+------------------------------------+-----------------------------+---------------------+-------------------+------------+
-|  Tier Plan                         | Included Bundles & Features | High-Speed NVMe     | Compute Resources | Pricing    |
-+------------------------------------+-----------------------------+---------------------+-------------------+------------+
-|  **Mesh Baseline (Free / BYOS)**   | Mesh VPN Transit + BYOS     | Self-Hosted Storage | User-Owned Host   | **$0 /mo** |
-|                                    | 1-Line Playbook Automation  | (Unlimited)         | (Unlimited)       | ($0 /yr)   |
-+------------------------------------+-----------------------------+---------------------+-------------------+------------+
-|  **Nextcloud Suite**               | Nextcloud 30 + Collabora    | 250 GB NVMe         | 2 vCPU, 2GB RAM   | **$4.99/mo**
-|                                    | Office Document Server      |                     | (Scale-to-Zero)   | ($47.90/yr)|
-+------------------------------------+-----------------------------+---------------------+-------------------+------------+
-|  **Seafile Enterprise**            | Seafile C-Core Sync & Block | 1,000 GB (1 TB)     | 2 vCPU, 2GB RAM   | **$6.99/mo**
-|                                    | Deduplication Engine        | NVMe                | (Scale-to-Zero)   | ($67.10/yr)|
-+------------------------------------+-----------------------------+---------------------+-------------------+------------+
-|  **Immich AI Vault**               | Immich AI Photo/Video ML,   | 1,000 GB (1 TB)     | 4 vCPU, 4GB RAM   | **$8.99/mo**
-|                                    | Facial Recognition & CLIP   | NVMe                | + GPU Acceleration| ($86.30/yr)|
-+------------------------------------+-----------------------------+---------------------+-------------------+------------+
-|  **Sovereign Guacamole Cloud PC**  | Dedicated Ubuntu Cloud PC   | 500 GB NVMe         | 4 vCPU, 8GB RAM   | **$14.99/mo**
-|                                    | (HTML5 RDP, A/V Streaming)  |                     | + VirtualGL GPU   | ($143.90/yr)
-+------------------------------------+-----------------------------+---------------------+-------------------+------------+
-|  **Sovereign Pro**                 | Nextcloud (500GB) +         | 2,000 GB (2 TB)     | 4 vCPU, 4GB RAM   | **$12.99/mo**
-|                                    | Immich (1TB) + Seafile      | NVMe                | + GPU Acceleration| ($124.90/yr)
-+------------------------------------+-----------------------------+---------------------+-------------------+------------+
-|  **Ultimate Sovereign Workstation**| Full Suite (Nextcloud +     | 5,000 GB (5 TB)     | 8 vCPU, 16GB RAM  | **$29.99/mo**
-|                                    | Immich + Seafile + Cloud PC)| NVMe                | + Dedicated GPU   | ($287.90/yr)
-+------------------------------------+-----------------------------+---------------------+-------------------+------------+
-```
-
----
-
-## 6.2 Granular Unit Economics & Infrastructure COGS Analysis
-
-NeroNet achieves superior profit margins by combining:
-1. **Scale-to-Zero Compute Multiplexing**: Average user actively accesses self-hosted services 1.8 hours per day (~7.5% - 12% compute duty cycle), allowing 8-12x compute oversubscription on bare-metal ARM64/AMD64 nodes.
-2. **Cost-Effective Storage Infrastructure**: High-performance NVMe block storage pooled on Oracle Cloud Infrastructure (OCI Block Volumes at $0.00255/GB-mo) and Hetzner Enterprise Storage Nodes (€3.20/TB-mo).
-3. **Block-Level Storage Deduplication & ZSTD Compression**: Seafile and ZFS yield an average 1.35x storage compaction ratio.
-
-### 6.2.1 Immich 1TB Tier Economics ($8.99/mo)
-- **Monthly Revenue**: $8.99
-- **COGS Breakdown**:
-  - Raw NVMe Storage (1,000 GB @ $0.00255/GB-mo): $2.55
-  - Compute (OCI Ampere A1 @ 7.5% duty cycle): $0.32
-  - Mesh Bandwidth (150 GB/mo transfer): $0.03
-  - Stripe Processing ($8.99 * 2.9% + $0.30): $0.56
-  - **Total COGS**: $3.46
-- **Gross Profit**: $8.99 - $3.46 = **$5.53**
-- **Gross Margin**: **61.5%**
-
-### 6.2.2 Guacamole Cloud PC Tier Economics ($14.99/mo)
-- **Monthly Revenue**: $14.99
-- **COGS Breakdown**:
-  - 500 GB NVMe Storage: $1.28
-  - Compute (4 vCPU / 8GB RAM @ 12% duty cycle auto-sleep): $1.40
-  - GPU Transcoding Slice (Shared NVIDIA Tesla / Intel Flex): $1.80
-  - Mesh Bandwidth (350 GB transfer): $0.07
-  - Stripe Processing ($14.99 * 2.9% + $0.30): $0.73
-  - **Total COGS**: $5.28
-- **Gross Profit**: $14.99 - $5.28 = **$9.71**
-- **Gross Margin**: **64.8%**
-
-### 6.2.3 Sovereign Pro 2TB Tier Economics ($12.99/mo)
-- **Monthly Revenue**: $12.99
-- **COGS Breakdown**:
-  - Raw NVMe Storage (2,000 GB with ZFS zstd compression): $4.20
-  - Compute (OCI Ampere A1 + Shared GPU ML worker): $0.68
-  - Mesh Bandwidth (300 GB/mo transfer): $0.06
-  - Stripe Processing ($12.99 * 2.9% + $0.30): $0.68
-  - **Total COGS**: $5.62
-- **Gross Profit**: $12.99 - $5.62 = **$7.37**
-- **Gross Margin**: **56.7%**
-
-### 6.2.4 Blended Portfolio Gross Margin
-Across the expected customer distribution, the blended portfolio gross margin across all paying subscribers is **64.2%**.
-
----
-
-## 6.3 Multi-Rail Payment Gateway (Stripe Fiat & BTCPay / Monero Crypto)
-
-NeroNet provides dual payment rails:
-
-```
-+---------------------------------------------------------------------------------------------------+
-|                                  PAYMENT PROCESSING ARCHITECTURE                                  |
-+---------------------------------------------------------------------------------------------------+
-|                                                                                                   |
-|  +-------------------------------------+             +-----------------------------------------+  |
-|  |           FIAT RAIL (STRIPE)        |             |       SOVEREIGN CRYPTO RAIL (BTCPay)    |  |
-|  |  * Credit Card, Apple Pay, GooglePay|             |  * Bitcoin (BTC) & Lightning Network    |  |
-|  |  * Automated Recurring Subscriptions|             |  * Monero (XMR) Zero-Knowledge Payments |  |
-|  |  * Stripe Customer Portal           |             |  * Zero-KYC Disposable Invoicing        |  |
-|  +-------------------------------------+             +-----------------------------------------+  |
-|                     |                                                     |                       |
-|                     v                                                     v                       |
-|  +---------------------------------------------------------------------------------------------+  |
-|  |                     NERONET CONTROL PLANE PAYMENT WEBHOOK INGESTION GATEWAY                 |  |
-|  |  * Verifies Stripe HMAC-SHA256 Webhook Signatures (`customer.subscription.updated`)         |  |
-|  |  * Validates On-Chain BTCPay / Monero Daemon Confirmations                                 |  |
-|  +---------------------------------------------------------------------------------------------+  |
-|                                                |                                                  |
-|                                                v                                                  |
-|  +---------------------------------------------------------------------------------------------+  |
-|  |                      CRYPTOGRAPHIC ENTITLEMENT MINTING ENGINE (Ed25519)                     |  |
-|  |  * Issues Signed Entitlement JWT to Tenant Node                                             |  |
-|  |  * Updates Policy Epoch & Provisions Container Orchestrator Stacks                          |  |
-|  +---------------------------------------------------------------------------------------------+  |
-+---------------------------------------------------------------------------------------------------+
-```
-
----
-
-## 6.4 Subscription Lifecycle, Grace Periods & Cryptographic Purge Policy
-
-```
-+---------------------------------------------------------------------------------------------------+
-|                               SUBSCRIPTION LIFECYCLE & RETENTION POLICY                           |
-+---------------------------------------------------------------------------------------------------+
-|  Stage               | Timeline        | Access Level     | Operational Behavior                  |
-+----------------------+-----------------+------------------+---------------------------------------+
-|  1. Active           | Day 0           | Full Read/Write  | Normal operation. Containers running  |
-|                      |                 |                  | with scale-to-zero active.            |
-|  2. Soft Grace       | Day 1 - 7       | Full Read/Write  | Automated billing retry. Non-blocking |
-|                      |                 |                  | warning banner displayed in client.   |
-|  3. Frozen Grace     | Day 8 - 30      | Read-Only Access | Volume switched to `readonly=on`. New |
-|                      |                 |                  | uploads blocked; file exports allowed.|
-|  4. Cold Archive     | Day 31 - 60     | Offline Archive  | Compute containers removed. Storage   |
-|                      |                 |                  | compressed to cold OCI object vault.  |
-|  5. Crypto Purge     | Day 61+         | PERMANENT DELETE | LUKS2 encryption keys shredded. Disk  |
-|                      |                 |                  | zero-filled. Zero residual metadata.  |
-+---------------------------------------------------------------------------------------------------+
-```
-
----
-
 # Chapter 7: Phased Engineering Roadmap & Delivery Milestones (2026-2027)
 
 ```
@@ -1058,8 +903,6 @@ NeroNet provides dual payment rails:
 |   =============================================                                                   |
 |   * OpenID Connect (OIDC 1.0) & OAuth 2.0 Identity Provider inside Control Plane (`pkg/control/`) |
 |   * PKCE Authorization Code Flow & JWKS Key Rotation Subsystem                                    |
-|   * Ed25519 Cryptographic Entitlement Minting & Verification Engine                              |
-|   * Stripe & BTCPay Server Webhook Ingestion API Gateway                                          |
 |                                                                                                   |
 |   [Q2 2026] PHASE 2: DYNAMIC ORCHESTRATOR & NEXTCLOUD MVP                                         |
 |   =======================================================                                         |
@@ -1075,7 +918,6 @@ NeroNet provides dual payment rails:
 |   * Seafile C-Core Server + Seahub Django OIDC Backend Configuration                              |
 |   * Sovereign Guacamole Cloud PC (guacd, xrdp, GPU passthrough, HTML5/Native Client HUD)         |
 |   * step-ca Automated Internal ACME PKI & Authentik Federation Engine                             |
-|   * Commercial Launch of Cloud PC ($14.99), Immich Vault ($8.99), and Sovereign Pro ($12.99)      |
 |                                                                                                   |
 |   [Q4 2026 - Q1 2027] PHASE 4: HYBRID BYOS PLAYBOOKS, ZERO-KNOWLEDGE VAULTING & GLOBAL FEDERATION  |
 |   ==============================================================================================  |
@@ -1092,8 +934,7 @@ NeroNet provides dual payment rails:
 - **Deliverables**:
   1. High-throughput Go OIDC server package in `pkg/control/oidc/` implementing discovery, token, userinfo, and JWKS endpoints.
   2. Ed25519 token signing infrastructure with automated 90-day key rotation and zero-downtime rollover.
-  3. Integration of Stripe subscription webhooks and BTCPay Server crypto payment webhooks into `pkg/control/billing/`.
-  4. Unit test and fuzzing suite achieving 100% test coverage for all identity and entitlement state transitions.
+  3. Unit test and fuzzing suite achieving 100% test coverage for all identity state transitions.
 
 ## 7.2 Phase 2: Dynamic Orchestrator & Nextcloud MVP (Target: Q2 2026)
 - **Deliverables**:
@@ -1109,7 +950,6 @@ NeroNet provides dual payment rails:
   3. Seafile block-deduplicated storage engine orchestration with Seahub OAuth2 Django bridge.
   4. Sovereign Guacamole Cloud PC workstation stack with Tomcat OIDC extension, guacd C-core translation, and low-latency audio/video streaming.
   5. Internal `step-ca` automated PKI issuing internal wildcard certificates with client-injected root trust.
-  6. Commercial launch of Guacamole Cloud PC ($14.99), Immich AI Vault ($8.99), and Sovereign Pro ($12.99).
 
 ## 7.4 Phase 4: Hybrid BYOS Automation, Zero-Knowledge Vaulting & Global Multi-Region Federation (Target: Q4 2026 - Q1 2027)
 - **Deliverables**:
