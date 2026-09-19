@@ -471,6 +471,19 @@ async function setupPersonalDMS(
 }
 
 /**
+ * Constant-time comparison of two secrets. Both sides are hashed first so the
+ * comparison takes the same time whatever their lengths, and an empty or missing
+ * candidate never matches.
+ */
+function secretsEqual(provided, expected) {
+  if (typeof provided !== 'string' || typeof expected !== 'string') return false;
+  if (provided.length === 0 || expected.length === 0) return false;
+  const a = crypto.createHash('sha256').update(provided).digest();
+  const b = crypto.createHash('sha256').update(expected).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+/**
  * Unlocks the personal Dead Man's Switch panel using steganographic credentials.
  */
 async function unlockPersonalDMS(userId, stegoCredentials) {
@@ -508,61 +521,29 @@ async function unlockPersonalDMS(userId, stegoCredentials) {
   const authVal = String(stegoCredentials || '').trim();
   const original = dms.original_passphrase || dms.steganography_secret || '';
 
-  let valid = false;
+  // The values that open the switch in each mode. A mode can only widen this set by
+  // transforming the secret the user stored (reversing it, for example); it can never
+  // accept something the user did not choose. Earlier versions accepted any six digit
+  // number in one mode, any string of ten characters or more in another, and fixed
+  // strings written into this file, so a valid session alone was enough to open the
+  // switch.
+  const reverse = (value) => value.split('').reverse().join('');
+  const accepted = [original, dms.steganography_secret];
 
   if (mode === 'reverse_password') {
-    // Reverse of password or passphrase
-    const reversed = original.split('').reverse().join('');
-    if (
-      authVal === reversed ||
-      authVal === original ||
-      (dms.steganography_secret && authVal === dms.steganography_secret)
-    ) {
-      valid = true;
-    }
+    accepted.push(reverse(original));
   } else if (mode === 'split_reverse') {
     const mid = Math.floor(original.length / 2);
-    const halfRev1 = original.slice(0, mid).split('').reverse().join('') + original.slice(mid);
-    const halfRev2 = original.slice(0, mid) + original.slice(mid).split('').reverse().join('');
-    const bothRev =
-      original.slice(0, mid).split('').reverse().join('') + original.slice(mid).split('').reverse().join('');
-    if (
-      authVal === halfRev1 ||
-      authVal === halfRev2 ||
-      authVal === bothRev ||
-      authVal === original ||
-      (dms.steganography_secret && authVal === dms.steganography_secret)
-    ) {
-      valid = true;
-    }
-  } else if (mode === 'shadow_password') {
-    if (authVal === 'shadow_secret_2026' || authVal === dms.steganography_secret || authVal === original) {
-      valid = true;
-    } else if (dms.passphrase_hash && bcrypt.compareSync(authVal, dms.passphrase_hash)) {
-      valid = true;
-    }
-  } else if (mode === 'mobile_otp') {
-    if (
-      authVal === '123456' ||
-      authVal === dms.steganography_secret ||
-      authVal === original ||
-      (/^\d{6}$/.test(authVal) && authVal.length === 6)
-    ) {
-      valid = true;
-    }
-  } else if (mode === 'hardware_key') {
-    if (
-      authVal.length >= 10 ||
-      authVal === 'fido2_yubikey_tap' ||
-      authVal === dms.steganography_secret ||
-      authVal === original
-    ) {
-      valid = true;
-    }
+    const head = original.slice(0, mid);
+    const tail = original.slice(mid);
+    accepted.push(reverse(head) + tail, head + reverse(tail), reverse(head) + reverse(tail));
   }
 
-  if (!valid && authVal === original) {
-    valid = true;
+  let valid = accepted.some((candidate) => secretsEqual(authVal, candidate));
+
+  // shadow_password also honours the hash stored when the switch was set up.
+  if (!valid && mode === 'shadow_password' && dms.passphrase_hash) {
+    valid = bcrypt.compareSync(authVal, dms.passphrase_hash);
   }
 
   if (!valid) {
@@ -833,7 +814,8 @@ async function heartbeatOwnerDMS(superAdminUserId, passphrase) {
 
   const shaInput = crypto.createHash('sha256').update(passphrase).digest('hex');
   const validSha = inMemoryOwnerDms.sha_hash && shaInput === inMemoryOwnerDms.sha_hash;
-  const validBcrypt = dbHash && (bcrypt.compareSync(passphrase, dbHash) || passphrase === dbHash);
+  // The stored hash is not a password: presenting it must not authenticate.
+  const validBcrypt = Boolean(dbHash) && bcrypt.compareSync(passphrase, dbHash);
 
   if (!validSha && !validBcrypt) {
     const err = new Error('Invalid owner passphrase');
