@@ -99,10 +99,12 @@ parser does not walk IPv6 extension headers; a packet carrying them arrives with
 ports, which default deny rejects. Guessing zero ports for a header chain nobody
 parsed would be an invented value.
 
-### 4. How peers are delivered (input to WP-202)
+### 4. How peers are delivered
 
-The spike reads peers from a file (`-spike-peers`). It is shaped like the netmap on
-purpose, and the shape is the proposal:
+WP-201 read peers from a file (`-spike-peers`). WP-202 replaced that file with a
+control plane document, `POST /v4/control/netmap`, and this section now records what
+was built rather than what was proposed. The shape was the proposal and it did not
+change:
 
 - **one complete document per node**, versioned. Peers are replaced, not merged: a
   peer the control plane stopped sending is a peer the node must stop talking to,
@@ -121,8 +123,70 @@ purpose, and the shape is the proposal:
   the single call that implements both, because both are "here is the complete set
   now".
 
-WP-202 replaces the file with the control plane document and the heartbeat's version
-field. This work package adds no control plane endpoint.
+#### 4.1 The contract, as built
+
+`POST /v4/control/netmap`, authenticated like `/v4/control/sync-acls`.
+
+Request `{node_id, version}`, where `version` is what the node holds and 0 means none.
+Response `{version, unchanged, self, peers, acl, routes, revoked_keys,
+generated_at_unix, max_staleness_seconds}`; when the version matches, `unchanged` is
+true and nothing else is sent.
+
+- `self` is `{overlay_ipv4, overlay_ipv6, mtu, listen_port}`.
+- `peers[]` is `{node_id, public_key_hex, allowed_ips[], endpoints[], derp_region,
+  keepalive_seconds}`. `public_key_hex` is the peer's X25519 identity key, which is
+  also its WireGuard key. `derp_region` is null: no column records one and nothing
+  measures one.
+- The heartbeat response carries `netmap_version` and the heartbeat request carries
+  the node's candidate `endpoints`.
+
+Three decisions the card fixed, and what they mean here:
+
+1. **Default deny before the first netmap.** A node with the data plane on installs
+   the ACL filter from the first packet. `pkg/acl` with no policy loaded drops
+   everything, so nothing moves until a netmap arrives. The organisation's
+   `default_policy` decides what the control plane *compiles into* the netmap, never
+   what a node does on its own.
+2. **One version per node.** The netmap version replaces the policy and route epochs
+   on the node side. The control plane still keeps both internally — they are what
+   `/v4/control/sync-acls` and `/v4/control/sync-routes` answer for a node running
+   without the data plane — and anything that moves either of them moves the netmap
+   version too.
+3. **The overlay MTU is a configured constant, default 1380**, leaving room for a DERP
+   frame header inside a 1500 byte path. Onion cells stay 1420 bytes as *logical units
+   on a TCP stream*: TCP segments them, so the overlay MTU does not constrain them and
+   no wire-level packet-size uniformity is claimed anywhere. This closes open question
+   2 below.
+
+**Determinism.** Peers are sorted by node id, allowed IPs by family then address,
+endpoints lexicographically, and every object is built with a fixed key order, so two
+builds from the same database state serialise to identical bytes. Without that an
+unchanged version would not mean unchanged.
+
+**Peer inclusion reads the policy the way the filter does.** `pkg/acl` takes the first
+matching entry in order, so "an ACCEPT exists for this peer" is not the test: a peer
+denied on one port and allowed on the rest is a peer, and a peer whose every entry is a
+DROP is not, however permissive a later rule is. Getting this wrong in the permissive
+direction hands a node the key of a peer the operator forbade.
+
+**The version is global, not per node.** It is the `netmap` row of `mesh_epochs`. A
+global counter can only over-signal — a node re-fetches a document it finds identical —
+and never under-signal, and under-signalling is the failure that leaves a revoked peer
+reachable. Endpoint changes are debounced to one version bump per node per 30 s, so an
+endpoint that flaps cannot make the whole fleet re-fetch on every heartbeat; the
+endpoints themselves are stored on every beat.
+
+#### 4.2 What the netmap endpoint does not authenticate
+
+It is authenticated by the fleet-wide enrolment token, exactly like `/v4/control/
+sync-acls` and `/v4/control/sync-routes`. That token does not bind a request to a node,
+so **any node holding it can read any other node's netmap**, which means any node can
+obtain the peer key and endpoint set of any other. The peer sets it serves are still
+compiled per node, so this is a confidentiality limit on who may *read* a netmap, not a
+hole in what a node may *reach*: the receiving node's filter still decides.
+
+Closing it is WP-103's (per-node credentials, proof of possession of the identity key).
+Until then the limitation is stated here rather than implied by the absence of a test.
 
 ### 5. NAT traversal and DERP
 
@@ -163,10 +227,11 @@ Unchanged in placement by this record, and now with somewhere to sit:
   policy), which is the code that already exists in `pkg/bridge`;
 - per-node activation arrives in the netmap.
 
-The cell size and the overlay MTU interact: 1420 byte cells over a 1420 byte overlay
-MTU leave no room for the TCP and IP headers, so every cell fragments at the overlay
-layer. Either the overlay MTU rises or the cell size falls. This has to be decided
-before the onion layer runs over the overlay; it is an open question below.
+The cell size and the overlay MTU do not in fact interact, and WP-202 settled it: a
+cell is a logical unit on a TCP stream, and TCP segments it against whatever the path
+MTU is. A 1420 byte cell crossing a 1380 byte overlay becomes two segments, which costs
+one extra packet per cell and nothing else. What would have been affected is a claim
+that every packet on the wire is the same size, and no such claim is made anywhere.
 
 ### 7. Post-quantum (Rosenpass)
 
@@ -295,10 +360,9 @@ why `ping` inside the container could not run.
 1. **The DERP `conn.Bind` is unproven.** It is the largest remaining unknown and the
    difference between a mesh that works between known endpoints and one that works
    between real networks.
-2. **Onion cell size against the overlay MTU.** 1420 byte cells do not fit in a 1420
-   byte overlay MTU once TCP and IP headers are added. A decision is needed: raise
-   the overlay MTU, or lower the cell size. Lowering the cell size changes a
-   published constant of the onion layer.
+2. **Onion cell size against the overlay MTU — closed by WP-202.** The overlay MTU is
+   a configured constant, default 1380, and cells stay 1420 bytes as logical units on
+   a TCP stream. See section 4.1, decision 3.
 3. **Enforcement has not been measured with a policy loaded.** The filter is on the
    packet path and tested, but the throughput figures above were taken with it off.
    The per-packet cost of `pkg/acl` at 700 Mbit/s is not known.

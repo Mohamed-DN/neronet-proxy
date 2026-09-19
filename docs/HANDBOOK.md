@@ -179,6 +179,7 @@ private key are not implemented.
 | `/v4/control/sync-acls` | Compiled ACL policy for the node, by epoch |
 | `/v4/control/sync-routes` | Subnet routes for the node, by epoch |
 | `/v4/control/circuit` | Selection of a three-hop path |
+| `/v4/control/netmap` | The node's complete peer set, keys, endpoints, compiled policy, routes and revocations as one versioned document. See `docs/adr/0020-data-plane.md` section 4 |
 
 What a real node does with them, verified with the node binary:
 
