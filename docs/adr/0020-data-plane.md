@@ -1,4 +1,4 @@
-# 1. Data plane: WireGuard via wireguard-go
+# 20. Data plane: WireGuard via wireguard-go
 
 Date: 2026-09-19
 Status: proposed
@@ -223,12 +223,12 @@ with 8 CPUs.
 
 | | `netstack`, uid 10001, `--cap-drop ALL` | `tun`, uid 10001, `--device /dev/net/tun --cap-add NET_ADMIN` |
 |---|---|---|
-| TCP round trip through the overlay (50 samples) | median 0.417 ms, p95 0.508 ms, max 1.053 ms | median 0.445 ms, p95 0.535 ms, max 0.791 ms |
-| ICMP through the overlay, idle | 0.44 ms (netstack ping) | not measured: `ping` needs `CAP_NET_RAW`, not granted |
-| Send throughput, 30 s, counted by the receiver | 2.48 GiB = **711 Mbit/s** | 32.47 GiB = **9297 Mbit/s** |
-| Receive throughput, 30 s | 2.34 GiB = **671 Mbit/s** | 22.94 GiB = **6569 Mbit/s** |
-| Node process CPU over the 62 s measurement | A 150 s, B 143 s (≈240% of one core each) | A 202 s, B 200 s (≈320% of one core each) |
-| Node process RSS after the transfer | A 54 MB, B 199 MB | A 460 MB, B 452 MB |
+| TCP round trip through the overlay (50 samples) | median 0.389 ms, p95 0.668 ms, max 1.045 ms | median 0.451 ms, p95 0.561 ms, max 0.735 ms |
+| ICMP through the overlay, idle | 0.49 ms (netstack ping) | not measured: `ping` needs `CAP_NET_RAW`, not granted |
+| Send throughput, 30 s, counted by the receiver | 2.34 GiB = **670 Mbit/s** | 32.55 GiB = **9321 Mbit/s** |
+| Receive throughput, 30 s | 2.18 GiB = **624 Mbit/s** | 24.33 GiB = **6967 Mbit/s** |
+| Node process CPU over the measurement (62-63 s) | A 154 s, B 146 s (≈240% of one core each) | A 220 s, B 219 s (≈355% of one core each) |
+| Node process RSS after the transfer | A 55 MB, B 192 MB | A 386 MB, B 449 MB |
 | Node process RSS at rest | 15-16 MB | 14-16 MB |
 
 Both figures are loopback-class: the traffic never leaves the WSL virtual machine,
@@ -236,23 +236,23 @@ so they are an upper bound on the software, not a network measurement. The ratio
 the finding: **the userspace stack costs roughly an order of magnitude of
 throughput** against a kernel interface, at the same latency.
 
-711 Mbit/s is ample for the management and onion traffic this product carries. It is
+670 Mbit/s is ample for the management and onion traffic this product carries. It is
 not ample for a node acting as a subnet gateway for a busy site, which is the case
 where `tun` mode earns its capabilities.
 
-The ICMP probe through the netstack rises from 0.44 ms at rest to 11-15 ms during
+The ICMP probe through the netstack rises from 0.49 ms at rest to 18-25 ms during
 the throughput flood: the gVisor stack is a single queue and the probe waits behind
 the transfer. Latency under load is a userspace-stack property to state in the
 product documentation, not a defect.
 
-RSS is the other cost: node B holds 199 MB after a 2.5 GiB transfer in netstack mode
-and 452 MB in tun mode, against 15 MB at rest. This is buffer retention, not a leak
+RSS is the other cost: node B holds 192 MB after a 2.3 GiB transfer in netstack mode
+and 449 MB in tun mode, against 15 MB at rest. This is buffer retention, not a leak
 (the process was still running when it was measured), but a node with a memory limit
 needs that headroom.
 
 **Capture.** `tcpdump -i eth0` in a sidecar sharing node B's network namespace, over
-the marker exchange and the latency phase, 227 packets captured and 0 dropped by the
-kernel: 225 UDP datagrams between `10.89.201.11:51820` and `10.89.201.12:51820`, 2
+the marker exchange and the latency phase, 224 packets captured and 0 dropped by the
+kernel: 222 UDP datagrams between `10.89.201.11:51820` and `10.89.201.12:51820`, 2
 ARP frames, **0 TCP segments**. A 34 byte marker string sent through the overlay and
 echoed back does not appear anywhere in the raw capture file. The tun-mode capture
 is the same shape: 240 packets, 0 dropped, only UDP 51820 and ARP, marker absent.
