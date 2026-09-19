@@ -163,7 +163,8 @@ router.post('/personal-dms/setup', authenticateToken, async (req, res, next) => 
 // 2. Steganographic Unlock / Access
 async function handlePersonalUnlock(req, res, next) {
   try {
-    const creds = req.body?.stego_credentials || req.body?.passphrase || req.body?.credentials || '';
+    const creds =
+      req.body?.stego_credentials || req.body?.passphrase || req.body?.credentials || req.body?.credential || '';
     const result = await NukeEngine.unlockPersonalDMS(req.user.id, creds);
     return res.status(200).json(result);
   } catch (err) {

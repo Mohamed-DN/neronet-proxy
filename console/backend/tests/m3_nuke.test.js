@@ -347,6 +347,32 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
       assert.strictEqual(unlockRes.body.unlocked, true);
     });
 
+    it('accepts the credential under the field name the console sends', async () => {
+      const secret = crypto.randomBytes(9).toString('hex');
+      await request(app)
+        .post('/api/nuke/personal-dms/setup')
+        .set('Authorization', `Bearer ${dmsUserToken}`)
+        .send({
+          passphrase: crypto.randomBytes(9).toString('hex'),
+          heartbeat_interval_seconds: 3600,
+          steganography_mode: 'shadow_password',
+          steganography_secret: secret
+        });
+
+      const ok = await request(app)
+        .post('/api/nuke/personal-dms/auth')
+        .set('Authorization', `Bearer ${dmsUserToken}`)
+        .send({ method: 'shadow_password', credential: secret });
+      assert.strictEqual(ok.status, 200);
+      assert.strictEqual(ok.body.unlocked, true);
+
+      const wrong = await request(app)
+        .post('/api/nuke/personal-dms/auth')
+        .set('Authorization', `Bearer ${dmsUserToken}`)
+        .send({ method: 'shadow_password', credential: crypto.randomBytes(9).toString('hex') });
+      assert.strictEqual(wrong.status, 401);
+    });
+
     it('should support mobile_otp steganography mode', async () => {
       await request(app).post('/api/nuke/personal-dms/setup').set('Authorization', `Bearer ${dmsUserToken}`).send({
         passphrase: 'otp_passphrase',
