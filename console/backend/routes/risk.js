@@ -4,6 +4,7 @@ const router = express.Router();
 const RiskEngine = require('../services/RiskEngine');
 const { authenticateToken } = require('../middleware/auth');
 const { isPostgres, getPgPool, getDatabase } = require('../db/index');
+const { readPostureCounts } = require('../services/MetricsCollector');
 
 router.use(authenticateToken);
 
@@ -39,12 +40,18 @@ router.get('/summary', async (req, res, next) => {
     const d = await RiskEngine.getRiskDashboard();
     const anomalies = await countRecentAnomalies();
 
+    // Risk and posture are separate facts. A low risk score says nothing was seen
+    // going wrong; it is not evidence that the host is hardened, and the dashboard
+    // labelled its low-risk count "Fully compliant posture" on that basis.
+    const posture = await readPostureCounts();
+
     return res.status(200).json({
       distribution: {
         low: d.low_risk_nodes,
         medium: d.medium_risk_nodes,
         high: d.high_risk_nodes
       },
+      posture,
       average_risk_score: d.average_risk_score,
       total_nodes: d.total_nodes,
       quarantined_nodes: d.quarantined_nodes,

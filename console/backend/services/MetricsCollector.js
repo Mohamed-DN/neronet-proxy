@@ -1,4 +1,5 @@
 const { isPostgres, getPgPool, getDatabase } = require('../db/index');
+const { derivePostureStatus, emptyPostureCounts } = require('../utils/posture');
 
 // Nodes report every 15 seconds. A node is counted as live if it has been heard
 // from within four of those intervals, which absorbs one lost datagram and a slow
@@ -25,6 +26,11 @@ let timer = null;
  * is the caller's job and needs two samples.
  */
 async function readFleetState() {
+  // cpu_usage_pct = 0 is the node saying "not measured": nothing on a node samples
+  // CPU yet, and the wire field has no null. Averaging those zeros in reported a
+  // fleet-wide 0% load as if it were a measurement, so they are excluded and the
+  // average is null when no node measured anything. Memory is genuinely measured
+  // (runtime.MemStats) and is averaged as-is.
   const sql = `
     SELECT
       count(*) FILTER (WHERE last_heartbeat > now() - make_interval(secs => $1)) AS live_nodes,
@@ -32,7 +38,9 @@ async function readFleetState() {
       count(*) FILTER (WHERE is_quarantined) AS quarantined_nodes,
       coalesce(sum(rx_bytes), 0) AS rx_bytes,
       coalesce(sum(tx_bytes), 0) AS tx_bytes,
-      avg(cpu_usage_pct) FILTER (WHERE last_heartbeat > now() - make_interval(secs => $1)) AS cpu_pct,
+      avg(cpu_usage_pct) FILTER (
+        WHERE last_heartbeat > now() - make_interval(secs => $1) AND cpu_usage_pct > 0
+      ) AS cpu_pct,
       avg(memory_usage_pct) FILTER (WHERE last_heartbeat > now() - make_interval(secs => $1)) AS mem_pct
     FROM nodes`;
 
@@ -55,13 +63,50 @@ async function readFleetState() {
       sum(CASE WHEN is_quarantined = 1 THEN 1 ELSE 0 END) AS quarantined_nodes,
       coalesce(sum(rx_bytes), 0) AS rx_bytes,
       coalesce(sum(tx_bytes), 0) AS tx_bytes,
-      avg(CASE WHEN last_heartbeat > ? THEN cpu_usage_pct END) AS cpu_pct,
+      avg(CASE WHEN last_heartbeat > ? AND cpu_usage_pct > 0 THEN cpu_usage_pct END) AS cpu_pct,
       avg(CASE WHEN last_heartbeat > ? THEN memory_usage_pct END) AS mem_pct
     FROM nodes`
     )
     .get(cutoff, cutoff, cutoff);
   const users = db.prepare('SELECT count(*) AS c FROM users').get();
   return shape(row, Number(users.c));
+}
+
+/**
+ * Counts nodes by posture status across the whole fleet.
+ *
+ * The derivation is deliberately in JavaScript rather than in two dialects of SQL
+ * JSON: there is then one definition of what verified_compliant means, shared with
+ * the node list, and a row holding an unparseable document degrades to unverified
+ * instead of failing the query. It reads one column for every node, which is fine at
+ * the fleet sizes this console handles and is the first thing to turn into a stored
+ * column if that stops being true.
+ */
+async function readPostureCounts() {
+  let rows;
+
+  if (isPostgres()) {
+    const result = await getPgPool().query('SELECT posture_checks FROM nodes');
+    rows = result.rows;
+  } else {
+    rows = getDatabase().prepare('SELECT posture_checks FROM nodes').all();
+  }
+
+  const counts = emptyPostureCounts();
+
+  for (const row of rows) {
+    let posture = row.posture_checks;
+    if (typeof posture === 'string') {
+      try {
+        posture = JSON.parse(posture);
+      } catch (err) {
+        posture = null;
+      }
+    }
+    counts[derivePostureStatus(posture)] += 1;
+  }
+
+  return counts;
 }
 
 function shape(row, activeUsers) {
@@ -169,6 +214,7 @@ module.exports = {
   stopCollector,
   collectOnce,
   readFleetState,
+  readPostureCounts,
   computeHealthScore,
   LIVENESS_WINDOW_SECONDS
 };

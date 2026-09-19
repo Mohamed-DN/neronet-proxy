@@ -51,21 +51,30 @@ async function record(nodeId, metrics) {
 
   const key = nodeKey(nodeId);
 
+  const fields = {
+    cpu_usage_pct: String(metrics.cpuPct ?? 0),
+    memory_usage_pct: String(metrics.memMb ?? 0),
+    battery_pct: String(metrics.batteryPct ?? 0),
+    // 0 means the node has not measured a round trip yet. It is stored as-is and
+    // filtered at the point of use, so an unmeasured node is distinguishable
+    // from one with a genuinely sub-millisecond path.
+    latency_ms: String(metrics.rttMs ?? 0),
+    last_heartbeat: new Date().toISOString()
+  };
+
+  // The posture document goes through the buffer like everything else on the beat.
+  // A beat without an attestation carries no field at all, so the flush leaves the
+  // stored document alone instead of replacing it with nulls.
+  if (metrics.posture) {
+    fields.posture_checks = JSON.stringify(metrics.posture);
+  }
+
   try {
     await client
       .multi()
       .hincrby(key, 'tx_bytes', Math.trunc(metrics.txBytes || 0))
       .hincrby(key, 'rx_bytes', Math.trunc(metrics.rxBytes || 0))
-      .hset(key, {
-        cpu_usage_pct: String(metrics.cpuPct ?? 0),
-        memory_usage_pct: String(metrics.memMb ?? 0),
-        battery_pct: String(metrics.batteryPct ?? 0),
-        // 0 means the node has not measured a round trip yet. It is stored as-is and
-        // filtered at the point of use, so an unmeasured node is distinguishable
-        // from one with a genuinely sub-millisecond path.
-        latency_ms: String(metrics.rttMs ?? 0),
-        last_heartbeat: new Date().toISOString()
-      })
+      .hset(key, fields)
       .expire(key, ENTRY_TTL_SECONDS)
       .sadd(PENDING_SET, nodeId)
       .exec();
@@ -123,6 +132,10 @@ function applyLive(row, live) {
     memory_usage_pct: live.memory_usage_pct !== undefined ? Number(live.memory_usage_pct) : row.memory_usage_pct,
     battery_pct: live.battery_pct !== undefined ? Number(live.battery_pct) : row.battery_pct,
     latency_ms: live.latency_ms !== undefined ? Number(live.latency_ms) : row.latency_ms,
+    // Buffered posture is newer than the stored document, so a node list read before
+    // the next flush reports what the node last attested rather than the previous
+    // state. The value stays a JSON string; the reader parses either form.
+    posture_checks: live.posture_checks !== undefined ? live.posture_checks : row.posture_checks,
     last_heartbeat: live.last_heartbeat || row.last_heartbeat
   };
 }
@@ -215,10 +228,11 @@ async function persist(updates) {
              memory_usage_pct = $4,
              battery_pct = $5,
              latency_ms = $6,
+             posture_checks = COALESCE($7::jsonb, posture_checks),
              is_healthy = TRUE,
-             last_heartbeat = $7,
+             last_heartbeat = $8,
              updated_at = NOW()
-           WHERE id = $8`,
+           WHERE id = $9`,
           [
             Number(metrics.tx_bytes || 0),
             Number(metrics.rx_bytes || 0),
@@ -226,6 +240,7 @@ async function persist(updates) {
             Number(metrics.memory_usage_pct || 0),
             Number(metrics.battery_pct || 0),
             Number(metrics.latency_ms || 0),
+            bufferedPosture(metrics),
             metrics.last_heartbeat || new Date().toISOString(),
             nodeId
           ]
@@ -250,6 +265,7 @@ async function persist(updates) {
        memory_usage_pct = ?,
        battery_pct = ?,
        latency_ms = ?,
+       posture_checks = COALESCE(?, posture_checks),
        is_healthy = 1,
        last_heartbeat = ?,
        updated_at = CURRENT_TIMESTAMP
@@ -265,11 +281,38 @@ async function persist(updates) {
         Number(metrics.memory_usage_pct || 0),
         Number(metrics.battery_pct || 0),
         Number(metrics.latency_ms || 0),
+        bufferedPosture(metrics),
         metrics.last_heartbeat || new Date().toISOString(),
         nodeId
       );
     }
   })();
+}
+
+/**
+ * The posture document a buffered beat carried, as JSON, or null when it carried
+ * none. Null makes the COALESCE in both statements keep what is already stored.
+ *
+ * Valkey hashes hold strings, so the value arrives back as the JSON that record()
+ * wrote. It is validated by round-tripping it: a corrupted entry must not replace a
+ * good stored document with something no reader can parse.
+ */
+function bufferedPosture(metrics) {
+  const raw = metrics.posture_checks;
+  if (typeof raw !== 'string' || raw === '') {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    return JSON.stringify(parsed);
+  } catch (err) {
+    logger.warn(`Discarding an unparseable buffered posture document: ${err.message}`);
+    return null;
+  }
 }
 
 function startFlusher(intervalMs = Number(process.env.SOVEREIGN_HEARTBEAT_FLUSH_MS || 30_000)) {

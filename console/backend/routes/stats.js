@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { isPostgres, getPgPool, getDatabase } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
-const { readFleetState, LIVENESS_WINDOW_SECONDS } = require('../services/MetricsCollector');
+const { readFleetState, readPostureCounts, LIVENESS_WINDOW_SECONDS } = require('../services/MetricsCollector');
 const { COUNTRY_NAMES } = require('../utils/countries');
 const AclEngine = require('../services/AclEngine');
 
@@ -23,6 +23,11 @@ async function overviewHandler(req, res, next) {
     // the console renders null as a dash, which is the honest thing to show.
     const rates = await deriveThroughput();
 
+    // The Overview used to derive a "compliant" count as active minus quarantined,
+    // which is a liveness figure wearing a compliance label. These three are counted
+    // from what each node actually attested.
+    const posture = await readPostureCounts();
+
     return res.status(200).json({
       active_nodes: state.liveNodes,
       total_nodes: state.enrolledNodes,
@@ -35,6 +40,12 @@ async function overviewHandler(req, res, next) {
       total_rx_bytes: state.rxBytes,
       total_tx_bytes: state.txBytes,
       country_distribution: await countryDistribution(),
+      posture_verified_compliant_nodes: posture.verified_compliant,
+      posture_unverified_nodes: posture.unverified,
+      posture_non_compliant_nodes: posture.non_compliant,
+      // null when no node reported a measured CPU value. Nothing samples CPU on a
+      // node yet, so this is null on every current deployment; 0 would read as an
+      // idle fleet.
       avg_cpu_pct: state.cpuPct,
       avg_memory_pct: state.memPct,
       system_health: `${state.healthScore}%`,

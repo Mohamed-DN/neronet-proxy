@@ -26,6 +26,7 @@ const crypto = require('crypto');
 
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
 const { allocateNextVip, normalisePublicKeyHex } = require('../utils/crypto');
+const { buildPostureDocument } = require('../utils/posture');
 const HeartbeatBuffer = require('../services/HeartbeatBuffer');
 const AclEngine = require('../services/AclEngine');
 const RouteEngine = require('../services/RouteEngine');
@@ -162,7 +163,9 @@ router.post('/register', async (req, res) => {
     const countryCode = String(capability.country_code || 'US')
       .slice(0, 2)
       .toUpperCase();
-    const ipClass = String(capability.ip_class || 'RESIDENTIAL');
+    // UNKNOWN, not RESIDENTIAL. Nothing classifies a node's uplink, and a node that
+    // does not declare one is not evidence of a domestic line.
+    const ipClass = String(capability.ip_class || 'UNKNOWN');
     const city = String(capability.city || '');
     const asn = Number.isFinite(capability.asn) ? capability.asn : 0;
     const endpoints = Array.isArray(req.body.endpoints) ? req.body.endpoints : [];
@@ -316,6 +319,13 @@ router.post('/heartbeat', async (req, res) => {
       return res.status(404).json({ error: `unknown node_id ${nodeId}` });
     }
 
+    // The attestation the node sends with every beat. It was decoded off the wire and
+    // then dropped on the floor, which is why posture_checks on every row still held
+    // the schema's fabricated default. Null for anything the node did not measure;
+    // null for the whole document when it sent no attestation, so a beat without one
+    // leaves the stored posture alone rather than blanking it.
+    const posture = buildPostureDocument(req.body.posture);
+
     // Buffered rather than written straight through: at 100,000 nodes beating every
     // 15 seconds this endpoint alone would be 6,667 UPDATEs per second against a
     // table with 11 indexes. See services/HeartbeatBuffer.js.
@@ -331,12 +341,16 @@ router.post('/heartbeat', async (req, res) => {
       cpuPct,
       memMb,
       batteryPct,
-      rttMs
+      rttMs,
+      posture
     });
 
     if (!buffered) {
       // Valkey unavailable: fall back to writing through, so a cache outage costs
-      // throughput rather than telemetry.
+      // throughput rather than telemetry. COALESCE keeps the stored posture when this
+      // beat carried no attestation.
+      const postureJson = posture === null ? null : JSON.stringify(posture);
+
       await runQuery(
         `UPDATE nodes SET
          tx_bytes = tx_bytes + $1,
@@ -345,11 +359,12 @@ router.post('/heartbeat', async (req, res) => {
          memory_usage_pct = $4,
          battery_pct = $5,
          latency_ms = $6,
+         posture_checks = COALESCE($7::jsonb, posture_checks),
          is_healthy = TRUE,
          last_heartbeat = NOW(),
          updated_at = NOW()
-       WHERE id = $7`,
-        [txBytes, rxBytes, cpuPct, memMb, batteryPct, rttMs, nodeId],
+       WHERE id = $8`,
+        [txBytes, rxBytes, cpuPct, memMb, batteryPct, rttMs, postureJson, nodeId],
         `UPDATE nodes SET
          tx_bytes = tx_bytes + ?,
          rx_bytes = rx_bytes + ?,
@@ -357,11 +372,12 @@ router.post('/heartbeat', async (req, res) => {
          memory_usage_pct = ?,
          battery_pct = ?,
          latency_ms = ?,
+         posture_checks = COALESCE(?, posture_checks),
          is_healthy = 1,
          last_heartbeat = CURRENT_TIMESTAMP,
          updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-        [txBytes, rxBytes, cpuPct, memMb, batteryPct, rttMs, nodeId]
+        [txBytes, rxBytes, cpuPct, memMb, batteryPct, rttMs, postureJson, nodeId]
       );
     }
 

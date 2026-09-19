@@ -7,6 +7,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { logAuditEvent } = require('../utils/audit');
 const { allocateNextVip, generateCurve25519Keypair } = require('../utils/crypto');
 const { broadcastNodeEvent } = require('../services/TopologySync');
+const { derivePostureStatus } = require('../utils/posture');
 
 router.use(authenticateToken);
 
@@ -28,11 +29,11 @@ function formatNode(row) {
   const killSwitch = Boolean(row.kill_switch_enabled);
 
   const endpoints = parseJsonField(row.endpoints, []);
-  const posture = parseJsonField(row.posture_checks, {
-    compliant: !isQuarantined,
-    os: 'Linux',
-    disk_encrypted: true
-  });
+  // The fallback used to assert compliance, disk encryption and an operating system
+  // for any node whose posture column was empty or unparseable -- that is, it
+  // invented the answer precisely when there was no answer. An unreadable document
+  // is no measurement, and no measurement is {}.
+  const posture = parseJsonField(row.posture_checks, {});
   const metadata = parseJsonField(row.metadata, {});
 
   return {
@@ -65,6 +66,9 @@ function formatNode(row) {
     memory_usage_pct: Number(row.memory_usage_pct) || 0.0,
     battery_pct: row.battery_pct !== undefined ? Number(row.battery_pct) : 100.0,
     posture,
+    // Three states, not two. "Not quarantined" is a different fact and is reported
+    // separately as is_quarantined.
+    posture_status: derivePostureStatus(posture),
     metadata,
     last_heartbeat: row.last_heartbeat,
     created_at: row.created_at,
@@ -165,7 +169,10 @@ router.post('/', async (req, res, next) => {
     const VALID_IP_CLASSES = ['RESIDENTIAL', 'MOBILE_5G', 'DATACENTER', 'UNKNOWN'];
 
     const nodeRole = role && VALID_ROLES.includes(role) ? role : 'CLIENT_ORIGIN';
-    const nodeIpClass = ip_class && VALID_IP_CLASSES.includes(ip_class) ? ip_class : 'RESIDENTIAL';
+    // UNKNOWN when the caller declares nothing, matching the column default from
+    // migration 012. Nothing determines a node's IP class, so RESIDENTIAL here was a
+    // guess recorded as a fact.
+    const nodeIpClass = ip_class && VALID_IP_CLASSES.includes(ip_class) ? ip_class : 'UNKNOWN';
     const nodeCountry = country_code || 'US';
     const onionRouting = onion_routing_enabled !== undefined ? Boolean(onion_routing_enabled) : Number(onion_hops) > 0;
     const hops = onionRouting ? (Number(onion_hops) > 0 ? Number(onion_hops) : 3) : 0;
