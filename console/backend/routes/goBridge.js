@@ -34,6 +34,7 @@ const CircuitEngine = require('../services/CircuitEngine');
 const RevocationEngine = require('../services/RevocationEngine');
 const config = require('../config/env');
 const logger = require('../utils/logger');
+const { logAuditEvent } = require('../utils/audit');
 
 const router = express.Router();
 
@@ -178,9 +179,9 @@ router.post('/register', async (req, res) => {
     // allocating new ones, otherwise every restart burns an address and orphans the
     // previous lease.
     const existing = await runQuery(
-      'SELECT overlay_ipv4, overlay_ipv6 FROM nodes WHERE id = $1',
+      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code FROM nodes WHERE id = $1',
       [nodeId],
-      'SELECT overlay_ipv4, overlay_ipv6 FROM nodes WHERE id = ?',
+      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code FROM nodes WHERE id = ?',
       [nodeId]
     );
 
@@ -198,6 +199,18 @@ router.post('/register', async (req, res) => {
 
     const endpointsJson = JSON.stringify(endpoints);
 
+    // On conflict only is_healthy, endpoints and updated_at are written.
+    //
+    // Registration is authenticated by one fleet-wide token and a public key is not
+    // a secret, so re-registering somebody else's key used to rewrite that node's
+    // role -- to EXIT_BRIDGE, which puts it on the exit path -- and its country,
+    // which is what geofencing decides on. Until WP-103 makes a node prove
+    // possession of its key, those three columns are set at first enrolment and
+    // changed only through the authenticated console API. Endpoints are different:
+    // they change whenever the node moves, and a wrong one costs reachability
+    // rather than policy.
+    const mismatch = existing.length > 0 ? describeMismatch(existing[0], { role, ipClass, countryCode }) : null;
+
     if (isPostgres()) {
       const pool = getPgPool();
       await pool.query(
@@ -207,9 +220,6 @@ router.post('/register', async (req, res) => {
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb)
          ON CONFLICT (id) DO UPDATE SET
            is_healthy = TRUE,
-           role = EXCLUDED.role,
-           ip_class = EXCLUDED.ip_class,
-           country_code = EXCLUDED.country_code,
            endpoints = EXCLUDED.endpoints,
            updated_at = NOW()`,
         [
@@ -236,9 +246,6 @@ router.post('/register', async (req, res) => {
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
            is_healthy = 1,
-           role = excluded.role,
-           ip_class = excluded.ip_class,
-           country_code = excluded.country_code,
            endpoints = excluded.endpoints,
            updated_at = CURRENT_TIMESTAMP`
       ).run(
@@ -255,6 +262,23 @@ router.post('/register', async (req, res) => {
         overlayIpv6,
         endpointsJson
       );
+    }
+
+    // Recorded rather than refused: the node is told nothing and keeps running with
+    // the attributes the control plane holds, so a node with a stale configuration
+    // still enrols, while an attempt to move a node onto the exit path leaves a
+    // trace. Written after the upsert, so a failed write does not leave an event
+    // describing a change that did not happen.
+    if (mismatch) {
+      await logAuditEvent({
+        eventType: 'node.reregister_mismatch',
+        severity: 'warn',
+        targetId: nodeId,
+        targetType: 'node',
+        message: `Re-registration of ${nodeId} asked for ${mismatch.changed.join(', ')} different from the stored value; the stored values were kept`,
+        ipAddress: req.ip,
+        metadata: mismatch
+      });
     }
 
     // Rules expand to one entry per peer, so the compiled policy changes when the
@@ -621,6 +645,30 @@ router.post('/circuit', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * Compare what a re-registration asks for against what is stored.
+ *
+ * Returns null when they agree, so an ordinary re-enrolment writes no audit event
+ * and the ledger holds only the attempts that wanted something changed.
+ */
+function describeMismatch(stored, requested) {
+  const fields = [
+    ['role', stored.role, requested.role],
+    ['ip_class', stored.ip_class, requested.ipClass],
+    ['country_code', stored.country_code, requested.countryCode]
+  ];
+
+  const changed = fields.filter(([, was, asked]) => was !== asked).map(([field]) => field);
+
+  if (changed.length === 0) return null;
+
+  return {
+    changed,
+    stored: { role: stored.role, ip_class: stored.ip_class, country_code: stored.country_code },
+    requested: { role: requested.role, ip_class: requested.ipClass, country_code: requested.countryCode }
+  };
+}
 
 /** Endpoints are JSONB on PostgreSQL and a TEXT column on SQLite. */
 function parseEndpoints(value) {
