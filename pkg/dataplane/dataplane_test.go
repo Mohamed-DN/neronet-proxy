@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -37,12 +38,25 @@ func newTestNode(t *testing.T, address string, filter PacketFilter) *testNode {
 		t.Fatalf("parsing %q: %v", address, err)
 	}
 
-	dev, err := New(Config{
+	cfg := Config{
 		Mode:       ModeNetstack,
 		PrivateKey: keys.PrivateKey,
 		Addresses:  []netip.Prefix{prefix},
 		Filter:     filter,
-	})
+	}
+	// Handshake problems are invisible without wireguard-go's own log. Off by
+	// default because it is verbose enough to bury the test output.
+	if os.Getenv("NERONET_DATAPLANE_TEST_VERBOSE") != "" {
+		cfg.Verbose = true
+		// Not t.Logf: wireguard-go keeps logging while it shuts down, after the
+		// test function has returned, and logging into a finished *testing.T is a
+		// data race the race detector reports instead of the tunnel's own.
+		cfg.Logf = func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, address+" "+format+"\n", args...)
+		}
+	}
+
+	dev, err := New(cfg)
 	if err != nil {
 		t.Fatalf("bringing up device on %s: %v", address, err)
 	}
@@ -59,12 +73,18 @@ func newTestNode(t *testing.T, address string, filter PacketFilter) *testNode {
 	return &testNode{keys: keys, dev: dev, addr: prefix.Addr(), port: port}
 }
 
+// peerEntry describes this node as its counterpart sees it.
+//
+// No persistent keepalive: a configured keepalive makes a peer send as soon as it
+// is added, so both ends initiate a handshake at the same instant, both reject the
+// other's response as unsolicited, and neither can try again until the five second
+// rekey timeout expires. Nothing here is behind NAT, so the keepalive buys nothing
+// and costs five seconds per test.
 func (n *testNode) peerEntry() Peer {
 	return Peer{
-		PublicKey:           hex.EncodeToString(n.keys.PublicKey[:]),
-		Endpoint:            fmt.Sprintf("127.0.0.1:%d", n.port),
-		AllowedIPs:          []netip.Prefix{netip.PrefixFrom(n.addr, n.addr.BitLen())},
-		PersistentKeepalive: 1,
+		PublicKey:  hex.EncodeToString(n.keys.PublicKey[:]),
+		Endpoint:   fmt.Sprintf("127.0.0.1:%d", n.port),
+		AllowedIPs: []netip.Prefix{netip.PrefixFrom(n.addr, n.addr.BitLen())},
 	}
 }
 
@@ -216,6 +236,12 @@ func TestTunnelPayloadIsNotOnTheWire(t *testing.T) {
 	if _, err := io.ReadFull(conn, got); err != nil {
 		t.Fatalf("reading through the tunnel: %v", err)
 	}
+
+	// End the overlay conversation before taking the relay away. The teardown of
+	// the TCP stream travels through the tunnel like everything else, so a relay
+	// closed first leaves the responder waiting for a FIN that can no longer arrive.
+	conn.Close()
+	responder.Close()
 
 	relay.Close()
 	<-done

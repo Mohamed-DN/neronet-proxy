@@ -72,10 +72,11 @@ const (
 
 // ping sends one echo request and measures the round trip.
 //
-// The reply is matched on the identifier, sequence and payload rather than on
-// arrival alone, because the ICMP endpoint is shared: another echo in flight would
-// otherwise be counted as this one's answer and report a latency that was never
-// measured.
+// The reply is matched on the payload, which carries a nonce, rather than on
+// arrival alone: another echo in flight would otherwise be counted as this one's
+// answer and report a latency that was never measured. The identifier in the header
+// is not usable for that, because the stack overwrites it with the one bound to the
+// endpoint it sends from.
 func (b *netstackBackend) ping(ctx context.Context, dst netip.Addr) (time.Duration, error) {
 	if !dst.IsValid() {
 		return 0, errors.New("dataplane: ping needs a destination address")
@@ -99,8 +100,8 @@ func (b *netstackBackend) ping(ctx context.Context, dst netip.Addr) (time.Durati
 	seq := uint16(rand.Uint32())
 	payload := make([]byte, 16)
 	binary.BigEndian.PutUint64(payload[:8], uint64(time.Now().UnixNano()))
-	binary.BigEndian.PutUint16(payload[8:10], id)
-	binary.BigEndian.PutUint16(payload[10:12], seq)
+	binary.BigEndian.PutUint32(payload[8:12], rand.Uint32())
+	binary.BigEndian.PutUint32(payload[12:16], rand.Uint32())
 
 	requestType, replyType := byte(icmpEchoRequest), byte(icmpEchoReply)
 	if dst.Is6() {
@@ -126,9 +127,6 @@ func (b *netstackBackend) ping(ctx context.Context, dst netip.Addr) (time.Durati
 		}
 		reply := buf[:n]
 		if reply[0] != replyType {
-			continue
-		}
-		if binary.BigEndian.Uint16(reply[4:6]) != id || binary.BigEndian.Uint16(reply[6:8]) != seq {
 			continue
 		}
 		if string(reply[8:8+len(payload)]) != string(payload) {

@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"time"
 )
 
 // The measurement protocol. The first byte of a connection selects what the
@@ -15,8 +16,15 @@ import (
 const (
 	// ModeByteEcho copies every byte back. Used for round trip latency.
 	ModeByteEcho byte = 'E'
-	// ModeByteDrain reads until the peer closes its write side, then answers with
-	// the byte count as eight bytes, big endian. Used for send throughput.
+	// ModeByteDrain reads for a number of milliseconds the client sends as eight
+	// bytes after the mode byte, then answers with the bytes received and the
+	// nanoseconds they took, eight bytes each. Used for send throughput.
+	//
+	// The count is taken on the receiving side because that is the side that knows
+	// what crossed the tunnel. A sender only knows what it handed to a socket.
+	// A half close would have been simpler, but the SOCKS5 bridge in front of this
+	// responder tears the whole connection down when one direction ends, so the
+	// report would never come back.
 	ModeByteDrain byte = 'D'
 	// ModeByteSource writes a fixed pattern until the peer closes. Used for
 	// receive throughput.
@@ -109,10 +117,7 @@ func (r *EchoResponder) handle(conn net.Conn) {
 	case ModeByteEcho:
 		_, _ = io.Copy(conn, conn)
 	case ModeByteDrain:
-		n, _ := io.Copy(io.Discard, conn)
-		var count [8]byte
-		binary.BigEndian.PutUint64(count[:], uint64(n))
-		_, _ = conn.Write(count[:])
+		r.drain(conn)
 	case ModeByteSource:
 		for {
 			if _, err := conn.Write(sourcePattern); err != nil {
@@ -120,6 +125,55 @@ func (r *EchoResponder) handle(conn net.Conn) {
 			}
 		}
 	}
+}
+
+// maxDrainDuration bounds how long one measurement connection can hold the
+// responder. A client that asked for hours would be a denial of service against a
+// node that has no reason to trust it.
+const maxDrainDuration = 5 * time.Minute
+
+func (r *EchoResponder) drain(conn net.Conn) {
+	var request [8]byte
+	if _, err := io.ReadFull(conn, request[:]); err != nil {
+		return
+	}
+	d := time.Duration(binary.BigEndian.Uint64(request[:])) * time.Millisecond
+	if d <= 0 || d > maxDrainDuration {
+		return
+	}
+
+	if err := conn.SetReadDeadline(time.Now().Add(d)); err != nil {
+		return
+	}
+
+	buf := make([]byte, 64*1024)
+	var received uint64
+	start := time.Now()
+	for {
+		n, err := conn.Read(buf)
+		received += uint64(n)
+		if err != nil {
+			break
+		}
+	}
+	elapsed := time.Since(start)
+
+	if err := conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return
+	}
+	var report [16]byte
+	binary.BigEndian.PutUint64(report[0:8], received)
+	binary.BigEndian.PutUint64(report[8:16], uint64(elapsed.Nanoseconds()))
+	if _, err := conn.Write(report[:]); err != nil {
+		return
+	}
+
+	// Keep draining until the client has seen the report and closed. Closing with
+	// data still unread in the receive queue makes the stack send a reset, and the
+	// reset overtakes the report: the client is still writing at full speed when
+	// the measurement window ends, so there is always something left to read.
+	_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	_, _ = io.Copy(io.Discard, conn)
 }
 
 // Close stops the responder and waits for its connections to finish.
