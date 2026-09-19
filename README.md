@@ -190,23 +190,16 @@ Get a complete local Sovereign Mesh cluster running in under 5 minutes with zero
 git clone https://github.com/Mohamed-DN/neronet-proxy.git
 cd neronet-proxy
 
-# Copy master environment template
-cp .env.example .env
-chmod 600 .env
+# Writes .env with fresh random secrets. Refuses to overwrite an existing file
+# and never prints the values. On Windows, run it from Git Bash.
+sh scripts/dev/gen-env.sh
 ```
 
-Then fill in the secrets the template leaves blank. Under `NODE_ENV=production` the
-API refuses to start without them, and refuses any value that has ever appeared in a
-committed file here — a presence check cannot tell a real secret from the example
-one, and the example used to ship with working values.
-
-```bash
-for key in SOVEREIGN_JWT_SECRET SOVEREIGN_REFRESH_SECRET SOVEREIGN_ADMIN_PASS POSTGRES_PASSWORD; do
-  printf '%s=%s\n' "$key" "$(openssl rand -base64 48)"
-done >> .env
-
-printf 'SOVEREIGN_REGISTRATION_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-```
+Under `NODE_ENV=production` the API refuses to start without these secrets, and
+refuses any value that has ever appeared in a committed file here: a presence check
+cannot tell a real secret from the example one, and the example used to ship with
+working values. `gen-env.sh` writes hex values, which are safe inside the
+`DATABASE_URL`. Every other setting has a default; `.env.example` lists them.
 
 `SOVEREIGN_REGISTRATION_TOKEN` is what a Go node presents to enrol. Without it the
 control plane accepts no nodes at all in production: `/v4/control/register` writes to
