@@ -48,38 +48,38 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
   const isSuperAdmin = role === 'super-admin';
 
   return (
-    <header className="h-16 border-b border-dark-border bg-dark-card/90 backdrop-blur-md sticky top-0 z-30 px-6 flex items-center justify-between">
+    <header className="h-16 border-b border-border bg-surface-raised/90 backdrop-blur-md sticky top-0 z-30 px-6 flex items-center justify-between">
       {/* Left Area: Search & Context Path */}
       <div className="flex items-center space-x-6">
         <div className="relative">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-subtle absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Search nodes, VIPs, users, audit logs..."
-            className="w-72 pl-9 pr-4 py-1.5 text-xs bg-dark-canvas border border-dark-border rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-neon-cyan focus:ring-1 focus:ring-neon-cyan/50 font-mono transition-all"
+            className="w-72 pl-9 pr-4 py-1.5 text-xs bg-surface border border-border rounded-lg text-content placeholder-subtle focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/50 font-mono transition-all"
           />
         </div>
 
         {/* Aggregate Throughput Ticker */}
-        <div className="hidden lg:flex items-center space-x-4 px-3 py-1.5 rounded-lg bg-dark-canvas border border-dark-border/80 text-xs font-mono">
-          <div className="flex items-center space-x-1.5 text-neon-cyan">
+        <div className="hidden lg:flex items-center space-x-4 px-3 py-1.5 rounded-lg bg-surface border border-border/80 text-xs font-mono">
+          <div className="flex items-center space-x-1.5 text-accent">
             <ArrowDownLeft className="w-3.5 h-3.5" />
-            <span className="text-slate-400">RX:</span>
+            <span className="text-muted">RX:</span>
             <span className="font-bold tabular-nums">{rate(live?.total_bandwidth_rx_mb_s)}</span>
           </div>
-          <span className="text-dark-border">|</span>
-          <div className="flex items-center space-x-1.5 text-neon-indigo">
+          <span className="text-border">|</span>
+          <div className="flex items-center space-x-1.5 text-info">
             <ArrowUpRight className="w-3.5 h-3.5" />
-            <span className="text-slate-400">TX:</span>
+            <span className="text-muted">TX:</span>
             <span className="font-bold tabular-nums">{rate(live?.total_bandwidth_tx_mb_s)}</span>
           </div>
-          <span className="text-dark-border">|</span>
+          <span className="text-border">|</span>
           {/* This read "Circuits: 142". Circuits are built on request and never
               stored, so there is no count to report; live nodes is a figure the
               control plane actually holds. */}
-          <div className="flex items-center space-x-1.5 text-neon-emerald">
+          <div className="flex items-center space-x-1.5 text-success">
             <Zap className="w-3.5 h-3.5" />
-            <span className="text-slate-400">Nodes up:</span>
+            <span className="text-muted">Nodes up:</span>
             <span className="font-bold tabular-nums">{live ? `${live.active_nodes}/${live.total_nodes}` : '—'}</span>
           </div>
         </div>
@@ -90,20 +90,18 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
         {/* Enroll Node Button */}
         <button
           onClick={onOpenEnrollModal}
-          className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-neon-cyan to-neon-indigo text-dark-canvas font-semibold text-xs hover:brightness-110 transition-all shadow-[0_0_15px_-3px_rgba(6,182,212,0.4)]"
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-accent text-accent-contrast font-semibold text-xs hover:brightness-110 transition-all"
         >
-          <PlusCircle className="w-3.5 h-3.5 text-dark-canvas" />
+          <PlusCircle className="w-3.5 h-3.5 text-surface" />
           <span>Enroll Device</span>
         </button>
 
         {/* Role Scoper Switcher */}
-        <div className="flex items-center bg-dark-canvas border border-dark-border rounded-lg p-1 space-x-1">
+        <div className="flex items-center bg-surface border border-border rounded-lg p-1 space-x-1">
           <button
             onClick={() => switchRole('super-admin')}
             className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-mono font-medium transition-all ${
-              isSuperAdmin
-                ? 'bg-neon-indigo/20 text-neon-indigo border border-neon-indigo/40 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
+              isSuperAdmin ? 'bg-info/20 text-info border border-info/40 shadow-sm' : 'text-muted hover:text-content'
             }`}
             title="Super-Admin View: Global mesh overview, all relays and tenant nodes"
           >
@@ -114,8 +112,8 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
             onClick={() => switchRole('user')}
             className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-mono font-medium transition-all ${
               !isSuperAdmin
-                ? 'bg-neon-emerald/20 text-neon-emerald border border-neon-emerald/40 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-success/20 text-success border border-success/40 shadow-sm'
+                : 'text-muted hover:text-content'
             }`}
             title="Tenant User View: Isolated mesh scoped strictly to Alice's personal devices"
           >
@@ -128,36 +126,36 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
         <div className="relative">
           <button
             onClick={() => setNotificationsOpen(!notificationsOpen)}
-            className="p-2 rounded-lg bg-dark-canvas border border-dark-border text-slate-400 hover:text-slate-200 transition-colors relative"
+            className="p-2 rounded-lg bg-surface border border-border text-muted hover:text-content transition-colors relative"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-neon-rose animate-ping"></span>
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-neon-rose"></span>
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-danger animate-ping"></span>
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-danger"></span>
           </button>
 
           {/* Notifications Dropdown */}
           {notificationsOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-dark-card border border-dark-border rounded-xl shadow-2xl z-50 p-3 space-y-2">
-              <div className="flex items-center justify-between pb-2 border-b border-dark-border text-xs font-semibold">
-                <span className="text-slate-200">Security Alerts (2)</span>
-                <span className="text-[10px] text-neon-cyan cursor-pointer hover:underline">Mark all read</span>
+            <div className="absolute right-0 mt-2 w-80 bg-surface-raised border border-border rounded-xl shadow-2xl z-50 p-3 space-y-2">
+              <div className="flex items-center justify-between pb-2 border-b border-border text-xs font-semibold">
+                <span className="text-content">Security Alerts (2)</span>
+                <span className="text-[10px] text-accent cursor-pointer hover:underline">Mark all read</span>
               </div>
               <div className="space-y-2 max-h-60 overflow-y-auto text-xs font-mono">
-                <div className="p-2 rounded bg-neon-rose/10 border border-neon-rose/30 text-slate-300">
-                  <div className="flex items-center justify-between text-[11px] text-neon-rose font-bold">
+                <div className="p-2 rounded bg-danger/10 border border-danger/30 text-muted">
+                  <div className="flex items-center justify-between text-[11px] text-danger font-bold">
                     <span>Posture Alert</span>
                     <span>1h ago</span>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">
+                  <p className="text-[10px] text-muted mt-1">
                     Node 'compromised-kali-box' isolated: Unsigned kernel module detected.
                   </p>
                 </div>
-                <div className="p-2 rounded bg-neon-amber/10 border border-neon-amber/30 text-slate-300">
-                  <div className="flex items-center justify-between text-[11px] text-neon-amber font-bold">
+                <div className="p-2 rounded bg-warning/10 border border-warning/30 text-muted">
+                  <div className="flex items-center justify-between text-[11px] text-warning font-bold">
                     <span>Battery Cutoff</span>
                     <span>3h ago</span>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">
+                  <p className="text-[10px] text-muted mt-1">
                     Node 'carols-galaxy-s24-ultra' battery low (14%), exit routing disabled.
                   </p>
                 </div>
@@ -167,13 +165,13 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
         </div>
 
         {/* User Identity Pill */}
-        <div className="flex items-center space-x-2 pl-2 border-l border-dark-border">
-          <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center font-mono font-bold text-xs text-white">
+        <div className="flex items-center space-x-2 pl-2 border-l border-border">
+          <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center font-mono font-bold text-xs text-white">
             {user?.username?.[0]?.toUpperCase() || 'U'}
           </div>
           <div className="hidden sm:block text-left font-mono">
-            <div className="text-xs font-semibold text-slate-200">{user?.username}</div>
-            <div className="text-[10px] text-slate-400 capitalize">
+            <div className="text-xs font-semibold text-content">{user?.username}</div>
+            <div className="text-[10px] text-muted capitalize">
               {user?.role === 'super-admin' ? 'Super admin' : 'User'}
             </div>
           </div>

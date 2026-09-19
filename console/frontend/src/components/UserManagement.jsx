@@ -172,19 +172,19 @@ export default function UserManagement() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
-            <Users className="w-5 h-5 text-accent-primary" />
+          <h1 className="text-xl font-bold text-content flex items-center space-x-2">
+            <Users className="w-5 h-5 text-accent" />
             <span>User Directory</span>
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-accent-primary/20 text-accent-primary border border-accent-primary/40">
+            <span className="text-xs font-mono px-2 py-0.5 rounded bg-accent/20 text-accent border border-accent/40">
               {users.length} Active Tenants
             </span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">Role-based access control with instant QR onboarding.</p>
+          <p className="text-xs text-muted mt-1">Role-based access control with instant QR onboarding.</p>
         </div>
 
         <button
           onClick={() => setIsProvisionModalOpen(true)}
-          className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gradient-to-r from-accent-primary to-accent-alert text-slate-950 font-bold font-mono text-xs hover:brightness-110 transition-all shadow-lg"
+          className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-accent text-accent-contrast font-bold font-mono text-xs hover:brightness-110 transition-all shadow-lg"
         >
           <UserPlus className="w-4 h-4" />
           <span>Provision User</span>
@@ -192,17 +192,17 @@ export default function UserManagement() {
       </div>
 
       {/* Users Table */}
-      <div className="rounded-2xl bg-dark-card border border-dark-border overflow-hidden shadow-xl">
-        <div className="p-4 border-b border-dark-border flex items-center justify-between bg-dark-canvas/50">
-          <span className="text-xs font-bold font-mono text-slate-300 uppercase tracking-wider">
+      <div className="rounded-2xl bg-surface-raised border border-border overflow-hidden shadow-xl">
+        <div className="p-4 border-b border-border flex items-center justify-between bg-surface/50">
+          <span className="text-xs font-bold font-mono text-muted uppercase tracking-wider">
             Registered Tenant Accounts
           </span>
-          <span className="text-xs font-mono text-slate-500">{users.length} Total</span>
+          <span className="text-xs font-mono text-subtle">{users.length} Total</span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-mono">
-            <thead className="bg-dark-canvas/80 text-slate-400 border-b border-dark-border">
+            <thead className="bg-surface/80 text-muted border-b border-border">
               <tr>
                 <th className="p-3.5">User / Identity</th>
                 <th className="p-3.5">Role</th>
@@ -211,24 +211,24 @@ export default function UserManagement() {
                 <th className="p-3.5 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-dark-border">
+            <tbody className="divide-y divide-border">
               {users.map((u) => {
                 const bypassCount = Array.isArray(u.bypass_apps) ? u.bypass_apps.length : 0;
 
                 return (
-                  <tr key={u.id} className="hover:bg-dark-card-hover/50 transition-colors">
+                  <tr key={u.id} className="hover:bg-surface-hover/50 transition-colors">
                     <td className="p-3.5">
-                      <div className="font-bold text-slate-100">{u.username}</div>
-                      <div className="text-[11px] text-slate-400">{u.email}</div>
-                      <div className="text-[10px] text-slate-500">{u.id}</div>
+                      <div className="font-bold text-content">{u.username}</div>
+                      <div className="text-[11px] text-muted">{u.email}</div>
+                      <div className="text-[10px] text-subtle">{u.id}</div>
                     </td>
 
                     <td className="p-3.5">
                       <span
                         className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wide ${
                           u.role === 'super-admin'
-                            ? 'bg-accent-primary/20 text-accent-primary border-accent-primary/40'
-                            : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                            ? 'bg-accent/20 text-accent border-accent/40'
+                            : 'bg-success/20 text-success border-success/40'
                         }`}
                       >
                         {u.role === 'super-admin' ? 'Super admin' : 'User'}
@@ -238,10 +238,10 @@ export default function UserManagement() {
                     <td className="p-3.5">
                       <button
                         onClick={() => handleOpenSplitModal(u)}
-                        className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-dark-canvas border border-dark-border text-slate-300 hover:text-accent-primary hover:border-accent-primary/40 transition-colors"
+                        className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-surface border border-border text-muted hover:text-accent hover:border-accent/40 transition-colors"
                         title="Configure bypass_apps JSONB array"
                       >
-                        <Sliders className="w-3.5 h-3.5 text-accent-primary" />
+                        <Sliders className="w-3.5 h-3.5 text-accent" />
                         <span>{bypassCount} Apps Bypassed</span>
                       </button>
                     </td>
@@ -250,8 +250,8 @@ export default function UserManagement() {
                       <span
                         className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
                           u.status === 'active'
-                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                            : 'bg-red-500/20 text-red-400 border-red-500/40'
+                            ? 'bg-success/20 text-success border-success/40'
+                            : 'bg-danger/20 text-danger border-danger/40'
                         }`}
                       >
                         {u.status === 'active' ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
@@ -264,7 +264,7 @@ export default function UserManagement() {
                         {/* Instant Mobile QR Onboarding Button */}
                         <button
                           onClick={() => handleOpenQrModal(u)}
-                          className="px-2.5 py-1.5 rounded bg-accent-primary/10 border border-accent-primary/40 text-accent-primary hover:bg-accent-primary/20 text-xs flex items-center space-x-1 transition-colors"
+                          className="px-2.5 py-1.5 rounded bg-accent/10 border border-accent/40 text-accent hover:bg-accent/20 text-xs flex items-center space-x-1 transition-colors"
                           title="Generate instant mobile QR onboarding config"
                         >
                           <QrCode className="w-3.5 h-3.5" />
@@ -273,7 +273,7 @@ export default function UserManagement() {
 
                         <button
                           onClick={() => handleRevokeSessions(u.id)}
-                          className="p-1.5 rounded bg-dark-canvas border border-dark-border text-slate-400 hover:text-amber-400 hover:border-amber-400/40 transition-colors"
+                          className="p-1.5 rounded bg-surface border border-border text-muted hover:text-warning hover:border-warning/40 transition-colors"
                           title="Revoke active JWT sessions"
                         >
                           <Key className="w-3.5 h-3.5" />
@@ -281,7 +281,7 @@ export default function UserManagement() {
 
                         <button
                           onClick={() => handleDeleteUser(u.id)}
-                          className="p-1.5 rounded bg-dark-canvas border border-dark-border text-slate-400 hover:text-red-400 hover:border-red-400/40 transition-colors"
+                          className="p-1.5 rounded bg-surface border border-border text-muted hover:text-danger hover:border-danger/40 transition-colors"
                           title="Delete user"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -299,23 +299,23 @@ export default function UserManagement() {
       {/* QR Code Onboarding Modal (R7) */}
       {selectedUserForQr && (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-dark-card border border-dark-border rounded-2xl shadow-2xl overflow-hidden">
-            <div className="p-5 border-b border-dark-border flex items-center justify-between bg-dark-canvas/70">
+          <div className="w-full max-w-lg bg-surface-raised border border-border rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-border flex items-center justify-between bg-surface/70">
               <div className="flex items-center space-x-2.5">
-                <div className="w-9 h-9 rounded-xl bg-accent-primary/20 border border-accent-primary/40 flex items-center justify-center text-accent-primary">
+                <div className="w-9 h-9 rounded-xl bg-accent/20 border border-accent/40 flex items-center justify-center text-accent">
                   <Smartphone className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-100">Mobile Instant QR Onboarding</h3>
-                  <div className="text-xs font-mono text-slate-400">
-                    User: <strong className="text-accent-primary">{selectedUserForQr.username}</strong> (
+                  <h3 className="text-sm font-bold text-content">Mobile Instant QR Onboarding</h3>
+                  <div className="text-xs font-mono text-muted">
+                    User: <strong className="text-accent">{selectedUserForQr.username}</strong> (
                     {selectedUserForQr.email})
                   </div>
                 </div>
               </div>
               <button
                 onClick={() => setSelectedUserForQr(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white"
+                className="p-1.5 rounded-lg text-muted hover:text-white"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -323,15 +323,15 @@ export default function UserManagement() {
 
             <div className="p-6 space-y-5">
               {isGeneratingQr ? (
-                <div className="py-12 text-center text-xs font-mono text-slate-400 space-y-2">
-                  <RefreshCw className="w-6 h-6 text-accent-primary animate-spin mx-auto" />
+                <div className="py-12 text-center text-xs font-mono text-muted space-y-2">
+                  <RefreshCw className="w-6 h-6 text-accent animate-spin mx-auto" />
                   <div>Generating Noise/WireGuard clamped keypair & QR profile...</div>
                 </div>
               ) : qrModalData ? (
                 <div className="space-y-4">
                   {/* QR Code Display */}
-                  <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-xl bg-dark-canvas border border-dark-border">
-                    <div className="p-2 bg-slate-950 rounded-xl border border-accent-primary/40 shadow-xl shrink-0">
+                  <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-xl bg-surface border border-border">
+                    <div className="p-2 bg-surface rounded-xl border border-accent/40 shadow-xl shrink-0">
                       <img
                         src={qrModalData.qr_code_data_url}
                         alt="WireGuard Onboarding QR Code"
@@ -339,20 +339,20 @@ export default function UserManagement() {
                       />
                     </div>
                     <div className="space-y-2 text-xs font-mono">
-                      <div className="text-slate-200 font-bold flex items-center space-x-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <div className="text-content font-bold flex items-center space-x-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-success" />
                         <span>Ready to Scan on Mobile</span>
                       </div>
-                      <p className="text-slate-400 text-[11px]">
+                      <p className="text-muted text-[11px]">
                         Open WireGuard or NeroNet Client on iOS/Android, tap <strong>"+"</strong> and select{' '}
                         <strong>"Create from QR code"</strong>.
                       </p>
-                      <div className="text-[10px] text-slate-500 pt-1">
+                      <div className="text-[10px] text-subtle pt-1">
                         <div>
-                          Assigned VIP: <strong className="text-accent-primary">{qrModalData.overlay_ip}</strong>
+                          Assigned VIP: <strong className="text-accent">{qrModalData.overlay_ip}</strong>
                         </div>
                         <div>
-                          Protocol: <strong className="text-slate-300">Noise_IKpsk2_25519</strong>
+                          Protocol: <strong className="text-muted">Noise_IKpsk2_25519</strong>
                         </div>
                       </div>
                     </div>
@@ -361,25 +361,25 @@ export default function UserManagement() {
                   {/* WireGuard Text Config */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs font-mono">
-                      <span className="text-slate-300 font-bold">Client Profile (.conf)</span>
+                      <span className="text-muted font-bold">Client Profile (.conf)</span>
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={handleCopyConfigText}
-                          className="flex items-center space-x-1 px-2 py-1 rounded bg-dark-card border border-dark-border text-slate-300 hover:text-white"
+                          className="flex items-center space-x-1 px-2 py-1 rounded bg-surface-raised border border-border text-muted hover:text-white"
                         >
-                          {copiedConfig ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          {copiedConfig ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
                           <span>{copiedConfig ? 'Copied' : 'Copy'}</span>
                         </button>
                         <button
                           onClick={handleDownloadConf}
-                          className="flex items-center space-x-1 px-2 py-1 rounded bg-accent-primary/20 text-accent-primary border border-accent-primary/40 hover:bg-accent-primary/30"
+                          className="flex items-center space-x-1 px-2 py-1 rounded bg-accent/20 text-accent border border-accent/40 hover:bg-accent/30"
                         >
                           <Download className="w-3 h-3" />
                           <span>Download .conf</span>
                         </button>
                       </div>
                     </div>
-                    <pre className="p-3 bg-slate-950 rounded-xl border border-dark-border text-[10px] font-mono text-slate-300 overflow-x-auto max-h-36">
+                    <pre className="p-3 bg-surface rounded-xl border border-border text-[10px] font-mono text-muted overflow-x-auto max-h-36">
                       {qrModalData.config_text}
                     </pre>
                   </div>
@@ -387,10 +387,10 @@ export default function UserManagement() {
               ) : null}
             </div>
 
-            <div className="p-4 border-t border-dark-border bg-dark-canvas/80 flex justify-end">
+            <div className="p-4 border-t border-border bg-surface/80 flex justify-end">
               <button
                 onClick={() => setSelectedUserForQr(null)}
-                className="px-4 py-1.5 rounded-lg bg-dark-border text-slate-300 hover:text-white text-xs font-mono font-bold"
+                className="px-4 py-1.5 rounded-lg bg-border text-muted hover:text-white text-xs font-mono font-bold"
               >
                 Close
               </button>
@@ -402,29 +402,29 @@ export default function UserManagement() {
       {/* Split Tunneling Editor Modal (R7) */}
       {selectedUserForSplit && (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-dark-card border border-dark-border rounded-2xl shadow-2xl overflow-hidden">
-            <div className="p-5 border-b border-dark-border flex items-center justify-between bg-dark-canvas/70">
+          <div className="w-full max-w-lg bg-surface-raised border border-border rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-border flex items-center justify-between bg-surface/70">
               <div className="flex items-center space-x-2.5">
-                <div className="w-9 h-9 rounded-xl bg-violet-500/20 border border-violet-500/40 flex items-center justify-center text-violet-400">
+                <div className="w-9 h-9 rounded-xl bg-info/20 border border-info/40 flex items-center justify-center text-info">
                   <Sliders className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-100">Split Tunneling Policy Editor (`bypass_apps`)</h3>
-                  <div className="text-xs font-mono text-slate-400">
-                    User: <strong className="text-violet-400">{selectedUserForSplit.username}</strong>
+                  <h3 className="text-sm font-bold text-content">Split Tunneling Policy Editor (`bypass_apps`)</h3>
+                  <div className="text-xs font-mono text-muted">
+                    User: <strong className="text-info">{selectedUserForSplit.username}</strong>
                   </div>
                 </div>
               </div>
               <button
                 onClick={() => setSelectedUserForSplit(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white"
+                className="p-1.5 rounded-lg text-muted hover:text-white"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="p-6 space-y-5">
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted">
                 Define application bundle identifiers, domain wildcards, or LAN CIDR subnets that bypass the WireGuard
                 encrypted overlay and egress directly over local WAN.
               </p>
@@ -437,12 +437,12 @@ export default function UserManagement() {
                   value={newAppInput}
                   onChange={(e) => setNewAppInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddBypassApp()}
-                  className="flex-1 px-3 py-2 text-xs bg-dark-canvas border border-dark-border rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-violet-400 font-mono"
+                  className="flex-1 px-3 py-2 text-xs bg-surface border border-border rounded-lg text-content placeholder-subtle focus:outline-none focus:border-info font-mono"
                 />
                 <button
                   type="button"
                   onClick={handleAddBypassApp}
-                  className="px-3.5 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-mono font-bold transition-colors flex items-center space-x-1"
+                  className="px-3.5 py-2 rounded-lg bg-info hover:bg-info text-white text-xs font-mono font-bold transition-colors flex items-center space-x-1"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Add</span>
@@ -451,7 +451,7 @@ export default function UserManagement() {
 
               {/* Preset Shortcuts */}
               <div className="space-y-1.5">
-                <div className="text-[11px] font-mono text-slate-400 font-semibold">Quick Presets:</div>
+                <div className="text-[11px] font-mono text-muted font-semibold">Quick Presets:</div>
                 <div className="flex flex-wrap gap-1.5 text-xs font-mono">
                   {[
                     'com.apple.Music',
@@ -465,7 +465,7 @@ export default function UserManagement() {
                       key={preset}
                       type="button"
                       onClick={() => handleAddPreset(preset)}
-                      className="px-2 py-1 rounded bg-dark-canvas border border-dark-border text-slate-400 hover:text-violet-300 hover:border-violet-500/40 text-[10px] transition-colors"
+                      className="px-2 py-1 rounded bg-surface border border-border text-muted hover:text-info hover:border-info/40 text-[10px] transition-colors"
                     >
                       + {preset}
                     </button>
@@ -475,27 +475,27 @@ export default function UserManagement() {
 
               {/* Active Bypass Apps List */}
               <div className="space-y-2">
-                <div className="text-xs font-mono text-slate-300 font-bold flex justify-between">
+                <div className="text-xs font-mono text-muted font-bold flex justify-between">
                   <span>Active Bypass Rules ({splitBypassApps.length})</span>
-                  <span className="text-[10px] text-slate-500">Stored in JSONB</span>
+                  <span className="text-[10px] text-subtle">Stored in JSONB</span>
                 </div>
 
-                <div className="p-3 bg-dark-canvas rounded-xl border border-dark-border min-h-[100px] max-h-48 overflow-y-auto space-y-1.5">
+                <div className="p-3 bg-surface rounded-xl border border-border min-h-[100px] max-h-48 overflow-y-auto space-y-1.5">
                   {splitBypassApps.length === 0 ? (
-                    <div className="text-xs text-slate-500 font-mono italic text-center py-6">
+                    <div className="text-xs text-subtle font-mono italic text-center py-6">
                       No bypass rules defined. All user traffic routes strictly through NeroNet overlay.
                     </div>
                   ) : (
                     splitBypassApps.map((app) => (
                       <div
                         key={app}
-                        className="flex items-center justify-between p-2 rounded bg-dark-card border border-dark-border text-xs font-mono"
+                        className="flex items-center justify-between p-2 rounded bg-surface-raised border border-border text-xs font-mono"
                       >
-                        <span className="text-slate-200">{app}</span>
+                        <span className="text-content">{app}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveBypassApp(app)}
-                          className="text-slate-500 hover:text-red-400 p-0.5"
+                          className="text-subtle hover:text-danger p-0.5"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -506,11 +506,11 @@ export default function UserManagement() {
               </div>
             </div>
 
-            <div className="p-4 border-t border-dark-border bg-dark-canvas/80 flex items-center justify-between">
+            <div className="p-4 border-t border-border bg-surface/80 flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => setSelectedUserForSplit(null)}
-                className="px-4 py-1.5 rounded-lg bg-dark-border text-slate-300 hover:text-white text-xs font-mono"
+                className="px-4 py-1.5 rounded-lg bg-border text-muted hover:text-white text-xs font-mono"
               >
                 Cancel
               </button>
@@ -518,7 +518,7 @@ export default function UserManagement() {
                 type="button"
                 onClick={handleSaveSplitTunneling}
                 disabled={isSavingSplit}
-                className="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-mono font-bold transition-all shadow-lg disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg bg-info hover:bg-info text-white text-xs font-mono font-bold transition-all shadow-lg disabled:opacity-50"
               >
                 {isSavingSplit ? 'Saving JSONB...' : 'Save Policy'}
               </button>
@@ -530,15 +530,15 @@ export default function UserManagement() {
       {/* Provision User Modal */}
       {isProvisionModalOpen && (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-dark-card border border-dark-border rounded-2xl shadow-2xl overflow-hidden">
-            <div className="p-5 border-b border-dark-border flex items-center justify-between bg-dark-canvas/70">
+          <div className="w-full max-w-md bg-surface-raised border border-border rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-border flex items-center justify-between bg-surface/70">
               <div className="flex items-center space-x-2">
-                <UserPlus className="w-5 h-5 text-accent-primary" />
-                <h3 className="text-sm font-bold text-slate-100">Provision Tenant Account</h3>
+                <UserPlus className="w-5 h-5 text-accent" />
+                <h3 className="text-sm font-bold text-content">Provision Tenant Account</h3>
               </div>
               <button
                 onClick={() => setIsProvisionModalOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white"
+                className="p-1.5 rounded-lg text-muted hover:text-white"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -546,52 +546,52 @@ export default function UserManagement() {
 
             <form onSubmit={handleCreateUser} className="p-6 space-y-4 text-xs font-mono">
               <div>
-                <label className="block text-slate-400 mb-1">Username</label>
+                <label className="block text-muted mb-1">Username</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. dev_engineer"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded-lg text-slate-200 focus:outline-none focus:border-accent-primary"
+                  className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-content focus:outline-none focus:border-accent"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Email Address</label>
+                <label className="block text-muted mb-1">Email Address</label>
                 <input
                   type="email"
                   required
                   placeholder="e.g. dev@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded-lg text-slate-200 focus:outline-none focus:border-accent-primary"
+                  className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-content focus:outline-none focus:border-accent"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">RBAC Role</label>
+                <label className="block text-muted mb-1">RBAC Role</label>
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded-lg text-slate-200 focus:outline-none focus:border-accent-primary"
+                  className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-content focus:outline-none focus:border-accent"
                 >
                   <option value="user">Standard User</option>
                   <option value="super-admin">Super Admin</option>
                 </select>
               </div>
 
-              <div className="pt-4 border-t border-dark-border flex justify-end space-x-2">
+              <div className="pt-4 border-t border-border flex justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => setIsProvisionModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-dark-border text-slate-300 hover:text-white"
+                  className="px-4 py-2 rounded-lg bg-border text-muted hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-accent-primary text-slate-950 font-bold hover:brightness-110 shadow-lg"
+                  className="px-4 py-2 rounded-lg bg-accent text-accent-contrast font-bold hover:brightness-110 shadow-lg"
                 >
                   Create User
                 </button>

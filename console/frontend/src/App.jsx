@@ -40,22 +40,20 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-dark-canvas text-slate-100 font-mono p-6">
-          <div className="max-w-xl w-full p-6 rounded-2xl bg-dark-card border border-red-500/50 shadow-2xl space-y-4">
-            <div className="flex items-center space-x-3 text-red-400">
+        <div className="min-h-screen flex items-center justify-center bg-surface text-content font-mono p-6">
+          <div className="max-w-xl w-full p-6 rounded-2xl bg-surface-raised border border-danger/50 shadow-2xl space-y-4">
+            <div className="flex items-center space-x-3 text-danger">
               <AlertTriangle className="w-6 h-6" />
               <h2 className="text-lg font-bold">Console Render Error</h2>
             </div>
-            <p className="text-xs text-slate-300">
-              An unexpected error occurred while rendering the management console:
-            </p>
-            <pre className="p-3 bg-dark-canvas border border-dark-border rounded-lg text-red-300 text-xs overflow-x-auto whitespace-pre-wrap">
+            <p className="text-xs text-muted">An unexpected error occurred while rendering the management console:</p>
+            <pre className="p-3 bg-surface border border-border rounded-lg text-danger text-xs overflow-x-auto whitespace-pre-wrap">
               {this.state.error?.toString()}
             </pre>
             <div className="flex space-x-3 pt-2">
               <button
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-accent-primary text-slate-950 font-bold rounded-lg text-xs hover:brightness-110 cursor-pointer"
+                className="px-4 py-2 bg-accent text-accent-contrast font-bold rounded-lg text-xs hover:brightness-110 cursor-pointer"
               >
                 Reload Page
               </button>
@@ -64,7 +62,7 @@ class ErrorBoundary extends React.Component {
                   localStorage.clear();
                   window.location.reload();
                 }}
-                className="px-4 py-2 bg-dark-border text-slate-300 hover:text-white font-bold rounded-lg text-xs cursor-pointer"
+                className="px-4 py-2 bg-border text-muted hover:text-white font-bold rounded-lg text-xs cursor-pointer"
               >
                 Reset Session & Cache
               </button>
@@ -112,44 +110,44 @@ function MeshSettingsView() {
   return (
     <div className="space-y-6 font-mono">
       <div>
-        <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
+        <h1 className="text-xl font-bold text-content flex items-center space-x-2">
           <span>Sovereign Mesh Global Configuration</span>
-          <span className="text-xs font-mono px-2 py-0.5 rounded bg-accent-primary/20 text-accent-primary border border-accent-primary/40">
+          <span className="text-xs font-mono px-2 py-0.5 rounded bg-accent/20 text-accent border border-accent/40">
             System Parameters
           </span>
         </h1>
-        <p className="text-xs text-slate-400 mt-1 font-sans">
+        <p className="text-xs text-muted mt-1 font-sans">
           Low-level cryptographic primitives, MTU sizing, and advanced traffic routing rules.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Advanced Traffic & Onion Routing */}
-        <div className="p-5 rounded-2xl bg-dark-card border border-dark-border space-y-4 shadow-xl">
-          <div className="flex items-center space-x-2 font-bold text-slate-100 text-sm">
-            <Shield className="w-4 h-4 text-emerald-400" />
+        <div className="p-5 rounded-2xl bg-surface-raised border border-border space-y-4 shadow-xl">
+          <div className="flex items-center space-x-2 font-bold text-content text-sm">
+            <Shield className="w-4 h-4 text-success" />
             <span>Onion Routing & Obfuscation</span>
           </div>
           <div className="space-y-3 text-xs">
-            <div className="flex items-center justify-between p-3 rounded-lg bg-dark-canvas border border-dark-border">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-surface border border-border">
               <div>
-                <div className="font-semibold text-slate-200">Tor-Grade 3-Hop Circuits</div>
-                <div className="text-[11px] text-slate-400">Layered Noise encryption across relays</div>
+                <div className="font-semibold text-content">Tor-Grade 3-Hop Circuits</div>
+                <div className="text-[11px] text-muted">Layered Noise encryption across relays</div>
               </div>
               <input
                 type="checkbox"
                 checked={onionRouting}
                 onChange={(e) => setOnionRouting(e.target.checked)}
-                className="w-4 h-4 rounded text-accent-primary accent-accent-primary bg-dark-card border-dark-border"
+                className="w-4 h-4 rounded text-accent accent-accent bg-surface-raised border-border"
               />
             </div>
 
-            <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border space-y-2">
-              <label className="block text-slate-300 font-semibold">Obfuscation Protocol</label>
+            <div className="p-3 rounded-lg bg-surface border border-border space-y-2">
+              <label className="block text-muted font-semibold">Obfuscation Protocol</label>
               <select
                 value={obfuscation}
                 onChange={(e) => setObfuscation(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-dark-card border border-dark-border text-slate-200 text-xs focus:outline-none focus:border-accent-primary"
+                className="w-full px-3 py-2 rounded-lg bg-surface-raised border border-border text-content text-xs focus:outline-none focus:border-accent"
               >
                 <option value="shadow-tls">ShadowTLS v3 (Mimic TLS 1.3 Handshake)</option>
                 <option value="vless-reality">VLESS Reality (Zero-RTT Server Name Indication)</option>
@@ -160,28 +158,28 @@ function MeshSettingsView() {
         </div>
 
         {/* Global MTU & WireGuard Engine */}
-        <div className="p-5 rounded-2xl bg-dark-card border border-dark-border space-y-4 shadow-xl">
-          <div className="flex items-center space-x-2 font-bold text-slate-100 text-sm">
-            <Cpu className="w-4 h-4 text-indigo-400" />
+        <div className="p-5 rounded-2xl bg-surface-raised border border-border space-y-4 shadow-xl">
+          <div className="flex items-center space-x-2 font-bold text-content text-sm">
+            <Cpu className="w-4 h-4 text-info" />
             <span>Kernel & Interface Parameters</span>
           </div>
           <div className="space-y-3 text-xs">
-            <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border flex justify-between items-center">
+            <div className="p-3 rounded-lg bg-surface border border-border flex justify-between items-center">
               <div>
-                <span className="text-slate-400 block">Default Interface MTU</span>
-                <span className="text-slate-200 font-bold">1360 Bytes (DirectFrame Clamped)</span>
+                <span className="text-muted block">Default Interface MTU</span>
+                <span className="text-content font-bold">1360 Bytes (DirectFrame Clamped)</span>
               </div>
-              <span className="text-emerald-400 text-xs px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
+              <span className="text-success text-xs px-2 py-0.5 rounded bg-success/10 border border-success/30">
                 Optimized
               </span>
             </div>
 
-            <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border flex justify-between items-center">
+            <div className="p-3 rounded-lg bg-surface border border-border flex justify-between items-center">
               <div>
-                <span className="text-slate-400 block">Keepalive Interval</span>
-                <span className="text-slate-200 font-bold">25 Seconds (Persistent NAT Hole-Punch)</span>
+                <span className="text-muted block">Keepalive Interval</span>
+                <span className="text-content font-bold">25 Seconds (Persistent NAT Hole-Punch)</span>
               </div>
-              <span className="text-emerald-400 text-xs px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
+              <span className="text-success text-xs px-2 py-0.5 rounded bg-success/10 border border-success/30">
                 Active
               </span>
             </div>
@@ -189,23 +187,23 @@ function MeshSettingsView() {
         </div>
 
         {/* Existing Crypto */}
-        <div className="p-5 rounded-2xl bg-dark-card border border-dark-border space-y-4 shadow-xl">
-          <div className="flex items-center space-x-2 font-bold text-slate-100 text-sm">
-            <Shield className="w-4 h-4 text-accent-primary" />
+        <div className="p-5 rounded-2xl bg-surface-raised border border-border space-y-4 shadow-xl">
+          <div className="flex items-center space-x-2 font-bold text-content text-sm">
+            <Shield className="w-4 h-4 text-accent" />
             <span>Cryptographic Ciphersuites</span>
           </div>
           <div className="space-y-3 text-xs">
-            <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border flex justify-between">
-              <span className="text-slate-400">Tunnel Protocol:</span>
-              <span className="text-accent-primary font-bold">Noise_IKpsk2_25519_ChaChaPoly</span>
+            <div className="p-3 rounded-lg bg-surface border border-border flex justify-between">
+              <span className="text-muted">Tunnel Protocol:</span>
+              <span className="text-accent font-bold">Noise_IKpsk2_25519_ChaChaPoly</span>
             </div>
-            <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border flex justify-between">
-              <span className="text-slate-400">Key Exchange:</span>
-              <span className="text-slate-200">Curve25519 (Clamped Scalar)</span>
+            <div className="p-3 rounded-lg bg-surface border border-border flex justify-between">
+              <span className="text-muted">Key Exchange:</span>
+              <span className="text-content">Curve25519 (Clamped Scalar)</span>
             </div>
-            <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border flex justify-between">
-              <span className="text-slate-400">Symmetric Cipher:</span>
-              <span className="text-slate-200">ChaCha20-Poly1305 (256-bit AEAD)</span>
+            <div className="p-3 rounded-lg bg-surface border border-border flex justify-between">
+              <span className="text-muted">Symmetric Cipher:</span>
+              <span className="text-content">ChaCha20-Poly1305 (256-bit AEAD)</span>
             </div>
           </div>
         </div>
@@ -352,7 +350,7 @@ function MainConsole() {
   };
 
   return (
-    <div className="flex min-h-screen bg-dark-canvas text-slate-100 font-sans">
+    <div className="flex min-h-screen bg-surface text-content font-sans">
       {/* Persistent Enterprise Cyber Sidebar */}
       <Sidebar
         activeTab={activeTab}
@@ -441,44 +439,44 @@ function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-dark-canvas font-sans px-4">
-      <div className="w-full max-w-md p-8 rounded-2xl bg-dark-card border border-dark-border shadow-2xl space-y-6">
+    <div className="min-h-screen flex items-center justify-center bg-surface font-sans px-4">
+      <div className="w-full max-w-md p-8 rounded-2xl bg-surface-raised border border-border shadow-2xl space-y-6">
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 mx-auto rounded-xl bg-accent-primary/10 border border-accent-primary/30 flex items-center justify-center text-accent-primary text-2xl shadow-lg glow-sky">
+          <div className="w-12 h-12 mx-auto rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center text-accent text-2xl shadow-lg">
             🕸️
           </div>
-          <h1 className="text-xl font-bold text-slate-100 font-mono tracking-wider">NeroNet Enterprise</h1>
-          <p className="text-xs text-slate-400 font-mono">Sovereign Mesh Control Plane &mdash; v4.0</p>
+          <h1 className="text-xl font-bold text-content font-mono tracking-wider">NeroNet Enterprise</h1>
+          <p className="text-xs text-muted font-mono">Sovereign Mesh Control Plane &mdash; v4.0</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <label className="block text-slate-300 text-xs font-mono">Username</label>
+            <label className="block text-muted text-xs font-mono">Username</label>
             <input
               type="text"
               required
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-dark-canvas border border-dark-border text-slate-100 placeholder-slate-600 text-xs font-mono focus:outline-none focus:border-accent-primary transition-colors"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-border text-content placeholder-subtle text-xs font-mono focus:outline-none focus:border-accent transition-colors"
               placeholder="admin"
               autoFocus
             />
           </div>
 
           <div className="space-y-1">
-            <label className="block text-slate-300 text-xs font-mono">Password</label>
+            <label className="block text-muted text-xs font-mono">Password</label>
             <input
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-dark-canvas border border-dark-border text-slate-100 placeholder-slate-600 text-xs font-mono focus:outline-none focus:border-accent-primary transition-colors"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-border text-content placeholder-subtle text-xs font-mono focus:outline-none focus:border-accent transition-colors"
               placeholder="••••••••"
             />
           </div>
 
           {error && (
-            <div className="p-3 rounded-lg bg-red-950/40 border border-red-500/40 text-red-300 text-xs font-mono">
+            <div className="p-3 rounded-lg bg-danger/40 border border-danger/40 text-danger text-xs font-mono">
               {error}
             </div>
           )}
@@ -486,14 +484,14 @@ function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 px-4 rounded-xl bg-accent-primary hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono tracking-wider uppercase transition-all shadow-lg shadow-sky-500/20 disabled:opacity-50 flex items-center justify-center space-x-2 cursor-pointer"
+            className="w-full py-2.5 px-4 rounded-xl bg-accent hover:bg-accent text-accent-contrast font-bold text-xs font-mono tracking-wider uppercase transition-all shadow-lg disabled:opacity-50 flex items-center justify-center space-x-2 cursor-pointer"
           >
             <span>{loading ? 'Authenticating...' : '🔐 Sign In'}</span>
           </button>
         </form>
 
-        <div className="text-center pt-2 border-t border-dark-border/80">
-          <p className="text-[11px] text-slate-500 font-mono">
+        <div className="text-center pt-2 border-t border-border/80">
+          <p className="text-[11px] text-subtle font-mono">
             {/* This read "Zero-Knowledge Cryptographic Authentication • Ed25519".
                 Console sign-in is a password verified with bcrypt against a hash,
                 and the session is a signed JWT. Ed25519 is used for node identity
@@ -511,14 +509,14 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-dark-canvas text-slate-100 font-mono">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-surface text-content font-mono">
         <div className="flex items-center space-x-3 mb-3">
-          <div className="w-5 h-5 border-2 border-accent-primary border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-xs font-bold tracking-widest text-accent-primary uppercase">
+          <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-xs font-bold tracking-widest text-accent uppercase">
             Verifying Cryptographic Session...
           </span>
         </div>
-        <p className="text-[11px] text-slate-500 font-sans">Checking JWT signature and zero-trust mesh authority</p>
+        <p className="text-[11px] text-subtle font-sans">Checking JWT signature and zero-trust mesh authority</p>
       </div>
     );
   }

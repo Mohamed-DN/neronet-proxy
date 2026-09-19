@@ -441,16 +441,16 @@ export default function GeoFencingMap() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
-            <MapPin className="w-5 h-5 text-accent-primary" />
+          <h1 className="text-xl font-bold text-content flex items-center space-x-2">
+            <MapPin className="w-5 h-5 text-accent" />
             {/* PostGIS was removed; migration 004 drops it and no query uses it. The
                 matching is plain per-country and lat/lon arithmetic. */}
             <span>Geo-Fencing Map &amp; Country Policies</span>
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-accent-primary/20 text-accent-primary border border-accent-primary/40">
+            <span className="text-xs font-mono px-2 py-0.5 rounded bg-accent/20 text-accent border border-accent/40">
               Dual-Layer Canvas Engine
             </span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-muted mt-1">
             Where nodes are allowed to appear, and which countries may carry egress.
           </p>
         </div>
@@ -458,13 +458,13 @@ export default function GeoFencingMap() {
         <div className="flex items-center space-x-2">
           <button
             onClick={() => handleBulkSet('ALLOW')}
-            className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 text-xs font-mono font-bold transition-colors cursor-pointer"
+            className="px-3 py-1.5 rounded-lg bg-success/20 text-success border border-success/40 hover:bg-success/30 text-xs font-mono font-bold transition-colors cursor-pointer"
           >
             Allow All
           </button>
           <button
             onClick={() => handleBulkSet('QUARANTINE')}
-            className="px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/40 hover:bg-amber-500/30 text-xs font-mono font-bold transition-colors cursor-pointer"
+            className="px-3 py-1.5 rounded-lg bg-warning/20 text-warning border border-warning/40 hover:bg-warning/30 text-xs font-mono font-bold transition-colors cursor-pointer"
           >
             Strict Mode
           </button>
@@ -472,25 +472,25 @@ export default function GeoFencingMap() {
       </div>
 
       {/* Interactive 2D World Map Viewport */}
-      <div className="rounded-2xl bg-dark-card border border-dark-border p-5 shadow-2xl space-y-4">
-        <div className="flex items-center justify-between border-b border-dark-border pb-3">
-          <div className="flex items-center space-x-2 text-xs font-mono text-slate-300">
-            <Globe className="w-4 h-4 text-accent-primary" />
+      <div className="rounded-2xl bg-surface-raised border border-border p-5 shadow-2xl space-y-4">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center space-x-2 text-xs font-mono text-muted">
+            <Globe className="w-4 h-4 text-accent" />
             <span className="font-bold">Global Mesh Distribution & Policy Overlay (Canvas Engine)</span>
           </div>
 
           <div className="flex items-center space-x-4 text-xs font-mono">
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-              <span className="text-slate-300">Allowed</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-success"></span>
+              <span className="text-muted">Allowed</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-              <span className="text-slate-300">Quarantine</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-warning"></span>
+              <span className="text-muted">Quarantine</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-400"></span>
-              <span className="text-slate-300">Blocked</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-danger"></span>
+              <span className="text-muted">Blocked</span>
             </div>
           </div>
         </div>
@@ -498,7 +498,7 @@ export default function GeoFencingMap() {
         {/* Dual-Layer HTML5 Canvas */}
         <div
           ref={containerRef}
-          className="relative w-full h-[360px] bg-slate-950 rounded-xl border border-dark-border overflow-hidden flex items-center justify-center cursor-crosshair"
+          className="relative w-full h-[360px] bg-surface rounded-xl border border-border overflow-hidden flex items-center justify-center cursor-crosshair"
         >
           <canvas
             ref={canvasRef}
@@ -512,23 +512,23 @@ export default function GeoFencingMap() {
           {/* Instant Tooltip HUD on Raycast Hover */}
           {hoveredCountry && (
             <div
-              className="absolute pointer-events-none p-2 rounded-lg bg-dark-card/95 border border-dark-border shadow-2xl text-xs font-mono z-30 transition-transform"
+              className="absolute pointer-events-none p-2 rounded-lg bg-surface-raised/95 border border-border shadow-2xl text-xs font-mono z-30 transition-transform"
               style={{
                 left: Math.min(canvasSize.width - 160, Math.max(10, mousePos.x + 12)),
                 top: Math.min(canvasSize.height - 70, Math.max(10, mousePos.y - 45))
               }}
             >
-              <div className="font-bold text-slate-100 flex items-center space-x-1">
+              <div className="font-bold text-content flex items-center space-x-1">
                 <span>{hoveredCountry.country_name}</span>
-                <span className="text-accent-primary">({hoveredCountry.country_code})</span>
+                <span className="text-accent">({hoveredCountry.country_code})</span>
               </div>
-              <div className="text-[11px] text-slate-400">
+              <div className="text-[11px] text-muted">
                 Action:{' '}
                 <strong style={{ color: getPolicyColor(hoveredCountry.action) }} className="font-bold">
                   {hoveredCountry.action}
                 </strong>
               </div>
-              <div className="text-[10px] text-slate-500">{hoveredCountry.node_count} Active Nodes</div>
+              <div className="text-[10px] text-subtle">{hoveredCountry.node_count} Active Nodes</div>
             </div>
           )}
         </div>
@@ -537,24 +537,24 @@ export default function GeoFencingMap() {
       {/* Policies Inventory & Selected Inspector Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Policy Table List (Left 2 cols) */}
-        <div className="lg:col-span-2 rounded-2xl bg-dark-card border border-dark-border p-5 shadow-xl space-y-4">
+        <div className="lg:col-span-2 rounded-2xl bg-surface-raised border border-border p-5 shadow-xl space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <Search className="w-3.5 h-3.5 text-subtle absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Search country or code..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-3 py-1.5 text-xs bg-dark-canvas border border-dark-border rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-primary font-mono w-48 sm:w-64"
+                className="pl-8 pr-3 py-1.5 text-xs bg-surface border border-border rounded-lg text-content placeholder-subtle focus:outline-none focus:border-accent font-mono w-48 sm:w-64"
               />
             </div>
-            <span className="text-xs font-mono text-slate-500">{filteredPolicies.length} Countries Configured</span>
+            <span className="text-xs font-mono text-subtle">{filteredPolicies.length} Countries Configured</span>
           </div>
 
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             <table className="w-full text-left text-xs font-mono">
-              <thead className="bg-dark-canvas/80 text-slate-400 border-b border-dark-border sticky top-0 z-10">
+              <thead className="bg-surface/80 text-muted border-b border-border sticky top-0 z-10">
                 <tr>
                   <th className="p-3.5">Country</th>
                   <th className="p-3.5">Nodes</th>
@@ -563,26 +563,26 @@ export default function GeoFencingMap() {
                   <th className="p-3.5 text-right">Toggle Rule</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-dark-border">
+              <tbody className="divide-y divide-border">
                 {filteredPolicies.map((p) => {
                   const isSelected = selectedCountry?.country_code === p.country_code;
                   return (
                     <tr
                       key={p.country_code}
                       onClick={() => setSelectedCountry(p)}
-                      className={`hover:bg-dark-card-hover/50 transition-colors cursor-pointer ${
-                        isSelected ? 'bg-dark-canvas/60' : ''
+                      className={`hover:bg-surface-hover/50 transition-colors cursor-pointer ${
+                        isSelected ? 'bg-surface/60' : ''
                       }`}
                     >
                       <td className="p-3.5">
-                        <div className="font-bold text-slate-100 flex items-center space-x-1.5">
-                          <span className="text-accent-primary font-mono">{p.country_code}</span>
+                        <div className="font-bold text-content flex items-center space-x-1.5">
+                          <span className="text-accent font-mono">{p.country_code}</span>
                           <span>{p.country_name}</span>
                         </div>
                       </td>
 
                       <td className="p-3.5">
-                        <span className="text-slate-300 font-bold">{p.node_count}</span>
+                        <span className="text-muted font-bold">{p.node_count}</span>
                       </td>
 
                       <td className="p-3.5">
@@ -599,7 +599,7 @@ export default function GeoFencingMap() {
                       </td>
 
                       <td className="p-3.5">
-                        <span className={p.egress_allowed ? 'text-emerald-400' : 'text-red-400'}>
+                        <span className={p.egress_allowed ? 'text-success' : 'text-danger'}>
                           {p.egress_allowed ? 'YES' : 'BLOCKED'}
                         </span>
                       </td>
@@ -610,8 +610,8 @@ export default function GeoFencingMap() {
                             onClick={() => handleUpdatePolicy(p.country_code, 'ALLOW', true)}
                             className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
                               p.action === 'ALLOW'
-                                ? 'bg-emerald-500 text-slate-950'
-                                : 'bg-dark-canvas text-slate-400 hover:text-white'
+                                ? 'bg-success text-success-contrast'
+                                : 'bg-surface text-muted hover:text-white'
                             }`}
                           >
                             ALLOW
@@ -620,8 +620,8 @@ export default function GeoFencingMap() {
                             onClick={() => handleUpdatePolicy(p.country_code, 'QUARANTINE', true)}
                             className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
                               p.action === 'QUARANTINE'
-                                ? 'bg-amber-500 text-slate-950'
-                                : 'bg-dark-canvas text-slate-400 hover:text-white'
+                                ? 'bg-warning text-warning-contrast'
+                                : 'bg-surface text-muted hover:text-white'
                             }`}
                           >
                             QUAR
@@ -629,9 +629,7 @@ export default function GeoFencingMap() {
                           <button
                             onClick={() => handleUpdatePolicy(p.country_code, 'BLOCK', false)}
                             className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
-                              p.action === 'BLOCK'
-                                ? 'bg-red-500 text-white'
-                                : 'bg-dark-canvas text-slate-400 hover:text-white'
+                              p.action === 'BLOCK' ? 'bg-danger text-white' : 'bg-surface text-muted hover:text-white'
                             }`}
                           >
                             BLOCK
@@ -648,14 +646,14 @@ export default function GeoFencingMap() {
 
         {/* Selected Country Policy Drawer / Inspector (Right col) */}
         {selectedCountry && (
-          <div className="p-5 rounded-2xl bg-dark-card border border-dark-border space-y-4 shadow-xl flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-surface-raised border border-border space-y-4 shadow-xl flex flex-col justify-between">
             <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-dark-border pb-3">
+              <div className="flex items-center justify-between border-b border-border pb-3">
                 <div>
-                  <h3 className="font-bold text-sm text-slate-100 font-mono">
+                  <h3 className="font-bold text-sm text-content font-mono">
                     {selectedCountry.country_name} ({selectedCountry.country_code})
                   </h3>
-                  <div className="text-[11px] text-slate-400 font-mono">Country Rule Inspector</div>
+                  <div className="text-[11px] text-muted font-mono">Country Rule Inspector</div>
                 </div>
                 <span
                   className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
@@ -676,57 +674,55 @@ export default function GeoFencingMap() {
                     operator a predicate the system never evaluates is worse than
                     showing nothing, because it invites trust in a boundary check that
                     is not happening. */}
-                <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border space-y-1">
-                  <div className="text-slate-400">Policy match:</div>
-                  <div className="text-accent-primary font-bold text-[11px]">
+                <div className="p-3 rounded-lg bg-surface border border-border space-y-1">
+                  <div className="text-muted">Policy match:</div>
+                  <div className="text-accent font-bold text-[11px]">
                     node.country_code = '{selectedCountry.country_code}'
                   </div>
-                  <div className="text-slate-500 text-[10px] leading-relaxed">
+                  <div className="text-subtle text-[10px] leading-relaxed">
                     Matched on the country reported by the node, not on its coordinates.
                   </div>
                 </div>
 
-                <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border space-y-1.5">
+                <div className="p-3 rounded-lg bg-surface border border-border space-y-1.5">
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Registered Devices:</span>
+                    <span className="text-muted">Registered Devices:</span>
                     <span className="text-white font-bold">{selectedCountry.node_count} Nodes</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Egress Routing:</span>
+                    <span className="text-muted">Egress Routing:</span>
                     <span
-                      className={
-                        selectedCountry.egress_allowed ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'
-                      }
+                      className={selectedCountry.egress_allowed ? 'text-success font-bold' : 'text-danger font-bold'}
                     >
                       {selectedCountry.egress_allowed ? 'Allowed (Full WAN)' : 'Strictly Dropped'}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Last Policy Push:</span>
-                    <span className="text-slate-300">{new Date(selectedCountry.updated_at).toLocaleTimeString()}</span>
+                    <span className="text-muted">Last Policy Push:</span>
+                    <span className="text-muted">{new Date(selectedCountry.updated_at).toLocaleTimeString()}</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="pt-4 border-t border-dark-border space-y-2">
-              <div className="text-xs font-mono text-slate-400 font-semibold">Change Policy Rule:</div>
+            <div className="pt-4 border-t border-border space-y-2">
+              <div className="text-xs font-mono text-muted font-semibold">Change Policy Rule:</div>
               <div className="grid grid-cols-3 gap-2 text-xs font-mono font-bold">
                 <button
                   onClick={() => handleUpdatePolicy(selectedCountry.country_code, 'ALLOW', true)}
-                  className="py-2 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 transition-colors cursor-pointer"
+                  className="py-2 rounded-lg bg-success/20 text-success border border-success/40 hover:bg-success/30 transition-colors cursor-pointer"
                 >
                   ALLOW
                 </button>
                 <button
                   onClick={() => handleUpdatePolicy(selectedCountry.country_code, 'QUARANTINE', true)}
-                  className="py-2 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/40 hover:bg-amber-500/30 transition-colors cursor-pointer"
+                  className="py-2 rounded-lg bg-warning/20 text-warning border border-warning/40 hover:bg-warning/30 transition-colors cursor-pointer"
                 >
                   QUARANTINE
                 </button>
                 <button
                   onClick={() => handleUpdatePolicy(selectedCountry.country_code, 'BLOCK', false)}
-                  className="py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 transition-colors cursor-pointer"
+                  className="py-2 rounded-lg bg-danger/20 text-danger border border-danger/40 hover:bg-danger/30 transition-colors cursor-pointer"
                 >
                   BLOCK
                 </button>

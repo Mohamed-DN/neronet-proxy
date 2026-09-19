@@ -90,14 +90,14 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
-            <Activity className="w-5 h-5 text-accent-primary animate-pulse" />
+          <h1 className="text-xl font-bold text-content flex items-center space-x-2">
+            <Activity className="w-5 h-5 text-accent animate-pulse" />
             <span>Continuous Behavioral Risk & Anomaly Engine</span>
             {/* This badge read "PostGIS + pgvector". Neither is used: PostGIS was
                 removed by migration 004 and pgvector was never installed. Scores
                 come from the rules in services/RiskEngine.js. */}
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-muted mt-1">
             Real-time telemetry analysis: impossible travel detection (&gt;1000 km/h), wire RTT drift, and automated
             quarantine triggers.
           </p>
@@ -105,7 +105,7 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
 
         <button
           onClick={loadData}
-          className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-dark-card border border-dark-border text-slate-300 hover:text-white text-xs font-mono transition-colors"
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-surface-raised border border-border text-muted hover:text-white text-xs font-mono transition-colors"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           <span>Refresh Telemetry</span>
@@ -115,67 +115,67 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
       {/* KPI Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
         {/* Low Risk */}
-        <div className="p-4 rounded-2xl bg-dark-card border border-emerald-500/30 shadow-xl space-y-1">
-          <div className="text-xs text-slate-400 flex items-center justify-between">
+        <div className="p-4 rounded-2xl bg-surface-raised border border-success/30 shadow-xl space-y-1">
+          <div className="text-xs text-muted flex items-center justify-between">
             <span>Low Risk (&lt; 40)</span>
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <ShieldCheck className="w-4 h-4 text-success" />
           </div>
-          <div className="text-2xl font-bold text-emerald-400">{summary?.distribution?.low ?? '—'} Nodes</div>
+          <div className="text-2xl font-bold text-success">{summary?.distribution?.low ?? '—'} Nodes</div>
           {/* This read "Fully compliant posture" under a count of low risk scores. A
               low score means nothing was seen going wrong; it is not a measurement of
               the host. The claim is made only when every node has actually attested
               every required check. */}
-          <div className="text-[10px] text-slate-500">{lowRiskCaption}</div>
+          <div className="text-[10px] text-subtle">{lowRiskCaption}</div>
         </div>
 
         {/* Medium Risk */}
-        <div className="p-4 rounded-2xl bg-dark-card border border-amber-500/30 shadow-xl space-y-1">
-          <div className="text-xs text-slate-400 flex items-center justify-between">
+        <div className="p-4 rounded-2xl bg-surface-raised border border-warning/30 shadow-xl space-y-1">
+          <div className="text-xs text-muted flex items-center justify-between">
             <span>Elevated (40 - 75)</span>
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <AlertTriangle className="w-4 h-4 text-warning" />
           </div>
-          <div className="text-2xl font-bold text-amber-400">{summary?.distribution?.medium ?? '—'} Nodes</div>
-          <div className="text-[10px] text-slate-500">Above the quarantine threshold</div>
+          <div className="text-2xl font-bold text-warning">{summary?.distribution?.medium ?? '—'} Nodes</div>
+          <div className="text-[10px] text-subtle">Above the quarantine threshold</div>
         </div>
 
         {/* Critical Risk */}
-        <div className="p-4 rounded-2xl bg-dark-card border border-red-500/40 shadow-xl space-y-1 bg-red-950/20">
-          <div className="text-xs text-red-300 flex items-center justify-between">
+        <div className="p-4 rounded-2xl bg-surface-raised border border-danger/40 shadow-xl space-y-1 bg-danger/20">
+          <div className="text-xs text-danger flex items-center justify-between">
             <span>Critical (&gt; 75)</span>
-            <Flame className="w-4 h-4 text-red-400 animate-bounce" />
+            <Flame className="w-4 h-4 text-danger animate-bounce" />
           </div>
-          <div className="text-2xl font-bold text-red-400">{summary?.distribution?.high ?? '—'} Nodes</div>
-          <div className="text-[10px] text-red-400/80">Auto-quarantined to 100.64.250.0/24</div>
+          <div className="text-2xl font-bold text-danger">{summary?.distribution?.high ?? '—'} Nodes</div>
+          <div className="text-[10px] text-danger/80">Auto-quarantined to 100.64.250.0/24</div>
         </div>
 
         {/* Average Mesh Score */}
-        <div className="p-4 rounded-2xl bg-dark-card border border-accent-primary/30 shadow-xl space-y-1">
-          <div className="text-xs text-slate-400 flex items-center justify-between">
+        <div className="p-4 rounded-2xl bg-surface-raised border border-accent/30 shadow-xl space-y-1">
+          <div className="text-xs text-muted flex items-center justify-between">
             <span>Avg Risk Score</span>
-            <Activity className="w-4 h-4 text-accent-primary" />
+            <Activity className="w-4 h-4 text-accent" />
           </div>
-          <div className="text-2xl font-bold text-slate-100">{summary?.average_risk_score ?? '—'} / 100</div>
+          <div className="text-2xl font-bold text-content">{summary?.average_risk_score ?? '—'} / 100</div>
           {/* There is no moving window: the score is the value stored on the node row. */}
-          <div className="text-[10px] text-slate-500">Mean across enrolled nodes</div>
+          <div className="text-[10px] text-subtle">Mean across enrolled nodes</div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Node Risk Leaderboard (Left 2 Columns) */}
-        <div className="lg:col-span-2 rounded-2xl bg-dark-card border border-dark-border overflow-hidden shadow-xl flex flex-col">
-          <div className="p-4 border-b border-dark-border flex items-center justify-between bg-dark-canvas/50">
+        <div className="lg:col-span-2 rounded-2xl bg-surface-raised border border-border overflow-hidden shadow-xl flex flex-col">
+          <div className="p-4 border-b border-border flex items-center justify-between bg-surface/50">
             <div className="flex items-center space-x-2">
-              <Server className="w-4 h-4 text-accent-primary" />
-              <span className="text-xs font-bold font-mono text-slate-300 uppercase tracking-wider">
+              <Server className="w-4 h-4 text-accent" />
+              <span className="text-xs font-bold font-mono text-muted uppercase tracking-wider">
                 Node Risk Leaderboard
               </span>
             </div>
-            <span className="text-xs font-mono text-slate-500">{leaderboard.length} Nodes</span>
+            <span className="text-xs font-mono text-subtle">{leaderboard.length} Nodes</span>
           </div>
 
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left text-xs font-mono">
-              <thead className="bg-dark-canvas/80 text-slate-400 border-b border-dark-border">
+              <thead className="bg-surface/80 text-muted border-b border-border">
                 <tr>
                   <th className="p-3.5">Device</th>
                   <th className="p-3.5">Risk Score</th>
@@ -184,7 +184,7 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                   <th className="p-3.5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-dark-border">
+              <tbody className="divide-y divide-border">
                 {leaderboard.map((node) => {
                   const score = node.risk_score || 0;
                   const isHigh = score > 75;
@@ -195,12 +195,12 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                     <tr
                       key={node.id}
                       onClick={() => onSelectNode && onSelectNode(node)}
-                      className="hover:bg-dark-card-hover/50 transition-colors cursor-pointer"
+                      className="hover:bg-surface-hover/50 transition-colors cursor-pointer"
                     >
                       <td className="p-3.5">
-                        <div className="font-bold text-slate-100">{node.name}</div>
-                        <div className="text-[11px] text-slate-400">{node.overlay_ipv4}</div>
-                        <div className="text-[10px] text-slate-500">
+                        <div className="font-bold text-content">{node.name}</div>
+                        <div className="text-[11px] text-muted">{node.overlay_ipv4}</div>
+                        <div className="text-[10px] text-subtle">
                           {node.country_code} &bull; {node.city || 'Regional'}
                         </div>
                       </td>
@@ -208,14 +208,14 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                       <td className="p-3.5 min-w-[140px]">
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs font-bold">
-                            <span className={isHigh ? 'text-red-400' : isMed ? 'text-amber-400' : 'text-emerald-400'}>
+                            <span className={isHigh ? 'text-danger' : isMed ? 'text-warning' : 'text-success'}>
                               {score} / 100
                             </span>
                           </div>
-                          <div className="w-full bg-dark-canvas rounded-full h-2 overflow-hidden border border-dark-border">
+                          <div className="w-full bg-surface rounded-full h-2 overflow-hidden border border-border">
                             <div
                               className={`h-full rounded-full ${
-                                isHigh ? 'bg-red-500' : isMed ? 'bg-amber-400' : 'bg-emerald-400'
+                                isHigh ? 'bg-danger' : isMed ? 'bg-warning' : 'bg-success'
                               }`}
                               style={{ width: `${Math.min(100, score)}%` }}
                             ></div>
@@ -229,17 +229,17 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                             node.risk_factors.map((rf, idx) => (
                               <span
                                 key={idx}
-                                className="text-[9px] px-1.5 py-0.2 rounded bg-red-950/60 text-red-300 border border-red-500/40"
+                                className="text-[9px] px-1.5 py-0.2 rounded bg-danger/60 text-danger border border-danger/40"
                               >
                                 {rf}
                               </span>
                             ))
                           ) : isHigh ? (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-red-950/60 text-red-300 border border-red-500/40">
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-danger/60 text-danger border border-danger/40">
                               IMPOSSIBLE_TRAVEL (+50)
                             </span>
                           ) : (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-dark-canvas text-slate-500">
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-surface text-subtle">
                               NORMAL_TELEMETRY
                             </span>
                           )}
@@ -250,8 +250,8 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                         <span
                           className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
                             isQuarantined
-                              ? 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse'
-                              : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                              ? 'bg-danger/20 text-danger border-danger/40 animate-pulse'
+                              : 'bg-success/20 text-success border-success/40'
                           }`}
                         >
                           {isQuarantined ? <Lock className="w-3 h-3" /> : <ShieldCheck className="w-3 h-3" />}
@@ -263,14 +263,14 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                         {isQuarantined || isHigh ? (
                           <button
                             onClick={() => handleClearRisk(node.id)}
-                            className="px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 text-xs font-bold"
+                            className="px-2.5 py-1 rounded bg-success/20 text-success border border-success/40 hover:bg-success/30 text-xs font-bold"
                           >
                             Clear Flag
                           </button>
                         ) : (
                           <button
                             onClick={() => handleQuarantine(node.id)}
-                            className="px-2.5 py-1 rounded bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 text-xs font-bold"
+                            className="px-2.5 py-1 rounded bg-danger/15 text-danger border border-danger/30 hover:bg-danger/25 text-xs font-bold"
                           >
                             Lockdown
                           </button>
@@ -285,11 +285,11 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
         </div>
 
         {/* Live Anomaly Feed (Right 1 Column) */}
-        <div className="rounded-2xl bg-dark-card border border-dark-border overflow-hidden shadow-xl flex flex-col">
-          <div className="p-4 border-b border-dark-border flex items-center justify-between bg-dark-canvas/50">
+        <div className="rounded-2xl bg-surface-raised border border-border overflow-hidden shadow-xl flex flex-col">
+          <div className="p-4 border-b border-border flex items-center justify-between bg-surface/50">
             <div className="flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <span className="text-xs font-bold font-mono text-slate-300 uppercase tracking-wider">
+              <AlertTriangle className="w-4 h-4 text-warning" />
+              <span className="text-xs font-bold font-mono text-muted uppercase tracking-wider">
                 Live Anomaly Event Feed
               </span>
             </div>
@@ -297,7 +297,7 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
             <select
               value={filterSeverity}
               onChange={(e) => setFilterSeverity(e.target.value)}
-              className="text-[11px] font-mono bg-dark-canvas border border-dark-border rounded px-2 py-0.5 text-slate-300 focus:outline-none"
+              className="text-[11px] font-mono bg-surface border border-border rounded px-2 py-0.5 text-muted focus:outline-none"
             >
               <option value="ALL">All</option>
               <option value="critical">Critical</option>
@@ -314,27 +314,27 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                   key={evt.id}
                   className={`p-3 rounded-xl border text-xs font-mono space-y-1.5 ${
                     isCrit
-                      ? 'bg-red-950/30 border-red-500/40 text-red-200'
-                      : 'bg-amber-950/20 border-amber-500/30 text-amber-200'
+                      ? 'bg-danger/30 border-danger/40 text-danger'
+                      : 'bg-warning/20 border-warning/30 text-warning'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold flex items-center space-x-1.5">
-                      <Flame className={`w-3.5 h-3.5 ${isCrit ? 'text-red-400' : 'text-amber-400'}`} />
+                      <Flame className={`w-3.5 h-3.5 ${isCrit ? 'text-danger' : 'text-warning'}`} />
                       <span>{evt.type || evt.event_type}</span>
                     </span>
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-[10px] text-muted">
                       {new Date(evt.timestamp || evt.created_at).toLocaleTimeString()}
                     </span>
                   </div>
 
-                  <p className="text-[11px] text-slate-300">{evt.description || evt.message}</p>
+                  <p className="text-[11px] text-muted">{evt.description || evt.message}</p>
 
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-dark-border/60">
+                  <div className="flex items-center justify-between text-[10px] text-muted pt-1 border-t border-border/60">
                     <span>
-                      Node: <strong className="text-slate-200">{evt.node_name || evt.target_id}</strong>
+                      Node: <strong className="text-content">{evt.node_name || evt.target_id}</strong>
                     </span>
-                    <span className="font-bold text-red-400">+{evt.risk_delta || 50} pts</span>
+                    <span className="font-bold text-danger">+{evt.risk_delta || 50} pts</span>
                   </div>
                 </div>
               );

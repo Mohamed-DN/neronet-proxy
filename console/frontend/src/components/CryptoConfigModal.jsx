@@ -68,28 +68,28 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-dark-card border border-dark-border rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+      <div className="bg-surface-raised border border-border rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
         {/* Modal Header */}
-        <div className="p-5 border-b border-dark-border flex items-center justify-between bg-dark-canvas/50">
+        <div className="p-5 border-b border-border flex items-center justify-between bg-surface/50">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-neon-cyan/10 border border-neon-cyan/30 flex items-center justify-center glow-cyan">
-              <Key className="w-5 h-5 text-neon-cyan" />
+            <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center">
+              <Key className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-100 flex items-center space-x-2">
+              <h2 className="text-base font-bold text-content flex items-center space-x-2">
                 <span>Cryptographic Identity Generator</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/40">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-accent/20 text-accent border border-accent/40">
                   Curve25519 Clamped
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted">
                 Generate Zero-Trust WireGuard & Noise DirectFrame v4.0 profiles for sovereign clients.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-dark-card-hover transition-colors"
+            className="p-2 rounded-lg text-muted hover:text-content hover:bg-surface-hover transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -98,28 +98,25 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
           {/* Form */}
-          <form
-            onSubmit={handleGenerate}
-            className="p-4 rounded-xl bg-dark-canvas/80 border border-dark-border space-y-4"
-          >
+          <form onSubmit={handleGenerate} className="p-4 rounded-xl bg-surface/80 border border-border space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-mono text-slate-400 mb-1.5">Device Hostname</label>
+                <label className="block text-xs font-mono text-muted mb-1.5">Device Hostname</label>
                 <input
                   type="text"
                   placeholder="e.g. mbp-m3-alice"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-dark-card border border-dark-border rounded-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-neon-cyan font-mono"
+                  className="w-full px-3 py-2 text-xs bg-surface-raised border border-border rounded-lg text-content placeholder-subtle focus:outline-none focus:border-accent font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-mono text-slate-400 mb-1.5">Mesh Role</label>
+                <label className="block text-xs font-mono text-muted mb-1.5">Mesh Role</label>
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-dark-card border border-dark-border rounded-lg text-slate-100 focus:outline-none focus:border-neon-cyan font-mono"
+                  className="w-full px-3 py-2 text-xs bg-surface-raised border border-border rounded-lg text-content focus:outline-none focus:border-accent font-mono"
                 >
                   <option value="CLIENT_ORIGIN">Client Origin (Default)</option>
                   <option value="EXIT_BRIDGE">Exit Bridge (Egress)</option>
@@ -129,11 +126,11 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
               </div>
 
               <div>
-                <label className="block text-xs font-mono text-slate-400 mb-1.5">Country Region</label>
+                <label className="block text-xs font-mono text-muted mb-1.5">Country Region</label>
                 <select
                   value={countryCode}
                   onChange={(e) => setCountryCode(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-dark-card border border-dark-border rounded-lg text-slate-100 focus:outline-none focus:border-neon-cyan font-mono"
+                  className="w-full px-3 py-2 text-xs bg-surface-raised border border-border rounded-lg text-content focus:outline-none focus:border-accent font-mono"
                 >
                   <option value="US">United States (US)</option>
                   <option value="DE">Germany (DE)</option>
@@ -146,37 +143,37 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
             </div>
 
             {/* 3-Hop Onion Obfuscation Toggle */}
-            <div className="pt-2 border-t border-dark-border/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="pt-2 border-t border-border/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center space-x-3">
                 <button
                   type="button"
                   onClick={() => setOnionEnabled(!onionEnabled)}
                   className={`w-10 h-5 rounded-full transition-colors relative p-0.5 border ${
-                    onionEnabled ? 'bg-neon-cyan/20 border-neon-cyan' : 'bg-dark-card border-dark-border'
+                    onionEnabled ? 'bg-accent/20 border-accent' : 'bg-surface-raised border-border'
                   }`}
                 >
                   <div
                     className={`w-3.5 h-3.5 rounded-full transition-transform ${
                       onionEnabled
-                        ? 'translate-x-5 bg-neon-cyan shadow-[0_0_8px_#06b6d4]'
-                        : 'translate-x-0 bg-slate-500'
+                        ? 'translate-x-5 bg-accent shadow-[0_0_8px_#06b6d4]'
+                        : 'translate-x-0 bg-border-strong'
                     }`}
                   />
                 </button>
                 <div>
-                  <div className="text-xs font-mono font-semibold text-slate-200 flex items-center space-x-2">
+                  <div className="text-xs font-mono font-semibold text-content flex items-center space-x-2">
                     <span>3-Hop Onion Obfuscation</span>
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
                         onionEnabled
-                          ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30'
-                          : 'bg-dark-card text-slate-500 border border-dark-border'
+                          ? 'bg-accent/20 text-accent border border-accent/30'
+                          : 'bg-surface-raised text-subtle border border-border'
                       }`}
                     >
                       {onionEnabled ? '3 Hops Active' : 'Direct Egress'}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-400 font-mono">
+                  <div className="text-[11px] text-muted font-mono">
                     Tor-grade multi-hop circuit obfuscation across 3 regional relays (+35ms latency trade-off)
                   </div>
                 </div>
@@ -186,7 +183,7 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
                 <button
                   type="submit"
                   disabled={isGenerating}
-                  className="w-full sm:w-auto py-2 px-5 rounded-lg bg-gradient-to-r from-neon-cyan to-neon-indigo text-dark-canvas font-bold text-xs hover:brightness-110 disabled:opacity-50 transition-all flex items-center justify-center space-x-2 shadow-lg"
+                  className="w-full sm:w-auto py-2 px-5 rounded-lg bg-accent text-accent-contrast font-bold text-xs hover:brightness-110 disabled:opacity-50 transition-all flex items-center justify-center space-x-2 shadow-lg"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>{isGenerating ? 'Generating...' : 'Generate Profile'}</span>
@@ -200,28 +197,26 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
             <div className="space-y-4">
               {/* Generated VIP Badges */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border">
-                  <div className="text-[10px] font-mono text-slate-500 uppercase">Overlay IPv4</div>
-                  <div className="text-xs font-mono font-bold text-neon-cyan mt-0.5">
-                    {generatedConfig.overlay_ipv4}
-                  </div>
+                <div className="p-3 rounded-lg bg-surface border border-border">
+                  <div className="text-[10px] font-mono text-subtle uppercase">Overlay IPv4</div>
+                  <div className="text-xs font-mono font-bold text-accent mt-0.5">{generatedConfig.overlay_ipv4}</div>
                 </div>
-                <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border">
-                  <div className="text-[10px] font-mono text-slate-500 uppercase">Overlay IPv6</div>
-                  <div className="text-xs font-mono font-bold text-neon-indigo mt-0.5 truncate">
+                <div className="p-3 rounded-lg bg-surface border border-border">
+                  <div className="text-[10px] font-mono text-subtle uppercase">Overlay IPv6</div>
+                  <div className="text-xs font-mono font-bold text-info mt-0.5 truncate">
                     {generatedConfig.overlay_ipv6}
                   </div>
                 </div>
-                <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border">
-                  <div className="text-[10px] font-mono text-slate-500 uppercase">Curve25519 Public Key</div>
-                  <div className="text-xs font-mono font-bold text-neon-emerald mt-0.5 truncate">
+                <div className="p-3 rounded-lg bg-surface border border-border">
+                  <div className="text-[10px] font-mono text-subtle uppercase">Curve25519 Public Key</div>
+                  <div className="text-xs font-mono font-bold text-success mt-0.5 truncate">
                     {generatedConfig.public_key}
                   </div>
                 </div>
-                <div className="p-3 rounded-lg bg-dark-canvas border border-dark-border">
-                  <div className="text-[10px] font-mono text-slate-500 uppercase">Routing Circuit</div>
+                <div className="p-3 rounded-lg bg-surface border border-border">
+                  <div className="text-[10px] font-mono text-subtle uppercase">Routing Circuit</div>
                   <div
-                    className={`text-xs font-mono font-bold mt-0.5 ${generatedConfig.onion_routing_enabled || generatedConfig.onion_hops > 0 ? 'text-neon-cyan' : 'text-slate-400'}`}
+                    className={`text-xs font-mono font-bold mt-0.5 ${generatedConfig.onion_routing_enabled || generatedConfig.onion_hops > 0 ? 'text-accent' : 'text-muted'}`}
                   >
                     {generatedConfig.onion_routing_enabled || generatedConfig.onion_hops > 0
                       ? '3-Hop Onion'
@@ -231,14 +226,14 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
               </div>
 
               {/* View Switcher */}
-              <div className="flex items-center justify-between border-b border-dark-border pb-2">
+              <div className="flex items-center justify-between border-b border-border pb-2">
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={() => setActiveTab('conf')}
                     className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
                       activeTab === 'conf'
-                        ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/40'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-accent/20 text-accent border border-accent/40'
+                        : 'text-muted hover:text-content'
                     }`}
                   >
                     <FileCode className="w-3.5 h-3.5" />
@@ -248,8 +243,8 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
                     onClick={() => setActiveTab('json')}
                     className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
                       activeTab === 'json'
-                        ? 'bg-neon-indigo/20 text-neon-indigo border border-neon-indigo/40'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-info/20 text-info border border-info/40'
+                        : 'text-muted hover:text-content'
                     }`}
                   >
                     <Cpu className="w-3.5 h-3.5" />
@@ -259,8 +254,8 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
                     onClick={() => setActiveTab('qr')}
                     className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
                       activeTab === 'qr'
-                        ? 'bg-neon-emerald/20 text-neon-emerald border border-neon-emerald/40'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-success/20 text-success border border-success/40'
+                        : 'text-muted hover:text-content'
                     }`}
                   >
                     <QrCode className="w-3.5 h-3.5" />
@@ -273,18 +268,14 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
                     <>
                       <button
                         onClick={() => handleCopy(generatedConfig.wireguard_conf)}
-                        className="flex items-center space-x-1 px-2.5 py-1 rounded bg-dark-canvas border border-dark-border text-slate-300 hover:text-white text-xs font-mono"
+                        className="flex items-center space-x-1 px-2.5 py-1 rounded bg-surface border border-border text-muted hover:text-white text-xs font-mono"
                       >
-                        {copied ? (
-                          <Check className="w-3.5 h-3.5 text-neon-emerald" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
+                        {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
                         <span>{copied ? 'Copied' : 'Copy'}</span>
                       </button>
                       <button
                         onClick={() => handleDownload(`${name || 'wireguard'}.conf`, generatedConfig.wireguard_conf)}
-                        className="flex items-center space-x-1 px-2.5 py-1 rounded bg-dark-canvas border border-dark-border text-neon-cyan hover:text-white text-xs font-mono"
+                        className="flex items-center space-x-1 px-2.5 py-1 rounded bg-surface border border-border text-accent hover:text-white text-xs font-mono"
                       >
                         <Download className="w-3.5 h-3.5" />
                         <span>Download</span>
@@ -296,13 +287,9 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
                     <>
                       <button
                         onClick={() => handleCopy(JSON.stringify(generatedConfig.json_profile, null, 2))}
-                        className="flex items-center space-x-1 px-2.5 py-1 rounded bg-dark-canvas border border-dark-border text-slate-300 hover:text-white text-xs font-mono"
+                        className="flex items-center space-x-1 px-2.5 py-1 rounded bg-surface border border-border text-muted hover:text-white text-xs font-mono"
                       >
-                        {copied ? (
-                          <Check className="w-3.5 h-3.5 text-neon-emerald" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
+                        {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
                         <span>{copied ? 'Copied' : 'Copy'}</span>
                       </button>
                       <button
@@ -312,7 +299,7 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
                             JSON.stringify(generatedConfig.json_profile, null, 2)
                           )
                         }
-                        className="flex items-center space-x-1 px-2.5 py-1 rounded bg-dark-canvas border border-dark-border text-neon-indigo hover:text-white text-xs font-mono"
+                        className="flex items-center space-x-1 px-2.5 py-1 rounded bg-surface border border-border text-info hover:text-white text-xs font-mono"
                       >
                         <Download className="w-3.5 h-3.5" />
                         <span>Download</span>
@@ -324,20 +311,20 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
 
               {/* Code Previews */}
               {activeTab === 'conf' && (
-                <pre className="p-4 rounded-xl bg-dark-canvas border border-dark-border text-neon-cyan font-mono text-xs overflow-x-auto max-h-72 leading-relaxed selection:bg-neon-cyan/30">
+                <pre className="p-4 rounded-xl bg-surface border border-border text-accent font-mono text-xs overflow-x-auto max-h-72 leading-relaxed selection:bg-accent/30">
                   {generatedConfig.wireguard_conf}
                 </pre>
               )}
 
               {activeTab === 'json' && (
-                <pre className="p-4 rounded-xl bg-dark-canvas border border-dark-border text-slate-300 font-mono text-xs overflow-x-auto max-h-72 leading-relaxed selection:bg-neon-indigo/30">
+                <pre className="p-4 rounded-xl bg-surface border border-border text-muted font-mono text-xs overflow-x-auto max-h-72 leading-relaxed selection:bg-info/30">
                   {JSON.stringify(generatedConfig.json_profile, null, 2)}
                 </pre>
               )}
 
               {activeTab === 'qr' && (
-                <div className="p-6 rounded-xl bg-dark-canvas border border-dark-border flex flex-col items-center justify-center space-y-4">
-                  <div className="p-3 bg-dark-card border border-neon-cyan/40 rounded-xl glow-cyan">
+                <div className="p-6 rounded-xl bg-surface border border-border flex flex-col items-center justify-center space-y-4">
+                  <div className="p-3 bg-surface-raised border border-accent/40 rounded-xl">
                     <img
                       src={generatedConfig.qrcode_data_url}
                       alt="WireGuard QR Code"
@@ -345,11 +332,11 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
                     />
                   </div>
                   <div className="text-center">
-                    <div className="flex items-center justify-center space-x-2 text-xs font-mono text-slate-300">
-                      <Smartphone className="w-4 h-4 text-neon-cyan" />
+                    <div className="flex items-center justify-center space-x-2 text-xs font-mono text-muted">
+                      <Smartphone className="w-4 h-4 text-accent" />
                       <span>Scan with WireGuard iOS / Android or NeroNet Mobile app</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
+                    <p className="text-[11px] text-subtle mt-1">
                       Direct Zero-Trust handshake will be initiated automatically upon tunnel activation.
                     </p>
                   </div>
@@ -357,10 +344,10 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
               )}
             </div>
           ) : (
-            <div className="py-12 border border-dashed border-dark-border rounded-xl flex flex-col items-center justify-center text-center space-y-3">
-              <Shield className="w-10 h-10 text-slate-600" />
-              <div className="text-xs font-mono text-slate-400">
-                Click <span className="text-neon-cyan">"Generate Profile"</span> to construct a sovereign cryptographic
+            <div className="py-12 border border-dashed border-border rounded-xl flex flex-col items-center justify-center text-center space-y-3">
+              <Shield className="w-10 h-10 text-subtle" />
+              <div className="text-xs font-mono text-muted">
+                Click <span className="text-accent">"Generate Profile"</span> to construct a sovereign cryptographic
                 keypair.
               </div>
             </div>
@@ -368,10 +355,10 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 border-t border-dark-border bg-dark-canvas/50 flex justify-end space-x-3">
+        <div className="p-4 border-t border-border bg-surface/50 flex justify-end space-x-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-dark-border text-slate-300 hover:text-white text-xs font-mono transition-colors"
+            className="px-4 py-2 rounded-lg bg-border text-muted hover:text-white text-xs font-mono transition-colors"
           >
             Close
           </button>

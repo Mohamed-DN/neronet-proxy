@@ -69,19 +69,19 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
-      <div className="w-full max-w-lg bg-dark-card border border-dark-border rounded-2xl shadow-2xl overflow-hidden">
+      <div className="w-full max-w-lg bg-surface-raised border border-border rounded-2xl shadow-2xl overflow-hidden">
         {/* Stealth Header */}
-        <div className="p-5 border-b border-dark-border flex items-center justify-between bg-dark-canvas/70">
+        <div className="p-5 border-b border-border flex items-center justify-between bg-surface/70">
           <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400">
+            <div className="w-9 h-9 rounded-xl bg-surface-raised border border-border flex items-center justify-center text-muted">
               <EyeOff className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-100 font-mono">Steganographic Access Gateway (Tier 1b)</h3>
-              <div className="text-[11px] text-slate-500 font-mono">Zero-Knowledge Hidden Dead Man's Switch Panel</div>
+              <h3 className="text-sm font-bold text-content font-mono">Steganographic Access Gateway (Tier 1b)</h3>
+              <div className="text-[11px] text-subtle font-mono">Zero-Knowledge Hidden Dead Man's Switch Panel</div>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-white">
+          <button onClick={onClose} className="p-1.5 rounded-lg text-muted hover:text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -89,16 +89,16 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
         <div className="p-6 space-y-5">
           {!secretDmsState ? (
             <form onSubmit={handleAuthenticate} className="space-y-4 text-xs font-mono">
-              <p className="text-slate-400 text-[11px]">
+              <p className="text-muted text-[11px]">
                 Enter secret steganographic authenticator configured during DMS setup. Failed attempts emit zero logs.
               </p>
 
               <div>
-                <label className="block text-slate-400 mb-1">Authentication Method</label>
+                <label className="block text-muted mb-1">Authentication Method</label>
                 <select
                   value={method}
                   onChange={(e) => setMethod(e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded-lg text-slate-200 focus:outline-none focus:border-accent-primary"
+                  className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-content focus:outline-none focus:border-accent"
                 >
                   <option value="reverse_password">1. Reverse Password (Password backwards)</option>
                   <option value="split_reverse">2. Split Reverse (Dual half reverse)</option>
@@ -109,7 +109,7 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">
+                <label className="block text-muted mb-1">
                   {method === 'hardware_key'
                     ? 'Security Key Confirmation'
                     : method === 'mobile_otp'
@@ -128,12 +128,12 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
                   }
                   value={credential}
                   onChange={(e) => setCredential(e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-canvas border border-dark-border rounded-lg text-slate-200 focus:outline-none focus:border-accent-primary"
+                  className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-content focus:outline-none focus:border-accent"
                 />
               </div>
 
               {authError && (
-                <div className="p-2.5 rounded-lg bg-red-950/40 border border-red-500/40 text-red-400 text-[11px]">
+                <div className="p-2.5 rounded-lg bg-danger/40 border border-danger/40 text-danger text-[11px]">
                   {authError}
                 </div>
               )}
@@ -142,14 +142,14 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 rounded-lg bg-dark-border text-slate-300 hover:text-white"
+                  className="px-4 py-2 rounded-lg bg-border text-muted hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isVerifying}
-                  className="px-4 py-2 rounded-lg bg-accent-primary text-slate-950 font-bold hover:brightness-110 shadow-lg disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-accent text-accent-contrast font-bold hover:brightness-110 shadow-lg disabled:opacity-50"
                 >
                   {isVerifying ? 'Verifying...' : 'Unlock Hidden Panel'}
                 </button>
@@ -157,17 +157,17 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
             </form>
           ) : (
             <div className="space-y-4 text-xs font-mono">
-              <div className="p-4 rounded-xl bg-slate-950 border border-emerald-500/40 space-y-2">
-                <div className="flex items-center justify-between text-emerald-400 font-bold">
+              <div className="p-4 rounded-xl bg-surface border border-success/40 space-y-2">
+                <div className="flex items-center justify-between text-success font-bold">
                   <span className="flex items-center space-x-1.5">
                     <Shield className="w-4 h-4" />
                     <span>Personal Hidden DMS Active</span>
                   </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-success/20 text-success border border-success/40">
                     ARMED
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-300 space-y-1 pt-1">
+                <div className="text-[11px] text-muted space-y-1 pt-1">
                   <div className="flex justify-between">
                     <span>Heartbeat Interval:</span>
                     <strong className="text-white">
@@ -176,13 +176,13 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
                   </div>
                   <div className="flex justify-between">
                     <span>Last Confirmation:</span>
-                    <span className="text-slate-400">
+                    <span className="text-muted">
                       {new Date(secretDmsState.last_heartbeat_at || Date.now()).toLocaleString()}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span>Scope:</span>
-                    <span className="text-emerald-400">Self Account & Devices Only</span>
+                    <span className="text-success">Self Account & Devices Only</span>
                   </div>
                 </div>
               </div>
@@ -190,13 +190,13 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
               {/* Reset Clock Form */}
               <form
                 onSubmit={handleResetHeartbeat}
-                className="p-4 rounded-xl bg-dark-canvas border border-dark-border space-y-3"
+                className="p-4 rounded-xl bg-surface border border-border space-y-3"
               >
-                <div className="font-bold text-slate-200 flex items-center space-x-1.5">
-                  <RefreshCw className="w-3.5 h-3.5 text-accent-primary" />
+                <div className="font-bold text-content flex items-center space-x-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 text-accent" />
                   <span>Confirm Heartbeat & Reset Clock</span>
                 </div>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-muted">
                   Re-enter passphrase to push back the Dead Man's Switch expiration timer.
                 </p>
 
@@ -206,11 +206,11 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
                   placeholder="Enter passphrase to confirm alive..."
                   value={passphraseToReset}
                   onChange={(e) => setPassphraseToReset(e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-slate-200 focus:outline-none focus:border-accent-primary"
+                  className="w-full px-3 py-2 bg-surface-raised border border-border rounded-lg text-content focus:outline-none focus:border-accent"
                 />
 
                 {resetSuccessMessage && (
-                  <div className="p-2 rounded bg-emerald-950/40 border border-emerald-500/40 text-emerald-400 text-[11px]">
+                  <div className="p-2 rounded bg-success/40 border border-success/40 text-success text-[11px]">
                     {resetSuccessMessage}
                   </div>
                 )}
@@ -219,7 +219,7 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
                   <button
                     type="submit"
                     disabled={isResetting}
-                    className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-all shadow-md disabled:opacity-50"
+                    className="px-4 py-1.5 rounded-lg bg-success hover:bg-success text-white font-bold transition-all shadow-md disabled:opacity-50"
                   >
                     {isResetting ? 'Confirming...' : 'I Am Alive (Reset Clock)'}
                   </button>
@@ -229,10 +229,10 @@ export default function NeroNukeSecretAccessModal({ isOpen, onClose, onAuthentic
           )}
         </div>
 
-        <div className="p-4 border-t border-dark-border bg-dark-canvas/80 flex justify-end">
+        <div className="p-4 border-t border-border bg-surface/80 flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-dark-border text-slate-300 hover:text-white text-xs font-mono font-bold"
+            className="px-4 py-1.5 rounded-lg bg-border text-muted hover:text-white text-xs font-mono font-bold"
           >
             Close
           </button>

@@ -343,11 +343,11 @@ export default function Topology3D({ onSelectNode }) {
   }, []);
 
   return (
-    <div className={`space-y-4 ${isFullscreen ? 'fixed inset-0 z-50 bg-dark-canvas p-6' : ''}`}>
+    <div className={`space-y-4 ${isFullscreen ? 'fixed inset-0 z-50 bg-surface p-6' : ''}`}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
-            <Globe2 className="w-5 h-5 text-accent-primary animate-pulse" />
+          <h1 className="text-xl font-bold text-content flex items-center space-x-2">
+            <Globe2 className="w-5 h-5 text-accent animate-pulse" />
             <span>Interactive 3D Spiderweb Topology</span>
           </h1>
         </div>
@@ -357,11 +357,11 @@ export default function Topology3D({ onSelectNode }) {
             placeholder="Filter node or VIP..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="px-3 py-1.5 text-xs bg-dark-card border border-dark-border rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none w-44 sm:w-56"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-border rounded-lg text-content placeholder-subtle focus:outline-none w-44 sm:w-56"
           />
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-2 rounded-lg bg-dark-card border border-dark-border text-slate-400"
+            className="p-2 rounded-lg bg-surface-raised border border-border text-muted"
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
@@ -370,7 +370,7 @@ export default function Topology3D({ onSelectNode }) {
 
       <div
         ref={containerRef}
-        className="relative w-full h-[580px] rounded-2xl bg-dark-canvas border border-dark-border overflow-hidden shadow-2xl"
+        className="relative w-full h-[580px] rounded-2xl bg-surface border border-border overflow-hidden shadow-2xl"
       >
         <ForceGraph3D
           ref={fgRef}
@@ -395,21 +395,21 @@ export default function Topology3D({ onSelectNode }) {
           controlType="orbit"
         />
 
-        <div className="absolute top-4 left-4 p-3.5 rounded-xl bg-dark-card/90 border border-dark-border/80 backdrop-blur-md text-xs font-mono shadow-xl pointer-events-none">
-          <div className="flex items-center space-x-2 text-slate-200 font-bold">
-            <Layers className="w-4 h-4 text-accent-primary" />
+        <div className="absolute top-4 left-4 p-3.5 rounded-xl bg-surface-raised/90 border border-border/80 backdrop-blur-md text-xs font-mono shadow-xl pointer-events-none">
+          <div className="flex items-center space-x-2 text-content font-bold">
+            <Layers className="w-4 h-4 text-accent" />
             <span>{isSuperAdmin ? 'SCOPE: GLOBAL MESH' : 'SCOPE: TENANT ISOLATED'}</span>
           </div>
           {/* With no ACL rule written, the control plane compiles allow-all: every
               node may reach every other. The full mesh on screen is then the absence
               of a policy, not a policy, and the distinction matters enough to name. */}
           {policyIsOpen && (
-            <div className="mt-1.5 px-2 py-1 rounded bg-neon-amber/15 border border-neon-amber/40 text-[10px] text-neon-amber leading-snug max-w-[15rem]">
+            <div className="mt-1.5 px-2 py-1 rounded bg-warning/15 border border-warning/40 text-[10px] text-warning leading-snug max-w-[15rem]">
               No ACL rule is defined, so every node may reach every other. These edges are the default, not a configured
               policy.
             </div>
           )}
-          <div className="text-[11px] text-slate-400 space-y-0.5 pt-1">
+          <div className="text-[11px] text-muted space-y-0.5 pt-1">
             <div className="flex justify-between space-x-4">
               <span>Rendered Nodes:</span>
               <strong className="text-white">{graphData.nodes.length}</strong>
@@ -419,17 +419,17 @@ export default function Topology3D({ onSelectNode }) {
                 console can count. */}
             <div className="flex justify-between space-x-4">
               <span>Permitted Paths:</span>
-              <strong className="text-accent-primary">{graphData.links.length}</strong>
+              <strong className="text-accent">{graphData.links.length}</strong>
             </div>
             <div className="flex justify-between space-x-4">
               <span>Engine:</span>
-              <strong className="text-emerald-400">Three.js WebGL Force-3D</strong>
+              <strong className="text-success">Three.js WebGL Force-3D</strong>
             </div>
           </div>
         </div>
 
         {/* HUD Top Right: Controls */}
-        <div className="absolute top-4 right-4 flex items-center space-x-1.5 p-1.5 rounded-xl bg-dark-card/90 border border-dark-border/80 backdrop-blur-md shadow-xl">
+        <div className="absolute top-4 right-4 flex items-center space-x-1.5 p-1.5 rounded-xl bg-surface-raised/90 border border-border/80 backdrop-blur-md shadow-xl">
           <button
             onClick={() => {
               if (fgRef.current) {
@@ -441,9 +441,7 @@ export default function Topology3D({ onSelectNode }) {
               }
             }}
             className={`p-2 rounded-lg text-xs font-mono transition-all ${
-              autoRotate
-                ? 'bg-accent-primary/20 text-accent-primary border border-accent-primary/40'
-                : 'text-slate-400 hover:text-white'
+              autoRotate ? 'bg-accent/20 text-accent border border-accent/40' : 'text-muted hover:text-white'
             }`}
             title="Toggle Auto-Rotation"
           >
@@ -451,7 +449,7 @@ export default function Topology3D({ onSelectNode }) {
           </button>
           <button
             onClick={handleResetCamera}
-            className="p-2 rounded-lg text-slate-400 hover:text-white text-xs hover:bg-dark-border/60 transition-colors"
+            className="p-2 rounded-lg text-muted hover:text-white text-xs hover:bg-border/60 transition-colors"
             title="Reset Perspective"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -459,76 +457,76 @@ export default function Topology3D({ onSelectNode }) {
         </div>
 
         {/* HUD Bottom Left: Color Legend */}
-        <div className="absolute bottom-4 left-4 p-3 rounded-xl bg-dark-card/90 border border-dark-border/80 backdrop-blur-md text-[11px] font-mono space-y-1.5 pointer-events-none shadow-xl">
-          <div className="text-slate-400 font-bold mb-1 flex items-center space-x-1.5">
-            <Info className="w-3 h-3 text-slate-400" />
+        <div className="absolute bottom-4 left-4 p-3 rounded-xl bg-surface-raised/90 border border-border/80 backdrop-blur-md text-[11px] font-mono space-y-1.5 pointer-events-none shadow-xl">
+          <div className="text-muted font-bold mb-1 flex items-center space-x-1.5">
+            <Info className="w-3 h-3 text-muted" />
             <span>3D Topology Legend</span>
           </div>
           <div className="grid grid-cols-2 gap-x-3 gap-y-1">
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-              <span className="text-slate-300">Regional Relay</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-success"></span>
+              <span className="text-muted">Regional Relay</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
-              <span className="text-slate-300">Exit Gateway</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-info"></span>
+              <span className="text-muted">Exit Gateway</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
-              <span className="text-slate-300">Client Device</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-accent"></span>
+              <span className="text-muted">Client Device</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
-              <span className="text-purple-300 font-semibold">Peered Node</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-info"></span>
+              <span className="text-info font-semibold">Peered Node</span>
             </div>
             <div className="flex items-center space-x-1.5 col-span-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
-              <span className="text-red-400 font-semibold">Risk &gt; 75 / Quarantined</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-danger animate-ping"></span>
+              <span className="text-danger font-semibold">Risk &gt; 75 / Quarantined</span>
             </div>
           </div>
         </div>
 
         {/* Hover Tooltip HUD */}
         {hoveredNode && (
-          <div className="absolute bottom-4 right-4 p-4 rounded-xl bg-dark-card/95 border border-accent-primary/50 backdrop-blur-md text-xs font-mono shadow-2xl pointer-events-none min-w-[250px] animate-in fade-in duration-100">
-            <div className="flex items-center justify-between border-b border-dark-border pb-1.5 mb-2">
-              <span className="font-bold text-slate-100">{hoveredNode.name}</span>
+          <div className="absolute bottom-4 right-4 p-4 rounded-xl bg-surface-raised/95 border border-accent/50 backdrop-blur-md text-xs font-mono shadow-2xl pointer-events-none min-w-[250px] animate-in fade-in duration-100">
+            <div className="flex items-center justify-between border-b border-border pb-1.5 mb-2">
+              <span className="font-bold text-content">{hoveredNode.name}</span>
               <span
                 className={`text-[10px] px-1.5 py-0.5 rounded border ${
                   hoveredNode.is_quarantined
-                    ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                    ? 'bg-danger/20 text-danger border-danger/40'
                     : hoveredNode.is_peered
-                      ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-                      : 'bg-accent-primary/20 text-accent-primary border-accent-primary/40'
+                      ? 'bg-info/20 text-info border-info/40'
+                      : 'bg-accent/20 text-accent border-accent/40'
                 }`}
               >
                 {hoveredNode.is_peered ? 'PEERED' : hoveredNode.role}
               </span>
             </div>
-            <div className="space-y-1 text-[11px] text-slate-400">
+            <div className="space-y-1 text-[11px] text-muted">
               <div className="flex justify-between">
                 <span>Overlay IPv4:</span>
-                <span className="text-slate-200">{hoveredNode.overlay_ipv4}</span>
+                <span className="text-content">{hoveredNode.overlay_ipv4}</span>
               </div>
               <div className="flex justify-between">
                 <span>Location:</span>
-                <span className="text-slate-200">
+                <span className="text-content">
                   {hoveredNode.country_code} ({hoveredNode.city || 'Regional'})
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Wire Latency:</span>
-                <span className="text-emerald-400 font-bold">{hoveredNode.latency_ms} ms</span>
+                <span className="text-success font-bold">{hoveredNode.latency_ms} ms</span>
               </div>
               <div className="flex justify-between">
                 <span>Behavioral Risk:</span>
                 <span
                   className={
                     (hoveredNode.risk_score || 0) > 75
-                      ? 'text-red-400 font-bold'
+                      ? 'text-danger font-bold'
                       : (hoveredNode.risk_score || 0) >= 40
-                        ? 'text-amber-400 font-bold'
-                        : 'text-emerald-400'
+                        ? 'text-warning font-bold'
+                        : 'text-success'
                   }
                 >
                   {hoveredNode.risk_score || 0} / 100
@@ -541,10 +539,10 @@ export default function Topology3D({ onSelectNode }) {
                 <span
                   className={
                     hoveredNode.posture_status === 'verified_compliant'
-                      ? 'text-emerald-400'
+                      ? 'text-success'
                       : hoveredNode.posture_status === 'non_compliant'
-                        ? 'text-red-400 font-bold'
-                        : 'text-slate-400'
+                        ? 'text-danger font-bold'
+                        : 'text-muted'
                   }
                 >
                   {hoveredNode.posture_status === 'verified_compliant'
@@ -556,12 +554,12 @@ export default function Topology3D({ onSelectNode }) {
               </div>
               <div className="flex justify-between">
                 <span>Quarantine:</span>
-                <span className={hoveredNode.is_quarantined ? 'text-red-400 font-bold' : 'text-slate-400'}>
+                <span className={hoveredNode.is_quarantined ? 'text-danger font-bold' : 'text-muted'}>
                   {hoveredNode.is_quarantined ? 'QUARANTINED (100.64.250.0/24)' : 'None'}
                 </span>
               </div>
             </div>
-            <div className="mt-2.5 pt-2 border-t border-dark-border text-[10px] text-accent-primary font-bold text-center">
+            <div className="mt-2.5 pt-2 border-t border-border text-[10px] text-accent font-bold text-center">
               Click Node to Open Action Drawer &rarr;
             </div>
           </div>

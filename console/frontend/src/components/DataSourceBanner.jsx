@@ -23,8 +23,8 @@ export default function DataSourceBanner() {
   const showingMocks = state.isShowingMockData;
 
   const tone = showingMocks
-    ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-    : 'border-red-500/40 bg-red-500/10 text-red-200';
+    ? 'border-warning/40 bg-warning/10 text-warning'
+    : 'border-danger/40 bg-danger/10 text-danger';
 
   const Icon = showingMocks ? AlertTriangle : WifiOff;
 
