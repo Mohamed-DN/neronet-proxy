@@ -20,11 +20,16 @@ const STATUS_VERIFIED_COMPLIANT = 'verified_compliant';
 const STATUS_NON_COMPLIANT = 'non_compliant';
 const STATUS_UNVERIFIED = 'unverified';
 
+// Upper bound on any string taken from an attestation. The document is rewritten on
+// every heartbeat, so an unbounded value from a compromised node would be stored,
+// buffered and returned by every node list on each beat.
+const MAX_MEASURED_STRING = 128;
+
 /** A string the node actually sent, or null. Whitespace is not a measurement. */
 function measuredString(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
-  return trimmed === '' ? null : trimmed;
+  return trimmed === '' ? null : trimmed.slice(0, MAX_MEASURED_STRING);
 }
 
 /**
