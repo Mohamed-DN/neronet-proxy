@@ -7,9 +7,9 @@ Welcome to the **Sovereign Proxy v4.0 (NeroNet)** developer guide. This document
 ## Table of Contents
 1. [Architecture Overview & System Topology](#1-architecture-overview--system-topology)
 2. [Prerequisites & Development Environment](#2-prerequisites--development-environment)
-3. [5-Minute Local Quickstart](#3-5-minute-local-quickstart)
+3. [Local Development Environment](#3-local-development-environment)
 4. [Centralized Configuration & Precedence Hierarchy](#4-centralized-configuration--precedence-hierarchy)
-5. [Local Multi-Service Docker Compose Deployment](#5-local-multi-service-docker-compose-deployment)
+5. [Compose Stack Reference](#5-compose-stack-reference)
 6. [Multi-Cloud Provisioning with OpenTofu / Terraform](#6-multi-cloud-provisioning-with-opentofu--terraform)
 7. [Kubernetes & Helm Deployment Guide](#7-kubernetes--helm-deployment-guide)
 8. [Testing, Health Checks & Diagnostics](#8-testing-health-checks--diagnostics)
@@ -70,7 +70,10 @@ Ensure your development workstation satisfies the following requirements:
 
 - **Go**: Version `1.22.0` or higher (`go version`)
 - **Python**: Version `3.11` or higher (`python3 --version`)
-- **Docker & Docker Compose**: Docker Engine `24.0+`, Compose `v2.20+` (`docker compose version`)
+- **Container engine with Compose v2**: Podman 5+ or Docker Engine 24+ (`podman compose version` / `docker compose version`).
+  The scripts in `scripts/dev/` use Podman when it is installed and Docker otherwise.
+  Go and Node.js on the host are optional: the stack and the test suites run in containers.
+- **Windows 11**: Git for Windows (Git Bash). Run the scripts from Git Bash, not from PowerShell or cmd.
 - **OpenTofu / Terraform**: OpenTofu `1.6+` or Terraform `1.5+` (`tofu version` / `terraform version`)
 - **Helm & Kubectl**: Helm `v3.14+`, Kubectl `v1.28+` (`helm version`, `kubectl version`)
 - **OpenSSL / Utilities**: `openssl`, `uuidgen`, `make`, `curl`, `git`
@@ -88,25 +91,110 @@ sudo sysctl -w net.ipv4.ip_forward=1
 
 ---
 
-## 3. 5-Minute Local Quickstart
+## 3. Local Development Environment
 
-Get a local Sovereign Proxy mesh running on your workstation in under 5 minutes with zero cloud costs.
+The development stack and the test suites are driven by scripts in `scripts/dev/`.
+They are POSIX `sh` and run everything in containers.
 
-### Step 1: Clone the Repository
+| Script | Purpose |
+|---|---|
+| `gen-env.sh` | Writes `.env` with fresh random secrets. Refuses to overwrite an existing file. Never prints the values. |
+| `stack.sh up` | Builds and starts PostgreSQL, Valkey, the backend and the console. Waits until they are healthy. |
+| `stack.sh nodes` | Starts two DERP relays and six Go nodes that enrol through the console. |
+| `stack.sh status` | Service health, and how many nodes sent a heartbeat in the last 60 seconds. |
+| `stack.sh logs [service]` | Last 200 log lines of all services or of one. Add `-f` to follow. |
+| `stack.sh down [-v]` | Removes the containers and the network. `-v` also removes the volumes (database, node identities). |
+| `test-go.sh` | `gofmt -l`, `go vet`, `go test ./... -race` and the tests of `cmd/sovereign-security-daemon`. |
+| `test-backend.sh` | Backend suite against a Valkey created for the run and removed afterwards. |
+| `test-frontend.sh` | `npm ci`, production build and unit tests of the console. |
+
+### Windows 11 (Git Bash and Podman)
+
+1. Install Git for Windows and Podman. Start the machine: `podman machine start`.
+   `podman compose` needs a Compose v2 provider on `PATH`; the `docker-compose`
+   binary that ships with Docker Desktop works, and Docker Desktop itself can stay stopped.
+2. Open Git Bash and clone. `.gitattributes` makes the checkout LF even with
+   `core.autocrlf=true`; shell scripts and nginx configs break inside Linux images if
+   they are CRLF.
 
 ```bash
-git clone https://github.com/Mohamed-DN/sovereign-oci-proxy.git
-cd sovereign-oci-proxy
+git clone https://github.com/Mohamed-DN/neronet-proxy.git
+cd neronet-proxy
+sh scripts/dev/gen-env.sh
+sh scripts/dev/stack.sh up
+sh scripts/dev/stack.sh nodes
+sh scripts/dev/stack.sh status
 ```
 
-### Step 2: Initialize Configuration from Template
+`engine.sh`, sourced by every script, sets `MSYS_NO_PATHCONV=1` and converts the
+repository path with `pwd -W`. Without that, Git Bash rewrites `-v ...:/src` into a
+Windows path and the mount fails.
+
+### Linux and macOS (Docker or Podman)
+
+Same commands. Install Docker Engine with the Compose plugin, or Podman with a Compose
+provider. On macOS use Docker Desktop or `podman machine`.
+
+```bash
+git clone https://github.com/Mohamed-DN/neronet-proxy.git
+cd neronet-proxy
+sh scripts/dev/gen-env.sh
+sh scripts/dev/stack.sh up
+sh scripts/dev/stack.sh nodes
+sh scripts/dev/stack.sh status
+```
+
+### Using the stack
+
+- Console: `http://127.0.0.1:8443`. User `admin`; the password is `SOVEREIGN_ADMIN_PASS`
+  in `.env`.
+- API: `http://127.0.0.1:8081/api/health`.
+- `status` should report 6 of 6 nodes within about a minute of `nodes` finishing.
+- PostgreSQL and Valkey are not published to the host. To reach them, start the stack
+  with `NERONET_DEBUG_PORTS=1 sh scripts/dev/stack.sh up`; they listen on
+  `127.0.0.1:5432` and `127.0.0.1:6379`.
+
+### Running more than one stack
+
+Every stack needs its own project name and its own host ports. `NERONET_PORT_OFFSET`
+shifts all default ports at once:
+
+```bash
+COMPOSE_PROJECT_NAME=featx NERONET_PORT_OFFSET=100 sh scripts/dev/stack.sh up
+COMPOSE_PROJECT_NAME=featx NERONET_PORT_OFFSET=100 sh scripts/dev/stack.sh nodes
+COMPOSE_PROJECT_NAME=featx NERONET_PORT_OFFSET=100 sh scripts/dev/stack.sh status
+COMPOSE_PROJECT_NAME=featx NERONET_PORT_OFFSET=100 sh scripts/dev/stack.sh down -v
+```
+
+Use the same two variables on every call for a given stack. Each stack has its own
+database, Valkey and node identities, so nodes enrol only in their own stack.
+Individual ports can be set instead of an offset; see section 5.
+
+### Running the tests
+
+```bash
+sh scripts/dev/test-go.sh
+sh scripts/dev/test-backend.sh
+sh scripts/dev/test-frontend.sh
+```
+
+Two `test-backend.sh` runs can overlap. Each creates its own network and Valkey, and
+keeps the SQLite files the tests create in a tmpfs. Do not point the backend tests at
+the Valkey of a running stack: the tests key their data by process id, and ids collide
+across containers.
+
+### Building and running the Go binaries directly
+
+This needs Go on the host and is not required for working on the console.
+
+### Step 1: Initialize Configuration from Template
 
 ```bash
 cp .env.example .env
 chmod 600 .env
 ```
 
-### Step 3: Build Core Binaries
+### Step 2: Build Core Binaries
 
 ```bash
 make build
@@ -117,7 +205,7 @@ make build
 - `bin/sovereign-node`
 - `bin/sovereign-cli`
 
-### Step 4: Generate Identity Keypairs
+### Step 3: Generate Identity Keypairs
 
 Generate a fresh Curve25519 node identity keypair using the CLI:
 
@@ -134,7 +222,7 @@ Generated NeroNet Curve25519 Keypair:
 
 Insert the generated private key into your `.env` file (`NOISE_PRIVATE_KEY=...`).
 
-### Step 5: Launch Local Daemons
+### Step 4: Launch Local Daemons
 
 In separate terminal sessions (or via background jobs):
 
@@ -153,7 +241,7 @@ In separate terminal sessions (or via background jobs):
 ./bin/sovereign-node --socks-addr 127.0.0.1:1080 --http-addr 127.0.0.1:8080 --control-url http://127.0.0.1:8443
 ```
 
-### Step 6: Test Local Ingress Proxy
+### Step 5: Test Local Ingress Proxy
 
 Route an HTTP request through the local SOCKS5 proxy:
 
@@ -202,42 +290,49 @@ Sovereign Proxy implements a strict 4-layer configuration precedence hierarchy:
 
 ---
 
-## 5. Local Multi-Service Docker Compose Deployment
+## 5. Compose Stack Reference
 
-The repository includes a multi-service Docker Compose configuration for testing complete multi-container mesh clusters locally.
+`docker-compose.yml` is the only compose file for development. It sets no
+`container_name` and no subnet, so several stacks can share a host.
 
-### Launching the Cluster
+### Services and profiles
 
-```bash
-docker compose -f configs/docker-compose.cluster.yml up -d
-```
-
-### Inspected Services
-
-```bash
-docker compose -f configs/docker-compose.cluster.yml ps
-```
-
-| Container Service | Published Port | Purpose |
+| Service | Profile | Purpose |
 |---|---|---|
-| `sovereign-control-plane` | `8443` (REST), `9443` (gRPC) | Mesh coordination and policy synchronization |
-| `sovereign-derp-relay` | `443` (HTTPS/DERP), `3478/udp` (STUN) | Packet relay and NAT discovery |
-| `sovereign-honeypot` | `8080` (HTTP) | Active defense scanner tarpit |
-| `sovereign-watcher` | Host network | eBPF / IPSet firewall log monitor |
+| `postgres`, `valkey` | always | Durable state and hot state. Not published to the host. |
+| `backend` | always | Node.js control plane API. |
+| `frontend` | always | nginx: the console SPA, and the entry point Go nodes enrol through. |
+| `derp-eu`, `derp-us` | `nodes` | DERP relays; each also answers STUN on UDP. |
+| `relay-de`, `relay-fr`, `relay-us`, `relay-nl`, `client-it`, `client-es` | `nodes` | Go nodes. Each keeps its identity key in its own volume. |
+| `postgres-debug`, `valkey-debug` | `debug-ports` | Loopback forwarders to PostgreSQL and Valkey. |
 
-### Inspecting Container Logs
+`nodes` builds `docker/Dockerfile.node` once; all eight services use that image.
 
-```bash
-docker compose -f configs/docker-compose.cluster.yml logs -f sovereign-control-plane
-```
+### Host ports
 
-### Graceful Teardown
+All ports are bound to `127.0.0.1`.
 
-```bash
-docker compose -f configs/docker-compose.cluster.yml down
-```
+| Variable | Default | Service |
+|---|---:|---|
+| `NERONET_CONSOLE_PORT` | 8443 | `frontend` |
+| `NERONET_API_PORT` | 8081 | `backend` |
+| `NERONET_DERP_EU_PORT` | 8444 | `derp-eu` (TCP) |
+| `NERONET_DERP_US_PORT` | 8445 | `derp-us` (TCP) |
+| `NERONET_STUN_EU_PORT` | 3478 | `derp-eu` (UDP) |
+| `NERONET_STUN_US_PORT` | 3479 | `derp-us` (UDP) |
+| `NERONET_POSTGRES_PORT` | 5432 | `postgres-debug` |
+| `NERONET_VALKEY_PORT` | 6379 | `valkey-debug` |
 
----
+`CORS_ORIGIN` of the backend is built from `NERONET_CONSOLE_PORT` and
+`NERONET_API_PORT`.
+
+### Data and project names
+
+Volume names derive from the Compose project name: `<project>_postgres_data`,
+`<project>_identity-relay-de` and so on. The default project name is the checkout
+folder name. Changing the name, or running from a folder with another name, starts
+with empty volumes. `stack.sh down` keeps the volumes; `stack.sh down -v` deletes them,
+which makes every node enrol again as a new device.
 
 ## 6. Multi-Cloud Provisioning with OpenTofu / Terraform
 
@@ -337,7 +432,12 @@ kubectl get pods,svc,pdb -n sovereign-mesh -o wide
 ### Running the Complete Test Suite
 
 ```bash
-# 1. Run unit and race detection tests across all Go packages
+# 0. The three suites in containers, from any host with Podman or Docker
+sh scripts/dev/test-go.sh
+sh scripts/dev/test-backend.sh
+sh scripts/dev/test-frontend.sh
+
+# 1. Run unit and race detection tests across all Go packages (Go on the host)
 make test
 
 # 2. Run Go vet linter

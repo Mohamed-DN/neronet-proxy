@@ -3,7 +3,7 @@
 ## Architecture
 - **Control Plane Web UI**: React 18/19, Vite 5, Tailwind CSS 3.4+, Lucide React, Recharts, Three.js / Canvas 3D Force-Graph for Spiderweb Topology, WebRTC DataChannel for P2P NeroDrop. Dark enterprise theme (`#09090b` canvas, `#111318` card containers, neon accents).
 - **Control Plane Backend API**: Go or Node.js REST API with embedded SQLite database (`console/data/neronet.db`) utilizing WAL mode. Exposes 33+ endpoints covering Auth (Super-Admin vs User Portal RBAC), Users (Hybrid BYOS vs Managed Cloud tiers), Nodes, App Bundles (Guacamole, Nextcloud, Immich, Seafile), Crypto/Config generation (WireGuard .conf, Noise JSON, QR codes), and Telemetry/Audit Logs.
-- **Local Staging Deployment**: Zero-conflict loopback binding (`127.0.0.1:8081` for Console UI, `127.0.0.1:8082` for API) with automated `console/start.sh` and `console/docker-compose.yml`. Standard bridge networking with zero manipulation of kernel routing tables or Tailscale `utunX` interfaces.
+- **Local Staging Deployment**: Zero-conflict loopback binding (`127.0.0.1:8081` for Console UI, `127.0.0.1:8082` for API) with automated `console/start.sh` and `docker-compose.yml`. Standard bridge networking with zero manipulation of kernel routing tables or Tailscale `utunX` interfaces.
 - **GitOps Engine**: Automated GitOps staging engine that validates all tests, stages a clean commit tree, and pushes to `Mohamed-DN/sovereign-oci-proxy` on branch `main`.
 
 ---
@@ -31,7 +31,7 @@
 | 17 | Settings & Zero-Trust ACL Manager | Visual editor for Zero-Trust ACL rules, Subnet route failover config, device posture policies. | M2 | Survey 2 (Frontend Spec) |
 | 18 | Real-Time Security Audit Table | Filterable audit table with slide-over JSON payload inspector and CSV/JSON export. | M2 | Survey 2 (Frontend Spec) |
 | 19 | Safe Local Staging Scripts | 1-Click native `console/start.sh` and `console/stop.sh` binding to ports 8081/8082 without Tailscale disruption. | M3 | Survey 3 (Infra Spec) |
-| 20 | Containerized Compose Stack | Multi-stage `console/Dockerfile` and `console/docker-compose.yml` for isolated container execution. | M3 | Survey 3 (Infra Spec) |
+| 20 | Containerized Compose Stack | Multi-stage `console/Dockerfile` and `docker-compose.yml` for isolated container execution. | M3 | Survey 3 (Infra Spec) |
 | 21 | E2E Integration Test Suite | Automated test runner validating API health, auth flows, node crypto configs, UI builds, and routes. | M4 | E2E Testing Track |
 | 22 | Adversarial Hardening Verification | White-box stress tests for token forgery, VIP collision, posture quarantine bypass, and malformed inputs. | M4 | E2E Testing Track |
 | 23 | Clean GitOps Push Engine | Sanitized staging synchronization and push to `Mohamed-DN/sovereign-oci-proxy` on `main`. | M5 | Survey 3 (Infra Spec) |
@@ -44,7 +44,7 @@
 |---|------|-------|-------------|--------|
 | M1 | Control Plane Backend API & Database | API router, SQLite DDL/queries, Auth/RBAC (Super-Admin vs User), User/Node/App CRUD, Crypto Generators (WireGuard, Noise, QR Code), Telemetry & Audit APIs. | none | PLANNED |
 | M2 | Enterprise Frontend Web UI | React + Vite + Tailwind UI, 3D Spiderweb Topology (scoped by role), Node Action Drawer (Ping/Exit/Quarantine), P2P NeroDrop Hub, App Bundles Hub, User Portal, Crypto Modal. | M1 | PLANNED |
-| M3 | Local Staging & Containerization | `console/start.sh`, `console/stop.sh`, `console/Dockerfile`, `console/docker-compose.yml`, local staging on ports 8081/8082 with loopback isolation. | M1, M2 | PLANNED |
+| M3 | Local Staging & Containerization | `console/start.sh`, `console/stop.sh`, `console/Dockerfile`, `docker-compose.yml`, local staging on ports 8081/8082 with loopback isolation. | M1, M2 | PLANNED |
 | M4 | E2E Test Suite & Adversarial Hardening | 5-Tier E2E test verification, full test suite pass (Tiers 1-4), adversarial test hardening (Tier 5), UI/API integration validation. | M1, M2, M3 | PLANNED |
 | M5 | Clean GitOps Push & Final Verification | Automated staging directory synchronization, clean force-push to `Mohamed-DN/sovereign-oci-proxy` on `main`, release audit handover. | M4 | PLANNED |
 

@@ -59,8 +59,8 @@ reviewer being able to read the critical path in an afternoon and believe it.
 ```
 
 `docker-compose.yml` starts four services: `postgres`, `valkey`, `backend`,
-`frontend`. Go nodes run separately (`docker-compose.nodes.yml`) and reach the
-control plane through nginx.
+`frontend`. The Go nodes and two DERP relays are in the same file under the `nodes`
+profile and reach the control plane through nginx.
 
 ### 2.2 Go packages
 
@@ -427,19 +427,21 @@ sequence.
 ### 8.1 Local
 
 ```bash
-cp .env.example .env && chmod 600 .env
-
-for key in SOVEREIGN_JWT_SECRET SOVEREIGN_REFRESH_SECRET SOVEREIGN_ADMIN_PASS POSTGRES_PASSWORD; do
-  printf '%s=%s\n' "$key" "$(openssl rand -base64 48)"
-done >> .env
-printf 'SOVEREIGN_REGISTRATION_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-
-docker compose up -d
+sh scripts/dev/gen-env.sh        # writes .env with fresh secrets, never overwrites
+sh scripts/dev/stack.sh up       # postgres, valkey, backend, console
+sh scripts/dev/stack.sh nodes    # two DERP relays and six Go nodes
+sh scripts/dev/stack.sh status   # health, and nodes with a heartbeat under 60 s
 ```
 
-The API refuses to start without those secrets. That is intentional.
+The API refuses to start without those secrets. That is intentional. On Windows,
+run the scripts from Git Bash. The console is on `http://127.0.0.1:8443`.
 
-Run a node against it:
+A second stack on the same host needs its own project name and ports:
+`COMPOSE_PROJECT_NAME=other NERONET_PORT_OFFSET=100 sh scripts/dev/stack.sh up`.
+PostgreSQL and Valkey are not published unless `NERONET_DEBUG_PORTS=1` is set.
+Details: `DEVELOPER_SETUP.md` sections 3 and 5.
+
+To run a node outside the stack against it:
 
 ```bash
 set -a && . ./.env && set +a

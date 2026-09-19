@@ -248,12 +248,18 @@ curl -x socks5h://127.0.0.1:1080 https://cloudflare.com/cdn-cgi/trace
 
 ## 🐳 Docker Compose Deployment
 
-To run a multi-container local mesh cluster with isolated honeypot and threat watchers:
+The development stack (PostgreSQL, Valkey, backend, console) and a simulated fleet of
+six nodes and two DERP relays run from one compose file, driven by scripts that work
+with Podman or Docker. On Windows, run them from Git Bash.
 
 ```bash
-docker compose -f configs/docker-compose.cluster.yml up -d
-docker compose -f configs/docker-compose.cluster.yml ps
+sh scripts/dev/gen-env.sh        # .env with fresh secrets; never overwrites
+sh scripts/dev/stack.sh up       # console on http://127.0.0.1:8443
+sh scripts/dev/stack.sh nodes    # 2 DERP relays + 6 Go nodes
+sh scripts/dev/stack.sh status
 ```
+
+Several stacks can run side by side; see `DEVELOPER_SETUP.md` sections 3 and 5.
 
 ---
 
