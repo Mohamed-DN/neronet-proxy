@@ -194,7 +194,7 @@ describe('Committed files carry no usable secrets', () => {
     });
   }
 
-  const composeFiles = ['docker-compose.yml', 'console/docker-compose.yml'];
+  const composeFiles = ['docker-compose.yml'];
 
   for (const rel of composeFiles) {
     it(`${rel} takes secrets from the environment, not literals`, () => {

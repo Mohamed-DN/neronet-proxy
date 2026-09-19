@@ -19,14 +19,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONSOLE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ROOT_DIR="$(cd "$CONSOLE_DIR/.." && pwd)"
 
-# Determine appropriate docker-compose file
-if [ -f "$CONSOLE_DIR/docker-compose.yml" ]; then
-    COMPOSE_FILE="$CONSOLE_DIR/docker-compose.yml"
-    WORKING_DIR="$CONSOLE_DIR"
-else
-    COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
-    WORKING_DIR="$ROOT_DIR"
-fi
+# The compose file lives at the repository root.
+COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
+WORKING_DIR="$ROOT_DIR"
 
 echo "======================================================================"
 echo "    NERONET ENTERPRISE MANAGEMENT CONSOLE — LOCAL STAGING (R8)        "

@@ -127,7 +127,7 @@ def test_container_configuration():
     print("\n--- [TEST GROUP 3] Containerization & Compose Stack Verification ---")
     
     dockerfile_path = os.path.join(PROJECT_ROOT, "console/Dockerfile")
-    compose_path = os.path.join(PROJECT_ROOT, "console/docker-compose.yml")
+    compose_path = os.path.join(PROJECT_ROOT, "docker-compose.yml")
     
     with open(dockerfile_path, "r", encoding="utf-8") as f:
         dockerfile_content = f.read()

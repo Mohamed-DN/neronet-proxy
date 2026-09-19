@@ -1,11 +1,42 @@
-# ==============================================================================
-# NeroNet Sovereign Mesh Enterprise Management Console - Local Staging (R8)
-# Multi-Container Compose Stack (PostgreSQL 16, Valkey 7, Backend API, Nginx SPA)
-# 
-# 🔒 macOS Host Routing Safety Invariant:
-# - All host port bindings are 100% restricted to loopback (127.0.0.1).
-# - Zero host routing table modifications; zero interference with Tailscale.
-# ==============================================================================
+# NeroNet development stack.
+#
+#   core services (always):  postgres, valkey, backend, frontend
+#   profile "nodes":         two DERP relays and six Go nodes enrolling through nginx
+#   profile "debug-ports":   publishes PostgreSQL and Valkey on the host loopback
+#
+# Several stacks can run side by side on one host. Set COMPOSE_PROJECT_NAME and the
+# NERONET_*_PORT variables to different values for each; scripts/dev/stack.sh does
+# both. No service sets container_name, so nothing collides by name, and no subnet
+# is pinned. Volume names derive from the project name: do not add a top-level
+# `name:`, because an existing stack keeps its data only while its project name stays
+# the same.
+#
+# Every host port is bound to 127.0.0.1.
+
+x-node-build: &node-build
+  # Every node-image service builds from the same recipe. Naming the image once
+  # lets Compose build it a single time per `up --build`.
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.node
+  image: ${NERONET_NODE_IMAGE:-neronet-node:dev}
+  restart: unless-stopped
+  networks:
+    - neronet-isolated-mesh
+
+x-node: &node
+  <<: *node-build
+  profiles: ["nodes"]
+  environment:
+    - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
+  depends_on:
+    frontend:
+      condition: service_healthy
+
+x-derp: &derp
+  <<: *node-build
+  profiles: ["nodes"]
+  entrypoint: ["/bin/sovereign-derp-relay"]
 
 services:
   # 1. PostgreSQL 16 with PostGIS & pgvector
@@ -19,10 +50,7 @@ services:
     # Once 004 shows in the _migrations table, this can safely become
     # postgres:16-alpine -- nothing in the schema references PostGIS any more.
     image: postgis/postgis:16-3.4-alpine
-    container_name: neronet_staging_postgres
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:5432:5432"
     environment:
       - POSTGRES_USER=neronet
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -38,13 +66,10 @@ services:
     networks:
       - neronet-isolated-mesh
 
-  # 2. Valkey 7 (Redis-compatible In-Memory State Bus & Session Store)
+  # 2. Valkey 7 (Redis-compatible in-memory state bus and session store)
   valkey:
     image: valkey/valkey:7.2-alpine
-    container_name: neronet_staging_valkey
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:6379:6379"
     volumes:
       - valkey_data:/data
     healthcheck:
@@ -56,15 +81,14 @@ services:
     networks:
       - neronet-isolated-mesh
 
-  # 3. Control Plane REST & WebSocket API Backend (Node.js 22)
+  # 3. Control plane REST and WebSocket API (Node.js 22)
   backend:
     build:
       context: ./console/backend
       dockerfile: Dockerfile
-    container_name: neronet_staging_backend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8081:8081"
+      - "127.0.0.1:${NERONET_API_PORT:-8081}:8081"
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,7 +120,8 @@ services:
       - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
       - SOVEREIGN_DATA_DIR=/app/data
       - SOVEREIGN_FEATURE_CLOUD_PC=${SOVEREIGN_FEATURE_CLOUD_PC:-false}
-      - CORS_ORIGIN=http://127.0.0.1:8443,http://localhost:8443,http://127.0.0.1:8081,http://localhost:8081
+      # The browser origins that reach the console and the API on the host.
+      - CORS_ORIGIN=http://127.0.0.1:${NERONET_CONSOLE_PORT:-8443},http://localhost:${NERONET_CONSOLE_PORT:-8443},http://127.0.0.1:${NERONET_API_PORT:-8081},http://localhost:${NERONET_API_PORT:-8081}
     # Unprivileged, with a read-only root filesystem. Only /app/data is writable,
     # and only because the federation identity and the SQLite file live there.
     user: "10001:10001"
@@ -121,15 +146,14 @@ services:
     networks:
       - neronet-isolated-mesh
 
-  # 4. Enterprise Frontend SPA (Nginx 1.27 Reverse Proxy)
+  # 4. Console SPA (nginx). Also the entry point Go nodes enrol through.
   frontend:
     build:
       context: ./console/frontend
       dockerfile: Dockerfile
-    container_name: neronet_staging_frontend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8443:8443"
+      - "127.0.0.1:${NERONET_CONSOLE_PORT:-8443}:8443"
     depends_on:
       backend:
         condition: service_healthy
@@ -142,13 +166,100 @@ services:
     networks:
       - neronet-isolated-mesh
 
+  # ---------------------------------------------------------------------------
+  # Profile "nodes": a simulated fleet. Each entry is a real Go daemon enrolling
+  # through nginx, not a database fixture. Countries and roles differ so discovery
+  # filters and circuit selection have something to choose between.
+  # ---------------------------------------------------------------------------
+
+  # DERP relays: the fallback path for peers that cannot reach each other directly.
+  # Two regions so relay selection has a choice. Each also answers STUN on UDP, which
+  # is what a node behind NAT uses to learn its own public address.
+  derp-eu:
+    <<: *derp
+    command: ["-listen-addr", "0.0.0.0:8444", "-stun-addr", "0.0.0.0:3478", "-region", "eu-central", "-decoy-title", "Apache2 Ubuntu Default Page"]
+    ports:
+      - "127.0.0.1:${NERONET_DERP_EU_PORT:-8444}:8444"
+      - "127.0.0.1:${NERONET_STUN_EU_PORT:-3478}:3478/udp"
+
+  derp-us:
+    <<: *derp
+    command: ["-listen-addr", "0.0.0.0:8444", "-stun-addr", "0.0.0.0:3478", "-region", "us-east", "-decoy-title", "Apache2 Ubuntu Default Page"]
+    ports:
+      - "127.0.0.1:${NERONET_DERP_US_PORT:-8445}:8444"
+      - "127.0.0.1:${NERONET_STUN_US_PORT:-3479}:3478/udp"
+
+  relay-de:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "DE", "-enable-exit=true"]
+    volumes:
+      - identity-relay-de:/var/lib/neronet
+
+  relay-fr:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "FR", "-enable-exit=true"]
+    volumes:
+      - identity-relay-fr:/var/lib/neronet
+
+  relay-us:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "US", "-enable-exit=true"]
+    volumes:
+      - identity-relay-us:/var/lib/neronet
+
+  relay-nl:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "NL", "-enable-exit=true"]
+    volumes:
+      - identity-relay-nl:/var/lib/neronet
+
+  client-it:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "IT"]
+    volumes:
+      - identity-client-it:/var/lib/neronet
+
+  client-es:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "ES"]
+    volumes:
+      - identity-client-es:/var/lib/neronet
+
+  # ---------------------------------------------------------------------------
+  # Profile "debug-ports": PostgreSQL and Valkey are not published by default. A
+  # service cannot gain a port mapping from a profile, so each of these forwards a
+  # loopback host port to the database inside the network.
+  # ---------------------------------------------------------------------------
+
+  postgres-debug:
+    profiles: ["debug-ports"]
+    image: alpine/socat:1.8.0.1
+    restart: unless-stopped
+    command: ["TCP-LISTEN:5432,fork,reuseaddr", "TCP:postgres:5432"]
+    ports:
+      - "127.0.0.1:${NERONET_POSTGRES_PORT:-5432}:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - neronet-isolated-mesh
+
+  valkey-debug:
+    profiles: ["debug-ports"]
+    image: alpine/socat:1.8.0.1
+    restart: unless-stopped
+    command: ["TCP-LISTEN:6379,fork,reuseaddr", "TCP:valkey:6379"]
+    ports:
+      - "127.0.0.1:${NERONET_VALKEY_PORT:-6379}:6379"
+    depends_on:
+      valkey:
+        condition: service_healthy
+    networks:
+      - neronet-isolated-mesh
+
 networks:
   neronet-isolated-mesh:
     driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.28.0.0/16
 
 volumes:
   backend_data:
@@ -157,3 +268,12 @@ volumes:
     driver: local
   valkey_data:
     driver: local
+  # One volume per node. The identity key inside it is what ties a container to the
+  # device row it already has in the control plane; delete a volume and that
+  # container comes back as a different node.
+  identity-relay-de:
+  identity-relay-fr:
+  identity-relay-us:
+  identity-relay-nl:
+  identity-client-it:
+  identity-client-es:
