@@ -187,8 +187,6 @@ jobs:
         component:
           - name: sovereign-node
             dockerfile: docker/Dockerfile.node
-          - name: sovereign-relay
-            dockerfile: docker/Dockerfile.relay
           - name: sovereign-control-plane
             dockerfile: docker/Dockerfile.control-plane
     steps:

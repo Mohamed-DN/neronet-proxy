@@ -8,8 +8,8 @@ build:
 	@mkdir -p $(BIN_DIR)
 	@echo "Building sovereign-control-plane..."
 	@go build -o $(BIN_DIR)/sovereign-control-plane ./cmd/sovereign-control-plane
-	@echo "Building sovereign-relay..."
-	@go build -o $(BIN_DIR)/sovereign-relay ./cmd/sovereign-relay
+	@echo "Building sovereign-derp-relay..."
+	@go build -o $(BIN_DIR)/sovereign-derp-relay ./cmd/sovereign-derp-relay
 	@echo "Building sovereign-node..."
 	@go build -o $(BIN_DIR)/sovereign-node ./cmd/sovereign-node
 	@echo "Building sovereign-cli..."

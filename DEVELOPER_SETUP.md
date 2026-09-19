@@ -54,7 +54,7 @@ Sovereign Proxy v4.0 is a decentralized, zero-trust overlay mesh engineered for 
 | Component | Path | Description |
 |---|---|---|
 | **Control Plane** | `cmd/sovereign-control-plane` | Centralized coordinator handling node enrollment, Raft consensus state, dynamic ACL distribution, and endpoint posture attestation. |
-| **DERP Relay** | `cmd/sovereign-relay` | Camouflaged Tailscale-compatible DERP-v4 packet relay supporting WebSocket fallback, STUN NAT hairpinning, and anti-probing decoys. |
+| **DERP Relay** | `cmd/sovereign-derp-relay` | Camouflaged Tailscale-compatible DERP-v4 packet relay supporting WebSocket fallback, STUN NAT hairpinning, and anti-probing decoys. |
 | **Client Node** | `cmd/sovereign-node` | Zero-trust client daemon providing local SOCKS5 (`127.0.0.1:1080`) and HTTP CONNECT (`127.0.0.1:8080`) proxy endpoints with user-space netstack isolation. |
 | **Security Daemon** | `cmd/sovereign-security-daemon` | Active defense engine with dynamic honeypot listeners, token bucket rate limiters, threat scoring, and automated multi-backend firewall banning (`ipset`, `nftables`, `ufw`). |
 | **Operator CLI** | `cmd/sovereign-cli` | Diagnostic and operational CLI for keypair generation, peer discovery, 3-Hop Onion circuit synthesis, and STUN latency probes. |
@@ -113,7 +113,7 @@ make build
 ```
 *Compiled binaries will be placed in the `bin/` directory:*
 - `bin/sovereign-control-plane`
-- `bin/sovereign-relay`
+- `bin/sovereign-derp-relay`
 - `bin/sovereign-node`
 - `bin/sovereign-cli`
 
@@ -145,7 +145,7 @@ In separate terminal sessions (or via background jobs):
 
 **2. Start Camouflaged Relay Node:**
 ```bash
-./bin/sovereign-relay --listen-addr 127.0.0.1:8444 --stun-addr 127.0.0.1:3478 --region local-dev
+./bin/sovereign-derp-relay --listen-addr 127.0.0.1:8444 --stun-addr 127.0.0.1:3478 --region local-dev
 ```
 
 **3. Start Client Node Ingress:**
@@ -221,7 +221,7 @@ docker compose -f configs/docker-compose.cluster.yml ps
 | Container Service | Published Port | Purpose |
 |---|---|---|
 | `sovereign-control-plane` | `8443` (REST), `9443` (gRPC) | Mesh coordination and policy synchronization |
-| `sovereign-relay` | `443` (HTTPS/DERP), `3478/udp` (STUN) | Packet relay and NAT discovery |
+| `sovereign-derp-relay` | `443` (HTTPS/DERP), `3478/udp` (STUN) | Packet relay and NAT discovery |
 | `sovereign-honeypot` | `8080` (HTTP) | Active defense scanner tarpit |
 | `sovereign-watcher` | Host network | eBPF / IPSet firewall log monitor |
 
@@ -394,7 +394,7 @@ bash scripts/gitops/preflight_check.sh
 **Cause**: Linux non-root processes cannot bind to privileged ports (< 1024) by default.  
 **Resolution**: Grant the binary `CAP_NET_BIND_SERVICE` capability or run via Docker with port mapping:
 ```bash
-sudo setcap 'cap_net_bind_service=+ep' bin/sovereign-relay
+sudo setcap 'cap_net_bind_service=+ep' bin/sovereign-derp-relay
 ```
 
 ### Q2: STUN reflection fails or returns symmetric NAT warnings

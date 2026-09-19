@@ -31,8 +31,8 @@ services:
 
   # 2. Sovereign STUN/DERP Relay & Core Routing Engine
   relay-node:
-    image: ghcr.io/mohamed-dn/sovereign-relay:4.0.0
-    container_name: sovereign-relay
+    image: ghcr.io/mohamed-dn/sovereign-derp-relay:4.0.0
+    container_name: sovereign-derp-relay
     restart: unless-stopped
     network_mode: "host" # Line-rate kernel packet routing for low-latency STUN & DERP
     cap_add:

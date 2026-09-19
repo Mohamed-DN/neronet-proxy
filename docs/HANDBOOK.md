@@ -73,7 +73,6 @@ control plane through nginx.
 | `pkg/nat` | 1,730 | STUN, ICE, NAT classification, hole punching | Untested against real NAT |
 | `pkg/config` | 2,588 | Flag/env binding, schema validation | Works |
 | `pkg/derp` | 768 | Relay fallback, traffic camouflage | Not exercised |
-| `pkg/ebpf` | 1,039 | XDP-style packet classification, flow table | Simulation, not real eBPF |
 | `pkg/management` | 1,230 | Metrics, events | Prometheus endpoint exists |
 | `pkg/posture` | 749 | Device attestation | Works; consumed by heartbeat |
 | `pkg/bridge` | 1,020 | SOCKS5, HTTP CONNECT, DoH, sandbox | Works locally |

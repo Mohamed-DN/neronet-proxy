@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -265,9 +264,6 @@ func main() {
 			}
 		}()
 	}
-
-	// Unused listener warning suppression
-	_ = net.ParseIP("127.0.0.1")
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)

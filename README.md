@@ -220,7 +220,7 @@ make build
 
 Compiled binaries are located in `./bin/`:
 - `bin/sovereign-control-plane`
-- `bin/sovereign-relay`
+- `bin/sovereign-derp-relay`
 - `bin/sovereign-node`
 - `bin/sovereign-cli`
 
@@ -231,7 +231,7 @@ Compiled binaries are located in `./bin/`:
 ./bin/sovereign-control-plane --listen-addr 127.0.0.1:8443 &
 
 # 2. Start Camouflaged Relay Node
-./bin/sovereign-relay --listen-addr 127.0.0.1:8444 --stun-addr 127.0.0.1:3478 --region local-dev &
+./bin/sovereign-derp-relay --listen-addr 127.0.0.1:8444 --stun-addr 127.0.0.1:3478 --region local-dev &
 
 # 3. Start Client Node Ingress
 ./bin/sovereign-node --socks-addr 127.0.0.1:1080 --http-addr 127.0.0.1:8080 --control-url http://127.0.0.1:8443 &
