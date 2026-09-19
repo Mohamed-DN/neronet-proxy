@@ -1,210 +1,253 @@
-name: Continuous Integration & Cross-Platform Verification
+name: CI
+
+# Every job here runs the same command a developer runs locally (scripts/dev/* where
+# one exists) and fails when the command fails. There is no `|| true` and no step
+# that skips itself when its input is missing.
 
 on:
   push:
-    branches:
-      - main
-      - v4-staging
-      - v4-dev
-      - v2
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
+    branches: [main]
   pull_request:
-    branches:
-      - main
-      - v4-staging
+    branches: [main]
+  workflow_dispatch:
+
+# No paths filter on purpose: a required check that is skipped by a filter never
+# reports, and the pull request waits on it forever.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  lint-and-format:
-    name: Lint & Static Code Analysis
+  go:
+    name: go
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Go Environment
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.23'
-          cache: true
+          go-version-file: go.mod
 
-      - name: Set up Python Environment
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Run ShellCheck on Shell Scripts
-        uses: ludeeus/action-shellcheck@master
-        with:
-          scandir: './scripts'
-          ignore_paths: '.agents'
-
-      - name: Install Python Linters & Pre-requisites
+      - name: gofmt
         run: |
-          python -m pip install --upgrade pip
-          pip install flake8 pyyaml
-
-      - name: Validate YAML Configuration Files
-        run: |
-          python3 -c "
-          import glob, sys, yaml
-          failed = False
-          for filepath in glob.glob('**/*.yaml', recursive=True) + glob.glob('**/*.yml', recursive=True):
-              if '.github' in filepath or '.git' in filepath or '.agents' in filepath or 'templates' in filepath:
-                  continue
-              try:
-                  with open(filepath, 'r') as f:
-                      list(yaml.safe_load_all(f))
-              except Exception as e:
-                  print(f'YAML parse failure in {filepath}: {e}')
-                  failed = True
-          if failed:
-              sys.exit(1)
-          print('All YAML configurations validated successfully.')
-          "
-
-      - name: Validate Go Code Formatting & Vet
-        run: |
-          if [ -f go.mod ]; then
-            go fmt ./...
-            go vet ./...
-          else
-            echo "go.mod not yet initialized; skipping go vet"
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
           fi
 
-  unit-tests:
-    name: Unit & Algorithm Tests (${{ matrix.os }} - Go ${{ matrix.go-version }})
-    runs-on: ${{ matrix.os }}
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test -race
+        run: go test ./... -race -count=1
+
+      # Separate module: `./...` at the repository root does not descend into it.
+      - name: security daemon, go vet
+        working-directory: cmd/sovereign-security-daemon
+        run: go vet ./...
+
+      - name: security daemon, go test -race
+        working-directory: cmd/sovereign-security-daemon
+        run: go test ./... -race -count=1
+
+      # Pinned to v1.1.4: later releases need Go 1.26, and go.mod requires 1.25.
+      # Raise both together.
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          govulncheck ./...
+          cd cmd/sovereign-security-daemon
+          govulncheck ./...
+
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      valkey:
+        image: valkey/valkey:7.2-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      VALKEY_URL: redis://127.0.0.1:6379
+      VALKEY_HOST: 127.0.0.1
+    defaults:
+      run:
+        working-directory: console/backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: console/backend/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: format:check
+        run: npm run format:check
+
+      # Three runs in one job. A test that passes once and fails once is a defect,
+      # and a single run hides it.
+      - name: npm test (run 1 of 3)
+        run: npm test
+
+      - name: npm test (run 2 of 3)
+        run: npm test
+
+      - name: npm test (run 3 of 3)
+        run: npm test
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: console/frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: console/frontend/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: format:check
+        run: npm run format:check
+
+      - name: build
+        run: npm run build
+
+      - name: test
+        run: npm test
+
+  stack-smoke:
+    name: stack-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The runner has Podman and Docker installed; only the Docker daemon runs.
+      NERONET_ENGINE: docker
+      COMPOSE_PROJECT_NAME: neronet-ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Generate a throw-away .env
+        run: sh scripts/dev/gen-env.sh
+
+      - name: Start the core services
+        run: sh scripts/dev/stack.sh up
+
+      - name: Start the DERP relays and the six nodes
+        run: sh scripts/dev/stack.sh nodes
+
+      - name: Wait for 6 nodes with a heartbeat, check /api/health
+        run: sh scripts/dev/smoke.sh 6 180
+
+      - name: Console security headers
+        run: sh scripts/dev/check-console-headers.sh http://127.0.0.1:8443
+
+      - name: Service logs
+        if: failure()
+        run: sh scripts/dev/stack.sh logs || true
+
+      - name: Tear down
+        if: always()
+        run: sh scripts/dev/stack.sh down -v
+
+  legacy-tools:
+    name: legacy-tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Legacy revocation script and security daemon
+        run: bash tests/legacy_compat/run_all_legacy_tests.sh
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Errors only. The legacy scripts carry style and unused-variable warnings
+      # that predate this pipeline; new scripts should still be clean at every level.
+      - name: shellcheck
+        run: |
+          git ls-files -z '*.sh' scripts/legacy_refactor/sovereign-setup \
+            | xargs -0 shellcheck --severity=error --external-sources
+
+      - name: YAML syntax
+        run: |
+          python3 -m pip install --quiet pyyaml
+          python3 - <<'EOF'
+          import subprocess, sys, yaml
+          files = subprocess.check_output(
+              ["git", "ls-files", "*.yaml", "*.yml"], text=True).split()
+          failed = False
+          for path in files:
+              # Helm templates contain Go template syntax and are not plain YAML.
+              if "/templates/" in path:
+                  continue
+              try:
+                  with open(path, encoding="utf-8") as f:
+                      list(yaml.safe_load_all(f))
+              except yaml.YAMLError as e:
+                  print(f"{path}: {e}")
+                  failed = True
+          sys.exit(1 if failed else 0)
+          EOF
+
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo docker.io/rhysd/actionlint:1.7.12 -color
+
+  image-build:
+    name: image-build (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        go-version: ['1.22', '1.23', '1.24']
-        python-version: ['3.12', '3.13']
+        include:
+          - name: node
+            context: .
+            file: docker/Dockerfile.node
+          - name: backend
+            context: console/backend
+            file: console/backend/Dockerfile
+          - name: frontend
+            context: console/frontend
+            file: console/frontend/Dockerfile
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Go Environment
-        uses: actions/setup-go@v5
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Build only: nothing is pushed. Release publishing is release.yml.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          go-version: ${{ matrix.go-version }}
-
-      - name: Set up Python Environment
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Run Go Unit Tests with Race Detector
-        run: |
-          if [ -f go.mod ]; then
-            go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
-          else
-            echo "Running Python test harness fallback"
-            pytest -v tests/ || python3 -m unittest discover -s tests -p "*test*.py" || true
-          fi
-
-  infra-and-manifest-validation:
-    name: Helm, Terraform & Kustomize Validation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: v3.14.0
-
-      - name: Set up OpenTofu / Terraform
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu-version: 1.6.2
-
-      - name: Helm Lint & Template Rendering
-        run: |
-          if [ -d "charts/sovereign-mesh" ]; then
-            helm lint ./charts/sovereign-mesh
-            helm template test-mesh ./charts/sovereign-mesh > /dev/null
-          fi
-
-      - name: Terraform Module Validation
-        run: |
-          if [ -d "terraform" ]; then
-            find terraform -name "*.tf" -exec dirname {} \; | sort -u | while read -r d; do
-              echo "Validating Terraform in $d..."
-              tofu fmt -check "$d" || true
-            done
-          fi
-
-      - name: Kustomize Overlays Build
-        run: |
-          if [ -d "k8s/overlays/prod-oci" ]; then
-            kubectl kustomize ./k8s/overlays/prod-oci > /dev/null || true
-          fi
-
-  e2e-integration-tests:
-    name: Mesh & E2E Integration Test Suite
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-
-      - name: Set up Go Environment
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-
-      - name: Set up Python Environment
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install Python Test Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pyyaml
-
-      - name: Execute Preflight Check Hook
-        run: |
-          bash scripts/gitops/preflight_check.sh
-
-      - name: Execute 5-Tier E2E Test Suite Runner
-        run: |
-          python3 tests/e2e/runner.py --tier all
-
-  multi-arch-container-build-check:
-    name: Multi-Arch Docker Build Verification
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        component:
-          - name: sovereign-node
-            dockerfile: docker/Dockerfile.node
-          - name: sovereign-control-plane
-            dockerfile: docker/Dockerfile.control-plane
-    steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU Emulation
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Container Image (Dry-Run / No Push)
-        if: hashFiles(matrix.component.dockerfile) != ''
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ${{ matrix.component.dockerfile }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           platforms: linux/amd64,linux/arm64
           push: false
-          tags: ${{ matrix.component.name }}:test
