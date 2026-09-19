@@ -106,33 +106,24 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       assert.strictEqual(zeroVel, 0.0);
     });
 
+    // The console API no longer accepts telemetry: node measurements belong to the
+    // authenticated node channel. The scoring engine is still in the tree, so these
+    // tests drive it directly.
     it('should reject telemetry with missing coordinates or out-of-bounds coordinates (400)', async () => {
-      // Missing lat/lon
-      const res1 = await request(app)
-        .post('/api/risk/telemetry')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ node_id: testNodeId });
-      assert.strictEqual(res1.status, 400);
-
-      // Lat out of bounds (> 90)
-      const res2 = await request(app)
-        .post('/api/risk/telemetry')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ node_id: testNodeId, latitude: 120.0, longitude: 0.0 });
-      assert.strictEqual(res2.status, 400);
-
-      // Non-existent node (404)
-      const res3 = await request(app)
-        .post('/api/risk/telemetry')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ node_id: 'non-existent-node-999', latitude: 38.0, longitude: -77.0 });
-      assert.strictEqual(res3.status, 404);
+      await assert.rejects(RiskEngine.ingestTelemetry(testNodeId, {}), (err) => err.status === 400);
+      await assert.rejects(
+        RiskEngine.ingestTelemetry(testNodeId, { latitude: 120.0, longitude: 0.0 }),
+        (err) => err.status === 400
+      );
+      await assert.rejects(
+        RiskEngine.ingestTelemetry('non-existent-node-999', { latitude: 38.0, longitude: -77.0 }),
+        (err) => err.status === 404
+      );
     });
 
     it('should ingest normal baseline telemetry with green low risk score (<40)', async () => {
       const now = Date.now() / 1000;
-      const res = await request(app).post('/api/risk/telemetry').set('Authorization', `Bearer ${tenantAToken}`).send({
-        node_id: testNodeId,
+      const res = await RiskEngine.ingestTelemetry(testNodeId, {
         latitude: 38.8951,
         longitude: -77.0364,
         rtt_ms: 15.0,
@@ -140,49 +131,42 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
         timestamp_epoch: now
       });
 
-      assert.strictEqual(res.status, 200);
-      assert.strictEqual(res.body.node_id, testNodeId);
-      assert.strictEqual(res.body.impossible_travel_detected, false);
-      assert.ok(res.body.risk_score < 40);
-      assert.strictEqual(res.body.color, 'green');
+      assert.strictEqual(res.node_id, testNodeId);
+      assert.strictEqual(res.impossible_travel_detected, false);
+      assert.ok(res.risk_score < 40);
+      assert.strictEqual(res.color, 'green');
     });
 
     it('should detect impossible travel (>1000km/h) and increment risk score by 50', async () => {
       // 10 minutes later, heartbeat from London (velocity > 35,000 km/h)
       const t1 = Date.now() / 1000 + 600;
-      const res = await request(app).post('/api/risk/telemetry').set('Authorization', `Bearer ${tenantAToken}`).send({
-        node_id: testNodeId,
+      const res = await RiskEngine.ingestTelemetry(testNodeId, {
         latitude: 51.5074,
         longitude: -0.1278,
         rtt_ms: 25.0,
         timestamp_epoch: t1
       });
 
-      assert.strictEqual(res.status, 200);
-      assert.strictEqual(res.body.impossible_travel_detected, true);
-      assert.ok(res.body.velocity_kmh > 1000.0);
-      assert.ok(res.body.risk_score >= 50);
+      assert.strictEqual(res.impossible_travel_detected, true);
+      assert.ok(res.velocity_kmh > 1000.0);
+      assert.ok(res.risk_score >= 50);
     });
 
     it('should auto-quarantine node when risk_score exceeds 75 and reassign overlay IP to 100.64.250.0/24', async () => {
       // Send anomaly with severe RTT and high velocity triggering > 75 risk
       const t2 = Date.now() / 1000 + 610;
-      const res = await request(app)
-        .post(`/api/nodes/${testNodeId}/telemetry`)
-        .set('Authorization', `Bearer ${tenantAToken}`)
-        .send({
-          latitude: -33.8688, // Sydney
-          longitude: 151.2093,
-          rtt_ms: 450.0, // +25 RTT anomaly
-          jitter_ms: 35.0, // +15 Jitter anomaly
-          timestamp_epoch: t2
-        });
+      const res = await RiskEngine.ingestTelemetry(testNodeId, {
+        latitude: -33.8688, // Sydney
+        longitude: 151.2093,
+        rtt_ms: 450.0, // +25 RTT anomaly
+        jitter_ms: 35.0, // +15 Jitter anomaly
+        timestamp_epoch: t2
+      });
 
-      assert.strictEqual(res.status, 200);
-      assert.ok(res.body.risk_score > 75);
-      assert.strictEqual(res.body.is_quarantined, true);
-      assert.strictEqual(res.body.color, 'red');
-      assert.ok(res.body.overlay_ipv4.startsWith('100.64.250.'));
+      assert.ok(res.risk_score > 75);
+      assert.strictEqual(res.is_quarantined, true);
+      assert.strictEqual(res.color, 'red');
+      assert.ok(res.overlay_ipv4.startsWith('100.64.250.'));
 
       // Verify node status in GET /api/nodes/:id
       const nodeCheck = await request(app)
@@ -233,20 +217,10 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
     });
 
     it('should remediate/attest risk score back to 0 and lift quarantine', async () => {
-      // Non-owner tenant cannot attest another tenant's node (403)
-      const forbiddenRes = await request(app)
-        .post(`/api/risk/attest/${testNodeId}`)
-        .set('Authorization', `Bearer ${tenantBToken}`);
-      assert.strictEqual(forbiddenRes.status, 403);
-
-      // Node owner attests
-      const attestRes = await request(app)
-        .post(`/api/risk/attest/${testNodeId}`)
-        .set('Authorization', `Bearer ${tenantAToken}`);
-      assert.strictEqual(attestRes.status, 200);
-      assert.strictEqual(attestRes.body.success, true);
-      assert.strictEqual(attestRes.body.risk_score, 0);
-      assert.strictEqual(attestRes.body.status, 'active');
+      const attestRes = await RiskEngine.attestNode(testNodeId, { id: 'usr-test', username: 'tenant_alpha_m2' });
+      assert.strictEqual(attestRes.success, true);
+      assert.strictEqual(attestRes.risk_score, 0);
+      assert.strictEqual(attestRes.status, 'active');
 
       // Verify node state
       const nodeCheck = await request(app)

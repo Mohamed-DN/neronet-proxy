@@ -7,37 +7,6 @@ const { isPostgres, getPgPool, getDatabase } = require('../db/index');
 
 router.use(authenticateToken);
 
-// 1. Ingest Node Telemetry (via /api/risk/telemetry or /api/nodes/:id/telemetry)
-router.post('/telemetry', async (req, res, next) => {
-  try {
-    const { node_id } = req.body;
-    if (!node_id) {
-      return res.status(400).json({ error: 'Missing node_id in telemetry payload' });
-    }
-    const result = await RiskEngine.ingestTelemetry(node_id, req.body);
-    return res.status(200).json(result);
-  } catch (err) {
-    if (err.status) {
-      return res.status(err.status).json({ error: err.message });
-    }
-    next(err);
-  }
-});
-
-// Also support POST /:id/telemetry when mounted on /api/nodes or /api/risk
-router.post('/:id/telemetry', async (req, res, next) => {
-  try {
-    const nodeId = req.params.id;
-    const result = await RiskEngine.ingestTelemetry(nodeId, req.body);
-    return res.status(200).json(result);
-  } catch (err) {
-    if (err.status) {
-      return res.status(err.status).json({ error: err.message });
-    }
-    next(err);
-  }
-});
-
 // 2. List All Node Risk Scores
 router.get('/scores', async (req, res, next) => {
   try {
@@ -177,29 +146,6 @@ async function runRiskQuery(pgSql, pgParams, sqliteSql, sqliteParams) {
     .prepare(sqliteSql)
     .all(...sqliteParams);
 }
-
-// 4. Remediate / Attest Node Risk Score
-router.post('/attest/:id', async (req, res, next) => {
-  try {
-    const nodeId = req.params.id;
-    const node = await RiskEngine.getNodeById(nodeId);
-    if (!node) {
-      return res.status(404).json({ error: 'Node not found' });
-    }
-
-    if (req.user.role !== 'super-admin' && node.user_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access forbidden: unauthorized risk attestation' });
-    }
-
-    const result = await RiskEngine.attestNode(nodeId, req.user);
-    return res.status(200).json(result);
-  } catch (err) {
-    if (err.status) {
-      return res.status(err.status).json({ error: err.message });
-    }
-    next(err);
-  }
-});
 
 // 5. Get Risk Details for Specific Node
 async function handleGetNodeRisk(req, res, next) {

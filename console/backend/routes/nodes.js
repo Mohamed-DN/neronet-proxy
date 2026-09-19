@@ -1,6 +1,5 @@
 const express = require('express');
 const { readPageParams, pageEnvelope } = require('../utils/pagination');
-const { requireNodeOwnership } = require('../middleware/ownership');
 const router = express.Router();
 const crypto = require('crypto');
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
@@ -500,81 +499,6 @@ router.delete('/:id', async (req, res, next) => {
     await broadcastNodeEvent('NODE_DELETE', { id: req.params.id, name: node.name, user_id: node.user_id }, req.user);
 
     return res.status(200).json({ success: true, message: 'Node revoked successfully' });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// 6. Node Heartbeat
-// Without this any tenant could write fabricated telemetry onto another's device.
-router.post('/:id/heartbeat', requireNodeOwnership, async (req, res, next) => {
-  try {
-    const { latency_ms, rx_bytes, tx_bytes, cpu_usage_pct, memory_usage_pct, battery_pct } = req.body || {};
-
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
-      if (nodeRes.rows.length === 0) {
-        return res.status(404).json({ error: 'Node not found' });
-      }
-
-      await pool.query(
-        `
-        UPDATE nodes SET
-          last_heartbeat = NOW(),
-          latency_ms = COALESCE($1, latency_ms),
-          rx_bytes = COALESCE($2, rx_bytes),
-          tx_bytes = COALESCE($3, tx_bytes),
-          cpu_usage_pct = COALESCE($4, cpu_usage_pct),
-          memory_usage_pct = COALESCE($5, memory_usage_pct),
-          battery_pct = COALESCE($6, battery_pct),
-          is_healthy = TRUE,
-          updated_at = NOW()
-        WHERE id = $7
-      `,
-        [
-          latency_ms !== undefined ? Number(latency_ms) : null,
-          rx_bytes !== undefined ? Number(rx_bytes) : null,
-          tx_bytes !== undefined ? Number(tx_bytes) : null,
-          cpu_usage_pct !== undefined ? Number(cpu_usage_pct) : null,
-          memory_usage_pct !== undefined ? Number(memory_usage_pct) : null,
-          battery_pct !== undefined ? Number(battery_pct) : null,
-          req.params.id
-        ]
-      );
-    } else {
-      const db = getDatabase();
-      const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id);
-      if (!node) {
-        return res.status(404).json({ error: 'Node not found' });
-      }
-
-      db.prepare(
-        `
-        UPDATE nodes SET
-          last_heartbeat = datetime('now'),
-          latency_ms = COALESCE(?, latency_ms),
-          rx_bytes = COALESCE(?, rx_bytes),
-          tx_bytes = COALESCE(?, tx_bytes),
-          cpu_usage_pct = COALESCE(?, cpu_usage_pct),
-          memory_usage_pct = COALESCE(?, memory_usage_pct),
-          battery_pct = COALESCE(?, battery_pct),
-          is_healthy = 1,
-          updated_at = datetime('now')
-        WHERE id = ?
-      `
-      ).run(
-        latency_ms !== undefined ? latency_ms : null,
-        rx_bytes !== undefined ? rx_bytes : null,
-        tx_bytes !== undefined ? tx_bytes : null,
-        cpu_usage_pct !== undefined ? cpu_usage_pct : null,
-        memory_usage_pct !== undefined ? memory_usage_pct : null,
-        battery_pct !== undefined ? battery_pct : null,
-        req.params.id
-      );
-    }
-
-    return res.status(200).json({ success: true, timestamp: new Date().toISOString() });
   } catch (err) {
     next(err);
   }

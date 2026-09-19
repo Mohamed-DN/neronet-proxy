@@ -177,7 +177,6 @@ The NeroNuke system provides irreversible data sanitization for high-risk operat
 | `GET` | `/api/configs/qr-code` | Authenticated | Generates mobile onboarding QR code payload |
 | `POST` | `/api/peering/initiate` | Admin | Generates Ed25519-signed peering token |
 | `POST` | `/api/peering/accept` | Admin | Verifies peer token and establishes agreement |
-| `POST` | `/api/risk/telemetry` | Authenticated | Ingests node telemetry and updates risk score |
 | `POST` | `/api/cloud-pc/:id/project` | Authenticated | Generates WebRTC signaling credentials |
 | `POST` | `/api/nuke/user/self-destruct` | Authenticated | Tier 1 Instant User Account Deletion |
 | `POST` | `/api/nuke/personal-dms/setup` | Authenticated | Tier 1b Silent Personal DMS Setup |

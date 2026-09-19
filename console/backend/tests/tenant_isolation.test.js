@@ -94,7 +94,6 @@ describe('Tenant isolation', () => {
     { method: 'get', path: (id) => `/api/risk/${id}`, what: 'risk score by risk router' },
     { method: 'get', path: (id) => `/api/configs/wireguard/${id}`, what: 'WireGuard profile' },
     { method: 'get', path: (id) => `/api/configs/noise/${id}`, what: 'Noise profile' },
-    { method: 'post', path: (id) => `/api/nodes/${id}/heartbeat`, body: { latency_ms: 9999 }, what: 'heartbeat' },
     { method: 'post', path: (id) => `/api/nodes/${id}/action`, body: { action: 'quarantine' }, what: 'quarantine' },
     { method: 'delete', path: (id) => `/api/nodes/${id}`, what: 'deletion' }
   ];

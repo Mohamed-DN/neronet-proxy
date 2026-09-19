@@ -277,18 +277,24 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     assert.strictEqual(res.body.result.status, 'quarantined');
   });
 
-  test('POST /api/nodes/:id/heartbeat should update node telemetry', async () => {
-    const res = await request(app)
-      .post(`/api/nodes/${createdNodeId}/heartbeat`)
-      .set('Authorization', `Bearer ${regularUserToken}`)
-      .send({
-        latency_ms: 18.5,
-        rx_bytes: 5242880,
-        tx_bytes: 1048576,
-        cpu_usage_pct: 14.2
-      });
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.body.success, true);
+  // Node telemetry belongs to the node channel under /v4/control. These console
+  // routes let a user token write measurements onto a node, and only tests and the
+  // deleted simulator called them.
+  test('the console API no longer accepts node telemetry', async () => {
+    const paths = [
+      `/api/nodes/${createdNodeId}/heartbeat`,
+      '/api/risk/telemetry',
+      `/api/risk/${createdNodeId}/telemetry`,
+      `/api/nodes/${createdNodeId}/telemetry`,
+      `/api/risk/attest/${createdNodeId}`
+    ];
+    for (const p of paths) {
+      const res = await request(app)
+        .post(p)
+        .set('Authorization', `Bearer ${regularUserToken}`)
+        .send({ node_id: createdNodeId, latency_ms: 18.5, latitude: 1, longitude: 1 });
+      assert.strictEqual(res.status, 404, `POST ${p} returned ${res.status}`);
+    }
   });
 
   // 5. Config Generator & Curve25519 Clamping
