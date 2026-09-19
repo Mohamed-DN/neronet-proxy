@@ -34,6 +34,8 @@ func main() {
 	countryCode := config.BindStringFlag(flag.CommandLine, "country", "SOVEREIGN_COUNTRY_CODE", "US", "Self-declared ISO country code for bridge registration (not measured)")
 	identityPath := config.BindStringFlag(flag.CommandLine, "identity", "SOVEREIGN_NODE_KEY_PATH", "/var/lib/neronet/node_identity.key", "Path to this node's persistent identity key")
 	maxBandwidthKbps := config.BindIntFlag(flag.CommandLine, "max-bandwidth-kbps", "SOVEREIGN_MAX_BANDWIDTH_KBPS", 0, "Self-declared uplink capacity in kbps; 0 means not declared")
+	dataplaneMode := config.BindStringFlag(flag.CommandLine, "dataplane", "SOVEREIGN_DATAPLANE", "off", "WireGuard data plane mode: off, netstack or tun")
+	spikePeers := config.BindStringFlag(flag.CommandLine, "spike-peers", "SOVEREIGN_SPIKE_PEERS", "", "Path to the WP-201 spike peers document")
 	flag.Parse()
 
 	log.Printf("[SOVEREIGN-NODE] Initializing SovereignMesh client daemon (%s)...", ClientVersion)
@@ -252,6 +254,21 @@ func main() {
 			}
 		}()
 	}
+
+	// WP-201 spike data plane. Off unless -dataplane names a mode, in which case
+	// the SOCKS5 and HTTP proxies start routing overlay destinations through it.
+	stopDataplane, dpErr := startDataplane(ctx, dataplaneOptions{
+		Mode:         *dataplaneMode,
+		SpikeConfig:  *spikePeers,
+		Keypair:      keypair,
+		Registration: regResp,
+		Netfilter:    netfilter,
+		Bridge:       netstackBridge,
+	})
+	if dpErr != nil {
+		log.Fatalf("Failed to start data plane: %v", dpErr)
+	}
+	defer stopDataplane()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
