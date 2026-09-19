@@ -41,7 +41,7 @@ const SQLITE_MIGRATIONS = [
           overlay_ipv4 TEXT NOT NULL UNIQUE,
           overlay_ipv6 TEXT NOT NULL UNIQUE,
           role TEXT NOT NULL DEFAULT 'CLIENT_ORIGIN' CHECK (role IN ('CLIENT_ORIGIN', 'EXIT_BRIDGE', 'HYBRID', 'RELAY')),
-          ip_class TEXT NOT NULL DEFAULT 'RESIDENTIAL' CHECK (ip_class IN ('RESIDENTIAL', 'MOBILE_5G', 'DATACENTER', 'UNKNOWN')),
+          ip_class TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (ip_class IN ('RESIDENTIAL', 'MOBILE_5G', 'DATACENTER', 'UNKNOWN')),
           country_code TEXT NOT NULL DEFAULT 'US',
           city TEXT DEFAULT '',
           asn INTEGER DEFAULT 0,
@@ -61,7 +61,9 @@ const SQLITE_MIGRATIONS = [
           cpu_usage_pct REAL DEFAULT 0.0,
           memory_usage_pct REAL DEFAULT 0.0,
           battery_pct REAL DEFAULT 100.0,
-          posture_checks TEXT DEFAULT '{"compliant": true, "disk_encrypted": true, "os": "Linux"}',
+          -- Empty, not a claim. See migration 012 for why the fabricated default
+          -- had to go; this literal is what a database created from scratch gets.
+          posture_checks TEXT DEFAULT '{}',
           metadata TEXT DEFAULT '{}',
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -334,6 +336,49 @@ const SQLITE_MIGRATIONS = [
     }
   }
 ];
+
+const SQLITE_MIGRATION_012 = {
+  name: '012_posture_defaults',
+  // Mirrors migration 012 on the PostgreSQL side.
+  //
+  // The two column defaults are changed in the bootstrap DDL above, because SQLite
+  // cannot alter a column default in place and rebuilding the nodes table would mean
+  // dropping and recreating every foreign key that references it. A database created
+  // from this point gets the new defaults from the CREATE TABLE; an existing one
+  // keeps the old ones for inserts that omit the column, which the control plane
+  // never does.
+  //
+  // The reset below is the part that matters on a live database, and it behaves the
+  // same on both backends: only rows still holding the exact fabricated default are
+  // cleared, and a row holding anything else is left alone.
+  //
+  // PostgreSQL compares jsonb, which ignores key order and whitespace. SQLite's
+  // json() preserves key order, so text comparison would miss a row written with the
+  // keys in a different sequence. The three values are therefore matched
+  // individually, with a key count so a document that merely contains them is not
+  // mistaken for the default.
+  sql: '',
+  run(db) {
+    // A database old enough to predate the column has nothing to reset. This is the
+    // shape the legacy-upgrade path in the test suite builds.
+    const columns = db.pragma('table_info(nodes)').map((c) => c.name);
+    if (!columns.includes('posture_checks')) {
+      return;
+    }
+
+    db.prepare(
+      `UPDATE nodes
+          SET posture_checks = '{}'
+        WHERE posture_checks IS NOT NULL
+          AND json_valid(posture_checks)
+          AND json_type(posture_checks) = 'object'
+          AND (SELECT count(*) FROM json_each(nodes.posture_checks)) = 3
+          AND json_extract(posture_checks, '$.compliant') = 1
+          AND json_extract(posture_checks, '$.disk_encrypted') = 1
+          AND json_extract(posture_checks, '$.os') = 'Linux'`
+    ).run();
+  }
+};
 
 const SQLITE_MIGRATION_011 = {
   name: '011_remove_tiering',
@@ -616,7 +661,8 @@ function runSQLiteMigrations(db) {
     SQLITE_MIGRATION_008,
     SQLITE_MIGRATION_009,
     SQLITE_MIGRATION_010,
-    SQLITE_MIGRATION_011
+    SQLITE_MIGRATION_011,
+    SQLITE_MIGRATION_012
   ];
 
   for (const migration of migrations) {
@@ -662,6 +708,7 @@ module.exports = {
   SQLITE_MIGRATION_009,
   SQLITE_MIGRATION_010,
   SQLITE_MIGRATION_011,
+  SQLITE_MIGRATION_012,
   runMigrations,
   runPostgresMigrations,
   runSQLiteMigrations,
