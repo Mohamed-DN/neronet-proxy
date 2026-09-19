@@ -69,7 +69,9 @@ async function resolveOwnerId() {
     if (rows.length > 0) {
       return rows[0].id;
     }
-    logger.warn(`SOVEREIGN_GO_BRIDGE_OWNER_ID='${configured}' does not exist; falling back to the super-admin account.`);
+    logger.warn(
+      `SOVEREIGN_GO_BRIDGE_OWNER_ID='${configured}' does not exist; falling back to the super-admin account.`
+    );
   }
 
   const admins = await runQuery(
@@ -157,7 +159,9 @@ router.post('/register', async (req, res) => {
 
     const role = String(req.body.role || 'CLIENT_ORIGIN');
     const capability = req.body.capability || {};
-    const countryCode = String(capability.country_code || 'US').slice(0, 2).toUpperCase();
+    const countryCode = String(capability.country_code || 'US')
+      .slice(0, 2)
+      .toUpperCase();
     const ipClass = String(capability.ip_class || 'RESIDENTIAL');
     const city = String(capability.city || '');
     const asn = Number.isFinite(capability.asn) ? capability.asn : 0;
@@ -205,8 +209,20 @@ router.post('/register', async (req, res) => {
            country_code = EXCLUDED.country_code,
            endpoints = EXCLUDED.endpoints,
            updated_at = NOW()`,
-        [nodeId, ownerId, name, role, ipClass, countryCode, city, asn,
-         publicKeyHex, overlayIpv4, overlayIpv6, endpointsJson]
+        [
+          nodeId,
+          ownerId,
+          name,
+          role,
+          ipClass,
+          countryCode,
+          city,
+          asn,
+          publicKeyHex,
+          overlayIpv4,
+          overlayIpv6,
+          endpointsJson
+        ]
       );
     } else {
       const db = getDatabase();
@@ -222,8 +238,20 @@ router.post('/register', async (req, res) => {
            country_code = excluded.country_code,
            endpoints = excluded.endpoints,
            updated_at = CURRENT_TIMESTAMP`
-      ).run(nodeId, ownerId, name, role, ipClass, countryCode, city, asn,
-            publicKeyHex, overlayIpv4, overlayIpv6, endpointsJson);
+      ).run(
+        nodeId,
+        ownerId,
+        name,
+        role,
+        ipClass,
+        countryCode,
+        city,
+        asn,
+        publicKeyHex,
+        overlayIpv4,
+        overlayIpv6,
+        endpointsJson
+      );
     }
 
     // Rules expand to one entry per peer, so the compiled policy changes when the
@@ -376,7 +404,9 @@ router.post('/discover', async (req, res) => {
       return res.status(auth.status).json({ error: auth.error });
     }
 
-    const targetCountry = String(req.body.target_country || '').slice(0, 2).toUpperCase();
+    const targetCountry = String(req.body.target_country || '')
+      .slice(0, 2)
+      .toUpperCase();
     const targetAsn = Number(req.body.target_asn) || 0;
     const ipClass = String(req.body.ip_class || '').toUpperCase();
     const explicitHostId = String(req.body.explicit_host_id || '').trim();
@@ -423,25 +453,25 @@ router.post('/discover', async (req, res) => {
       .map((row) => ({ ...row, public_key_hex: normalisePublicKeyHex(row.public_key) }))
       .filter((row) => row.public_key_hex !== null)
       .map((row, index) => ({
-      node_id: row.id,
-      public_key_hex: row.public_key_hex,
-      overlay_ipv4: row.overlay_ipv4,
-      endpoints: parseEndpoints(row.endpoints),
-      capability: {
-        enabled: true,
-        country_code: row.country_code || 'US',
-        city: row.city || '',
-        asn: Number(row.asn) || 0,
-        ip_class: row.ip_class || 'RESIDENTIAL',
-        max_bandwidth_kbps: 0,
-        max_concurrent_streams: 0,
-        allow_udp: true,
-        ac_power_only: false
-      },
-      // Descending, so the first result scores highest. The ordering above already
-      // encodes the preference; this exposes it to a client that wants to re-rank.
-      score: Number((1 - index / Math.max(rows.length, 1)).toFixed(4))
-    }));
+        node_id: row.id,
+        public_key_hex: row.public_key_hex,
+        overlay_ipv4: row.overlay_ipv4,
+        endpoints: parseEndpoints(row.endpoints),
+        capability: {
+          enabled: true,
+          country_code: row.country_code || 'US',
+          city: row.city || '',
+          asn: Number(row.asn) || 0,
+          ip_class: row.ip_class || 'RESIDENTIAL',
+          max_bandwidth_kbps: 0,
+          max_concurrent_streams: 0,
+          allow_udp: true,
+          ac_power_only: false
+        },
+        // Descending, so the first result scores highest. The ordering above already
+        // encodes the preference; this exposes it to a client that wants to re-rank.
+        score: Number((1 - index / Math.max(rows.length, 1)).toFixed(4))
+      }));
 
     return res.json({ bridges });
   } catch (err) {
@@ -518,12 +548,9 @@ router.post('/sync-routes', async (req, res) => {
       return res.json({ new_route_epoch: epoch, routes: [] });
     }
 
-    const known = await runQuery(
-      'SELECT id FROM nodes WHERE id = $1',
-      [nodeId],
-      'SELECT id FROM nodes WHERE id = ?',
-      [nodeId]
-    );
+    const known = await runQuery('SELECT id FROM nodes WHERE id = $1', [nodeId], 'SELECT id FROM nodes WHERE id = ?', [
+      nodeId
+    ]);
 
     if (known.length === 0) {
       return res.status(404).json({ error: `unknown node_id ${nodeId}` });

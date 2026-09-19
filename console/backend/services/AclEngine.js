@@ -26,7 +26,7 @@ function ipToInt(ip) {
   for (const part of parts) {
     const octet = Number(part);
     if (!Number.isInteger(octet) || octet < 0 || octet > 255) return null;
-    value = (value * 256) + octet;
+    value = value * 256 + octet;
   }
   return value;
 }

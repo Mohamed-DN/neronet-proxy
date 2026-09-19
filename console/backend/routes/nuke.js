@@ -61,12 +61,12 @@ router.get('/state', authenticateToken, async (req, res, next) => {
     const isOwner = req.user.role === 'super-admin';
 
     const [userStatus, personalStatus, ownerStatus, canary] = await Promise.all([
-      NukeEngine.getUserNukeStatus(req.user.id).catch(err => ({ error: err.message })),
-      NukeEngine.getPersonalDMSStatus(req.user.id).catch(err => ({ error: err.message })),
+      NukeEngine.getUserNukeStatus(req.user.id).catch((err) => ({ error: err.message })),
+      NukeEngine.getPersonalDMSStatus(req.user.id).catch((err) => ({ error: err.message })),
       isOwner
-        ? NukeEngine.getOwnerDMSStatus(req.user.id).catch(err => ({ error: err.message }))
+        ? NukeEngine.getOwnerDMSStatus(req.user.id).catch((err) => ({ error: err.message }))
         : Promise.resolve(null),
-      CanaryService.getLatestCanary().catch(err => ({ error: err.message }))
+      CanaryService.getLatestCanary().catch((err) => ({ error: err.message }))
     ]);
 
     return res.status(200).json({
@@ -100,11 +100,7 @@ router.post('/user/self-destruct', authenticateToken, async (req, res, next) => 
       });
     }
 
-    const result = await NukeEngine.executeInstantUserDestruction(
-      req.user.id,
-      req.token,
-      req.user.username
-    );
+    const result = await NukeEngine.executeInstantUserDestruction(req.user.id, req.token, req.user.username);
 
     return res.status(200).json(result);
   } catch (err) {
@@ -363,7 +359,9 @@ async function runNukeQuery(pgSql, pgParams, sqliteSql, sqliteParams) {
     const res = await getPgPool().query(pgSql, pgParams);
     return res.rows;
   }
-  return getDatabase().prepare(sqliteSql).all(...sqliteParams);
+  return getDatabase()
+    .prepare(sqliteSql)
+    .all(...sqliteParams);
 }
 
 module.exports = router;

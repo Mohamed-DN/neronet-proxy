@@ -45,8 +45,7 @@ describe('the audit ledger records what it is given', () => {
       metadata: { source: '100.64.0.1/32' }
     });
 
-    const row = db.prepare(
-      "SELECT * FROM audit_events WHERE target_id = 'acl-test-1'").get();
+    const row = db.prepare("SELECT * FROM audit_events WHERE target_id = 'acl-test-1'").get();
 
     assert.ok(row, 'the event reached the table');
     assert.strictEqual(row.event_type, 'ACL_RULE_CREATED');
@@ -65,8 +64,7 @@ describe('the audit ledger records what it is given', () => {
       message: 'ACL rule acl-test-2 deleted'
     });
 
-    const row = db.prepare(
-      "SELECT * FROM audit_events WHERE target_id = 'acl-test-2'").get();
+    const row = db.prepare("SELECT * FROM audit_events WHERE target_id = 'acl-test-2'").get();
 
     assert.ok(row, 'the record survived a severity alias');
     assert.strictEqual(row.severity, 'warn');
@@ -82,10 +80,7 @@ describe('the audit ledger records what it is given', () => {
     });
 
     const after = auditHealth();
-    assert.ok(
-      after.failed_writes > before,
-      'a failed audit write must be counted, not swallowed'
-    );
+    assert.ok(after.failed_writes > before, 'a failed audit write must be counted, not swallowed');
     assert.strictEqual(after.status, 'degraded');
     assert.ok(after.last_failure?.reason, 'the reason is kept for the health probe');
   });

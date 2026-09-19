@@ -31,20 +31,24 @@ let alice = {};
 let bob = {};
 
 async function signUp(username) {
-  const res = await request(app).post('/api/auth/register').send({
-    username,
-    email: `${username}@example.com`,
-    password: 'A-sufficiently-long-password-1'
-  });
+  const res = await request(app)
+    .post('/api/auth/register')
+    .send({
+      username,
+      email: `${username}@example.com`,
+      password: 'A-sufficiently-long-password-1'
+    });
 
   assert.ok([200, 201].includes(res.status), `could not register ${username}: ${JSON.stringify(res.body)}`);
 
-  const token = res.body.token || (
-    await request(app).post('/api/auth/login').send({
-      username,
-      password: 'A-sufficiently-long-password-1'
-    })
-  ).body.token;
+  const token =
+    res.body.token ||
+    (
+      await request(app).post('/api/auth/login').send({
+        username,
+        password: 'A-sufficiently-long-password-1'
+      })
+    ).body.token;
 
   assert.ok(token, `no token for ${username}`);
   return { token, id: res.body.user?.id };
@@ -109,7 +113,7 @@ describe('Tenant isolation', () => {
     });
   }
 
-  it('does not confirm that another tenant\'s node exists', async () => {
+  it("does not confirm that another tenant's node exists", async () => {
     // 403 says "this exists but is not yours", which turns the endpoint into an
     // oracle for enumerating other tenants' resource ids. A missing node and
     // someone else's node must look identical.
@@ -127,9 +131,7 @@ describe('Tenant isolation', () => {
   it('still lets a tenant reach their own node', async () => {
     // A test that only proves things are forbidden would also pass if everything
     // were broken.
-    const res = await request(app)
-      .get(`/api/nodes/${alice.nodeId}/risk`)
-      .set('Authorization', `Bearer ${alice.token}`);
+    const res = await request(app).get(`/api/nodes/${alice.nodeId}/risk`).set('Authorization', `Bearer ${alice.token}`);
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.node_id, alice.nodeId);

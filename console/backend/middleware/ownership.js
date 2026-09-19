@@ -31,15 +31,10 @@ function requireOwnership({ table, param = 'id', ownerColumn = 'user_id' }) {
 
       let row;
       if (isPostgres()) {
-        const result = await getPgPool().query(
-          `SELECT ${ownerColumn} AS owner FROM ${table} WHERE id = $1`,
-          [id]
-        );
+        const result = await getPgPool().query(`SELECT ${ownerColumn} AS owner FROM ${table} WHERE id = $1`, [id]);
         row = result.rows[0];
       } else {
-        row = getDatabase()
-          .prepare(`SELECT ${ownerColumn} AS owner FROM ${table} WHERE id = ?`)
-          .get(id);
+        row = getDatabase().prepare(`SELECT ${ownerColumn} AS owner FROM ${table} WHERE id = ?`).get(id);
       }
 
       if (!row) {

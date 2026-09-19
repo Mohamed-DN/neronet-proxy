@@ -57,7 +57,7 @@ function formatNode(row) {
     quarantine_reason: row.quarantine_reason || null,
     is_exit_node: isExit,
     risk_score: Number(row.risk_score) || 0,
-    status: isQuarantined ? 'quarantined' : (row.is_healthy ? 'active' : 'degraded'),
+    status: isQuarantined ? 'quarantined' : row.is_healthy ? 'active' : 'degraded',
     latency_ms: Number(row.latency_ms) || 15.0,
     jitter_ms: 1.0,
     tx_bytes: Number(row.tx_bytes) || 0,
@@ -98,10 +98,10 @@ router.get('/', async (req, res, next) => {
       } else {
         const countRes = await pool.query('SELECT count(*)::int AS n FROM nodes');
         total = countRes.rows[0].n;
-        const result = await pool.query(
-          'SELECT * FROM nodes ORDER BY created_at ASC, id ASC LIMIT $1 OFFSET $2',
-          [limit, offset]
-        );
+        const result = await pool.query('SELECT * FROM nodes ORDER BY created_at ASC, id ASC LIMIT $1 OFFSET $2', [
+          limit,
+          offset
+        ]);
         rows = result.rows;
       }
     } else {
@@ -113,9 +113,7 @@ router.get('/', async (req, res, next) => {
           .all(req.user.id, limit, offset);
       } else {
         total = db.prepare('SELECT count(*) AS n FROM nodes').get().n;
-        rows = db
-          .prepare('SELECT * FROM nodes ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?')
-          .all(limit, offset);
+        rows = db.prepare('SELECT * FROM nodes ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?').all(limit, offset);
       }
     }
 
@@ -130,9 +128,20 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const {
-      name, role, country_code, public_key, ip_class, city, asn,
-      onion_routing_enabled, onion_hops, kill_switch_enabled, endpoints,
-      latitude, longitude, metadata
+      name,
+      role,
+      country_code,
+      public_key,
+      ip_class,
+      city,
+      asn,
+      onion_routing_enabled,
+      onion_hops,
+      kill_switch_enabled,
+      endpoints,
+      latitude,
+      longitude,
+      metadata
     } = req.body || {};
 
     if (!name || !name.trim()) {
@@ -159,7 +168,7 @@ router.post('/', async (req, res, next) => {
     const nodeRole = role && VALID_ROLES.includes(role) ? role : 'CLIENT_ORIGIN';
     const nodeIpClass = ip_class && VALID_IP_CLASSES.includes(ip_class) ? ip_class : 'RESIDENTIAL';
     const nodeCountry = country_code || 'US';
-    const onionRouting = onion_routing_enabled !== undefined ? Boolean(onion_routing_enabled) : (Number(onion_hops) > 0);
+    const onionRouting = onion_routing_enabled !== undefined ? Boolean(onion_routing_enabled) : Number(onion_hops) > 0;
     const hops = onionRouting ? (Number(onion_hops) > 0 ? Number(onion_hops) : 3) : 0;
     const killSwitch = Boolean(kill_switch_enabled);
     const endpointsArray = Array.isArray(endpoints) ? endpoints : [];
@@ -176,10 +185,11 @@ router.post('/', async (req, res, next) => {
 
       const { overlayIpv4, overlayIpv6 } = await allocateNextVip(pool);
 
-      const lat = latitude !== undefined ? parseFloat(latitude) : (nodeCountry === 'US' ? 38.9072 : 50.1109);
-      const lon = longitude !== undefined ? parseFloat(longitude) : (nodeCountry === 'US' ? -77.0369 : 8.6821);
+      const lat = latitude !== undefined ? parseFloat(latitude) : nodeCountry === 'US' ? 38.9072 : 50.1109;
+      const lon = longitude !== undefined ? parseFloat(longitude) : nodeCountry === 'US' ? -77.0369 : 8.6821;
 
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO nodes (
           id, user_id, name, public_key, overlay_ipv4, overlay_ipv6,
           role, ip_class, country_code, city, asn, endpoints,
@@ -191,11 +201,28 @@ router.post('/', async (req, res, next) => {
           $13, $14, $15, TRUE, FALSE, 15.0,
           $16, $17, $18::jsonb
         )
-      `, [
-        nodeId, req.user.id, name.trim(), finalPubKey, overlayIpv4, overlayIpv6,
-        nodeRole, nodeIpClass, nodeCountry, city || '', asn || 0, JSON.stringify(endpointsArray),
-        onionRouting, hops, killSwitch, lon, lat, JSON.stringify(metadata || {})
-      ]);
+      `,
+        [
+          nodeId,
+          req.user.id,
+          name.trim(),
+          finalPubKey,
+          overlayIpv4,
+          overlayIpv6,
+          nodeRole,
+          nodeIpClass,
+          nodeCountry,
+          city || '',
+          asn || 0,
+          JSON.stringify(endpointsArray),
+          onionRouting,
+          hops,
+          killSwitch,
+          lon,
+          lat,
+          JSON.stringify(metadata || {})
+        ]
+      );
 
       const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [nodeId]);
       createdNode = formatNode(nodeRes.rows[0]);
@@ -208,7 +235,8 @@ router.post('/', async (req, res, next) => {
 
       const { overlayIpv4, overlayIpv6 } = await allocateNextVip(db);
 
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO nodes (
           id, user_id, name, public_key, overlay_ipv4, overlay_ipv6,
           role, ip_class, country_code, city, asn, endpoints,
@@ -218,10 +246,23 @@ router.post('/', async (req, res, next) => {
           ?, ?, ?, ?, ?, ?,
           ?, ?, ?, 1, 0, 15.0
         )
-      `).run(
-        nodeId, req.user.id, name.trim(), finalPubKey, overlayIpv4, overlayIpv6,
-        nodeRole, nodeIpClass, nodeCountry, city || '', asn || 0, JSON.stringify(endpointsArray),
-        onionRouting ? 1 : 0, hops, killSwitch ? 1 : 0
+      `
+      ).run(
+        nodeId,
+        req.user.id,
+        name.trim(),
+        finalPubKey,
+        overlayIpv4,
+        overlayIpv6,
+        nodeRole,
+        nodeIpClass,
+        nodeCountry,
+        city || '',
+        asn || 0,
+        JSON.stringify(endpointsArray),
+        onionRouting ? 1 : 0,
+        hops,
+        killSwitch ? 1 : 0
       );
 
       createdNode = formatNode(db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId));
@@ -477,7 +518,8 @@ router.post('/:id/heartbeat', requireNodeOwnership, async (req, res, next) => {
         return res.status(404).json({ error: 'Node not found' });
       }
 
-      await pool.query(`
+      await pool.query(
+        `
         UPDATE nodes SET
           last_heartbeat = NOW(),
           latency_ms = COALESCE($1, latency_ms),
@@ -489,15 +531,17 @@ router.post('/:id/heartbeat', requireNodeOwnership, async (req, res, next) => {
           is_healthy = TRUE,
           updated_at = NOW()
         WHERE id = $7
-      `, [
-        latency_ms !== undefined ? Number(latency_ms) : null,
-        rx_bytes !== undefined ? Number(rx_bytes) : null,
-        tx_bytes !== undefined ? Number(tx_bytes) : null,
-        cpu_usage_pct !== undefined ? Number(cpu_usage_pct) : null,
-        memory_usage_pct !== undefined ? Number(memory_usage_pct) : null,
-        battery_pct !== undefined ? Number(battery_pct) : null,
-        req.params.id
-      ]);
+      `,
+        [
+          latency_ms !== undefined ? Number(latency_ms) : null,
+          rx_bytes !== undefined ? Number(rx_bytes) : null,
+          tx_bytes !== undefined ? Number(tx_bytes) : null,
+          cpu_usage_pct !== undefined ? Number(cpu_usage_pct) : null,
+          memory_usage_pct !== undefined ? Number(memory_usage_pct) : null,
+          battery_pct !== undefined ? Number(battery_pct) : null,
+          req.params.id
+        ]
+      );
     } else {
       const db = getDatabase();
       const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id);
@@ -505,7 +549,8 @@ router.post('/:id/heartbeat', requireNodeOwnership, async (req, res, next) => {
         return res.status(404).json({ error: 'Node not found' });
       }
 
-      db.prepare(`
+      db.prepare(
+        `
         UPDATE nodes SET
           last_heartbeat = datetime('now'),
           latency_ms = COALESCE(?, latency_ms),
@@ -517,7 +562,8 @@ router.post('/:id/heartbeat', requireNodeOwnership, async (req, res, next) => {
           is_healthy = 1,
           updated_at = datetime('now')
         WHERE id = ?
-      `).run(
+      `
+      ).run(
         latency_ms !== undefined ? latency_ms : null,
         rx_bytes !== undefined ? rx_bytes : null,
         tx_bytes !== undefined ? tx_bytes : null,
@@ -634,12 +680,17 @@ router.post('/:id/action', async (req, res, next) => {
 
       if (isPostgres()) {
         const pool = getPgPool();
-        await pool.query("UPDATE nodes SET onion_routing_enabled = $1, onion_hops = $2, updated_at = NOW() WHERE id = $3", [newVal, hops, node.id]);
+        await pool.query(
+          'UPDATE nodes SET onion_routing_enabled = $1, onion_hops = $2, updated_at = NOW() WHERE id = $3',
+          [newVal, hops, node.id]
+        );
         const resUp = await pool.query('SELECT * FROM nodes WHERE id = $1', [node.id]);
         updatedRow = resUp.rows[0];
       } else {
         const db = getDatabase();
-        db.prepare("UPDATE nodes SET onion_routing_enabled = ?, onion_hops = ?, updated_at = datetime('now') WHERE id = ?").run(newVal ? 1 : 0, hops, node.id);
+        db.prepare(
+          "UPDATE nodes SET onion_routing_enabled = ?, onion_hops = ?, updated_at = datetime('now') WHERE id = ?"
+        ).run(newVal ? 1 : 0, hops, node.id);
         updatedRow = db.prepare('SELECT * FROM nodes WHERE id = ?').get(node.id);
       }
 
@@ -676,24 +727,29 @@ router.post('/:id/action', async (req, res, next) => {
 
       if (isPostgres()) {
         const pool = getPgPool();
-        await pool.query(`
+        await pool.query(
+          `
           UPDATE nodes SET
             is_quarantined = TRUE,
             is_healthy = FALSE,
             quarantine_reason = $1,
             updated_at = NOW()
           WHERE id = $2
-        `, [reason, node.id]);
+        `,
+          [reason, node.id]
+        );
       } else {
         const db = getDatabase();
-        db.prepare(`
+        db.prepare(
+          `
           UPDATE nodes SET
             is_quarantined = 1,
             is_healthy = 0,
             quarantine_reason = ?,
             updated_at = datetime('now')
           WHERE id = ?
-        `).run(reason, node.id);
+        `
+        ).run(reason, node.id);
       }
 
       logAuditEvent({
@@ -721,24 +777,29 @@ router.post('/:id/action', async (req, res, next) => {
     if (action === 'lift_quarantine') {
       if (isPostgres()) {
         const pool = getPgPool();
-        await pool.query(`
+        await pool.query(
+          `
           UPDATE nodes SET
             is_quarantined = FALSE,
             is_healthy = TRUE,
             quarantine_reason = NULL,
             updated_at = NOW()
           WHERE id = $1
-        `, [node.id]);
+        `,
+          [node.id]
+        );
       } else {
         const db = getDatabase();
-        db.prepare(`
+        db.prepare(
+          `
           UPDATE nodes SET
             is_quarantined = 0,
             is_healthy = 1,
             quarantine_reason = NULL,
             updated_at = datetime('now')
           WHERE id = ?
-        `).run(node.id);
+        `
+        ).run(node.id);
       }
 
       logAuditEvent({

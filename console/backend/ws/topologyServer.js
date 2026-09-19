@@ -80,13 +80,15 @@ function initTopologyWebSocket(httpServer) {
     logger.info(`WebSocket client connected: ${ws.user.username} (${ws.user.role}) [Total: ${clients.size}]`);
 
     // Send initial greeting handshake
-    ws.send(JSON.stringify({
-      type: 'CONNECTED',
-      message: 'Connected to NeroNet Topology Real-Time Stream',
-      user: ws.user,
-      channel: 'neronet:topology:events',
-      timestamp: new Date().toISOString()
-    }));
+    ws.send(
+      JSON.stringify({
+        type: 'CONNECTED',
+        message: 'Connected to NeroNet Topology Real-Time Stream',
+        user: ws.user,
+        channel: 'neronet:topology:events',
+        timestamp: new Date().toISOString()
+      })
+    );
 
     ws.on('pong', () => {
       ws.isAlive = true;

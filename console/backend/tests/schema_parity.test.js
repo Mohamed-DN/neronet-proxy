@@ -161,7 +161,10 @@ describe('SQLite and PostgreSQL schemas stay in step', () => {
     // The replacement for the PostGIS geometry column. Spatial work, if it is ever
     // needed, is a bounding-box prefilter over these followed by exact Haversine --
     // same answers, same code on both backends, no extension to install.
-    for (const [name, schema] of [['SQLite', sqlite], ['PostgreSQL', postgres]]) {
+    for (const [name, schema] of [
+      ['SQLite', sqlite],
+      ['PostgreSQL', postgres]
+    ]) {
       assert.ok(schema.nodes.has('latitude'), `${name}: nodes.latitude is missing`);
       assert.ok(schema.nodes.has('longitude'), `${name}: nodes.longitude is missing`);
     }
@@ -177,9 +180,6 @@ describe('SQLite and PostgreSQL schemas stay in step', () => {
       .join('\n');
 
     assert.ok(!/USING GIST/i.test(combined), 'a GiST index is still declared');
-    assert.ok(
-      !/CREATE EXTENSION IF NOT EXISTS "postgis"/i.test(combined),
-      'the postgis extension is still declared'
-    );
+    assert.ok(!/CREATE EXTENSION IF NOT EXISTS "postgis"/i.test(combined), 'the postgis extension is still declared');
   });
 });

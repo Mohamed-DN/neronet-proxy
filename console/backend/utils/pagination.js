@@ -25,9 +25,7 @@ function readPageParams(req, { defaultLimit = DEFAULT_LIMIT, maxLimit = MAX_LIMI
   const rawLimit = Number.parseInt(req.query.limit, 10);
   const rawOffset = Number.parseInt(req.query.offset, 10);
 
-  const limit = Number.isFinite(rawLimit)
-    ? Math.min(Math.max(rawLimit, 1), maxLimit)
-    : defaultLimit;
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), maxLimit) : defaultLimit;
 
   const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
 

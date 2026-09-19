@@ -1,7 +1,7 @@
 /**
  * PolicyEngine.js
  * Geo-Fencing Policy Engine (R7)
- * 
+ *
  * Features:
  * - Evaluates ISO 3166-1 alpha-2 country-level routing rules (ALLOW, BLOCK, QUARANTINE).
  * - Implements default-allow for censorship-heavy jurisdictions (RU, EG, CN, IN).
@@ -44,8 +44,7 @@ async function listPolicies() {
   } else {
     const db = getDatabase();
     ensureGeofencingSchema(db);
-    return db.prepare('SELECT * FROM geofencing_policies ORDER BY country_code ASC')
-      .all().map(withResolvedCountryName);
+    return db.prepare('SELECT * FROM geofencing_policies ORDER BY country_code ASC').all().map(withResolvedCountryName);
   }
 }
 
@@ -105,9 +104,7 @@ async function createOrUpdatePolicy({ country_code, country_name, action = 'ALLO
   // the console displayed the code twice. The ISO table already exists for the
   // country column elsewhere. A caller-supplied name still wins, but a stored
   // placeholder does not: rows written before this are repaired on read.
-  const name = (country_name && !isPlaceholderName(country_name, cc))
-    ? country_name
-    : (COUNTRY_NAMES[cc] || cc);
+  const name = country_name && !isPlaceholderName(country_name, cc) ? country_name : COUNTRY_NAMES[cc] || cc;
   const existing = await getPolicyByCountryCode(cc);
   const nowIso = new Date().toISOString();
 

@@ -39,9 +39,7 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
     });
 
     // Login admin
-    const adminRes = await request(app)
-      .post('/api/auth/login')
-      .send({ username: 'admin', password: 'admin_password' });
+    const adminRes = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'admin_password' });
     assert.strictEqual(adminRes.status, 200);
     adminToken = adminRes.body.token;
 
@@ -61,7 +59,9 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
     closeDatabase();
     closeValkey();
     if (fs.existsSync(TEST_DB_PATH)) {
-      try { fs.unlinkSync(TEST_DB_PATH); } catch (e) {}
+      try {
+        fs.unlinkSync(TEST_DB_PATH);
+      } catch (e) {}
     }
   });
 
@@ -83,9 +83,7 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
     });
 
     it('should reject login with empty credentials', async () => {
-      const res = await request(app)
-        .post('/api/auth/login')
-        .send({ username: '', password: '' });
+      const res = await request(app).post('/api/auth/login').send({ username: '', password: '' });
       assert.strictEqual(res.status, 400);
     });
 
@@ -98,16 +96,12 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
       const tempToken = tempUserRes.body.token;
 
       // Verify token works
-      const meBefore = await request(app)
-        .get('/api/auth/me')
-        .set('Authorization', `Bearer ${tempToken}`);
+      const meBefore = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${tempToken}`);
       assert.strictEqual(meBefore.status, 200);
       assert.strictEqual(meBefore.body.user.username, 'logout_test_user');
 
       // Logout
-      const logoutRes = await request(app)
-        .post('/api/auth/logout')
-        .set('Authorization', `Bearer ${tempToken}`);
+      const logoutRes = await request(app).post('/api/auth/logout').set('Authorization', `Bearer ${tempToken}`);
       assert.strictEqual(logoutRes.status, 200);
       assert.strictEqual(logoutRes.body.success, true);
 
@@ -116,9 +110,7 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
       assert.strictEqual(isBlacklisted, true);
 
       // Verify subsequent request with revoked token fails with 401
-      const meAfter = await request(app)
-        .get('/api/auth/me')
-        .set('Authorization', `Bearer ${tempToken}`);
+      const meAfter = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${tempToken}`);
       assert.strictEqual(meAfter.status, 401);
       assert.strictEqual(meAfter.body.error, 'Token has been revoked');
     });
@@ -230,17 +222,14 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
     });
 
     it('should generate WireGuard and Noise profile with Curve25519 clamped keypair', async () => {
-      const res = await request(app)
-        .post('/api/configs/generate')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          name: 'Noise-Clamped-Device',
-          role: 'CLIENT_ORIGIN',
-          country_code: 'US',
-          onion_routing_enabled: true,
-          onion_hops: 3,
-          kill_switch_enabled: true
-        });
+      const res = await request(app).post('/api/configs/generate').set('Authorization', `Bearer ${adminToken}`).send({
+        name: 'Noise-Clamped-Device',
+        role: 'CLIENT_ORIGIN',
+        country_code: 'US',
+        onion_routing_enabled: true,
+        onion_hops: 3,
+        kill_switch_enabled: true
+      });
 
       assert.strictEqual(res.status, 200);
       assert.ok(res.body.wireguard_conf.includes('[Interface]'));
@@ -358,7 +347,7 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
     it('should verify migration files exist with the expected table definitions', () => {
       const migDir = path.resolve(__dirname, '../db/migrations');
       assert.ok(fs.existsSync(migDir));
-      const files = fs.readdirSync(migDir).filter(f => f.endsWith('.sql'));
+      const files = fs.readdirSync(migDir).filter((f) => f.endsWith('.sql'));
       assert.ok(files.length >= 4);
 
       const sql001 = fs.readFileSync(path.join(migDir, '001_initial_pg_schema.sql'), 'utf8');

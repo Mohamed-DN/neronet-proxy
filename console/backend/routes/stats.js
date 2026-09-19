@@ -61,11 +61,15 @@ async function deriveThroughput() {
   if (isPostgres()) {
     const pool = getPgPool();
     const q = await pool.query(
-      'SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx FROM system_metrics ORDER BY timestamp DESC LIMIT 2');
+      'SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx FROM system_metrics ORDER BY timestamp DESC LIMIT 2'
+    );
     rows = q.rows;
   } else {
-    rows = getDatabase().prepare(
-      'SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx FROM system_metrics ORDER BY timestamp DESC LIMIT 2').all();
+    rows = getDatabase()
+      .prepare(
+        'SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx FROM system_metrics ORDER BY timestamp DESC LIMIT 2'
+      )
+      .all();
   }
 
   if (!rows || rows.length < 2) return unknown;
@@ -78,7 +82,7 @@ async function deriveThroughput() {
   const txDelta = Number(newer.total_bandwidth_tx) - Number(older.total_bandwidth_tx);
   if (rxDelta < 0 || txDelta < 0) return unknown;
 
-  const toMbPerSec = bytes => Number((bytes / (1024 * 1024) / seconds).toFixed(2));
+  const toMbPerSec = (bytes) => Number((bytes / (1024 * 1024) / seconds).toFixed(2));
   return { rxMbPerSec: toMbPerSec(rxDelta), txMbPerSec: toMbPerSec(txDelta) };
 }
 
@@ -119,14 +123,19 @@ async function timeseriesHandler(req, res, next) {
                 cpu_usage_pct, memory_usage_mb, network_health_score
          FROM system_metrics
          WHERE timestamp > now() - make_interval(hours => $1)
-         ORDER BY timestamp ASC`, [hours]);
+         ORDER BY timestamp ASC`,
+        [hours]
+      );
       metrics = q.rows;
     } else {
       const cutoff = new Date(Date.now() - hours * 3600 * 1000).toISOString();
-      metrics = getDatabase().prepare(
-        `SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx, active_nodes,
+      metrics = getDatabase()
+        .prepare(
+          `SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx, active_nodes,
                 cpu_usage_pct, memory_usage_mb, network_health_score
-         FROM system_metrics WHERE timestamp > ? ORDER BY timestamp ASC`).all(cutoff);
+         FROM system_metrics WHERE timestamp > ? ORDER BY timestamp ASC`
+        )
+        .all(cutoff);
     }
 
     // The stored counters are cumulative. The chart wants a rate, so each point is
@@ -141,7 +150,7 @@ async function timeseriesHandler(req, res, next) {
 
       const rxDelta = Number(cur.total_bandwidth_rx) - Number(prev.total_bandwidth_rx);
       const txDelta = Number(cur.total_bandwidth_tx) - Number(prev.total_bandwidth_tx);
-      const rate = bytes => (bytes < 0 ? 0 : Number((bytes / (1024 * 1024) / seconds).toFixed(3)));
+      const rate = (bytes) => (bytes < 0 ? 0 : Number((bytes / (1024 * 1024) / seconds).toFixed(3)));
 
       series.push({
         timestamp: cur.timestamp,
@@ -195,22 +204,25 @@ async function geoMatrixHandler(req, res, next) {
       rows = q.rows;
     } else {
       const cutoff = new Date(Date.now() - LIVENESS_WINDOW_SECONDS * 1000).toISOString();
-      rows = getDatabase().prepare(`
+      rows = getDatabase()
+        .prepare(
+          `
         SELECT country_code,
                count(*) AS nodes,
                sum(CASE WHEN role = 'RELAY' THEN 1 ELSE 0 END) AS relays,
                sum(CASE WHEN role = 'EXIT_BRIDGE' THEN 1 ELSE 0 END) AS exits,
                sum(CASE WHEN last_heartbeat > ? THEN 1 ELSE 0 END) AS live,
                avg(CASE WHEN latency_ms > 0 THEN latency_ms END) AS avg_latency
-        FROM nodes GROUP BY country_code ORDER BY count(*) DESC, country_code ASC`).all(cutoff);
+        FROM nodes GROUP BY country_code ORDER BY count(*) DESC, country_code ASC`
+        )
+        .all(cutoff);
     }
 
-    const matrix = rows.map(r => {
+    const matrix = rows.map((r) => {
       const nodes = Number(r.nodes);
       const live = Number(r.live);
-      const latency = r.avg_latency === null || r.avg_latency === undefined
-        ? null
-        : Number(Number(r.avg_latency).toFixed(1));
+      const latency =
+        r.avg_latency === null || r.avg_latency === undefined ? null : Number(Number(r.avg_latency).toFixed(1));
 
       return {
         country: COUNTRY_NAMES[r.country_code] || r.country_code,
@@ -242,22 +254,35 @@ async function topologyHandler(req, res, next) {
     if (isPostgres()) {
       const pool = getPgPool();
       if (req.user.role === 'super-admin') {
-        const qRes = await pool.query('SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC');
+        const qRes = await pool.query(
+          'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC'
+        );
         visibleNodes = qRes.rows;
       } else {
-        const qRes = await pool.query('SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes WHERE user_id = $1 ORDER BY created_at ASC', [req.user.id]);
+        const qRes = await pool.query(
+          'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes WHERE user_id = $1 ORDER BY created_at ASC',
+          [req.user.id]
+        );
         visibleNodes = qRes.rows;
       }
     } else {
       const db = getDatabase();
       if (req.user.role === 'super-admin') {
-        visibleNodes = db.prepare('SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC').all();
+        visibleNodes = db
+          .prepare(
+            'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC'
+          )
+          .all();
       } else {
-        visibleNodes = db.prepare('SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes WHERE user_id = ? ORDER BY created_at ASC').all(req.user.id);
+        visibleNodes = db
+          .prepare(
+            'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes WHERE user_id = ? ORDER BY created_at ASC'
+          )
+          .all(req.user.id);
       }
     }
 
-    const nodes = visibleNodes.map(n => ({
+    const nodes = visibleNodes.map((n) => ({
       id: n.id,
       name: n.name,
       role: n.role,
@@ -318,7 +343,7 @@ async function compileTopologyLinks(nodes) {
 
     // An allow-all compilation is marked by non-directional rules, which is what
     // AclEngine emits when the rule table is empty.
-    if (policy.outbound_rules.some(r => r.is_directional === false)) {
+    if (policy.outbound_rules.some((r) => r.is_directional === false)) {
       policyIsOpen = true;
     }
 
@@ -355,7 +380,10 @@ async function auditLogsHandler(req, res, next) {
         const qRes = await pool.query('SELECT * FROM audit_events ORDER BY created_at DESC LIMIT $1', [limit]);
         rows = qRes.rows;
       } else {
-        const qRes = await pool.query('SELECT * FROM audit_events WHERE actor_user_id = $1 ORDER BY created_at DESC LIMIT $2', [req.user.id, limit]);
+        const qRes = await pool.query(
+          'SELECT * FROM audit_events WHERE actor_user_id = $1 ORDER BY created_at DESC LIMIT $2',
+          [req.user.id, limit]
+        );
         rows = qRes.rows;
       }
     } else {
@@ -363,11 +391,13 @@ async function auditLogsHandler(req, res, next) {
       if (req.user.role === 'super-admin') {
         rows = db.prepare('SELECT * FROM audit_events ORDER BY created_at DESC LIMIT ?').all(limit);
       } else {
-        rows = db.prepare('SELECT * FROM audit_events WHERE actor_user_id = ? ORDER BY created_at DESC LIMIT ?').all(req.user.id, limit);
+        rows = db
+          .prepare('SELECT * FROM audit_events WHERE actor_user_id = ? ORDER BY created_at DESC LIMIT ?')
+          .all(req.user.id, limit);
       }
     }
 
-    const logs = rows.map(r => ({
+    const logs = rows.map((r) => ({
       id: `audit-${r.id.toString().padStart(4, '0')}`,
       timestamp: r.created_at,
       // The console reads created_at and actor_username, the column names. Both

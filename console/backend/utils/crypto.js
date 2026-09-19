@@ -180,8 +180,10 @@ async function generateQrCodeDataUrl(text) {
 }
 
 function allocateVipFromRows(existingVips = []) {
-  const usedIpv4 = new Set(existingVips.map(r => r.overlay_ipv4 ? r.overlay_ipv4.trim() : null).filter(Boolean));
-  const usedIpv6 = new Set(existingVips.map(r => r.overlay_ipv6 ? r.overlay_ipv6.trim().toLowerCase() : null).filter(Boolean));
+  const usedIpv4 = new Set(existingVips.map((r) => (r.overlay_ipv4 ? r.overlay_ipv4.trim() : null)).filter(Boolean));
+  const usedIpv6 = new Set(
+    existingVips.map((r) => (r.overlay_ipv6 ? r.overlay_ipv6.trim().toLowerCase() : null)).filter(Boolean)
+  );
 
   let offset = 1;
   while (offset < 4194300) {
@@ -268,10 +270,10 @@ const MAX_OFFSET_PROBES = 256;
 /** Is either half of this address pair already assigned? One indexed probe. */
 async function isVipTaken(dbOrPool, isPool, candidate) {
   if (isPool) {
-    const res = await dbOrPool.query(
-      'SELECT 1 FROM nodes WHERE overlay_ipv4 = $1 OR overlay_ipv6 = $2 LIMIT 1',
-      [candidate.overlayIpv4, candidate.overlayIpv6]
-    );
+    const res = await dbOrPool.query('SELECT 1 FROM nodes WHERE overlay_ipv4 = $1 OR overlay_ipv6 = $2 LIMIT 1', [
+      candidate.overlayIpv4,
+      candidate.overlayIpv6
+    ]);
     return res.rowCount > 0;
   }
 

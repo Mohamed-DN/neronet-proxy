@@ -104,7 +104,7 @@ router.get('/leaderboard', async (req, res, next) => {
     const d = await RiskEngine.getRiskDashboard();
 
     const ranked = d.nodes
-      .filter(n => Number(n.risk_score) > 0)
+      .filter((n) => Number(n.risk_score) > 0)
       .sort((a, b) => Number(b.risk_score) - Number(a.risk_score))
       .slice(0, limit);
 
@@ -124,9 +124,14 @@ router.get('/leaderboard', async (req, res, next) => {
 // Exactly the types the code emits. A type listed here that nothing writes makes
 // the filter look thorough while matching nothing.
 const RISK_EVENT_TYPES = [
-  'NODE_QUARANTINED', 'NODE_QUARANTINE', 'NODE_LIFT_QUARANTINE',
-  'IMPOSSIBLE_TRAVEL_DETECTED', 'POSTURE_VIOLATION',
-  'GEO_DRIFT_DETECTED', 'NODE_ATTESTED', 'RISK_ATTESTATION'
+  'NODE_QUARANTINED',
+  'NODE_QUARANTINE',
+  'NODE_LIFT_QUARANTINE',
+  'IMPOSSIBLE_TRAVEL_DETECTED',
+  'POSTURE_VIOLATION',
+  'GEO_DRIFT_DETECTED',
+  'NODE_ATTESTED',
+  'RISK_ATTESTATION'
 ];
 
 async function recentRiskEvents(limit) {
@@ -147,7 +152,7 @@ async function recentRiskEvents(limit) {
     [...RISK_EVENT_TYPES, limit]
   );
 
-  return rows.map(r => ({
+  return rows.map((r) => ({
     id: r.id,
     event_type: r.event_type,
     node_id: r.target_id,
@@ -168,7 +173,9 @@ async function runRiskQuery(pgSql, pgParams, sqliteSql, sqliteParams) {
     const result = await getPgPool().query(pgSql, pgParams);
     return result.rows;
   }
-  return getDatabase().prepare(sqliteSql).all(...sqliteParams);
+  return getDatabase()
+    .prepare(sqliteSql)
+    .all(...sqliteParams);
 }
 
 // 4. Remediate / Attest Node Risk Score
@@ -202,14 +209,14 @@ async function handleGetNodeRisk(req, res, next) {
       return res.status(404).json({ error: 'Node not found' });
     }
     const score = Number(node.risk_score) || 0;
-    const color = score < 40 ? 'green' : (score <= 75 ? 'yellow' : 'red');
+    const color = score < 40 ? 'green' : score <= 75 ? 'yellow' : 'red';
     return res.status(200).json({
       node_id: node.id,
       name: node.name,
       risk_score: score,
       is_quarantined: Boolean(node.is_quarantined),
       quarantine_reason: node.quarantine_reason,
-      status: node.is_quarantined ? 'quarantined' : (node.is_healthy ? 'active' : 'degraded'),
+      status: node.is_quarantined ? 'quarantined' : node.is_healthy ? 'active' : 'degraded',
       color
     });
   } catch (err) {

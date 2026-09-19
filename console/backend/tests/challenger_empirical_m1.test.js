@@ -13,7 +13,12 @@ const { getDatabase, closeDatabase, isPostgres, getPgPool } = require('../db/ind
 const { initTopologyWebSocket, closeTopologyWebSocket } = require('../ws/topologyServer');
 const { publishTopologyEvent, isTokenBlacklisted, blacklistToken, closeValkey } = require('../db/valkey');
 const { broadcastNodeEvent } = require('../services/TopologySync');
-const { generateCurve25519Keypair, allocateVipFromRows, buildWireGuardConfig, buildNoiseJsonProfile } = require('../utils/crypto');
+const {
+  generateCurve25519Keypair,
+  allocateVipFromRows,
+  buildWireGuardConfig,
+  buildNoiseJsonProfile
+} = require('../utils/crypto');
 const config = require('../config/env');
 
 const TEST_DB_PATH = path.resolve(__dirname, '../../data/test_challenger_m1.db');
@@ -46,9 +51,7 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
     });
 
     // 1. Super-Admin login
-    const adminRes = await request(app)
-      .post('/api/auth/login')
-      .send({ username: 'admin', password: 'admin_password' });
+    const adminRes = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'admin_password' });
     assert.strictEqual(adminRes.status, 200);
     adminToken = adminRes.body.token;
 
@@ -77,7 +80,9 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
     closeDatabase();
     closeValkey();
     if (fs.existsSync(TEST_DB_PATH)) {
-      try { fs.unlinkSync(TEST_DB_PATH); } catch (e) {}
+      try {
+        fs.unlinkSync(TEST_DB_PATH);
+      } catch (e) {}
     }
   });
 
@@ -118,7 +123,10 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
       for (const payload of SQLI_VECTORS) {
         const res = await request(app)
           .post('/api/auth/register')
-          .send({ username: `sqli_${payload.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 16)}`, password: 'ValidPass123!' });
+          .send({
+            username: `sqli_${payload.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 16)}`,
+            password: 'ValidPass123!'
+          });
         assert.ok(
           res.status === 201 || res.status === 400 || res.status === 409,
           `Expected safe status for register payload, received HTTP ${res.status}`
@@ -127,10 +135,7 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
     });
 
     it('should verify behavior on non-string and malformed JSON payloads in auth endpoints', async () => {
-      const MALFORMED = [
-        { username: null, password: null },
-        {}
-      ];
+      const MALFORMED = [{ username: null, password: null }, {}];
 
       for (const body of MALFORMED) {
         const res = await request(app).post('/api/auth/login').send(body);
@@ -151,19 +156,25 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
 
       // Warmup JIT
       for (let i = 0; i < 3; i++) {
-        await request(app).post('/api/auth/login').send({ username: 'non_existent_warmup', password: 'WrongPassword123!' });
+        await request(app)
+          .post('/api/auth/login')
+          .send({ username: 'non_existent_warmup', password: 'WrongPassword123!' });
         await request(app).post('/api/auth/login').send({ username: 'admin', password: 'WrongPassword123!' });
       }
 
       for (let i = 0; i < SAMPLES; i++) {
         const t0 = process.hrtime.bigint();
-        const r1 = await request(app).post('/api/auth/login').send({ username: `ghost_user_${i}`, password: 'WrongPassword123!' });
+        const r1 = await request(app)
+          .post('/api/auth/login')
+          .send({ username: `ghost_user_${i}`, password: 'WrongPassword123!' });
         const t1 = process.hrtime.bigint();
         assert.strictEqual(r1.status, 401);
         nonExistentDurations.push(Number(t1 - t0) / 1e6); // ms
 
         const t2 = process.hrtime.bigint();
-        const r2 = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'WrongPassword123!' });
+        const r2 = await request(app)
+          .post('/api/auth/login')
+          .send({ username: 'admin', password: 'WrongPassword123!' });
         const t3 = process.hrtime.bigint();
         assert.strictEqual(r2.status, 401);
         existentWrongPassDurations.push(Number(t3 - t2) / 1e6); // ms
@@ -191,12 +202,12 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
   describe('3. JWT Security & Tamper Probing', () => {
     it('should reject alg:none unsigned JWT tokens', async () => {
       const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
-      const payload = Buffer.from(JSON.stringify({ sub: 'usr-admin', username: 'admin', role: 'super-admin' })).toString('base64url');
+      const payload = Buffer.from(
+        JSON.stringify({ sub: 'usr-admin', username: 'admin', role: 'super-admin' })
+      ).toString('base64url');
       const noneToken = `${header}.${payload}.`;
 
-      const res = await request(app)
-        .get('/api/users')
-        .set('Authorization', `Bearer ${noneToken}`);
+      const res = await request(app).get('/api/users').set('Authorization', `Bearer ${noneToken}`);
       assert.strictEqual(res.status, 401);
       assert.strictEqual(res.body.error, 'Invalid or expired token');
     });
@@ -208,23 +219,17 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
         { expiresIn: '1h' }
       );
 
-      const res = await request(app)
-        .get('/api/users')
-        .set('Authorization', `Bearer ${forgedToken}`);
+      const res = await request(app).get('/api/users').set('Authorization', `Bearer ${forgedToken}`);
       assert.strictEqual(res.status, 401);
       assert.strictEqual(res.body.error, 'Invalid or expired token');
     });
 
     it('should reject expired JWT tokens', async () => {
-      const expiredToken = jwt.sign(
-        { sub: 'usr-admin', username: 'admin', role: 'super-admin' },
-        config.JWT_SECRET,
-        { expiresIn: '-10s' }
-      );
+      const expiredToken = jwt.sign({ sub: 'usr-admin', username: 'admin', role: 'super-admin' }, config.JWT_SECRET, {
+        expiresIn: '-10s'
+      });
 
-      const res = await request(app)
-        .get('/api/users')
-        .set('Authorization', `Bearer ${expiredToken}`);
+      const res = await request(app).get('/api/users').set('Authorization', `Bearer ${expiredToken}`);
       assert.strictEqual(res.status, 401);
     });
 
@@ -245,21 +250,15 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
       const sessionToken = loginRes.body.token;
 
       // 2. Verify token is active
-      const meResBefore = await request(app)
-        .get('/api/auth/me')
-        .set('Authorization', `Bearer ${sessionToken}`);
+      const meResBefore = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${sessionToken}`);
       assert.strictEqual(meResBefore.status, 200);
 
       // 3. Logout
-      const logoutRes = await request(app)
-        .post('/api/auth/logout')
-        .set('Authorization', `Bearer ${sessionToken}`);
+      const logoutRes = await request(app).post('/api/auth/logout').set('Authorization', `Bearer ${sessionToken}`);
       assert.strictEqual(logoutRes.status, 200);
 
       // 4. Verify immediate rejection on subsequent requests
-      const meResAfter = await request(app)
-        .get('/api/auth/me')
-        .set('Authorization', `Bearer ${sessionToken}`);
+      const meResAfter = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${sessionToken}`);
       assert.strictEqual(meResAfter.status, 401);
       assert.strictEqual(meResAfter.body.error, 'Token has been revoked');
     });
@@ -430,11 +429,7 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
       );
 
       const hasBravoInAlpha = tenantAReceivedEvents.some((e) => e.node && e.node.user_id === userBId);
-      assert.strictEqual(
-        hasBravoInAlpha,
-        false,
-        'CRITICAL SECURITY: Tenant A received isolated event for Tenant B!'
-      );
+      assert.strictEqual(hasBravoInAlpha, false, 'CRITICAL SECURITY: Tenant A received isolated event for Tenant B!');
 
       adminWs.close();
       tenantAWs.close();
@@ -452,25 +447,13 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
         assert.strictEqual(privBytes.length, 32);
 
         // Byte 0: bits 0..2 must be 0
-        assert.strictEqual(
-          privBytes[0] & 0x07,
-          0,
-          `First byte ${privBytes[0]} lowest 3 bits must be 0`
-        );
+        assert.strictEqual(privBytes[0] & 0x07, 0, `First byte ${privBytes[0]} lowest 3 bits must be 0`);
 
         // Byte 31: bit 7 must be 0
-        assert.strictEqual(
-          privBytes[31] & 0x80,
-          0,
-          `Last byte ${privBytes[31]} bit 7 must be 0`
-        );
+        assert.strictEqual(privBytes[31] & 0x80, 0, `Last byte ${privBytes[31]} bit 7 must be 0`);
 
         // Byte 31: bit 6 must be 1
-        assert.strictEqual(
-          privBytes[31] & 0x40,
-          0x40,
-          `Last byte ${privBytes[31]} bit 6 must be 1`
-        );
+        assert.strictEqual(privBytes[31] & 0x40, 0x40, `Last byte ${privBytes[31]} bit 6 must be 1`);
       }
     });
 

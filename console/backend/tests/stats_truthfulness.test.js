@@ -20,16 +20,26 @@ let addressCounter = 0;
 
 function insertNode(db, { id, country, role, heartbeatSecondsAgo, rx = 0, tx = 0, quarantined = 0 }) {
   addressCounter += 1;
-  const hb = heartbeatSecondsAgo === null
-    ? null
-    : new Date(Date.now() - heartbeatSecondsAgo * 1000).toISOString();
+  const hb = heartbeatSecondsAgo === null ? null : new Date(Date.now() - heartbeatSecondsAgo * 1000).toISOString();
 
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO nodes (id, user_id, name, public_key, overlay_ipv4, overlay_ipv6,
                        role, country_code, last_heartbeat, rx_bytes, tx_bytes, is_quarantined)
-    VALUES (?, 'usr-test', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, id, id.padEnd(64, '0'), `100.64.9.${addressCounter}`, `fd00::${addressCounter}`,
-         role, country, hb, rx, tx, quarantined);
+    VALUES (?, 'usr-test', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    id,
+    id.padEnd(64, '0'),
+    `100.64.9.${addressCounter}`,
+    `fd00::${addressCounter}`,
+    role,
+    country,
+    hb,
+    rx,
+    tx,
+    quarantined
+  );
 }
 
 describe('statistics report the fleet, not constants', () => {
@@ -43,9 +53,11 @@ describe('statistics report the fleet, not constants', () => {
     db.prepare('DELETE FROM system_metrics').run();
 
     // nodes.user_id is a foreign key; the owner has to exist before its devices do.
-    db.prepare(`
+    db.prepare(
+      `
       INSERT INTO users (id, username, email, password_hash, role)
-      VALUES ('usr-test', 'stats-fixture', 'stats@test.local', 'x', 'user')`).run();
+      VALUES ('usr-test', 'stats-fixture', 'stats@test.local', 'x', 'user')`
+    ).run();
   });
 
   after(() => {
@@ -77,13 +89,14 @@ describe('statistics report the fleet, not constants', () => {
   });
 
   it('scores health from liveness instead of returning 98.4', () => {
-    assert.strictEqual(MetricsCollector.computeHealthScore(0, 10, 0), 0,
-      'a fleet with nothing running does not score 98.4');
+    assert.strictEqual(
+      MetricsCollector.computeHealthScore(0, 10, 0),
+      0,
+      'a fleet with nothing running does not score 98.4'
+    );
     assert.strictEqual(MetricsCollector.computeHealthScore(10, 10, 0), 100);
-    assert.strictEqual(MetricsCollector.computeHealthScore(10, 10, 5), 50,
-      'quarantined nodes are not healthy');
-    assert.strictEqual(MetricsCollector.computeHealthScore(0, 0, 0), 100,
-      'owning no devices is not a fault');
+    assert.strictEqual(MetricsCollector.computeHealthScore(10, 10, 5), 50, 'quarantined nodes are not healthy');
+    assert.strictEqual(MetricsCollector.computeHealthScore(0, 0, 0), 100, 'owning no devices is not a fault');
   });
 
   it('records a sample that reflects the fleet at that moment', async () => {

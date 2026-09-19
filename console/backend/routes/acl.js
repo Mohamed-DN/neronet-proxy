@@ -44,7 +44,7 @@ router.post('/rules', requireSuperAdmin, async (req, res, next) => {
   try {
     const id = await AclEngine.createRule(req.body || {});
     const rules = await AclEngine.listRules();
-    const created = rules.find(r => r.id === id) || { id };
+    const created = rules.find((r) => r.id === id) || { id };
 
     await logAuditEvent({
       eventType: 'ACL_RULE_CREATED',
@@ -71,7 +71,7 @@ router.post('/rules', requireSuperAdmin, async (req, res, next) => {
 router.delete('/rules/:id', requireSuperAdmin, async (req, res, next) => {
   try {
     const rules = await AclEngine.listRules();
-    const existing = rules.find(r => r.id === req.params.id);
+    const existing = rules.find((r) => r.id === req.params.id);
 
     if (!existing) {
       return res.status(404).json({ error: `no ACL rule ${req.params.id}` });

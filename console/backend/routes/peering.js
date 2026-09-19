@@ -36,11 +36,7 @@ router.post('/accept', requireSuperAdmin, async (req, res, next) => {
       return res.status(400).json({ error: 'Missing peering_token payload' });
     }
 
-    const agreement = await PeeringEngine.acceptPeeringAgreement(
-      peering_token,
-      req.user,
-      expected_fingerprint
-    );
+    const agreement = await PeeringEngine.acceptPeeringAgreement(peering_token, req.user, expected_fingerprint);
     return res.status(200).json({ success: true, peering_agreement: agreement });
   } catch (err) {
     if (err.status) {

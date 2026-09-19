@@ -106,7 +106,10 @@ async function revokeUserNodes(userId, { reason = 'user_destroyed', actorId = nu
     [userId]
   );
 
-  return revokeNodeKeys(rows.map((r) => r.id), { reason, actorId });
+  return revokeNodeKeys(
+    rows.map((r) => r.id),
+    { reason, actorId }
+  );
 }
 
 /** Keys a node must stop talking to. */

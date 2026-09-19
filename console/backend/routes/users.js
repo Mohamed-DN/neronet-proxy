@@ -42,17 +42,15 @@ router.get('/', requireRole('super-admin'), async (req, res, next) => {
     if (isPostgres()) {
       const pool = getPgPool();
       total = (await pool.query('SELECT count(*)::int AS n FROM users')).rows[0].n;
-      const result = await pool.query(
-        'SELECT * FROM users ORDER BY created_at ASC, id ASC LIMIT $1 OFFSET $2',
-        [limit, offset]
-      );
+      const result = await pool.query('SELECT * FROM users ORDER BY created_at ASC, id ASC LIMIT $1 OFFSET $2', [
+        limit,
+        offset
+      ]);
       rows = result.rows;
     } else {
       const db = getDatabase();
       total = db.prepare('SELECT count(*) AS n FROM users').get().n;
-      rows = db
-        .prepare('SELECT * FROM users ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?')
-        .all(limit, offset);
+      rows = db.prepare('SELECT * FROM users ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?').all(limit, offset);
     }
 
     const users = rows.map(formatUser);
@@ -85,13 +83,16 @@ router.post('/', requireRole('super-admin'), async (req, res, next) => {
         return res.status(409).json({ error: 'Username already exists' });
       }
 
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO users (
           id, username, email, password_hash, role, status, bypass_apps
         ) VALUES (
           $1, $2, $3, $4, $5, 'active', $6::jsonb
         )
-      `, [userId, username, userEmail, passwordHash, userRole, bypassAppsJson]);
+      `,
+        [userId, username, userEmail, passwordHash, userRole, bypassAppsJson]
+      );
 
       const createdRes = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
       const createdUser = formatUser(createdRes.rows[0]);
@@ -115,13 +116,15 @@ router.post('/', requireRole('super-admin'), async (req, res, next) => {
         return res.status(409).json({ error: 'Username already exists' });
       }
 
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO users (
           id, username, email, password_hash, role, status, bypass_apps
         ) VALUES (
           ?, ?, ?, ?, ?, 'active', ?
         )
-      `).run(userId, username, userEmail, passwordHash, userRole, bypassAppsJson);
+      `
+      ).run(userId, username, userEmail, passwordHash, userRole, bypassAppsJson);
 
       const createdUser = formatUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
 

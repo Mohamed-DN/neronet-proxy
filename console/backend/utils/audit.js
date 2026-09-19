@@ -18,25 +18,28 @@ async function logAuditEvent({
   try {
     if (isPostgres()) {
       const pool = getPgPool();
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO audit_events (
           event_type, severity, actor_user_id, actor_username,
           target_id, target_type, message, ip_address, user_agent, metadata_json
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
         )
-      `, [
-        eventType,
-        severity,
-        actorUserId,
-        actorUsername,
-        targetId,
-        targetType,
-        message,
-        ipAddress,
-        userAgent,
-        typeof metadata === 'object' ? JSON.stringify(metadata) : metadata
-      ]);
+      `,
+        [
+          eventType,
+          severity,
+          actorUserId,
+          actorUsername,
+          targetId,
+          targetType,
+          message,
+          ipAddress,
+          userAgent,
+          typeof metadata === 'object' ? JSON.stringify(metadata) : metadata
+        ]
+      );
     } else {
       const db = getDatabase();
       const stmt = db.prepare(`

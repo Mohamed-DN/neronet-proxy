@@ -164,10 +164,12 @@ function seedDatabase(db) {
     if (cloudPcTable.length > 0) {
       const cpcCount = db.prepare('SELECT count(*) as count FROM cloud_pcs').get().count;
       if (cpcCount === 0) {
-        db.prepare(`
+        db.prepare(
+          `
           INSERT OR IGNORE INTO cloud_pcs (id, name, user_id, device_id, specs, status, signaling_url, custom_domain)
           VALUES ('cpc-0001', 'Admin GPU Workstation', 'usr-admin', 'svrn-node-seed1', '{"vcpus": 8, "ram_gb": 32, "gpu": "RTX 4090"}', 'active', 'wss://signal.internal.darknero.com/ws/selkies', 'desktop.admin.darknero.com')
-        `).run();
+        `
+        ).run();
       }
     }
 
@@ -175,10 +177,12 @@ function seedDatabase(db) {
     if (domainTable.length > 0) {
       const domCount = db.prepare('SELECT count(*) as count FROM custom_domains').get().count;
       if (domCount === 0) {
-        db.prepare(`
+        db.prepare(
+          `
           INSERT OR IGNORE INTO custom_domains (id, domain_name, cloud_pc_id, user_id, sso_gateway_enabled, otp_secret)
           VALUES ('cdom-0001', 'desktop.admin.darknero.com', 'cpc-0001', 'usr-admin', 1, ?)
-        `).run(require('crypto').randomBytes(20).toString('hex'));
+        `
+        ).run(require('crypto').randomBytes(20).toString('hex'));
       }
     }
 

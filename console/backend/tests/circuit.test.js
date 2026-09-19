@@ -67,11 +67,15 @@ describe('Circuit path selection', () => {
                           role, country_code, asn, is_healthy, is_quarantined)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`
     ).run(
-      id, owner, id,
+      id,
+      owner,
+      id,
       crypto.randomBytes(32).toString('hex'),
       `100.64.9.${addressCounter}`,
       `fd7a:115c:a1e0::9${addressCounter.toString(16)}`,
-      role, country, asn
+      role,
+      country,
+      asn
     );
   }
 
@@ -112,7 +116,10 @@ describe('Circuit path selection', () => {
 
     // Hop indices must be contiguous from zero: the CLI labels entry and exit from
     // them, and it previously tested for 1 and 3 and named every hop wrongly.
-    assert.deepStrictEqual(res.body.hops.map((h) => h.hop_index), [0, 1, 2]);
+    assert.deepStrictEqual(
+      res.body.hops.map((h) => h.hop_index),
+      [0, 1, 2]
+    );
   });
 
   it('never repeats a node within one path', async () => {
@@ -193,15 +200,10 @@ describe('Circuit path selection', () => {
     addRelay({ id: 'other-c', owner: 'op-c', asn: 400 });
 
     for (let i = 0; i < 10; i++) {
-      const res = await request(app)
-        .post('/v4/control/circuit')
-        .send({ target_country: 'US', node_id: 'self-node' });
+      const res = await request(app).post('/v4/control/circuit').send({ target_country: 'US', node_id: 'self-node' });
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
-      assert.ok(
-        !res.body.hops.some((h) => h.node_id === 'self-node'),
-        'the requester was placed in its own circuit'
-      );
+      assert.ok(!res.body.hops.some((h) => h.node_id === 'self-node'), 'the requester was placed in its own circuit');
     }
   });
 
@@ -237,7 +239,7 @@ describe('Circuit path selection', () => {
       assert.ok(!ids.includes('other-b'), 'an unhealthy relay was used as a hop');
     }
 
-    db.prepare("UPDATE nodes SET is_quarantined = 0, is_healthy = 1").run();
+    db.prepare('UPDATE nodes SET is_quarantined = 0, is_healthy = 1').run();
   });
 
   it('sets an expiry so circuits rotate', async () => {

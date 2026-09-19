@@ -101,9 +101,12 @@ const config = {
   ADMIN_EMAIL: process.env.SOVEREIGN_ADMIN_EMAIL || 'admin@darknero.com',
 
   // CORS Configuration
-  CORS_ORIGINS: (process.env.CORS_ORIGIN || 'http://127.0.0.1:8081,http://localhost:8081,http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:3000,http://localhost:3000')
+  CORS_ORIGINS: (
+    process.env.CORS_ORIGIN ||
+    'http://127.0.0.1:8081,http://localhost:8081,http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:3000,http://localhost:3000'
+  )
     .split(',')
-    .map(origin => origin.trim()),
+    .map((origin) => origin.trim()),
 
   // Mesh Relay & Master Server Public Key Configuration
   SERVER_ENDPOINT: process.env.SOVEREIGN_SERVER_ENDPOINT || 'relay-us.neronet.darknero.com:51820',
@@ -138,7 +141,7 @@ function assertProductionSecrets() {
 
   throw new Error(
     `Refusing to start: NODE_ENV=production but ${problems.join('; ')}. ` +
-    'Generate a fresh value for each with `openssl rand -base64 48`.'
+      'Generate a fresh value for each with `openssl rand -base64 48`.'
   );
 }
 

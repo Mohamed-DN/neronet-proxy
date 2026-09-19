@@ -46,7 +46,11 @@ describe('Key revocation', () => {
     app = createApp();
 
     betaKey = crypto.randomBytes(32).toString('hex');
-    alpha = (await request(app).post('/v4/control/register').send(registerBody('a'.repeat(64)))).body;
+    alpha = (
+      await request(app)
+        .post('/v4/control/register')
+        .send(registerBody('a'.repeat(64)))
+    ).body;
     beta = (await request(app).post('/v4/control/register').send(registerBody(betaKey))).body;
   });
 

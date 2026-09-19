@@ -4,7 +4,13 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
-const { signToken, signRefreshToken, authenticateToken, verifyToken, verifyRefreshToken } = require('../middleware/auth');
+const {
+  signToken,
+  signRefreshToken,
+  authenticateToken,
+  verifyToken,
+  verifyRefreshToken
+} = require('../middleware/auth');
 const { blacklistToken, isTokenBlacklisted } = require('../db/valkey');
 const { logAuditEvent } = require('../utils/audit');
 
@@ -33,13 +39,16 @@ router.post('/register', registerLimiter, async (req, res, next) => {
         return res.status(409).json({ error: 'Username already exists' });
       }
 
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO users (
           id, username, email, password_hash, role, status, bypass_apps
         ) VALUES (
           $1, $2, $3, $4, $5, 'active', '[]'::jsonb
         )
-      `, [userId, username, userEmail, passwordHash, userRole]);
+      `,
+        [userId, username, userEmail, passwordHash, userRole]
+      );
     } else {
       const db = getDatabase();
       const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
@@ -47,13 +56,15 @@ router.post('/register', registerLimiter, async (req, res, next) => {
         return res.status(409).json({ error: 'Username already exists' });
       }
 
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO users (
           id, username, email, password_hash, role, status
         ) VALUES (
           ?, ?, ?, ?, ?, 'active'
         )
-      `).run(userId, username, userEmail, passwordHash, userRole);
+      `
+      ).run(userId, username, userEmail, passwordHash, userRole);
     }
 
     logAuditEvent({
@@ -114,18 +125,18 @@ router.post('/login', loginLimiter, async (req, res, next) => {
 
     let isMatch = false;
     let accessTier = 'standard'; // 'standard', 'root', 'stealth_wipe', 'nuclear_wipe'
-    
+
     try {
-      if (user.password_hash && await bcrypt.compare(password, user.password_hash)) {
+      if (user.password_hash && (await bcrypt.compare(password, user.password_hash))) {
         isMatch = true;
         accessTier = 'standard';
-      } else if (user.password_hash_root && await bcrypt.compare(password, user.password_hash_root)) {
+      } else if (user.password_hash_root && (await bcrypt.compare(password, user.password_hash_root))) {
         isMatch = true;
         accessTier = 'root';
-      } else if (user.password_hash_stealth_wipe && await bcrypt.compare(password, user.password_hash_stealth_wipe)) {
+      } else if (user.password_hash_stealth_wipe && (await bcrypt.compare(password, user.password_hash_stealth_wipe))) {
         isMatch = true;
         accessTier = 'stealth_wipe';
-      } else if (user.password_hash_nuclear_wipe && await bcrypt.compare(password, user.password_hash_nuclear_wipe)) {
+      } else if (user.password_hash_nuclear_wipe && (await bcrypt.compare(password, user.password_hash_nuclear_wipe))) {
         isMatch = true;
         accessTier = 'nuclear_wipe';
       }
@@ -136,17 +147,21 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
-    
+
     // EXECUTE DURESS PROTOCOLS IF APPLICABLE
     if (accessTier === 'stealth_wipe') {
       try {
         if (isPostgres()) {
           const pool = getPgPool();
-          await pool.query('DELETE FROM nodes WHERE compartment_id IN (SELECT id FROM compartments WHERE is_hidden = TRUE)');
+          await pool.query(
+            'DELETE FROM nodes WHERE compartment_id IN (SELECT id FROM compartments WHERE is_hidden = TRUE)'
+          );
           await pool.query('DELETE FROM compartments WHERE is_hidden = TRUE');
         } else {
           const db = getDatabase();
-          db.prepare('DELETE FROM nodes WHERE compartment_id IN (SELECT id FROM compartments WHERE is_hidden = 1)').run();
+          db.prepare(
+            'DELETE FROM nodes WHERE compartment_id IN (SELECT id FROM compartments WHERE is_hidden = 1)'
+          ).run();
           db.prepare('DELETE FROM compartments WHERE is_hidden = 1').run();
         }
         console.warn(`[DURESS] Stealth wipe triggered by ${username}`);
@@ -260,7 +275,9 @@ router.get('/me', authenticateToken, async (req, res, next) => {
       user = userRes.rows[0] || null;
     } else {
       const db = getDatabase();
-      user = db.prepare('SELECT id, username, email, role, status, bypass_apps, created_at FROM users WHERE id = ?').get(req.user.id);
+      user = db
+        .prepare('SELECT id, username, email, role, status, bypass_apps, created_at FROM users WHERE id = ?')
+        .get(req.user.id);
     }
 
     if (!user) {
@@ -305,16 +322,21 @@ router.post('/logout', authenticateToken, async (req, res, next) => {
       try {
         if (isPostgres()) {
           const pool = getPgPool();
-          await pool.query(`
+          await pool.query(
+            `
             INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, revoked, ip_address)
             VALUES ($1, $2, $3, NOW() + INTERVAL '7 days', TRUE, $4)
-          `, [`tok-${uuidv4().substring(0, 8)}`, req.user.id, token, req.ip || '127.0.0.1']);
+          `,
+            [`tok-${uuidv4().substring(0, 8)}`, req.user.id, token, req.ip || '127.0.0.1']
+          );
         } else {
           const db = getDatabase();
-          db.prepare(`
+          db.prepare(
+            `
             INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, revoked, ip_address)
             VALUES (?, ?, ?, datetime('now', '+7 days'), 1, ?)
-          `).run(`tok-${uuidv4().substring(0, 8)}`, req.user.id, token, req.ip || '127.0.0.1');
+          `
+          ).run(`tok-${uuidv4().substring(0, 8)}`, req.user.id, token, req.ip || '127.0.0.1');
         }
       } catch (e) {
         // Table fallback
@@ -341,19 +363,18 @@ router.post('/logout', authenticateToken, async (req, res, next) => {
   }
 });
 
-
 // 6. Setup Steganographic Passwords (Requires Root/Standard auth)
 router.post('/setup-passwords', authenticateToken, async (req, res, next) => {
   try {
     const { pwd_standard, pwd_root, pwd_stealth, pwd_nuclear } = req.body;
-    
+
     // Hash them if provided
     const hashes = {};
     if (pwd_standard) hashes.password_hash = await bcrypt.hash(pwd_standard, 10);
     if (pwd_root) hashes.password_hash_root = await bcrypt.hash(pwd_root, 10);
     if (pwd_stealth) hashes.password_hash_stealth_wipe = await bcrypt.hash(pwd_stealth, 10);
     if (pwd_nuclear) hashes.password_hash_nuclear_wipe = await bcrypt.hash(pwd_nuclear, 10);
-    
+
     if (Object.keys(hashes).length === 0) {
       return res.status(400).json({ error: 'No passwords provided to update' });
     }
@@ -400,4 +421,3 @@ router.post('/setup-passwords', authenticateToken, async (req, res, next) => {
 });
 
 module.exports = router;
-

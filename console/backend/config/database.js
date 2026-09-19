@@ -16,7 +16,9 @@ function buildSslConfig() {
 
   if (process.env.PGSSL_INSECURE === 'true') {
     if (config.IS_PRODUCTION) {
-      throw new Error('Refusing to start: PGSSL_INSECURE=true disables certificate verification and is not permitted in production.');
+      throw new Error(
+        'Refusing to start: PGSSL_INSECURE=true disables certificate verification and is not permitted in production.'
+      );
     }
     return { rejectUnauthorized: false };
   }
@@ -40,15 +42,17 @@ function resolvePostgresPassword() {
     if (config.IS_PRODUCTION && config.isPublishedDefault(value)) {
       throw new Error(
         'Refusing to start: PGPASSWORD (or POSTGRES_PASSWORD) is set to a value published in this repository. ' +
-        'Rotate it with ALTER USER — changing the environment variable alone does not rotate a password already ' +
-        'written into the database volume.'
+          'Rotate it with ALTER USER — changing the environment variable alone does not rotate a password already ' +
+          'written into the database volume.'
       );
     }
     return value;
   }
 
   if (config.IS_PRODUCTION) {
-    throw new Error('Refusing to start: PGPASSWORD (or POSTGRES_PASSWORD) must be set when running PostgreSQL in production.');
+    throw new Error(
+      'Refusing to start: PGPASSWORD (or POSTGRES_PASSWORD) must be set when running PostgreSQL in production.'
+    );
   }
 
   return 'neronet_dev_password';

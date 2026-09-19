@@ -135,9 +135,7 @@ router.get('/', (req, res) => {
     ? db
         .prepare('SELECT * FROM app_bundles WHERE user_id = ? ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?')
         .all(req.user.id, limit, offset)
-    : db
-        .prepare('SELECT * FROM app_bundles ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?')
-        .all(limit, offset);
+    : db.prepare('SELECT * FROM app_bundles ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?').all(limit, offset);
 
   const apps = rows.map(formatApp);
   return res.status(200).json({ apps, ...pageEnvelope({ items: apps, total, limit, offset }) });
@@ -162,7 +160,9 @@ router.post('/', (req, res) => {
   // A sanity bound on what one bundle may request, not a commercial tier: 16 GB of
   // memory or a terabyte of storage for a single app is a mistake, not a purchase.
   if (mem > 16384 || storage > 1000) {
-    return res.status(422).json({ error: 'Requested resources exceed what a single app bundle may allocate (16 GB memory, 1 TB storage)' });
+    return res
+      .status(422)
+      .json({ error: 'Requested resources exceed what a single app bundle may allocate (16 GB memory, 1 TB storage)' });
   }
 
   const db = getDatabase();
@@ -170,7 +170,8 @@ router.post('/', (req, res) => {
   const endpointUrl = `https://${type}.internal.darknero.com`;
   const stz = scale_to_zero !== undefined ? (scale_to_zero ? 1 : 0) : 1;
 
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO app_bundles (
       id, user_id, name, type, status,
       endpoint_url, internal_port, cpu_cores, memory_mb, storage_gb, scale_to_zero
@@ -178,7 +179,8 @@ router.post('/', (req, res) => {
       ?, ?, ?, ?, 'stopped',
       ?, 8080, ?, ?, ?, ?
     )
-  `).run(aid, req.user.id, name.trim(), type, endpointUrl, cores, mem, storage, stz);
+  `
+  ).run(aid, req.user.id, name.trim(), type, endpointUrl, cores, mem, storage, stz);
 
   logAuditEvent({
     eventType: 'APP_CREATE',
@@ -207,13 +209,15 @@ router.get('/:id/launch', (req, res) => {
   }
 
   // Fast wake from stopped or hibernated
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE app_bundles SET
       status = 'running',
       last_accessed_at = datetime('now'),
       updated_at = datetime('now')
     WHERE id = ?
-  `).run(app.id);
+  `
+  ).run(app.id);
 
   const ssoToken = `sso_${crypto.randomBytes(16).toString('hex')}`;
   const launchUrl = `https://${app.type}.internal.darknero.com/#/client/${app.id}`;
@@ -248,10 +252,12 @@ router.post('/:id/start', (req, res) => {
     return res.status(403).json({ error: 'Access forbidden' });
   }
 
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE app_bundles SET status = 'running', last_accessed_at = datetime('now'), updated_at = datetime('now')
     WHERE id = ?
-  `).run(app.id);
+  `
+  ).run(app.id);
 
   logAuditEvent({
     eventType: 'APP_START',
@@ -279,10 +285,12 @@ router.post('/:id/stop', (req, res) => {
     return res.status(403).json({ error: 'Access forbidden' });
   }
 
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE app_bundles SET status = 'stopped', updated_at = datetime('now')
     WHERE id = ?
-  `).run(app.id);
+  `
+  ).run(app.id);
 
   logAuditEvent({
     eventType: 'APP_STOP',
@@ -310,10 +318,12 @@ router.post('/:id/scale-to-zero', (req, res) => {
     return res.status(403).json({ error: 'Access forbidden' });
   }
 
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE app_bundles SET status = 'hibernated', updated_at = datetime('now')
     WHERE id = ?
-  `).run(app.id);
+  `
+  ).run(app.id);
 
   logAuditEvent({
     eventType: 'APP_SCALE_ZERO',
@@ -475,7 +485,8 @@ router.post(['/:id/share', '/:id/share-links'], (req, res) => {
 
   const maxUsage = Number(max_uses) || 0;
 
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO app_share_links (
       id, app_id, user_id, share_token, public_url, auth_mode,
       temporary_password, expires_at, max_uses, use_count, is_revoked
@@ -483,10 +494,8 @@ router.post(['/:id/share', '/:id/share-links'], (req, res) => {
       ?, ?, ?, ?, ?, ?,
       ?, ?, ?, 0, 0
     )
-  `).run(
-    linkId, app.id, req.user.id, shareToken, publicUrl, mode,
-    tempPass, finalExpiresAt, maxUsage
-  );
+  `
+  ).run(linkId, app.id, req.user.id, shareToken, publicUrl, mode, tempPass, finalExpiresAt, maxUsage);
 
   logAuditEvent({
     eventType: 'APP_SHARE_LINK_CREATE',
@@ -532,7 +541,7 @@ router.delete(['/:id/share-links/:linkId', '/share-links/:linkId'], (req, res) =
     return res.status(403).json({ error: 'Access forbidden' });
   }
 
-  db.prepare("UPDATE app_share_links SET is_revoked = 1 WHERE id = ?").run(linkId);
+  db.prepare('UPDATE app_share_links SET is_revoked = 1 WHERE id = ?').run(linkId);
 
   logAuditEvent({
     eventType: 'APP_SHARE_LINK_REVOKE',
@@ -559,7 +568,7 @@ router.post(['/:id/share-links/:linkId/revoke', '/share-links/:linkId/revoke'], 
     return res.status(403).json({ error: 'Access forbidden' });
   }
 
-  db.prepare("UPDATE app_share_links SET is_revoked = 1 WHERE id = ?").run(linkId);
+  db.prepare('UPDATE app_share_links SET is_revoked = 1 WHERE id = ?').run(linkId);
 
   logAuditEvent({
     eventType: 'APP_SHARE_LINK_REVOKE',

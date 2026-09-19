@@ -167,19 +167,24 @@ async function generateCanary(customStatement = null) {
       const pool = getPgPool();
       // Deactivate older canaries
       await pool.query('UPDATE warrant_canaries SET is_active = FALSE WHERE is_active = TRUE');
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO warrant_canaries (
           id, published_at, statement_text, ed25519_signature, signer_public_key, is_active
         ) VALUES ($1, $2, $3, $4, $5, TRUE)
-      `, [canaryId, nowIso, statement, signatureBase64, keypair.publicKeyBase64]);
+      `,
+        [canaryId, nowIso, statement, signatureBase64, keypair.publicKeyBase64]
+      );
     } else {
       const db = getDatabase();
       db.prepare('UPDATE warrant_canaries SET is_active = 0 WHERE is_active = 1').run();
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO warrant_canaries (
           id, published_at, statement_text, ed25519_signature, signer_public_key, is_active
         ) VALUES (?, ?, ?, ?, ?, 1)
-      `).run(canaryId, nowIso, statement, signatureBase64, keypair.publicKeyBase64);
+      `
+      ).run(canaryId, nowIso, statement, signatureBase64, keypair.publicKeyBase64);
     }
   } catch (err) {
     logger.warn(`Could not save canary to DB: ${err.message}`);
@@ -210,15 +215,24 @@ async function getLatestCanary() {
     let row = null;
     if (isPostgres()) {
       const pool = getPgPool();
-      const res = await pool.query('SELECT * FROM warrant_canaries WHERE is_active = TRUE ORDER BY published_at DESC LIMIT 1');
+      const res = await pool.query(
+        'SELECT * FROM warrant_canaries WHERE is_active = TRUE ORDER BY published_at DESC LIMIT 1'
+      );
       row = res.rows[0] || null;
     } else {
       const db = getDatabase();
-      row = db.prepare('SELECT * FROM warrant_canaries WHERE is_active = 1 ORDER BY published_at DESC LIMIT 1').get() || null;
+      row =
+        db.prepare('SELECT * FROM warrant_canaries WHERE is_active = 1 ORDER BY published_at DESC LIMIT 1').get() ||
+        null;
     }
 
     if (row) {
-      const rawText = formatArmoredCanary(row.statement_text, row.ed25519_signature, row.signer_public_key, row.published_at);
+      const rawText = formatArmoredCanary(
+        row.statement_text,
+        row.ed25519_signature,
+        row.signer_public_key,
+        row.published_at
+      );
       const isValid = verifyCanary(row.statement_text, row.ed25519_signature, row.signer_public_key);
       const canaryObj = {
         id: row.id,

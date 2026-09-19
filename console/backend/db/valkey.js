@@ -21,9 +21,7 @@ const logger = require('../utils/logger');
 // each test file its own process but one shared environment, so a namespace fixed
 // for the whole run still lets files cross-talk; only a per-process value isolates
 // them. In production the token is simply absent and the namespace is used verbatim.
-const NAMESPACE = (process.env.SOVEREIGN_VALKEY_NAMESPACE || '')
-  .trim()
-  .replace('{pid}', String(process.pid));
+const NAMESPACE = (process.env.SOVEREIGN_VALKEY_NAMESPACE || '').trim().replace('{pid}', String(process.pid));
 const prefix = NAMESPACE ? `${NAMESPACE}:` : '';
 
 const TOPOLOGY_CHANNEL = `${prefix}neronet:topology:events`;

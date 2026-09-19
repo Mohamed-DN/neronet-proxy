@@ -223,7 +223,7 @@ const SQLITE_MIGRATIONS = [
     run: (db) => {
       const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='nodes'").all();
       if (tables.length > 0) {
-        const nodeCols = db.pragma('table_info(nodes)').map(c => c.name);
+        const nodeCols = db.pragma('table_info(nodes)').map((c) => c.name);
         if (!nodeCols.includes('onion_routing_enabled')) {
           db.exec('ALTER TABLE nodes ADD COLUMN onion_routing_enabled INTEGER NOT NULL DEFAULT 0;');
         }
@@ -310,21 +310,25 @@ const SQLITE_MIGRATIONS = [
     `,
     run: (db) => {
       const adminUser = db.prepare("SELECT id FROM users WHERE role = 'super-admin' LIMIT 1").get();
-      const node = db.prepare("SELECT id FROM nodes LIMIT 1").get();
+      const node = db.prepare('SELECT id FROM nodes LIMIT 1').get();
       if (adminUser && node) {
         const count = db.prepare('SELECT count(*) as cnt FROM cloud_pcs').get();
         if (count && count.cnt === 0) {
-          db.prepare(`
+          db.prepare(
+            `
             INSERT OR IGNORE INTO cloud_pcs (id, name, user_id, device_id, specs, status, signaling_url, custom_domain)
             VALUES ('cpc-0001', 'Admin GPU Workstation', ?, ?, '{"vcpus": 8, "ram_gb": 32, "gpu": "RTX 4090"}', 'active', 'wss://signal.internal.darknero.com/ws/selkies', 'desktop.admin.darknero.com')
-          `).run(adminUser.id, node.id);
+          `
+          ).run(adminUser.id, node.id);
 
           // Random even for the demo row: a seeded domain with a known OTP secret is
           // a live bypass on any database that was ever seeded.
-          db.prepare(`
+          db.prepare(
+            `
             INSERT OR IGNORE INTO custom_domains (id, domain_name, cloud_pc_id, user_id, sso_gateway_enabled, otp_secret)
             VALUES ('cdom-0001', 'desktop.admin.darknero.com', 'cpc-0001', ?, 1, ?)
-          `).run(adminUser.id, require('crypto').randomBytes(20).toString('hex'));
+          `
+          ).run(adminUser.id, require('crypto').randomBytes(20).toString('hex'));
         }
       }
     }
@@ -484,9 +488,7 @@ const SQLITE_MIGRATION_005 = {
     // it. A shared default OTP secret means every row created without an explicit
     // value carries the same credential, committed in the schema itself.
     const columns = db.pragma('table_info(custom_domains)');
-    const hasSharedDefault = columns.some(
-      (c) => c.name === 'otp_secret' && c.dflt_value !== null
-    );
+    const hasSharedDefault = columns.some((c) => c.name === 'otp_secret' && c.dflt_value !== null);
     if (!hasSharedDefault) {
       return;
     }
@@ -539,7 +541,7 @@ function ensureSchemaIntegrity(db) {
   if (typeof db.prepare !== 'function') return;
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='nodes'").all();
   if (tables.length > 0) {
-    const nodeCols = db.pragma('table_info(nodes)').map(c => c.name);
+    const nodeCols = db.pragma('table_info(nodes)').map((c) => c.name);
     if (!nodeCols.includes('onion_routing_enabled')) {
       logger.info('Schema healing: Adding missing onion_routing_enabled column to nodes table...');
       db.exec('ALTER TABLE nodes ADD COLUMN onion_routing_enabled INTEGER NOT NULL DEFAULT 0;');
@@ -563,11 +565,12 @@ async function runPostgresMigrations(pool) {
     `);
 
     const res = await client.query('SELECT name FROM _migrations');
-    const appliedSet = new Set(res.rows.map(r => r.name));
+    const appliedSet = new Set(res.rows.map((r) => r.name));
 
     if (fs.existsSync(MIGRATIONS_DIR)) {
-      const files = fs.readdirSync(MIGRATIONS_DIR)
-        .filter(f => f.endsWith('.sql'))
+      const files = fs
+        .readdirSync(MIGRATIONS_DIR)
+        .filter((f) => f.endsWith('.sql'))
         .sort();
 
       for (const file of files) {
@@ -602,7 +605,7 @@ function runSQLiteMigrations(db) {
   `);
 
   const appliedRows = db.prepare('SELECT name FROM _migrations').all();
-  const appliedSet = new Set(appliedRows.map(r => r.name));
+  const appliedSet = new Set(appliedRows.map((r) => r.name));
 
   const migrations = [
     ...SQLITE_MIGRATIONS,

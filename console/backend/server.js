@@ -130,22 +130,24 @@ let server = null;
 let wss = null;
 
 if (require.main === module) {
-  initDatabase().then(() => {
-    server = http.createServer(app);
-    wss = initTopologyWebSocket(server);
+  initDatabase()
+    .then(() => {
+      server = http.createServer(app);
+      wss = initTopologyWebSocket(server);
 
-    server.listen(config.PORT, config.HOST, () => {
-      logger.info(`=======================================================`);
-      logger.info(`🚀 NeroNet Management Console Control Plane API running`);
-      logger.info(`📡 HTTP: http://${config.HOST}:${config.PORT}`);
-      logger.info(`🔌 WebSocket: ws://${config.HOST}:${config.PORT}/ws/topology`);
-      logger.info(`🔒 Environment: ${config.NODE_ENV}`);
-      logger.info(`=======================================================`);
+      server.listen(config.PORT, config.HOST, () => {
+        logger.info(`=======================================================`);
+        logger.info(`🚀 NeroNet Management Console Control Plane API running`);
+        logger.info(`📡 HTTP: http://${config.HOST}:${config.PORT}`);
+        logger.info(`🔌 WebSocket: ws://${config.HOST}:${config.PORT}/ws/topology`);
+        logger.info(`🔒 Environment: ${config.NODE_ENV}`);
+        logger.info(`=======================================================`);
+      });
+    })
+    .catch((err) => {
+      logger.error('Fatal startup error:', err);
+      process.exit(1);
     });
-  }).catch((err) => {
-    logger.error('Fatal startup error:', err);
-    process.exit(1);
-  });
 
   const shutdown = () => {
     logger.info('Gracefully stopping NeroNet Console Control Plane...');

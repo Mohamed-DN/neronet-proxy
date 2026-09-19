@@ -50,7 +50,8 @@ router.post('/generate', async (req, res, next) => {
       const lat = nodeCountry === 'US' ? 38.9072 : 50.1109;
       const lon = nodeCountry === 'US' ? -77.0369 : 8.6821;
 
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO nodes (
           id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6,
           role, ip_class, country_code, onion_routing_enabled, onion_hops, kill_switch_enabled,
@@ -60,18 +61,32 @@ router.post('/generate', async (req, res, next) => {
           $8, 'RESIDENTIAL', $9, $10, $11, $12,
           TRUE, FALSE, 10.0, $13, $14
         )
-      `, [
-        kp.nodeId, req.user.id, name.trim(), kp.publicKeyBase64, kp.presharedKeyBase64,
-        overlayIpv4, overlayIpv6, nodeRole, nodeCountry, onionEnabled, hops, killSwitch,
-        lon, lat
-      ]);
+      `,
+        [
+          kp.nodeId,
+          req.user.id,
+          name.trim(),
+          kp.publicKeyBase64,
+          kp.presharedKeyBase64,
+          overlayIpv4,
+          overlayIpv6,
+          nodeRole,
+          nodeCountry,
+          onionEnabled,
+          hops,
+          killSwitch,
+          lon,
+          lat
+        ]
+      );
     } else {
       const db = getDatabase();
       const vips = await allocateNextVip(db);
       overlayIpv4 = vips.overlayIpv4;
       overlayIpv6 = vips.overlayIpv6;
 
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO nodes (
           id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6,
           role, ip_class, country_code, onion_routing_enabled, onion_hops, kill_switch_enabled,
@@ -81,9 +96,20 @@ router.post('/generate', async (req, res, next) => {
           ?, 'RESIDENTIAL', ?, ?, ?, ?,
           1, 0, 10.0
         )
-      `).run(
-        kp.nodeId, req.user.id, name.trim(), kp.publicKeyBase64, kp.presharedKeyBase64,
-        overlayIpv4, overlayIpv6, nodeRole, nodeCountry, onionEnabled ? 1 : 0, hops, killSwitch ? 1 : 0
+      `
+      ).run(
+        kp.nodeId,
+        req.user.id,
+        name.trim(),
+        kp.publicKeyBase64,
+        kp.presharedKeyBase64,
+        overlayIpv4,
+        overlayIpv6,
+        nodeRole,
+        nodeCountry,
+        onionEnabled ? 1 : 0,
+        hops,
+        killSwitch ? 1 : 0
       );
     }
 
@@ -125,14 +151,18 @@ router.post('/generate', async (req, res, next) => {
       metadata: { onion_routing_enabled: onionEnabled, onion_hops: hops }
     });
 
-    await broadcastNodeEvent('NODE_REGISTER', {
-      id: kp.nodeId,
-      name: name.trim(),
-      user_id: req.user.id,
-      role: nodeRole,
-      overlay_ipv4: overlayIpv4,
-      onion_routing_enabled: onionEnabled
-    }, req.user);
+    await broadcastNodeEvent(
+      'NODE_REGISTER',
+      {
+        id: kp.nodeId,
+        name: name.trim(),
+        user_id: req.user.id,
+        role: nodeRole,
+        overlay_ipv4: overlayIpv4,
+        onion_routing_enabled: onionEnabled
+      },
+      req.user
+    );
 
     return res.status(200).json({
       node_id: kp.nodeId,

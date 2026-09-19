@@ -8,7 +8,9 @@ const config = require('./config/env');
 // was meant to replace it.
 const SECRET = config.JWT_SECRET;
 
-const adminToken = jwt.sign({ id: 'usr-admin-seed', username: 'admin', role: 'super-admin' }, SECRET, { expiresIn: '1d' });
+const adminToken = jwt.sign({ id: 'usr-admin-seed', username: 'admin', role: 'super-admin' }, SECRET, {
+  expiresIn: '1d'
+});
 
 const nodes = [
   { id: 'node-sim-us', name: 'US-East-Bridge', role: 'EXIT_BRIDGE', country_code: 'US', lat: 37.77, lng: -122.41 },
@@ -20,7 +22,7 @@ async function registerNode(node) {
   try {
     const res = await fetch(`${API_URL}/nodes`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
       body: JSON.stringify({
         name: node.name,
         role: node.role,
@@ -44,7 +46,7 @@ async function sendHeartbeat(node) {
   try {
     const res = await fetch(`${API_URL}/nodes/${node.dbId}/heartbeat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
       body: JSON.stringify({
         latency_ms: Math.floor(Math.random() * 50) + 10,
         rx_bytes: Math.floor(Math.random() * 1000000),
@@ -64,7 +66,7 @@ async function start() {
   for (const n of nodes) {
     await registerNode(n);
   }
-  
+
   setInterval(() => {
     for (const n of nodes) {
       sendHeartbeat(n);

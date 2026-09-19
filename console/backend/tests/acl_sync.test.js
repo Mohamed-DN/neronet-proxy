@@ -75,8 +75,7 @@ describe('ACL policy delivery', () => {
     seedDatabase(db);
     app = createApp();
 
-    const register = async (key) =>
-      (await request(app).post('/v4/control/register').send(registerBody(key))).body;
+    const register = async (key) => (await request(app).post('/v4/control/register').send(registerBody(key))).body;
 
     alpha = await register('a'.repeat(64));
     beta = await register('b'.repeat(64));
@@ -154,9 +153,15 @@ describe('ACL policy delivery', () => {
 
     // Alpha may reach Beta outbound; Beta accepts Alpha inbound. Neither gets the
     // other direction from this rule.
-    assert.deepStrictEqual(alphaPolicy.outbound_rules.map((r) => r.allowed_peer_vip), [beta.overlay_ipv4]);
+    assert.deepStrictEqual(
+      alphaPolicy.outbound_rules.map((r) => r.allowed_peer_vip),
+      [beta.overlay_ipv4]
+    );
     assert.deepStrictEqual(alphaPolicy.inbound_rules, []);
-    assert.deepStrictEqual(betaPolicy.inbound_rules.map((r) => r.allowed_peer_vip), [alpha.overlay_ipv4]);
+    assert.deepStrictEqual(
+      betaPolicy.inbound_rules.map((r) => r.allowed_peer_vip),
+      [alpha.overlay_ipv4]
+    );
     assert.deepStrictEqual(betaPolicy.outbound_rules, []);
   });
 
@@ -210,7 +215,9 @@ describe('ACL policy delivery', () => {
     // Rules expand per peer, so the compiled result changes when the fleet changes.
     // Missing this leaves rules identical while the peers they expand to are not.
     const before = await AclEngine.getEpoch('acl');
-    await request(app).post('/v4/control/register').send(registerBody('d'.repeat(64)));
+    await request(app)
+      .post('/v4/control/register')
+      .send(registerBody('d'.repeat(64)));
     const after = await AclEngine.getEpoch('acl');
 
     assert.ok(after > before, 'a new node did not invalidate existing policies');
@@ -231,12 +238,18 @@ describe('ACL policy delivery', () => {
       .post('/v4/control/register')
       .send(registerBody('e'.repeat(64)));
 
-    assert.strictEqual(res.body.policy_epoch, epoch + 1, 'registration itself bumps the epoch, and must report the new one');
+    assert.strictEqual(
+      res.body.policy_epoch,
+      epoch + 1,
+      'registration itself bumps the epoch, and must report the new one'
+    );
     assert.ok(res.body.route_epoch >= 1);
   });
 
   it('reports a raised epoch on heartbeat so a running node re-syncs', async () => {
-    const reg = await request(app).post('/v4/control/register').send(registerBody('f'.repeat(64)));
+    const reg = await request(app)
+      .post('/v4/control/register')
+      .send(registerBody('f'.repeat(64)));
     const held = reg.body.policy_epoch;
 
     const before = await request(app)

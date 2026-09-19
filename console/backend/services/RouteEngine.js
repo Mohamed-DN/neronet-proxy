@@ -31,7 +31,9 @@ async function query(pgSql, pgParams, sqliteSql, sqliteParams) {
 
 /** Split "10.100.0.0/24" into the network address and prefix length. */
 function parseCidrParts(cidr) {
-  const [addr, bitsText] = String(cidr || '').trim().split('/');
+  const [addr, bitsText] = String(cidr || '')
+    .trim()
+    .split('/');
   const octets = String(addr).split('.').map(Number);
 
   if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255)) {
@@ -170,9 +172,7 @@ async function routesFor(nodeId) {
           node_id: spec.node_id,
           priority: Number(spec.priority) || index + 1,
           is_healthy: Boolean(node.is_healthy) && !node.is_quarantined,
-          last_probe_at: node.last_heartbeat
-            ? new Date(node.last_heartbeat).toISOString()
-            : '0001-01-01T00:00:00Z',
+          last_probe_at: node.last_heartbeat ? new Date(node.last_heartbeat).toISOString() : '0001-01-01T00:00:00Z',
           latency_rtt_ms: Number(node.latency_ms) || 0,
           fail_count: 0
         };

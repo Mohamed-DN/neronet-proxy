@@ -46,10 +46,7 @@ describe('Production secret enforcement', () => {
   };
 
   it('refuses to start in production when JWT secrets are unset', { timeout: 30_000 }, () => {
-    const res = runInEnv(
-      { ...PROD, ...clearSecrets },
-      "require('./config/env').assertProductionSecrets();"
-    );
+    const res = runInEnv({ ...PROD, ...clearSecrets }, "require('./config/env').assertProductionSecrets();");
 
     assert.notStrictEqual(res.status, 0, 'process should have exited non-zero');
     assert.match(res.output, /Refusing to start/);
@@ -158,7 +155,6 @@ describe('PostgreSQL TLS verification', () => {
     assert.match(res.output, /PGSSL_INSECURE/);
   });
 });
-
 
 // A committed example file that arrives with working secret values is how a
 // deployment ends up authenticating with a credential anyone can read, and a

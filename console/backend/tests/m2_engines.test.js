@@ -28,7 +28,9 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
   before(async () => {
     process.env.SOVEREIGN_DB_PATH = TEST_DB_PATH;
     if (fs.existsSync(TEST_DB_PATH)) {
-      try { fs.unlinkSync(TEST_DB_PATH); } catch (e) {}
+      try {
+        fs.unlinkSync(TEST_DB_PATH);
+      } catch (e) {}
     }
 
     await initDatabase();
@@ -44,9 +46,7 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
     });
 
     // 1. Admin login
-    const adminRes = await request(app)
-      .post('/api/auth/login')
-      .send({ username: 'admin', password: 'admin_password' });
+    const adminRes = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'admin_password' });
     assert.strictEqual(adminRes.status, 200);
     adminToken = adminRes.body.token;
 
@@ -65,14 +65,11 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
     tenantBToken = userBRes.body.token;
 
     // 4. Create a test node for Tenant A
-    const nodeRes = await request(app)
-      .post('/api/nodes')
-      .set('Authorization', `Bearer ${tenantAToken}`)
-      .send({
-        name: 'M2-Test-Node',
-        role: 'CLIENT_ORIGIN',
-        country_code: 'US'
-      });
+    const nodeRes = await request(app).post('/api/nodes').set('Authorization', `Bearer ${tenantAToken}`).send({
+      name: 'M2-Test-Node',
+      role: 'CLIENT_ORIGIN',
+      country_code: 'US'
+    });
     assert.strictEqual(nodeRes.status, 201);
     testNodeId = nodeRes.body.node.id;
   });
@@ -85,7 +82,9 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
     closeDatabase();
     closeValkey();
     if (fs.existsSync(TEST_DB_PATH)) {
-      try { fs.unlinkSync(TEST_DB_PATH); } catch (e) {}
+      try {
+        fs.unlinkSync(TEST_DB_PATH);
+      } catch (e) {}
     }
   });
 
@@ -132,17 +131,14 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
 
     it('should ingest normal baseline telemetry with green low risk score (<40)', async () => {
       const now = Date.now() / 1000;
-      const res = await request(app)
-        .post('/api/risk/telemetry')
-        .set('Authorization', `Bearer ${tenantAToken}`)
-        .send({
-          node_id: testNodeId,
-          latitude: 38.8951,
-          longitude: -77.0364,
-          rtt_ms: 15.0,
-          jitter_ms: 1.0,
-          timestamp_epoch: now
-        });
+      const res = await request(app).post('/api/risk/telemetry').set('Authorization', `Bearer ${tenantAToken}`).send({
+        node_id: testNodeId,
+        latitude: 38.8951,
+        longitude: -77.0364,
+        rtt_ms: 15.0,
+        jitter_ms: 1.0,
+        timestamp_epoch: now
+      });
 
       assert.strictEqual(res.status, 200);
       assert.strictEqual(res.body.node_id, testNodeId);
@@ -153,17 +149,14 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
 
     it('should detect impossible travel (>1000km/h) and increment risk score by 50', async () => {
       // 10 minutes later, heartbeat from London (velocity > 35,000 km/h)
-      const t1 = (Date.now() / 1000) + 600;
-      const res = await request(app)
-        .post('/api/risk/telemetry')
-        .set('Authorization', `Bearer ${tenantAToken}`)
-        .send({
-          node_id: testNodeId,
-          latitude: 51.5074,
-          longitude: -0.1278,
-          rtt_ms: 25.0,
-          timestamp_epoch: t1
-        });
+      const t1 = Date.now() / 1000 + 600;
+      const res = await request(app).post('/api/risk/telemetry').set('Authorization', `Bearer ${tenantAToken}`).send({
+        node_id: testNodeId,
+        latitude: 51.5074,
+        longitude: -0.1278,
+        rtt_ms: 25.0,
+        timestamp_epoch: t1
+      });
 
       assert.strictEqual(res.status, 200);
       assert.strictEqual(res.body.impossible_travel_detected, true);
@@ -173,7 +166,7 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
 
     it('should auto-quarantine node when risk_score exceeds 75 and reassign overlay IP to 100.64.250.0/24', async () => {
       // Send anomaly with severe RTT and high velocity triggering > 75 risk
-      const t2 = (Date.now() / 1000) + 610;
+      const t2 = Date.now() / 1000 + 610;
       const res = await request(app)
         .post(`/api/nodes/${testNodeId}/telemetry`)
         .set('Authorization', `Bearer ${tenantAToken}`)
@@ -202,16 +195,12 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
     });
 
     it('should retrieve list of all risk scores and dashboard summary', async () => {
-      const scoresRes = await request(app)
-        .get('/api/risk/scores')
-        .set('Authorization', `Bearer ${adminToken}`);
+      const scoresRes = await request(app).get('/api/risk/scores').set('Authorization', `Bearer ${adminToken}`);
       assert.strictEqual(scoresRes.status, 200);
       assert.ok(Array.isArray(scoresRes.body.risk_scores));
       assert.ok(scoresRes.body.risk_scores.length >= 1);
 
-      const dashRes = await request(app)
-        .get('/api/risk/dashboard')
-        .set('Authorization', `Bearer ${adminToken}`);
+      const dashRes = await request(app).get('/api/risk/dashboard').set('Authorization', `Bearer ${adminToken}`);
       assert.strictEqual(dashRes.status, 200);
       assert.ok(dashRes.body.total_nodes >= 1);
       assert.ok(dashRes.body.quarantined_nodes >= 1);
@@ -308,7 +297,12 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       const kpRes = await request(app)
         .post('/api/geofencing/policies')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ country_code: 'KP', country_name: 'North Korea', action: 'BLOCK', description: 'Strict embargo block' });
+        .send({
+          country_code: 'KP',
+          country_name: 'North Korea',
+          action: 'BLOCK',
+          description: 'Strict embargo block'
+        });
       assert.strictEqual(kpRes.status, 201);
       assert.strictEqual(kpRes.body.policy.country_code, 'KP');
       assert.strictEqual(kpRes.body.policy.action, 'BLOCK');
@@ -318,16 +312,19 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       const syRes = await request(app)
         .post('/api/geofencing/policies')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ country_code: 'SY', country_name: 'Syria', action: 'QUARANTINE', description: 'Quarantine high risk routing' });
+        .send({
+          country_code: 'SY',
+          country_name: 'Syria',
+          action: 'QUARANTINE',
+          description: 'Quarantine high risk routing'
+        });
       assert.strictEqual(syRes.status, 201);
 
       // 3. List policies
-      const listRes = await request(app)
-        .get('/api/geofencing/policies')
-        .set('Authorization', `Bearer ${tenantAToken}`);
+      const listRes = await request(app).get('/api/geofencing/policies').set('Authorization', `Bearer ${tenantAToken}`);
       assert.strictEqual(listRes.status, 200);
-      assert.ok(listRes.body.policies.some(p => p.country_code === 'KP'));
-      assert.ok(listRes.body.policies.some(p => p.country_code === 'SY'));
+      assert.ok(listRes.body.policies.some((p) => p.country_code === 'KP'));
+      assert.ok(listRes.body.policies.some((p) => p.country_code === 'SY'));
 
       // 4. Evaluate BLOCK rule
       const evalBlocked = await request(app)
@@ -539,13 +536,10 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
     });
 
     it('rejects a mismatched fingerprint', async () => {
-      const res = await request(app)
-        .post('/api/peering/accept')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          peering_token: validPeeringToken,
-          expected_fingerprint: 'DEAD-BEEF-DEAD-BEEF-DEAD-BEEF-DEAD-BEEF'
-        });
+      const res = await request(app).post('/api/peering/accept').set('Authorization', `Bearer ${adminToken}`).send({
+        peering_token: validPeeringToken,
+        expected_fingerprint: 'DEAD-BEEF-DEAD-BEEF-DEAD-BEEF-DEAD-BEEF'
+      });
 
       assert.strictEqual(res.status, 400);
     });
@@ -563,9 +557,7 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       assert.strictEqual(acceptRes.body.success, true);
       assert.strictEqual(acceptRes.body.peering_agreement.status, 'active');
 
-      const nodesRes = await request(app)
-        .get('/api/peering/nodes')
-        .set('Authorization', `Bearer ${tenantAToken}`);
+      const nodesRes = await request(app).get('/api/peering/nodes').set('Authorization', `Bearer ${tenantAToken}`);
 
       assert.strictEqual(nodesRes.status, 200);
       assert.ok(nodesRes.body.peered_nodes.length >= 1);
@@ -632,11 +624,9 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
     });
 
     it('should list all peering agreements and revoke agreement by ID', async () => {
-      const listRes = await request(app)
-        .get('/api/peering/agreements')
-        .set('Authorization', `Bearer ${adminToken}`);
+      const listRes = await request(app).get('/api/peering/agreements').set('Authorization', `Bearer ${adminToken}`);
       assert.strictEqual(listRes.status, 200);
-      assert.ok(listRes.body.peering_agreements.some(a => a.peering_id === createdPeeringId));
+      assert.ok(listRes.body.peering_agreements.some((a) => a.peering_id === createdPeeringId));
 
       const revokeRes = await request(app)
         .delete(`/api/peering/agreements/${createdPeeringId}`)
@@ -697,8 +687,8 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       assert.ok(projRes.body.stream_token.startsWith('stok_'));
       assert.ok(projRes.body.signaling_url.includes('selkies'));
       assert.ok(Array.isArray(projRes.body.ice_servers));
-      assert.ok(projRes.body.ice_servers.some(s => s.urls.includes('stun:')));
-      assert.ok(projRes.body.ice_servers.some(s => s.urls.includes('turn:')));
+      assert.ok(projRes.body.ice_servers.some((s) => s.urls.includes('stun:')));
+      assert.ok(projRes.body.ice_servers.some((s) => s.urls.includes('turn:')));
 
       // 2. Cross-tenant access is forbidden (403)
       const hijackRes = await request(app)
@@ -778,12 +768,10 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
 
     it('should list Cloud PC instances and custom domains with tenant isolation', async () => {
       // 1. List Cloud PC instances
-      const listCpcRes = await request(app)
-        .get('/api/cloud-pc')
-        .set('Authorization', `Bearer ${tenantAToken}`);
+      const listCpcRes = await request(app).get('/api/cloud-pc').set('Authorization', `Bearer ${tenantAToken}`);
       assert.strictEqual(listCpcRes.status, 200);
       assert.ok(Array.isArray(listCpcRes.body.cloud_pcs));
-      assert.ok(listCpcRes.body.cloud_pcs.some(c => c.id === createdCpcId));
+      assert.ok(listCpcRes.body.cloud_pcs.some((c) => c.id === createdCpcId));
 
       // 2. List Custom Domains
       const listDomRes = await request(app)
@@ -791,7 +779,7 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
         .set('Authorization', `Bearer ${tenantAToken}`);
       assert.strictEqual(listDomRes.status, 200);
       assert.ok(Array.isArray(listDomRes.body.custom_domains));
-      assert.ok(listDomRes.body.custom_domains.some(d => d.domain_name === customDomainName));
+      assert.ok(listDomRes.body.custom_domains.some((d) => d.domain_name === customDomainName));
     });
 
     it('should teardown WebRTC session on demand and handle non-existent teardown', async () => {

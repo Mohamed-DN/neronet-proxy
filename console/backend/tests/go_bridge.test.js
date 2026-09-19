@@ -73,7 +73,11 @@ describe('Go data-plane bridge', () => {
       assert.ok(res.body.assigned_node_id, 'assigned_node_id missing');
       assert.ok(res.body.overlay_ipv4, 'overlay_ipv4 missing: the node cannot join the mesh without one');
       assert.ok(res.body.overlay_ipv6, 'overlay_ipv6 missing');
-      assert.match(res.body.overlay_ipv4, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, 'overlay IPv4 outside 100.64.0.0/10');
+      assert.match(
+        res.body.overlay_ipv4,
+        /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
+        'overlay IPv4 outside 100.64.0.0/10'
+      );
       assert.ok(Array.isArray(res.body.relays));
       assert.strictEqual(typeof res.body.lease_expiry_utc, 'number');
     });
@@ -120,9 +124,7 @@ describe('Go data-plane bridge', () => {
     });
 
     it('rejects a registration with no usable public key', async () => {
-      const res = await request(app)
-        .post('/v4/control/register')
-        .send(registerBody('not-a-hex-key'));
+      const res = await request(app).post('/v4/control/register').send(registerBody('not-a-hex-key'));
 
       assert.strictEqual(res.status, 400);
     });
@@ -166,7 +168,9 @@ describe('Go data-plane bridge', () => {
       });
 
       const db = getDatabase();
-      const row = db.prepare('SELECT cpu_usage_pct, memory_usage_pct, battery_pct, last_heartbeat FROM nodes WHERE id = ?').get(nodeId);
+      const row = db
+        .prepare('SELECT cpu_usage_pct, memory_usage_pct, battery_pct, last_heartbeat FROM nodes WHERE id = ?')
+        .get(nodeId);
 
       assert.strictEqual(row.cpu_usage_pct, 37);
       assert.strictEqual(row.memory_usage_pct, 256);
@@ -216,7 +220,9 @@ describe('Go data-plane bridge', () => {
       const bridgeKey = 'c'.repeat(64);
       const res = await request(app)
         .post('/v4/control/register')
-        .send(registerBody(bridgeKey, { role: 'EXIT_BRIDGE', capability: { country_code: 'DE', ip_class: 'DATACENTER' } }));
+        .send(
+          registerBody(bridgeKey, { role: 'EXIT_BRIDGE', capability: { country_code: 'DE', ip_class: 'DATACENTER' } })
+        );
       bridgeId = res.body.assigned_node_id;
 
       await request(app).post('/v4/control/heartbeat').send({ node_id: bridgeId, cpu_usage_pct: 5 });

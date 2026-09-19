@@ -46,7 +46,9 @@ async function query(pgSql, pgParams, sqliteSql, sqliteParams) {
   if (isPostgres()) {
     return (await getPgPool().query(pgSql, pgParams)).rows;
   }
-  return getDatabase().prepare(sqliteSql).all(...sqliteParams);
+  return getDatabase()
+    .prepare(sqliteSql)
+    .all(...sqliteParams);
 }
 
 /** Unbiased random index, so a path is not predictable from a weak generator. */
@@ -112,9 +114,11 @@ function describeDiversity(hops) {
   if (distinctOwners && distinctAsns) {
     note = 'Every hop is operated by a different account in a different autonomous system.';
   } else if (distinctOwners) {
-    note = 'Hops have different operators but share an autonomous system: a network-level observer may see more than one hop.';
+    note =
+      'Hops have different operators but share an autonomous system: a network-level observer may see more than one hop.';
   } else {
-    note = 'All hops are operated by the same account, so that operator can correlate both ends of this circuit. ' +
+    note =
+      'All hops are operated by the same account, so that operator can correlate both ends of this circuit. ' +
       'This still conceals traffic from network observers and from the destination, but not from whoever runs the mesh.';
   }
 
@@ -136,7 +140,9 @@ function describeDiversity(hops) {
  */
 async function buildCircuit({ requesterNodeId = null, targetCountry = '', hopCount = DEFAULT_HOP_COUNT } = {}) {
   const hops = Math.min(Math.max(Number(hopCount) || DEFAULT_HOP_COUNT, 2), MAX_HOP_COUNT);
-  const country = String(targetCountry || '').slice(0, 2).toUpperCase();
+  const country = String(targetCountry || '')
+    .slice(0, 2)
+    .toUpperCase();
 
   const relays = await query(
     `SELECT id, user_id, public_key, overlay_ipv4, endpoints, country_code, asn, role, latency_ms
@@ -166,10 +172,7 @@ async function buildCircuit({ requesterNodeId = null, targetCountry = '', hopCou
     .filter((node) => node.public_key_hex !== null);
 
   if (pool.length < hops) {
-    throw new CircuitError(
-      `need ${hops} healthy relays to build a circuit, ${pool.length} available`,
-      503
-    );
+    throw new CircuitError(`need ${hops} healthy relays to build a circuit, ${pool.length} available`, 503);
   }
 
   const exitCandidates = pool.filter(
@@ -180,9 +183,7 @@ async function buildCircuit({ requesterNodeId = null, targetCountry = '', hopCou
 
   if (exitCandidates.length === 0) {
     throw new CircuitError(
-      country
-        ? `no healthy exit bridge available in ${country}`
-        : 'no healthy exit bridge available',
+      country ? `no healthy exit bridge available in ${country}` : 'no healthy exit bridge available',
       503
     );
   }

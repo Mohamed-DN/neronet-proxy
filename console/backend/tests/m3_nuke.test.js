@@ -72,7 +72,9 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     closeDatabase();
     process.env.SOVEREIGN_DB_PATH = TEST_DB_PATH;
     if (fs.existsSync(TEST_DB_PATH)) {
-      try { fs.unlinkSync(TEST_DB_PATH); } catch (e) {}
+      try {
+        fs.unlinkSync(TEST_DB_PATH);
+      } catch (e) {}
     }
 
     await initDatabase();
@@ -86,9 +88,7 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     });
 
     // 1. Authenticate super-admin
-    const adminRes = await request(app)
-      .post('/api/auth/login')
-      .send({ username: 'admin', password: 'admin_password' });
+    const adminRes = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'admin_password' });
     assert.strictEqual(adminRes.status, 200, 'Admin login should succeed');
     adminToken = adminRes.body.token;
 
@@ -122,7 +122,9 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     closeDatabase();
     closeValkey();
     if (fs.existsSync(TEST_DB_PATH)) {
-      try { fs.unlinkSync(TEST_DB_PATH); } catch (e) {}
+      try {
+        fs.unlinkSync(TEST_DB_PATH);
+      } catch (e) {}
     }
   });
 
@@ -157,12 +159,10 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     });
 
     it('should reject instant kill when unauthenticated', async () => {
-      const res = await request(app)
-        .post('/api/nuke/user/self-destruct')
-        .send({
-          confirmation_text: 'DELETE MY ACCOUNT',
-          disclaimer_accepted: true
-        });
+      const res = await request(app).post('/api/nuke/user/self-destruct').send({
+        confirmation_text: 'DELETE MY ACCOUNT',
+        disclaimer_accepted: true
+      });
 
       assert.strictEqual(res.status, 401);
     });
@@ -182,9 +182,7 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
       assert.strictEqual(res.body.persistent_red_button_state, 'ACTIVE_COUNTDOWN');
 
       // Verify status query
-      const statusRes = await request(app)
-        .get('/api/nuke/user/status')
-        .set('Authorization', `Bearer ${victimToken}`);
+      const statusRes = await request(app).get('/api/nuke/user/status').set('Authorization', `Bearer ${victimToken}`);
       assert.strictEqual(statusRes.status, 200);
       assert.strictEqual(statusRes.body.active, true);
       assert.strictEqual(statusRes.body.persistent_red_button_state, 'ACTIVE_COUNTDOWN');
@@ -214,9 +212,7 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
       assert.strictEqual(res.body.active, false);
 
       // Verify status query
-      const statusRes = await request(app)
-        .get('/api/nuke/user/status')
-        .set('Authorization', `Bearer ${victimToken}`);
+      const statusRes = await request(app).get('/api/nuke/user/status').set('Authorization', `Bearer ${victimToken}`);
       assert.strictEqual(statusRes.status, 200);
       assert.strictEqual(statusRes.body.active, false);
       assert.strictEqual(statusRes.body.persistent_red_button_state, 'INACTIVE');
@@ -236,9 +232,7 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
       assert.strictEqual(res.body.message, 'User account cryptographically wiped');
 
       // Subsequent request with the victim token should be rejected (revoked / blacklisted)
-      const testTokenRes = await request(app)
-        .get('/api/auth/me')
-        .set('Authorization', `Bearer ${victimToken}`);
+      const testTokenRes = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${victimToken}`);
       assert.strictEqual(testTokenRes.status, 401);
 
       // User lookup by admin should return 404 Not Found
@@ -338,15 +332,12 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     });
 
     it('should support shadow_password steganography mode', async () => {
-      await request(app)
-        .post('/api/nuke/personal-dms/setup')
-        .set('Authorization', `Bearer ${dmsUserToken}`)
-        .send({
-          passphrase: 'normal_passphrase',
-          heartbeat_interval_seconds: 3600,
-          steganography_mode: 'shadow_password',
-          steganography_secret: 'shadow_secret_2026'
-        });
+      await request(app).post('/api/nuke/personal-dms/setup').set('Authorization', `Bearer ${dmsUserToken}`).send({
+        passphrase: 'normal_passphrase',
+        heartbeat_interval_seconds: 3600,
+        steganography_mode: 'shadow_password',
+        steganography_secret: 'shadow_secret_2026'
+      });
 
       const unlockRes = await request(app)
         .post('/api/nuke/personal-dms/unlock')
@@ -358,15 +349,12 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     });
 
     it('should support mobile_otp steganography mode', async () => {
-      await request(app)
-        .post('/api/nuke/personal-dms/setup')
-        .set('Authorization', `Bearer ${dmsUserToken}`)
-        .send({
-          passphrase: 'otp_passphrase',
-          heartbeat_interval_seconds: 7200,
-          steganography_mode: 'mobile_otp',
-          steganography_secret: '123456'
-        });
+      await request(app).post('/api/nuke/personal-dms/setup').set('Authorization', `Bearer ${dmsUserToken}`).send({
+        passphrase: 'otp_passphrase',
+        heartbeat_interval_seconds: 7200,
+        steganography_mode: 'mobile_otp',
+        steganography_secret: '123456'
+      });
 
       const unlockRes = await request(app)
         .post('/api/nuke/personal-dms/unlock')
@@ -378,14 +366,11 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     });
 
     it('should support split_reverse steganography mode', async () => {
-      await request(app)
-        .post('/api/nuke/personal-dms/setup')
-        .set('Authorization', `Bearer ${dmsUserToken}`)
-        .send({
-          passphrase: 'mypassword',
-          heartbeat_interval_seconds: 7200,
-          steganography_mode: 'split_reverse'
-        });
+      await request(app).post('/api/nuke/personal-dms/setup').set('Authorization', `Bearer ${dmsUserToken}`).send({
+        passphrase: 'mypassword',
+        heartbeat_interval_seconds: 7200,
+        steganography_mode: 'split_reverse'
+      });
 
       // 'mypassword' length 10, mid 5: 'mypas' reversed -> 'sapym' + 'sword' => 'sapymsword'
       const unlockRes = await request(app)
@@ -398,15 +383,12 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     });
 
     it('should support hardware_key steganography mode', async () => {
-      await request(app)
-        .post('/api/nuke/personal-dms/setup')
-        .set('Authorization', `Bearer ${dmsUserToken}`)
-        .send({
-          passphrase: 'hw_passphrase',
-          heartbeat_interval_seconds: 7200,
-          steganography_mode: 'hardware_key',
-          steganography_secret: 'fido2_yubikey_tap'
-        });
+      await request(app).post('/api/nuke/personal-dms/setup').set('Authorization', `Bearer ${dmsUserToken}`).send({
+        passphrase: 'hw_passphrase',
+        heartbeat_interval_seconds: 7200,
+        steganography_mode: 'hardware_key',
+        steganography_secret: 'fido2_yubikey_tap'
+      });
 
       const unlockRes = await request(app)
         .post('/api/nuke/personal-dms/unlock')
@@ -499,9 +481,7 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     });
 
     it('should return Owner DMS status for Super-Admin', async () => {
-      const res = await request(app)
-        .get('/api/nuke/owner-dms/status')
-        .set('Authorization', `Bearer ${adminToken}`);
+      const res = await request(app).get('/api/nuke/owner-dms/status').set('Authorization', `Bearer ${adminToken}`);
 
       assert.strictEqual(res.status, 200);
       assert.strictEqual(res.body.configured, true);
@@ -558,18 +538,12 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     it('should reject forged public key during Ed25519 verification', async () => {
       const canary = await CanaryService.getLatestCanary();
       const fakePubKey = crypto.randomBytes(32).toString('base64');
-      const isFakeValid = CanaryService.verifyCanary(
-        canary.statement_text,
-        canary.ed25519_signature,
-        fakePubKey
-      );
+      const isFakeValid = CanaryService.verifyCanary(canary.statement_text, canary.ed25519_signature, fakePubKey);
       assert.strictEqual(isFakeValid, false, 'Canary with forged public key must fail verification');
     });
 
     it('should serve raw plain text canary when Accept text/plain header is sent', async () => {
-      const res = await request(app)
-        .get('/.well-known/canary.txt')
-        .set('Accept', 'text/plain');
+      const res = await request(app).get('/.well-known/canary.txt').set('Accept', 'text/plain');
       assert.strictEqual(res.status, 200);
       assert.ok(typeof res.text === 'string');
       assert.ok(res.text.includes('BEGIN NERONET WARRANT CANARY'));

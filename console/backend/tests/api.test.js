@@ -8,7 +8,9 @@ const fs = require('fs');
 const testDbPath = path.resolve(__dirname, '../../data/test_neronet.db');
 process.env.SOVEREIGN_DB_PATH = testDbPath;
 if (fs.existsSync(testDbPath)) {
-  try { fs.unlinkSync(testDbPath); } catch {}
+  try {
+    fs.unlinkSync(testDbPath);
+  } catch {}
 }
 
 const { getDatabase, closeDatabase } = require('../db/index');
@@ -33,11 +35,12 @@ let createdShareLinkId = '';
 let createdShareToken = '';
 
 describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
-
   after(() => {
     closeDatabase();
     if (fs.existsSync(testDbPath)) {
-      try { fs.unlinkSync(testDbPath); } catch {}
+      try {
+        fs.unlinkSync(testDbPath);
+      } catch {}
     }
   });
 
@@ -53,9 +56,7 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('POST /api/auth/login with admin credentials should succeed', async () => {
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({ username: 'admin', password: 'admin_password' });
+    const res = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'admin_password' });
     assert.strictEqual(res.status, 200);
     assert(res.body.token);
     assert.strictEqual(res.body.user.role, 'super-admin');
@@ -73,12 +74,10 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('POST /api/auth/register should create new tenant user', async () => {
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({
-        username: 'test_developer_1',
-        password: 'Password123!'
-      });
+    const res = await request(app).post('/api/auth/register').send({
+      username: 'test_developer_1',
+      password: 'Password123!'
+    });
     assert.strictEqual(res.status, 201);
     assert(res.body.token);
     assert.strictEqual(res.body.user.username, 'test_developer_1');
@@ -87,32 +86,26 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('POST /api/auth/register with duplicate username should fail with 409', async () => {
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({
-        username: 'test_developer_1',
-        password: 'Password123!'
-      });
+    const res = await request(app).post('/api/auth/register').send({
+      username: 'test_developer_1',
+      password: 'Password123!'
+    });
     assert.strictEqual(res.status, 409);
     assert(res.body.error);
   });
 
   test('POST /api/auth/login with invalid password should fail with 401', async () => {
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({ username: 'admin', password: 'WrongPassword!' });
+    const res = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'WrongPassword!' });
     assert.strictEqual(res.status, 401);
     assert(res.body.error);
   });
 
   test('POST /api/auth/login adversarial backdoor regression test', async () => {
     // 1. Register a victim user with a custom unique password
-    const regRes = await request(app)
-      .post('/api/auth/register')
-      .send({
-        username: 'victim_tenant_sec',
-        password: 'SuperSecretUniquePass!2026'
-      });
+    const regRes = await request(app).post('/api/auth/register').send({
+      username: 'victim_tenant_sec',
+      password: 'SuperSecretUniquePass!2026'
+    });
     assert.strictEqual(regRes.status, 201);
 
     // 2. Attempt login with common backdoor/fallback password 'Password123!' -> MUST fail 401
@@ -136,9 +129,7 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('GET /api/auth/me should return current authenticated user', async () => {
-    const res = await request(app)
-      .get('/api/auth/me')
-      .set('Authorization', `Bearer ${regularUserToken}`);
+    const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${regularUserToken}`);
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.user.username, 'test_developer_1');
     assert.strictEqual(res.body.user.id, regularUserId);
@@ -154,9 +145,7 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
 
     assert.ok(login.body.refreshToken, 'login must issue a refresh token');
 
-    const res = await request(app)
-      .post('/api/auth/refresh')
-      .send({ refreshToken: login.body.refreshToken });
+    const res = await request(app).post('/api/auth/refresh').send({ refreshToken: login.body.refreshToken });
 
     assert.strictEqual(res.status, 200);
     assert(res.body.token);
@@ -165,17 +154,13 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   test('POST /api/auth/refresh rejects an access token', async () => {
     // Accepting one would let anyone holding a 15-minute token exchange it for
     // another indefinitely, which removes the reason access tokens are short-lived.
-    const res = await request(app)
-      .post('/api/auth/refresh')
-      .set('Authorization', `Bearer ${regularUserToken}`);
+    const res = await request(app).post('/api/auth/refresh').set('Authorization', `Bearer ${regularUserToken}`);
 
     assert.strictEqual(res.status, 401);
   });
 
   test('POST /api/auth/logout should revoke token', async () => {
-    const res = await request(app)
-      .post('/api/auth/logout')
-      .set('Authorization', `Bearer ${regularUserToken}`);
+    const res = await request(app).post('/api/auth/logout').set('Authorization', `Bearer ${regularUserToken}`);
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.success, true);
   });
@@ -191,30 +176,23 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
 
   // 3. User Management & RBAC
   test('GET /api/users should forbid regular user with 403', async () => {
-    const res = await request(app)
-      .get('/api/users')
-      .set('Authorization', `Bearer ${regularUserToken}`);
+    const res = await request(app).get('/api/users').set('Authorization', `Bearer ${regularUserToken}`);
     assert.strictEqual(res.status, 403);
   });
 
   test('GET /api/users should allow super-admin to list users', async () => {
-    const res = await request(app)
-      .get('/api/users')
-      .set('Authorization', `Bearer ${adminToken}`);
+    const res = await request(app).get('/api/users').set('Authorization', `Bearer ${adminToken}`);
     assert.strictEqual(res.status, 200);
     assert(Array.isArray(res.body.users));
     assert(res.body.users.length >= 3);
   });
 
   test('POST /api/users should allow super-admin to create user', async () => {
-    const res = await request(app)
-      .post('/api/users')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        username: 'managed_user_2',
-        password: 'Password123!',
-        role: 'user'
-      });
+    const res = await request(app).post('/api/users').set('Authorization', `Bearer ${adminToken}`).send({
+      username: 'managed_user_2',
+      password: 'Password123!',
+      role: 'user'
+    });
     assert.strictEqual(res.status, 201);
     assert.strictEqual(res.body.user.username, 'managed_user_2');
   });
@@ -234,14 +212,11 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
 
   // 4. Node Management & Quick Actions
   test('POST /api/nodes should register a new node with VIP allocation', async () => {
-    const res = await request(app)
-      .post('/api/nodes')
-      .set('Authorization', `Bearer ${regularUserToken}`)
-      .send({
-        name: 'Work-MacBook-M3',
-        role: 'CLIENT_ORIGIN',
-        country_code: 'US'
-      });
+    const res = await request(app).post('/api/nodes').set('Authorization', `Bearer ${regularUserToken}`).send({
+      name: 'Work-MacBook-M3',
+      role: 'CLIENT_ORIGIN',
+      country_code: 'US'
+    });
     assert.strictEqual(res.status, 201);
     assert(res.body.node.id);
     assert.strictEqual(res.body.node.name, 'Work-MacBook-M3');
@@ -250,12 +225,10 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('GET /api/nodes should return user-scoped nodes for regular user', async () => {
-    const res = await request(app)
-      .get('/api/nodes')
-      .set('Authorization', `Bearer ${regularUserToken}`);
+    const res = await request(app).get('/api/nodes').set('Authorization', `Bearer ${regularUserToken}`);
     assert.strictEqual(res.status, 200);
     assert(Array.isArray(res.body.nodes));
-    assert(res.body.nodes.every(n => n.user_id === regularUserId));
+    assert(res.body.nodes.every((n) => n.user_id === regularUserId));
   });
 
   test('POST /api/nodes/:id/action with ping should return RTT latency', async () => {
@@ -387,15 +360,12 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
 
   // 6. App Bundles Lifecycle & Fast SSO Wakeup
   test('POST /api/apps should provision a new app bundle', async () => {
-    const res = await request(app)
-      .post('/api/apps')
-      .set('Authorization', `Bearer ${regularUserToken}`)
-      .send({
-        name: 'My Guacamole Gateway',
-        type: 'guacamole',
-        memory_mb: 4096,
-        storage_gb: 50
-      });
+    const res = await request(app).post('/api/apps').set('Authorization', `Bearer ${regularUserToken}`).send({
+      name: 'My Guacamole Gateway',
+      type: 'guacamole',
+      memory_mb: 4096,
+      storage_gb: 50
+    });
     assert.strictEqual(res.status, 201);
     assert.strictEqual(res.body.app.type, 'guacamole');
     assert.strictEqual(res.body.app.status, 'stopped');
@@ -403,13 +373,10 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('POST /api/apps with invalid type should fail with 400', async () => {
-    const res = await request(app)
-      .post('/api/apps')
-      .set('Authorization', `Bearer ${regularUserToken}`)
-      .send({
-        name: 'Invalid App',
-        type: 'unsupported_app_type'
-      });
+    const res = await request(app).post('/api/apps').set('Authorization', `Bearer ${regularUserToken}`).send({
+      name: 'Invalid App',
+      type: 'unsupported_app_type'
+    });
     assert.strictEqual(res.status, 400);
   });
 
@@ -476,14 +443,13 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     assert.strictEqual(res.status, 200);
     assert(Array.isArray(res.body.share_links));
     assert(res.body.share_links.length >= 1);
-    const found = res.body.share_links.find(l => l.id === createdShareLinkId);
+    const found = res.body.share_links.find((l) => l.id === createdShareLinkId);
     assert(found);
     assert.strictEqual(found.share_token, createdShareToken);
   });
 
   test('GET /api/apps/public/verify/:token (unauthenticated) should verify share token and return RDP gateway details', async () => {
-    const res = await request(app)
-      .get(`/api/apps/public/verify/${createdShareToken}`);
+    const res = await request(app).get(`/api/apps/public/verify/${createdShareToken}`);
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.valid, true);
     assert.strictEqual(res.body.app_id, createdAppId);
@@ -504,8 +470,7 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('GET /api/apps/public/verify/:token with revoked token should fail with 403', async () => {
-    const res = await request(app)
-      .get(`/api/apps/public/verify/${createdShareToken}`);
+    const res = await request(app).get(`/api/apps/public/verify/${createdShareToken}`);
     assert.strictEqual(res.status, 403);
     assert.strictEqual(res.body.valid, false);
     assert.strictEqual(res.body.is_revoked, true);
@@ -551,9 +516,7 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
 
   // 8. Stats, Bandwidth, Topology & Audit Logs
   test('GET /api/stats/overview should return aggregate system statistics', async () => {
-    const res = await request(app)
-      .get('/api/stats/overview')
-      .set('Authorization', `Bearer ${adminToken}`);
+    const res = await request(app).get('/api/stats/overview').set('Authorization', `Bearer ${adminToken}`);
     assert.strictEqual(res.status, 200);
     // active_nodes counts nodes heard from inside the liveness window, which is not
     // the same as enrolled. The seeded fleet has no recent heartbeat, so the figure
@@ -566,9 +529,7 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('GET /api/stats/bandwidth is empty before the collector has sampled', async () => {
-    const res = await request(app)
-      .get('/api/stats/bandwidth')
-      .set('Authorization', `Bearer ${adminToken}`);
+    const res = await request(app).get('/api/stats/bandwidth').set('Authorization', `Bearer ${adminToken}`);
     assert.strictEqual(res.status, 200);
     assert(Array.isArray(res.body.bandwidth_series));
     // This used to assert a non-empty series and passed because the handler
@@ -580,12 +541,10 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
 
     // A rate needs two cumulative readings and the interval between them.
     await MetricsCollector.collectOnce();
-    await new Promise(resolve => setTimeout(resolve, 1100));
+    await new Promise((resolve) => setTimeout(resolve, 1100));
     await MetricsCollector.collectOnce();
 
-    const res = await request(app)
-      .get('/api/stats/bandwidth')
-      .set('Authorization', `Bearer ${adminToken}`);
+    const res = await request(app).get('/api/stats/bandwidth').set('Authorization', `Bearer ${adminToken}`);
 
     assert.strictEqual(res.status, 200);
     assert(res.body.bandwidth_series.length >= 1, 'two samples yield one interval');
@@ -597,9 +556,7 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('GET /api/stats/topology should return global mesh topology for admin', async () => {
-    const res = await request(app)
-      .get('/api/stats/topology')
-      .set('Authorization', `Bearer ${adminToken}`);
+    const res = await request(app).get('/api/stats/topology').set('Authorization', `Bearer ${adminToken}`);
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.mesh_scope, 'global');
     assert(Array.isArray(res.body.nodes));
@@ -607,17 +564,13 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('GET /api/stats/topology should return user-isolated mesh topology for tenant', async () => {
-    const res = await request(app)
-      .get('/api/stats/topology')
-      .set('Authorization', `Bearer ${regularUserToken}`);
+    const res = await request(app).get('/api/stats/topology').set('Authorization', `Bearer ${regularUserToken}`);
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.mesh_scope, 'user_isolated');
   });
 
   test('GET /api/stats/audit-logs should return audit trail events', async () => {
-    const res = await request(app)
-      .get('/api/stats/audit-logs')
-      .set('Authorization', `Bearer ${adminToken}`);
+    const res = await request(app).get('/api/stats/audit-logs').set('Authorization', `Bearer ${adminToken}`);
     assert.strictEqual(res.status, 200);
     assert(Array.isArray(res.body.audit_logs));
     assert(res.body.audit_logs.length > 0);
@@ -631,17 +584,13 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   });
 
   test('GET /api/nodes/:id with non-existent id should return 404', async () => {
-    const res = await request(app)
-      .get('/api/nodes/non-existent-node-id')
-      .set('Authorization', `Bearer ${adminToken}`);
+    const res = await request(app).get('/api/nodes/non-existent-node-id').set('Authorization', `Bearer ${adminToken}`);
     assert.strictEqual(res.status, 404);
     assert(res.body.error);
   });
 
   test('GET /api/auth/me with invalid token should return 401', async () => {
-    const res = await request(app)
-      .get('/api/auth/me')
-      .set('Authorization', 'Bearer InvalidTamperedJwtToken');
+    const res = await request(app).get('/api/auth/me').set('Authorization', 'Bearer InvalidTamperedJwtToken');
     assert.strictEqual(res.status, 401);
   });
 
@@ -649,10 +598,12 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   test('Incremental migration: upgrading legacy DB (001 without onion_routing_enabled) adds missing columns safely', () => {
     const legacyPath = path.resolve(__dirname, '../../data/test_legacy_upgrade.db');
     if (fs.existsSync(legacyPath)) {
-      try { fs.unlinkSync(legacyPath); } catch {}
+      try {
+        fs.unlinkSync(legacyPath);
+      } catch {}
     }
     const legacyDb = getDatabase(legacyPath);
-    
+
     // Simulate a database from Milestone 5 that had 001_initial_schema without onion_routing_enabled
     legacyDb.exec(`
       CREATE TABLE IF NOT EXISTS _migrations (
@@ -755,21 +706,24 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     `);
 
     // Verify onion_routing_enabled does NOT exist before migration
-    let colsBefore = legacyDb.pragma('table_info(nodes)').map(c => c.name);
+    let colsBefore = legacyDb.pragma('table_info(nodes)').map((c) => c.name);
     assert.strictEqual(colsBefore.includes('onion_routing_enabled'), false);
 
     // Apply migrations
     runMigrations(legacyDb);
 
     // Verify onion_routing_enabled now exists and legacy row has default 0
-    let colsAfter = legacyDb.pragma('table_info(nodes)').map(c => c.name);
+    let colsAfter = legacyDb.pragma('table_info(nodes)').map((c) => c.name);
     assert.strictEqual(colsAfter.includes('onion_routing_enabled'), true);
 
     const legacyRow = legacyDb.prepare('SELECT * FROM nodes WHERE id = ?').get('legacy-node-1');
     assert.strictEqual(legacyRow.onion_routing_enabled, 0);
 
     // Verify app_share_links table was created
-    const tables = legacyDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(t => t.name);
+    const tables = legacyDb
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all()
+      .map((t) => t.name);
     assert.strictEqual(tables.includes('app_share_links'), true);
 
     // Verify seedDatabase runs cleanly on the migrated database
@@ -779,7 +733,9 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
 
     legacyDb.close();
     if (fs.existsSync(legacyPath)) {
-      try { fs.unlinkSync(legacyPath); } catch {}
+      try {
+        fs.unlinkSync(legacyPath);
+      } catch {}
     }
   });
 
@@ -787,7 +743,9 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     // Test schema healing on a DB where both migrations are marked applied but column was omitted
     const healingDbPath = path.resolve(__dirname, '../../data/test_healing.db');
     if (fs.existsSync(healingDbPath)) {
-      try { fs.unlinkSync(healingDbPath); } catch {}
+      try {
+        fs.unlinkSync(healingDbPath);
+      } catch {}
     }
     const healingDb = getDatabase(healingDbPath);
 
@@ -892,7 +850,7 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     runMigrations(healingDb);
 
     // Verify onion_routing_enabled is restored
-    const cols = healingDb.pragma('table_info(nodes)').map(c => c.name);
+    const cols = healingDb.pragma('table_info(nodes)').map((c) => c.name);
     assert.strictEqual(cols.includes('onion_routing_enabled'), true);
 
     // Verify seed completes without error
@@ -902,7 +860,9 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
 
     healingDb.close();
     if (fs.existsSync(healingDbPath)) {
-      try { fs.unlinkSync(healingDbPath); } catch {}
+      try {
+        fs.unlinkSync(healingDbPath);
+      } catch {}
     }
   });
 });

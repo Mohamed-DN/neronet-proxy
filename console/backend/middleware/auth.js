@@ -67,7 +67,9 @@ async function authenticateToken(req, res, next) {
   try {
     if (isPostgres()) {
       const pool = getPgPool();
-      const checkRes = await pool.query('SELECT id FROM refresh_tokens WHERE token_hash = $1 AND revoked = TRUE', [token]);
+      const checkRes = await pool.query('SELECT id FROM refresh_tokens WHERE token_hash = $1 AND revoked = TRUE', [
+        token
+      ]);
       if (checkRes.rows.length > 0) {
         return res.status(401).json({ error: 'Token has been revoked' });
       }
@@ -88,7 +90,7 @@ async function authenticateToken(req, res, next) {
     req.user = {
       id: decoded.sub || decoded.id,
       username: decoded.username,
-      role: decoded.role,
+      role: decoded.role
     };
     req.token = token;
     next();

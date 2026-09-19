@@ -1,7 +1,7 @@
 /**
  * WebRtcSignalingEngine.js
  * Sovereign Cloud PC (WebRTC Native / Selkies-GStreamer) Control Plane (R2)
- * 
+ *
  * Features:
  * - Direct Selkies-GStreamer WebRTC streaming control plane (skipping Guacamole).
  * - Generates WebRTC projection tokens, session IDs, and STUN/TURN ICE credentials.
@@ -100,20 +100,24 @@ function ensureCloudPcSchema(db) {
     if (count && count.cnt === 0) {
       const adminUser = db.prepare("SELECT id FROM users WHERE role = 'super-admin' LIMIT 1").get();
       const adminId = adminUser ? adminUser.id : 'usr-admin';
-      const node = db.prepare("SELECT id FROM nodes LIMIT 1").get();
+      const node = db.prepare('SELECT id FROM nodes LIMIT 1').get();
       const nodeId = node ? node.id : 'svrn-node-seed1';
 
-      db.prepare(`
+      db.prepare(
+        `
         INSERT OR IGNORE INTO cloud_pcs (id, name, user_id, device_id, specs, status, signaling_url, custom_domain)
         VALUES ('cpc-0001', 'Admin GPU Workstation', ?, ?, '{"vcpus": 8, "ram_gb": 32, "gpu": "RTX 4090"}', 'active', 'wss://signal.internal.darknero.com/ws/selkies', 'desktop.admin.darknero.com')
-      `).run(adminId, nodeId);
+      `
+      ).run(adminId, nodeId);
 
       // Random even for the demo row: a seeded domain with a known OTP secret is a
       // live bypass on any database that was ever seeded, development or not.
-      db.prepare(`
+      db.prepare(
+        `
         INSERT OR IGNORE INTO custom_domains (id, domain_name, cloud_pc_id, user_id, sso_gateway_enabled, otp_secret)
         VALUES ('cdom-0001', 'desktop.admin.darknero.com', 'cpc-0001', ?, 1, ?)
-      `).run(adminId, generateOtpSecret());
+      `
+      ).run(adminId, generateOtpSecret());
     }
   }
 }
@@ -142,7 +146,7 @@ async function listInstances(actor) {
     }
   }
 
-  return rows.map(r => ({
+  return rows.map((r) => ({
     id: r.id,
     name: r.name,
     user_id: r.user_id,
@@ -313,7 +317,7 @@ async function listCustomDomains(actor) {
     rows = db.prepare('SELECT * FROM custom_domains ORDER BY created_at ASC').all();
   }
 
-  return rows.map(r => ({
+  return rows.map((r) => ({
     id: r.id,
     domain: r.domain_name,
     domain_name: r.domain_name,
@@ -422,7 +426,11 @@ async function authenticateGateway(domain, otpCode) {
     throw err;
   }
 
-  const stream_token = `stream_auth_${crypto.createHash('sha256').update(normDomain + Date.now()).digest('hex').substring(0, 16)}`;
+  const stream_token = `stream_auth_${crypto
+    .createHash('sha256')
+    .update(normDomain + Date.now())
+    .digest('hex')
+    .substring(0, 16)}`;
 
   return {
     authenticated: true,

@@ -26,8 +26,7 @@ const logger = require('../utils/logger');
  * escape hatch that a misplaced environment variable can turn into an open door is
  * not an escape hatch, it is the vulnerability with a friendlier name.
  */
-const LIMITING_DISABLED =
-  process.env.SOVEREIGN_RATE_LIMIT_DISABLED === 'true' && !config.IS_PRODUCTION;
+const LIMITING_DISABLED = process.env.SOVEREIGN_RATE_LIMIT_DISABLED === 'true' && !config.IS_PRODUCTION;
 
 if (LIMITING_DISABLED) {
   logger.warn('Rate limiting is DISABLED for this process. Never set SOVEREIGN_RATE_LIMIT_DISABLED outside tests.');
@@ -172,7 +171,9 @@ const loginLimiter = rateLimit({
   keyFn: (req) => {
     const ip = clientIp(req);
     if (!ip) return null;
-    const username = String(req.body?.username || '').toLowerCase().slice(0, 64);
+    const username = String(req.body?.username || '')
+      .toLowerCase()
+      .slice(0, 64);
     return `${ip}|${username}`;
   }
 });

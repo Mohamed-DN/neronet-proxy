@@ -156,16 +156,10 @@ describe('The rate limit disable switch cannot reach production', () => {
   }
 
   it('honours the switch outside production', () => {
-    assert.strictEqual(
-      limitingDisabledIn({ NODE_ENV: 'development', SOVEREIGN_RATE_LIMIT_DISABLED: 'true' }),
-      'true'
-    );
+    assert.strictEqual(limitingDisabledIn({ NODE_ENV: 'development', SOVEREIGN_RATE_LIMIT_DISABLED: 'true' }), 'true');
   });
 
   it('ignores the switch under NODE_ENV=production', () => {
-    assert.strictEqual(
-      limitingDisabledIn({ NODE_ENV: 'production', SOVEREIGN_RATE_LIMIT_DISABLED: 'true' }),
-      'false'
-    );
+    assert.strictEqual(limitingDisabledIn({ NODE_ENV: 'production', SOVEREIGN_RATE_LIMIT_DISABLED: 'true' }), 'false');
   });
 });

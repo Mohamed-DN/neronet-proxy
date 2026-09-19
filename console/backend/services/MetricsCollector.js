@@ -46,7 +46,9 @@ async function readFleetState() {
   // SQLite has no FILTER clause or make_interval.
   const db = getDatabase();
   const cutoff = new Date(Date.now() - LIVENESS_WINDOW_SECONDS * 1000).toISOString();
-  const row = db.prepare(`
+  const row = db
+    .prepare(
+      `
     SELECT
       sum(CASE WHEN last_heartbeat > ? THEN 1 ELSE 0 END) AS live_nodes,
       count(*) AS enrolled_nodes,
@@ -55,7 +57,9 @@ async function readFleetState() {
       coalesce(sum(tx_bytes), 0) AS tx_bytes,
       avg(CASE WHEN last_heartbeat > ? THEN cpu_usage_pct END) AS cpu_pct,
       avg(CASE WHEN last_heartbeat > ? THEN memory_usage_pct END) AS mem_pct
-    FROM nodes`).get(cutoff, cutoff, cutoff);
+    FROM nodes`
+    )
+    .get(cutoff, cutoff, cutoff);
   const users = db.prepare('SELECT count(*) AS c FROM users').get();
   return shape(row, Number(users.c));
 }
@@ -104,23 +108,28 @@ async function writeSample(state) {
 
   if (isPostgres()) {
     const pool = getPgPool();
-    await pool.query(`
+    await pool.query(
+      `
       INSERT INTO system_metrics
         (active_nodes, active_users, total_bandwidth_rx, total_bandwidth_tx,
          cpu_usage_pct, memory_usage_mb, active_circuits, network_health_score)
-      VALUES ($1, $2, $3, $4, $5, $6, 0, $7)`, params);
-    await pool.query(
-      `DELETE FROM system_metrics WHERE timestamp < now() - make_interval(hours => $1)`,
-      [RETENTION_HOURS]);
+      VALUES ($1, $2, $3, $4, $5, $6, 0, $7)`,
+      params
+    );
+    await pool.query(`DELETE FROM system_metrics WHERE timestamp < now() - make_interval(hours => $1)`, [
+      RETENTION_HOURS
+    ]);
     return;
   }
 
   const db = getDatabase();
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO system_metrics
       (active_nodes, active_users, total_bandwidth_rx, total_bandwidth_tx,
        cpu_usage_pct, memory_usage_mb, active_circuits, network_health_score)
-    VALUES (?, ?, ?, ?, ?, ?, 0, ?)`).run(...params);
+    VALUES (?, ?, ?, ?, ?, ?, 0, ?)`
+  ).run(...params);
   const cutoff = new Date(Date.now() - RETENTION_HOURS * 3600 * 1000).toISOString();
   db.prepare('DELETE FROM system_metrics WHERE timestamp < ?').run(cutoff);
 }
@@ -138,7 +147,7 @@ function startCollector() {
   // and it must not stop the timer, or one transient database error would end
   // metrics collection until the next restart.
   const run = () => {
-    collectOnce().catch(err => {
+    collectOnce().catch((err) => {
       console.error('[METRICS] sample failed:', err.message);
     });
   };

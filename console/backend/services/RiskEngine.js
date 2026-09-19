@@ -1,7 +1,7 @@
 /**
  * RiskEngine.js
  * Behavioral Risk Score & Impossible Travel Detection Engine (R3, R7)
- * 
+ *
  * Features:
  * - Computes great-circle geo-velocity between heartbeats using Haversine formula & PostGIS.
  * - Detects impossible travel (> 1000 km/h) -> sets is_impossible_travel = true, risk_score += 50.
@@ -32,8 +32,7 @@ function calculateDistanceKm(lat1, lon1, lat2, lon2) {
   const phi1 = toRadians(lat1);
   const phi2 = toRadians(lat2);
 
-  const a = Math.sin(dLat / 2.0) ** 2 +
-            Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLon / 2.0) ** 2;
+  const a = Math.sin(dLat / 2.0) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLon / 2.0) ** 2;
   const c = 2.0 * Math.atan2(Math.sqrt(Math.max(0.0, a)), Math.sqrt(Math.max(0.0, 1.0 - a)));
   return EARTH_RADIUS_KM * c;
 }
@@ -102,9 +101,11 @@ async function getLatestTelemetry(nodeId) {
   } else {
     const db = getDatabase();
     ensureTelemetrySchema(db);
-    return db.prepare(
-      'SELECT * FROM node_telemetry_history WHERE node_id = ? ORDER BY recorded_at DESC, id DESC LIMIT 1'
-    ).get(nodeId) || null;
+    return (
+      db
+        .prepare('SELECT * FROM node_telemetry_history WHERE node_id = ? ORDER BY recorded_at DESC, id DESC LIMIT 1')
+        .get(nodeId) || null
+    );
   }
 }
 
@@ -115,7 +116,7 @@ async function allocateQuarantineIp(nodeId) {
   if (isPostgres()) {
     const pool = getPgPool();
     const res = await pool.query("SELECT overlay_ipv4 FROM nodes WHERE overlay_ipv4 LIKE '100.64.250.%'");
-    const used = new Set(res.rows.map(r => r.overlay_ipv4));
+    const used = new Set(res.rows.map((r) => r.overlay_ipv4));
     for (let i = 10; i < 250; i++) {
       const candidate = `100.64.250.${i}`;
       if (!used.has(candidate)) return candidate;
@@ -124,7 +125,7 @@ async function allocateQuarantineIp(nodeId) {
   } else {
     const db = getDatabase();
     const rows = db.prepare("SELECT overlay_ipv4 FROM nodes WHERE overlay_ipv4 LIKE '100.64.250.%'").all();
-    const used = new Set(rows.map(r => r.overlay_ipv4));
+    const used = new Set(rows.map((r) => r.overlay_ipv4));
     for (let i = 10; i < 250; i++) {
       const candidate = `100.64.250.${i}`;
       if (!used.has(candidate)) return candidate;
@@ -169,7 +170,7 @@ async function ingestTelemetry(nodeId, telemetry) {
     throw err;
   }
 
-  const currentEpoch = timestamp_epoch !== undefined ? Number(timestamp_epoch) : (Date.now() / 1000.0);
+  const currentEpoch = timestamp_epoch !== undefined ? Number(timestamp_epoch) : Date.now() / 1000.0;
   const latestTel = await getLatestTelemetry(nodeId);
 
   let velocityKmh = 0.0;
@@ -297,7 +298,12 @@ async function ingestTelemetry(nodeId, telemetry) {
       targetId: nodeId,
       targetType: 'node',
       message: `Node automatically quarantined: risk score ${finalRiskScore} > 75 (velocity ${velocityKmh.toFixed(1)} km/h)`,
-      metadata: { risk_score: finalRiskScore, velocity_kmh: velocityKmh, impossible_travel: impossibleTravel, overlay_ipv4: newOverlayIp }
+      metadata: {
+        risk_score: finalRiskScore,
+        velocity_kmh: velocityKmh,
+        impossible_travel: impossibleTravel,
+        overlay_ipv4: newOverlayIp
+      }
     });
 
     const eventPayload = {
@@ -316,7 +322,7 @@ async function ingestTelemetry(nodeId, telemetry) {
     broadcastNodeEvent('node:quarantined', eventPayload.payload);
   }
 
-  const color = finalRiskScore < 40 ? 'green' : (finalRiskScore <= 75 ? 'yellow' : 'red');
+  const color = finalRiskScore < 40 ? 'green' : finalRiskScore <= 75 ? 'yellow' : 'red';
 
   return {
     node_id: nodeId,
@@ -336,25 +342,31 @@ async function getAllRiskScores() {
   let rows = [];
   if (isPostgres()) {
     const pool = getPgPool();
-    const res = await pool.query('SELECT id, name, user_id, risk_score, is_quarantined, is_healthy, latency_ms FROM nodes ORDER BY risk_score DESC');
+    const res = await pool.query(
+      'SELECT id, name, user_id, risk_score, is_quarantined, is_healthy, latency_ms FROM nodes ORDER BY risk_score DESC'
+    );
     rows = res.rows;
   } else {
     const db = getDatabase();
     ensureTelemetrySchema(db);
-    rows = db.prepare('SELECT id, name, user_id, risk_score, is_quarantined, is_healthy, latency_ms FROM nodes ORDER BY risk_score DESC').all();
+    rows = db
+      .prepare(
+        'SELECT id, name, user_id, risk_score, is_quarantined, is_healthy, latency_ms FROM nodes ORDER BY risk_score DESC'
+      )
+      .all();
   }
 
-  return rows.map(n => {
+  return rows.map((n) => {
     const score = Number(n.risk_score) || 0;
     const isQuarantined = Boolean(n.is_quarantined);
-    const color = score < 40 ? 'green' : (score <= 75 ? 'yellow' : 'red');
+    const color = score < 40 ? 'green' : score <= 75 ? 'yellow' : 'red';
     return {
       node_id: n.id,
       id: n.id,
       name: n.name,
       user_id: n.user_id,
       risk_score: score,
-      status: isQuarantined ? 'quarantined' : (n.is_healthy ? 'active' : 'degraded'),
+      status: isQuarantined ? 'quarantined' : n.is_healthy ? 'active' : 'degraded',
       is_quarantined: isQuarantined,
       latency_ms: Number(n.latency_ms) || 0.0,
       color
@@ -368,10 +380,10 @@ async function getAllRiskScores() {
 async function getRiskDashboard() {
   const scores = await getAllRiskScores();
   const total = scores.length;
-  const lowRisk = scores.filter(s => s.risk_score < 40).length;
-  const mediumRisk = scores.filter(s => s.risk_score >= 40 && s.risk_score <= 75).length;
-  const highRisk = scores.filter(s => s.risk_score > 75).length;
-  const quarantined = scores.filter(s => s.is_quarantined).length;
+  const lowRisk = scores.filter((s) => s.risk_score < 40).length;
+  const mediumRisk = scores.filter((s) => s.risk_score >= 40 && s.risk_score <= 75).length;
+  const highRisk = scores.filter((s) => s.risk_score > 75).length;
+  const quarantined = scores.filter((s) => s.is_quarantined).length;
   const avgScore = total > 0 ? Number((scores.reduce((acc, s) => acc + s.risk_score, 0) / total).toFixed(1)) : 0;
 
   return {

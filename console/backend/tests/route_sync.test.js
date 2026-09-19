@@ -66,8 +66,16 @@ describe('Route delivery', () => {
     seedDatabase(db);
     app = createApp();
 
-    gateway = (await request(app).post('/v4/control/register').send(registerBody('a'.repeat(64), { role: 'EXIT_BRIDGE' }))).body;
-    client = (await request(app).post('/v4/control/register').send(registerBody('b'.repeat(64)))).body;
+    gateway = (
+      await request(app)
+        .post('/v4/control/register')
+        .send(registerBody('a'.repeat(64), { role: 'EXIT_BRIDGE' }))
+    ).body;
+    client = (
+      await request(app)
+        .post('/v4/control/register')
+        .send(registerBody('b'.repeat(64)))
+    ).body;
   });
 
   after(() => {
@@ -158,7 +166,11 @@ describe('Route delivery', () => {
   });
 
   it('orders gateways by priority', async () => {
-    const second = (await request(app).post('/v4/control/register').send(registerBody('c'.repeat(64), { role: 'RELAY' }))).body;
+    const second = (
+      await request(app)
+        .post('/v4/control/register')
+        .send(registerBody('c'.repeat(64), { role: 'RELAY' }))
+    ).body;
 
     await RouteEngine.createRoute({
       network_cidr: '10.100.0.0/24',
@@ -180,7 +192,11 @@ describe('Route delivery', () => {
       routing_peers: [{ node_id: gateway.assigned_node_id, priority: 1, is_healthy: true }]
     });
 
-    const second = (await request(app).post('/v4/control/register').send(registerBody('d'.repeat(64), { role: 'RELAY' }))).body;
+    const second = (
+      await request(app)
+        .post('/v4/control/register')
+        .send(registerBody('d'.repeat(64), { role: 'RELAY' }))
+    ).body;
     await RouteEngine.deleteRoute('none');
 
     await RouteEngine.createRoute({

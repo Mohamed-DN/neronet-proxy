@@ -102,7 +102,10 @@ async function query(text, params = []) {
   }
 
   const trimmed = convertedText.trim();
-  const isSelect = trimmed.toUpperCase().startsWith('SELECT') || trimmed.toUpperCase().startsWith('PRAGMA') || trimmed.toUpperCase().startsWith('WITH');
+  const isSelect =
+    trimmed.toUpperCase().startsWith('SELECT') ||
+    trimmed.toUpperCase().startsWith('PRAGMA') ||
+    trimmed.toUpperCase().startsWith('WITH');
 
   if (isSelect) {
     const stmt = db.prepare(convertedText);

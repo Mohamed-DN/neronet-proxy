@@ -1,7 +1,7 @@
 /**
  * PeeringEngine.js
  * Cross-Mesh Peering Agreement Engine (R4)
- * 
+ *
  * Features:
  * - Bilateral peering agreement engine with Ed25519 token signing & verification.
  * - Subnet & Device scoping (ALL, SPECIFIC_DEVICES, SPECIFIC_SUBNETS) with CIDR validation.
@@ -64,9 +64,9 @@ function getLocalEd25519KeyPair() {
       // than leaving an operator to work it out from an errno.
       logger.error(
         `Cannot read the peering identity at ${keyPath}: permission denied. ` +
-        'This usually means the data volume still holds files written by an earlier ' +
-        'root container. Fix the ownership once:  ' +
-        'docker run --rm -v <volume>:/data alpine chown -R 10001:10001 /data'
+          'This usually means the data volume still holds files written by an earlier ' +
+          'root container. Fix the ownership once:  ' +
+          'docker run --rm -v <volume>:/data alpine chown -R 10001:10001 /data'
       );
     } else {
       logger.error(`Could not read the peering identity at ${keyPath}: ${err.message}`);
@@ -131,9 +131,7 @@ function verifyPeeringTokenSignature(token) {
     expires_at: token.expires_at
   };
 
-  const canonicalBuffer = Buffer.from(
-    JSON.stringify(payloadToSign, Object.keys(payloadToSign).sort())
-  );
+  const canonicalBuffer = Buffer.from(JSON.stringify(payloadToSign, Object.keys(payloadToSign).sort()));
 
   try {
     const publicKey = crypto.createPublicKey({
@@ -192,7 +190,7 @@ function isValidCidr(cidr) {
   if (isNaN(mask) || mask < 0 || mask > 32) return false;
   const octets = ip.split('.');
   if (octets.length !== 4) return false;
-  return octets.every(o => {
+  return octets.every((o) => {
     const num = parseInt(o, 10);
     return !isNaN(num) && num >= 0 && num <= 255;
   });
@@ -530,7 +528,7 @@ async function listPeeringAgreements() {
     rows = db.prepare('SELECT * FROM peering_agreements ORDER BY created_at DESC').all();
   }
 
-  return rows.map(r => {
+  return rows.map((r) => {
     let tokenObj = {};
     try {
       tokenObj = JSON.parse(r.peer_token_ed25519);

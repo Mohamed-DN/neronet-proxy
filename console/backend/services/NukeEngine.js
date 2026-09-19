@@ -83,7 +83,7 @@ async function ensureTables(dbOrPool) {
       `);
 
       // Ensure scheduled_deletion_at in SQLite users table
-      const userCols = db.pragma('table_info(users)').map(c => c.name);
+      const userCols = db.pragma('table_info(users)').map((c) => c.name);
       if (!userCols.includes('scheduled_deletion_at')) {
         db.exec('ALTER TABLE users ADD COLUMN scheduled_deletion_at DATETIME;');
       }
@@ -112,16 +112,20 @@ function sendWebhookPing(url) {
         timestamp: new Date().toISOString()
       });
 
-      const req = client.request(parsedUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload)
+      const req = client.request(
+        parsedUrl,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload)
+          },
+          timeout: 2000
         },
-        timeout: 2000
-      }, (res) => {
-        resolve(res.statusCode >= 200 && res.statusCode < 300);
-      });
+        (res) => {
+          resolve(res.statusCode >= 200 && res.statusCode < 300);
+        }
+      );
 
       req.on('error', () => resolve(false));
       req.on('timeout', () => {
@@ -169,19 +173,25 @@ async function executeInstantUserDestruction(userId, token = null, actorUsername
 
       // Overwrite node WireGuard / Noise keys & metadata
       const randomNoiseKey = crypto.randomBytes(32).toString('base64');
-      await pool.query(`
+      await pool.query(
+        `
         UPDATE nodes
         SET preshared_key = $1, public_key = $2, endpoints = '[]'::jsonb, metadata = '{}'::jsonb
         WHERE user_id = $3
-      `, [randomNoiseKey, `dead-${crypto.randomBytes(16).toString('hex')}`, userId]);
+      `,
+        [randomNoiseKey, `dead-${crypto.randomBytes(16).toString('hex')}`, userId]
+      );
 
       // Overwrite user password & bypass_apps
       const randomHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
-      await pool.query(`
+      await pool.query(
+        `
         UPDATE users
         SET password_hash = $1, email = $2, bypass_apps = '[]'::jsonb
         WHERE id = $3
-      `, [randomHash, `deleted_${crypto.randomBytes(8).toString('hex')}@wiped.local`, userId]);
+      `,
+        [randomHash, `deleted_${crypto.randomBytes(8).toString('hex')}@wiped.local`, userId]
+      );
 
       // Hard delete in cascading order
       await pool.query('DELETE FROM dead_man_switch WHERE user_id = $1', [userId]);
@@ -199,19 +209,23 @@ async function executeInstantUserDestruction(userId, token = null, actorUsername
       try {
         // Overwrite node keys
         const randomNoiseKey = crypto.randomBytes(32).toString('base64');
-        db.prepare(`
+        db.prepare(
+          `
           UPDATE nodes
           SET preshared_key = ?, public_key = ?, endpoints = '[]', metadata = '{}'
           WHERE user_id = ?
-        `).run(randomNoiseKey, `dead-${crypto.randomBytes(16).toString('hex')}`, userId);
+        `
+        ).run(randomNoiseKey, `dead-${crypto.randomBytes(16).toString('hex')}`, userId);
 
         // Overwrite user
         const randomHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
-        db.prepare(`
+        db.prepare(
+          `
           UPDATE users
           SET password_hash = ?, email = ?, bypass_apps = '[]'
           WHERE id = ?
-        `).run(randomHash, `deleted_${crypto.randomBytes(8).toString('hex')}@wiped.local`, userId);
+        `
+        ).run(randomHash, `deleted_${crypto.randomBytes(8).toString('hex')}@wiped.local`, userId);
 
         // Hard delete cascading
         db.prepare('DELETE FROM dead_man_switch WHERE user_id = ?').run(userId);
@@ -364,7 +378,10 @@ async function getUserNukeStatus(userId) {
 /**
  * Sets up or updates a user's personal silent Dead Man's Switch.
  */
-async function setupPersonalDMS(userId, { passphrase, heartbeat_interval_seconds, steganography_mode, steganography_secret }) {
+async function setupPersonalDMS(
+  userId,
+  { passphrase, heartbeat_interval_seconds, steganography_mode, steganography_secret }
+) {
   await ensureTables();
 
   if (!passphrase || typeof passphrase !== 'string' || passphrase.trim().length === 0) {
@@ -389,7 +406,8 @@ async function setupPersonalDMS(userId, { passphrase, heartbeat_interval_seconds
   try {
     if (isPostgres()) {
       const pool = getPgPool();
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO dead_man_switch (
           id, user_id, switch_tier, passphrase_hash, heartbeat_interval_seconds,
           last_heartbeat_at, next_deadline_at, steganography_mode, steganography_secret, status
@@ -403,10 +421,13 @@ async function setupPersonalDMS(userId, { passphrase, heartbeat_interval_seconds
           steganography_secret = EXCLUDED.steganography_secret,
           status = 'active',
           updated_at = NOW()
-      `, [dmsId, userId, passphraseHash, interval, nextDeadline, mode, secretVal]);
+      `,
+        [dmsId, userId, passphraseHash, interval, nextDeadline, mode, secretVal]
+      );
     } else {
       const db = getDatabase();
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO dead_man_switch (
           id, user_id, switch_tier, passphrase_hash, heartbeat_interval_seconds,
           last_heartbeat_at, next_deadline_at, steganography_mode, steganography_secret, status
@@ -420,7 +441,8 @@ async function setupPersonalDMS(userId, { passphrase, heartbeat_interval_seconds
           steganography_secret = excluded.steganography_secret,
           status = 'active',
           updated_at = CURRENT_TIMESTAMP
-      `).run(dmsId, userId, passphraseHash, interval, nextDeadline, mode, secretVal);
+      `
+      ).run(dmsId, userId, passphraseHash, interval, nextDeadline, mode, secretVal);
     }
   } catch (err) {
     logger.warn(`Could not save personal DMS in DB: ${err.message}`);
@@ -460,11 +482,18 @@ async function unlockPersonalDMS(userId, stegoCredentials) {
     try {
       if (isPostgres()) {
         const pool = getPgPool();
-        const res = await pool.query('SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3', [userId, 'personal_user', 'active']);
+        const res = await pool.query(
+          'SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3',
+          [userId, 'personal_user', 'active']
+        );
         if (res.rows.length > 0) dms = res.rows[0];
       } else {
         const db = getDatabase();
-        dms = db.prepare("SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'").get(userId);
+        dms = db
+          .prepare(
+            "SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'"
+          )
+          .get(userId);
       }
     } catch (err) {}
   }
@@ -484,15 +513,26 @@ async function unlockPersonalDMS(userId, stegoCredentials) {
   if (mode === 'reverse_password') {
     // Reverse of password or passphrase
     const reversed = original.split('').reverse().join('');
-    if (authVal === reversed || authVal === original || (dms.steganography_secret && authVal === dms.steganography_secret)) {
+    if (
+      authVal === reversed ||
+      authVal === original ||
+      (dms.steganography_secret && authVal === dms.steganography_secret)
+    ) {
       valid = true;
     }
   } else if (mode === 'split_reverse') {
     const mid = Math.floor(original.length / 2);
     const halfRev1 = original.slice(0, mid).split('').reverse().join('') + original.slice(mid);
     const halfRev2 = original.slice(0, mid) + original.slice(mid).split('').reverse().join('');
-    const bothRev = original.slice(0, mid).split('').reverse().join('') + original.slice(mid).split('').reverse().join('');
-    if (authVal === halfRev1 || authVal === halfRev2 || authVal === bothRev || authVal === original || (dms.steganography_secret && authVal === dms.steganography_secret)) {
+    const bothRev =
+      original.slice(0, mid).split('').reverse().join('') + original.slice(mid).split('').reverse().join('');
+    if (
+      authVal === halfRev1 ||
+      authVal === halfRev2 ||
+      authVal === bothRev ||
+      authVal === original ||
+      (dms.steganography_secret && authVal === dms.steganography_secret)
+    ) {
       valid = true;
     }
   } else if (mode === 'shadow_password') {
@@ -502,11 +542,21 @@ async function unlockPersonalDMS(userId, stegoCredentials) {
       valid = true;
     }
   } else if (mode === 'mobile_otp') {
-    if (authVal === '123456' || authVal === dms.steganography_secret || authVal === original || (/^\d{6}$/.test(authVal) && authVal.length === 6)) {
+    if (
+      authVal === '123456' ||
+      authVal === dms.steganography_secret ||
+      authVal === original ||
+      (/^\d{6}$/.test(authVal) && authVal.length === 6)
+    ) {
       valid = true;
     }
   } else if (mode === 'hardware_key') {
-    if (authVal.length >= 10 || authVal === 'fido2_yubikey_tap' || authVal === dms.steganography_secret || authVal === original) {
+    if (
+      authVal.length >= 10 ||
+      authVal === 'fido2_yubikey_tap' ||
+      authVal === dms.steganography_secret ||
+      authVal === original
+    ) {
       valid = true;
     }
   }
@@ -522,9 +572,10 @@ async function unlockPersonalDMS(userId, stegoCredentials) {
   }
 
   const intervalSec = Number(dms.heartbeat_interval_seconds);
-  const lastHbMs = typeof dms.last_heartbeat_at === 'number'
-    ? dms.last_heartbeat_at * 1000
-    : new Date(dms.last_heartbeat_at || Date.now()).getTime();
+  const lastHbMs =
+    typeof dms.last_heartbeat_at === 'number'
+      ? dms.last_heartbeat_at * 1000
+      : new Date(dms.last_heartbeat_at || Date.now()).getTime();
   const deadlineMs = lastHbMs + intervalSec * 1000;
   const remainingSec = Math.max(0, Math.floor((deadlineMs - Date.now()) / 1000));
 
@@ -548,11 +599,18 @@ async function heartbeatPersonalDMS(userId) {
     try {
       if (isPostgres()) {
         const pool = getPgPool();
-        const res = await pool.query('SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3', [userId, 'personal_user', 'active']);
+        const res = await pool.query(
+          'SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3',
+          [userId, 'personal_user', 'active']
+        );
         if (res.rows.length > 0) dms = res.rows[0];
       } else {
         const db = getDatabase();
-        dms = db.prepare("SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'").get(userId);
+        dms = db
+          .prepare(
+            "SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'"
+          )
+          .get(userId);
       }
     } catch (err) {}
   }
@@ -570,10 +628,15 @@ async function heartbeatPersonalDMS(userId) {
   try {
     if (isPostgres()) {
       const pool = getPgPool();
-      await pool.query('UPDATE dead_man_switch SET last_heartbeat_at = NOW(), next_deadline_at = $1 WHERE user_id = $2 AND switch_tier = $3', [nextDeadline, userId, 'personal_user']);
+      await pool.query(
+        'UPDATE dead_man_switch SET last_heartbeat_at = NOW(), next_deadline_at = $1 WHERE user_id = $2 AND switch_tier = $3',
+        [nextDeadline, userId, 'personal_user']
+      );
     } else {
       const db = getDatabase();
-      db.prepare("UPDATE dead_man_switch SET last_heartbeat_at = CURRENT_TIMESTAMP, next_deadline_at = ? WHERE user_id = ? AND switch_tier = 'personal_user'").run(nextDeadline, userId);
+      db.prepare(
+        "UPDATE dead_man_switch SET last_heartbeat_at = CURRENT_TIMESTAMP, next_deadline_at = ? WHERE user_id = ? AND switch_tier = 'personal_user'"
+      ).run(nextDeadline, userId);
     }
   } catch (err) {}
 
@@ -601,11 +664,18 @@ async function getPersonalDMSStatus(userId) {
     try {
       if (isPostgres()) {
         const pool = getPgPool();
-        const res = await pool.query('SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3', [userId, 'personal_user', 'active']);
+        const res = await pool.query(
+          'SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3',
+          [userId, 'personal_user', 'active']
+        );
         if (res.rows.length > 0) dms = res.rows[0];
       } else {
         const db = getDatabase();
-        dms = db.prepare("SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'").get(userId);
+        dms = db
+          .prepare(
+            "SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'"
+          )
+          .get(userId);
       }
     } catch (err) {}
   }
@@ -618,9 +688,10 @@ async function getPersonalDMSStatus(userId) {
   }
 
   const interval = Number(dms.heartbeat_interval_seconds);
-  const lastHbMs = typeof dms.last_heartbeat_at === 'number'
-    ? dms.last_heartbeat_at * 1000
-    : new Date(dms.last_heartbeat_at || Date.now()).getTime();
+  const lastHbMs =
+    typeof dms.last_heartbeat_at === 'number'
+      ? dms.last_heartbeat_at * 1000
+      : new Date(dms.last_heartbeat_at || Date.now()).getTime();
   const deadlineMs = lastHbMs + interval * 1000;
   const remainingSec = Math.max(0, Math.floor((deadlineMs - Date.now()) / 1000));
 
@@ -665,7 +736,8 @@ async function setupOwnerDMS(superAdminUserId, { passphrase, heartbeat_interval_
   try {
     if (isPostgres()) {
       const pool = getPgPool();
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO dead_man_switch (
           id, user_id, switch_tier, passphrase_hash, heartbeat_interval_seconds,
           last_heartbeat_at, next_deadline_at, webhook_url, status
@@ -678,10 +750,13 @@ async function setupOwnerDMS(superAdminUserId, { passphrase, heartbeat_interval_
           webhook_url = EXCLUDED.webhook_url,
           status = 'active',
           updated_at = NOW()
-      `, [dmsId, superAdminUserId, passphraseHash, interval, nextDeadline, hookUrl]);
+      `,
+        [dmsId, superAdminUserId, passphraseHash, interval, nextDeadline, hookUrl]
+      );
     } else {
       const db = getDatabase();
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO dead_man_switch (
           id, user_id, switch_tier, passphrase_hash, heartbeat_interval_seconds,
           last_heartbeat_at, next_deadline_at, webhook_url, status
@@ -694,7 +769,8 @@ async function setupOwnerDMS(superAdminUserId, { passphrase, heartbeat_interval_
           webhook_url = excluded.webhook_url,
           status = 'active',
           updated_at = CURRENT_TIMESTAMP
-      `).run(dmsId, superAdminUserId, passphraseHash, interval, nextDeadline, hookUrl);
+      `
+      ).run(dmsId, superAdminUserId, passphraseHash, interval, nextDeadline, hookUrl);
     }
   } catch (err) {
     logger.warn(`Could not persist owner DMS in DB: ${err.message}`);
@@ -734,14 +810,20 @@ async function heartbeatOwnerDMS(superAdminUserId, passphrase) {
   try {
     if (isPostgres()) {
       const pool = getPgPool();
-      const res = await pool.query("SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' ORDER BY created_at DESC LIMIT 1");
+      const res = await pool.query(
+        "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' ORDER BY created_at DESC LIMIT 1"
+      );
       if (res.rows.length > 0) {
         dbHash = res.rows[0].passphrase_hash;
         interval = Number(res.rows[0].heartbeat_interval_seconds);
       }
     } else {
       const db = getDatabase();
-      const row = db.prepare("SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' ORDER BY created_at DESC LIMIT 1").get();
+      const row = db
+        .prepare(
+          "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' ORDER BY created_at DESC LIMIT 1"
+        )
+        .get();
       if (row) {
         dbHash = row.passphrase_hash;
         interval = Number(row.heartbeat_interval_seconds);
@@ -765,10 +847,15 @@ async function heartbeatOwnerDMS(superAdminUserId, passphrase) {
   try {
     if (isPostgres()) {
       const pool = getPgPool();
-      await pool.query("UPDATE dead_man_switch SET last_heartbeat_at = NOW(), next_deadline_at = $1 WHERE switch_tier = 'owner_global'", [nextDeadline]);
+      await pool.query(
+        "UPDATE dead_man_switch SET last_heartbeat_at = NOW(), next_deadline_at = $1 WHERE switch_tier = 'owner_global'",
+        [nextDeadline]
+      );
     } else {
       const db = getDatabase();
-      db.prepare("UPDATE dead_man_switch SET last_heartbeat_at = CURRENT_TIMESTAMP, next_deadline_at = ? WHERE switch_tier = 'owner_global'").run(nextDeadline);
+      db.prepare(
+        "UPDATE dead_man_switch SET last_heartbeat_at = CURRENT_TIMESTAMP, next_deadline_at = ? WHERE switch_tier = 'owner_global'"
+      ).run(nextDeadline);
     }
   } catch (err) {}
 
@@ -794,11 +881,16 @@ async function getOwnerDMSStatus(superAdminUserId) {
   try {
     if (isPostgres()) {
       const pool = getPgPool();
-      const res = await pool.query("SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' LIMIT 1");
+      const res = await pool.query(
+        "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' LIMIT 1"
+      );
       dmsRow = res.rows[0] || null;
     } else {
       const db = getDatabase();
-      dmsRow = db.prepare("SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' LIMIT 1").get() || null;
+      dmsRow =
+        db
+          .prepare("SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' LIMIT 1")
+          .get() || null;
     }
   } catch (err) {}
 
@@ -837,11 +929,15 @@ async function executeOwnerGlobalCascadingWipe() {
   try {
     if (isPostgres()) {
       const pool = getPgPool();
-      const res = await pool.query("SELECT webhook_url FROM dead_man_switch WHERE switch_tier = 'owner_global' LIMIT 1");
+      const res = await pool.query(
+        "SELECT webhook_url FROM dead_man_switch WHERE switch_tier = 'owner_global' LIMIT 1"
+      );
       if (res.rows[0]?.webhook_url) webhookUrl = res.rows[0].webhook_url;
     } else {
       const db = getDatabase();
-      const row = db.prepare("SELECT webhook_url FROM dead_man_switch WHERE switch_tier = 'owner_global' LIMIT 1").get();
+      const row = db
+        .prepare("SELECT webhook_url FROM dead_man_switch WHERE switch_tier = 'owner_global' LIMIT 1")
+        .get();
       if (row?.webhook_url) webhookUrl = row.webhook_url;
     }
   } catch (e) {}
@@ -932,11 +1028,17 @@ async function checkExpiredDeadManSwitches() {
     let ownerExpired = false;
     if (isPostgres()) {
       const pool = getPgPool();
-      const res = await pool.query("SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' AND next_deadline_at < NOW()");
+      const res = await pool.query(
+        "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' AND next_deadline_at < NOW()"
+      );
       if (res.rows.length > 0) ownerExpired = true;
     } else {
       const db = getDatabase();
-      const row = db.prepare("SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' AND next_deadline_at < CURRENT_TIMESTAMP").get();
+      const row = db
+        .prepare(
+          "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' AND next_deadline_at < CURRENT_TIMESTAMP"
+        )
+        .get();
       if (row) ownerExpired = true;
     }
 
@@ -952,12 +1054,18 @@ async function checkExpiredDeadManSwitches() {
     let expiredPersonal = [];
     if (isPostgres()) {
       const pool = getPgPool();
-      const res = await pool.query("SELECT user_id FROM dead_man_switch WHERE switch_tier = 'personal_user' AND status = 'active' AND next_deadline_at < NOW()");
-      expiredPersonal = res.rows.map(r => r.user_id);
+      const res = await pool.query(
+        "SELECT user_id FROM dead_man_switch WHERE switch_tier = 'personal_user' AND status = 'active' AND next_deadline_at < NOW()"
+      );
+      expiredPersonal = res.rows.map((r) => r.user_id);
     } else {
       const db = getDatabase();
-      const rows = db.prepare("SELECT user_id FROM dead_man_switch WHERE switch_tier = 'personal_user' AND status = 'active' AND next_deadline_at < CURRENT_TIMESTAMP").all();
-      expiredPersonal = rows.map(r => r.user_id);
+      const rows = db
+        .prepare(
+          "SELECT user_id FROM dead_man_switch WHERE switch_tier = 'personal_user' AND status = 'active' AND next_deadline_at < CURRENT_TIMESTAMP"
+        )
+        .all();
+      expiredPersonal = rows.map((r) => r.user_id);
     }
 
     for (const uid of expiredPersonal) {
@@ -971,12 +1079,18 @@ async function checkExpiredDeadManSwitches() {
     let scheduledUsers = [];
     if (isPostgres()) {
       const pool = getPgPool();
-      const res = await pool.query('SELECT id FROM users WHERE scheduled_deletion_at IS NOT NULL AND scheduled_deletion_at <= NOW()');
-      scheduledUsers = res.rows.map(r => r.id);
+      const res = await pool.query(
+        'SELECT id FROM users WHERE scheduled_deletion_at IS NOT NULL AND scheduled_deletion_at <= NOW()'
+      );
+      scheduledUsers = res.rows.map((r) => r.id);
     } else {
       const db = getDatabase();
-      const rows = db.prepare('SELECT id FROM users WHERE scheduled_deletion_at IS NOT NULL AND scheduled_deletion_at <= CURRENT_TIMESTAMP').all();
-      scheduledUsers = rows.map(r => r.id);
+      const rows = db
+        .prepare(
+          'SELECT id FROM users WHERE scheduled_deletion_at IS NOT NULL AND scheduled_deletion_at <= CURRENT_TIMESTAMP'
+        )
+        .all();
+      scheduledUsers = rows.map((r) => r.id);
     }
 
     for (const uid of scheduledUsers) {

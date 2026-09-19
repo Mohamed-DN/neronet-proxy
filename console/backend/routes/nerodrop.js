@@ -26,7 +26,8 @@ function formatSession(row) {
     transferred_chunks: row.transferred_chunks || 0,
     bytes_transferred: row.bytes_transferred || 0,
     status: row.status,
-    webrtc_signal: typeof row.webrtc_signal_json === 'string' ? JSON.parse(row.webrtc_signal_json || '{}') : row.webrtc_signal_json,
+    webrtc_signal:
+      typeof row.webrtc_signal_json === 'string' ? JSON.parse(row.webrtc_signal_json || '{}') : row.webrtc_signal_json,
     started_at: row.started_at,
     completed_at: row.completed_at,
     created_at: row.created_at,
@@ -62,16 +63,20 @@ router.post('/session', (req, res) => {
   const sid = `drop-${uuidv4().substring(0, 8)}`;
   const chunkSize = 65536;
   const totalChunks = Math.max(1, Math.ceil(size / chunkSize));
-  const b3 = blake3_hash || crypto.createHash('sha256').update(file_name + Date.now()).digest('hex');
+  const b3 =
+    blake3_hash ||
+    crypto
+      .createHash('sha256')
+      .update(file_name + Date.now())
+      .digest('hex');
 
   const webrtcSignal = {
     sdp: `v=0\r\no=NeroDrop ${sid} 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n`,
-    ice_candidates: [
-      { candidate: 'candidate:1 1 UDP 2130706431 127.0.0.1 50000 typ host' }
-    ]
+    ice_candidates: [{ candidate: 'candidate:1 1 UDP 2130706431 127.0.0.1 50000 typ host' }]
   };
 
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO nerodrop_sessions (
       id, user_id, source_node_id, target_node_id, file_name,
       file_size_bytes, file_type, blake3_hash, chunk_size_bytes,
@@ -83,10 +88,19 @@ router.post('/session', (req, res) => {
       ?, 0, 0, 'ready',
       ?, datetime('now')
     )
-  `).run(
-    sid, req.user.id, srcNodeId, target_node_id, file_name,
-    size, file_type || 'application/octet-stream', b3, chunkSize,
-    totalChunks, JSON.stringify(webrtcSignal)
+  `
+  ).run(
+    sid,
+    req.user.id,
+    srcNodeId,
+    target_node_id,
+    file_name,
+    size,
+    file_type || 'application/octet-stream',
+    b3,
+    chunkSize,
+    totalChunks,
+    JSON.stringify(webrtcSignal)
   );
 
   logAuditEvent({
@@ -151,7 +165,8 @@ function updateProgressHandler(req, res) {
   const newStatus = status || (transferred_chunks >= session.total_chunks ? 'completed' : 'transferring');
   const completedAt = newStatus === 'completed' ? "datetime('now')" : null;
 
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE nerodrop_sessions SET
       transferred_chunks = COALESCE(?, transferred_chunks),
       bytes_transferred = COALESCE(?, bytes_transferred),
@@ -159,7 +174,8 @@ function updateProgressHandler(req, res) {
       completed_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE completed_at END,
       updated_at = datetime('now')
     WHERE id = ?
-  `).run(
+  `
+  ).run(
     transferred_chunks !== undefined ? transferred_chunks : null,
     bytes_transferred !== undefined ? bytes_transferred : null,
     newStatus,
@@ -185,7 +201,9 @@ function cancelTransferHandler(req, res) {
     return res.status(403).json({ error: 'Access forbidden' });
   }
 
-  db.prepare("UPDATE nerodrop_sessions SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?").run(req.params.id);
+  db.prepare("UPDATE nerodrop_sessions SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?").run(
+    req.params.id
+  );
 
   logAuditEvent({
     eventType: 'NERODROP_SESSION_CANCEL',
