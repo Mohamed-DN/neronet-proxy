@@ -2,11 +2,15 @@
 # POSIX sh. Works from Git Bash on Windows and from any shell on Linux and macOS.
 #
 # Sets:
-#   ENGINE        podman if it is installed, otherwise docker
+#   ENGINE        NERONET_ENGINE if set, else podman if it is installed, else docker.
+#                 CI sets NERONET_ENGINE=docker: the runners have both installed and
+#                 only the Docker daemon is running there.
 #   COMPOSE       the compose command for that engine
 #   REPO_ROOT     absolute path of the repository, in the shell's own notation
 #   HOST_PATH     function: print a path in the notation the engine expects in -v
 #   die           function: print a message on stderr and exit 1
+
+# shellcheck shell=sh
 
 die() {
   echo "error: $*" >&2
@@ -18,7 +22,9 @@ _dev_dir=$(cd "$(dirname "$0")" && pwd) || die "cannot resolve the script direct
 REPO_ROOT=${NERONET_REPO_ROOT:-$(cd "$_dev_dir/../.." && pwd)}
 unset _dev_dir
 
-if command -v podman >/dev/null 2>&1; then
+if [ -n "${NERONET_ENGINE:-}" ]; then
+  ENGINE=$NERONET_ENGINE
+elif command -v podman >/dev/null 2>&1; then
   ENGINE=podman
 elif command -v docker >/dev/null 2>&1; then
   ENGINE=docker
