@@ -40,3 +40,8 @@ paths = ['''^tests/stress/challenger_frontend_staging_stress\.py$''']
 description = "Documentation. A WireGuard public key printed in an example, and a placeholder enrolment token in a command line."
 targetRules = ["generic-api-key"]
 paths = ['''^(DEVELOPER_SETUP|BUSINESS_AND_ROADMAP)\.md$''']
+
+[[allowlists]]
+description = "Architecture decision records. Prose that describes key handling (for example 'key per hop, ...') and matches the generic key pattern. No ADR carries a credential."
+targetRules = ["generic-api-key"]
+paths = ['''^docs/adr/.*\.md$''']

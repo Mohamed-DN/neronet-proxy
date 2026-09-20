@@ -2,11 +2,11 @@
 # per finding (commit:file:rule:line); no values. Remove a line when the code it
 # points at is gone and the credential no longer works.
 #
-# console/backend/services/NukeEngine.js compares the credential supplied to the
-# nuke flow with string literals, so a caller that knows a literal passes the check.
-# The literals are still in the file on main. This baseline records that they are
-# known; it does not neutralise them. Removing them is a code change, not a scanner
-# setting.
+# console/backend/services/NukeEngine.js used to compare the credential supplied to the
+# nuke flow with string literals. Those comparisons were removed from the code (see the
+# commit "Open the personal dead man's switch only with the stored secret"). The
+# fingerprints below point at history that still contains them; they stay so the scan of
+# the full history is green, and the literals no longer work against the current code.
 706265ce0dd79597c9d88a8f1ec788a1c967ea0b:console/backend/services/NukeEngine.js:generic-api-key:556
 d60b90aab857378c1643e2a2d70d05362b830efb:console/backend/services/NukeEngine.js:generic-api-key:489
 d60b90aab857378c1643e2a2d70d05362b830efb:console/backend/services/NukeEngine.js:generic-api-key:499
