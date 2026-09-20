@@ -26,11 +26,13 @@ Commands:
   circuit <country>     Build and inspect a 3-Hop Layered Onion Circuit
   keygen                Generate a fresh Curve25519 identity keypair and Node ID
   stun-ping <host:port> Ping a STUN endpoint and measure NAT reflection latency
-  overlay-dial <socks5 host:port> <overlay host:port> [timeout seconds]
+  overlay-dial <socks5 host:port> <overlay host:port> [timeout seconds] [hold seconds]
                         Dial an overlay address through this node's own SOCKS5 inbound
                         and read the echo back. Prints "ok <target> <rtt ms>",
                         "denied <target> (<reason>)" or "timeout <target>", and exits
-                        0, 2 or 3 respectively.
+                        0, 2 or 3 respectively. With a hold, keeps one connection
+                        open and exercises it once a second for that long, which is
+                        how an established flow is tested rather than a new one.
   help                  Show this help message
 
 Global Options:

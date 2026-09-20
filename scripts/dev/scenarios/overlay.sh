@@ -93,14 +93,15 @@ api() {
 
 node_logs() {
   case "$1" in
-    container:*) $ENGINE logs "${1#container:}" ;;
+    # 2>&1 because the node logs to stderr and the caller discards it.
+    container:*) $ENGINE logs "${1#container:}" 2>&1 ;;
     *) $COMPOSE --profile nodes logs --no-color "$1" ;;
   esac
 }
 
 node_logs_since() {
   case "$1" in
-    container:*) $ENGINE logs --since "$2" "${1#container:}" ;;
+    container:*) $ENGINE logs --since "$2" "${1#container:}" 2>&1 ;;
     *) $COMPOSE --profile nodes logs --no-color --since "$2" "$1" ;;
   esac
 }

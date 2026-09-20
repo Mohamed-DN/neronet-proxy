@@ -33,7 +33,7 @@ const echoMode = 'E'
 
 func overlayDial(args []string) int {
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "Usage: sovereign-cli overlay-dial <socks5 host:port> <overlay host:port> [timeout seconds]")
+		fmt.Fprintln(os.Stderr, "Usage: sovereign-cli overlay-dial <socks5 host:port> <overlay host:port> [timeout seconds] [hold seconds]")
 		return exitOverlayUsage
 	}
 
@@ -48,6 +48,18 @@ func overlayDial(args []string) int {
 			return exitOverlayUsage
 		}
 		timeout = time.Duration(seconds) * time.Second
+	}
+
+	// A hold turns one round trip into a long-lived connection: the same TCP stream is
+	// kept open and exercised once a second. It is what shows that an established flow
+	// survives a control plane going away, which a sequence of new connections cannot.
+	if len(args) > 3 {
+		seconds, err := strconv.Atoi(args[3])
+		if err != nil || seconds <= 0 {
+			fmt.Fprintf(os.Stderr, "hold %q is not a positive number of seconds\n", args[3])
+			return exitOverlayUsage
+		}
+		return holdThroughSocks(socksAddr, target, timeout, time.Duration(seconds)*time.Second)
 	}
 
 	rtt, err := echoThroughSocks(socksAddr, target, timeout)
@@ -71,6 +83,58 @@ func overlayDial(args []string) int {
 
 	fmt.Printf("denied %s (%v)\n", target, err)
 	return exitOverlayDenied
+}
+
+// holdThroughSocks keeps one connection open and exercises it once a second.
+//
+// It reports how many round trips succeeded, how long the stream lasted and, when it
+// broke, at which second and why. A stream that survives the whole window is the
+// evidence that an established flow is not torn down by the control plane going away.
+func holdThroughSocks(socksAddr, target string, timeout, hold time.Duration) int {
+	conn, err := net.DialTimeout("tcp", socksAddr, timeout)
+	if err != nil {
+		fmt.Printf("denied %s (dialling the local SOCKS5 inbound: %v)\n", target, err)
+		return exitOverlayDenied
+	}
+	defer conn.Close()
+
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+	if err := socksConnect(conn, target); err != nil {
+		fmt.Printf("denied %s (%v)\n", target, err)
+		return exitOverlayDenied
+	}
+
+	if _, err := conn.Write([]byte{echoMode}); err != nil {
+		fmt.Printf("denied %s (%v)\n", target, err)
+		return exitOverlayDenied
+	}
+
+	start := time.Now()
+	deadline := start.Add(hold)
+	exchanges := 0
+
+	for time.Now().Before(deadline) {
+		_ = conn.SetDeadline(time.Now().Add(timeout))
+		marker := fmt.Sprintf("HOLD-%06d", exchanges)
+		if _, err := conn.Write([]byte(marker)); err != nil {
+			fmt.Printf("held %s broke after %s and %d exchange(s): %v\n", target, time.Since(start).Round(time.Second), exchanges, err)
+			return exitOverlayDenied
+		}
+		echoed := make([]byte, len(marker))
+		if _, err := io.ReadFull(conn, echoed); err != nil {
+			fmt.Printf("held %s broke after %s and %d exchange(s): %v\n", target, time.Since(start).Round(time.Second), exchanges, err)
+			return exitOverlayTimeout
+		}
+		if string(echoed) != marker {
+			fmt.Printf("held %s returned %q, not what was sent\n", target, echoed)
+			return exitOverlayDenied
+		}
+		exchanges++
+		time.Sleep(time.Second)
+	}
+
+	fmt.Printf("held %s for %s, %d exchange(s), unbroken\n", target, time.Since(start).Round(time.Second), exchanges)
+	return exitOverlayOK
 }
 
 // echoThroughSocks performs an RFC 1928 CONNECT and one echo round trip.
