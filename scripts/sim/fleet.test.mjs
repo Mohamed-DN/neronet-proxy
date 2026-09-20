@@ -77,7 +77,7 @@ test('the plan places the control plane at the home region and the relays in the
   const p = plan(6, 1, { home: 'ams', derpRegions: ['iad', 'sin'] });
   const control = p.entities.find((e) => e.kind === 'control');
   assert.equal(control.location, 'ams');
-  assert.equal(control.service, 'frontend');
+  assert.equal(control.service, 'backend');
   assert.deepEqual(
     p.entities.filter((e) => e.kind === 'derp').map((e) => e.location),
     ['iad', 'sin']
@@ -100,7 +100,8 @@ test('the compose override declares each service once, with the declared locatio
   assert.ok(yml.includes('profiles: ["fleet"]'));
   assert.ok(!yml.includes('container_name'), 'a fixed container name would break parallel stacks');
   assert.ok(!yml.includes('ports:'), 'the fleet must not publish host ports');
-  assert.ok(!yml.includes('\n  frontend:'), 'the control plane is not part of the override');
+  assert.ok(!yml.includes('\n  backend:'), 'the control plane is not part of the override');
+  assert.ok(yml.includes('"http://backend:8081"'));
 });
 
 test('bad arguments are refused', () => {

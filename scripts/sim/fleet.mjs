@@ -16,6 +16,13 @@ import { link, modelFromCatalogue } from './latency.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
+// The fleet enrols against the backend directly, not through the console's nginx. The
+// /v4 location in console/frontend/nginx.conf forwards no X-Forwarded-For, so behind it
+// every node shares one source address and one budget of the 60-requests-a-minute
+// limiter on /v4/control: about 15 nodes heartbeating every 15 s saturate it. Direct,
+// each node is metered under its own container address, as separate devices would be.
+export const CONTROL_URL = 'http://backend:8081';
+
 export const DEFAULT_DERP_REGIONS = ['fra', 'iad', 'sin', 'gru', 'syd', 'jnb'];
 
 /** Small deterministic generator (mulberry32). */
@@ -117,7 +124,7 @@ export function buildPlan({
   });
 
   const entities = [];
-  entities.push(entity('control', 'control', 'control', byId.get(home), 'frontend'));
+  entities.push(entity('control', 'control', 'control', byId.get(home), 'backend'));
 
   for (const loc of derpRegions.map((id) => byId.get(id))) {
     const name = `derp-${loc.id}`;
@@ -188,7 +195,7 @@ export function renderCompose(plan, argv = '') {
         ? ['-listen-addr', '0.0.0.0:8444', '-stun-addr', '0.0.0.0:3478', '-region', e.location]
         : [
             '-control-url',
-            'http://frontend:8443',
+            CONTROL_URL,
             '-country',
             e.country,
             '-city',
@@ -217,7 +224,7 @@ export function renderCompose(plan, argv = '') {
         '      - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}'
       );
       lines.push('    depends_on:');
-      lines.push('      frontend:');
+      lines.push('      backend:');
       lines.push('        condition: service_healthy');
       lines.push('    volumes:');
       lines.push(`      - identity-${e.service}:/var/lib/neronet`);

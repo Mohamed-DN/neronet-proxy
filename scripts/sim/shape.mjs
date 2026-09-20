@@ -3,7 +3,7 @@
 //
 //   node scripts/sim/shape.mjs --project wps1a [--plan scripts/sim/out/fleet.plan.json] [--reset]
 //
-// Each node, DERP relay and the control plane's front end gets a qdisc on its own
+// Each node, DERP relay and the control plane's backend gets a qdisc on its own
 // interface, installed from a throw-away sidecar that shares its network namespace.
 // Nothing is added to the node image. Running it again replaces the previous
 // configuration; --reset removes it.
