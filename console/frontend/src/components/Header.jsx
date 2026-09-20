@@ -1,21 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import {
-  Shield,
-  Activity,
-  ArrowDownLeft,
-  ArrowUpRight,
-  PlusCircle,
-  Bell,
-  Search,
-  UserCheck,
-  Zap,
-  Lock,
-  Layers
-} from 'lucide-react';
+import { LanguageSwitcher, ThemeToggle } from '../ui';
+import { Shield, ArrowDownLeft, ArrowUpRight, PlusCircle, Bell, Search, UserCheck, Zap } from 'lucide-react';
 
-export default function Header({ onOpenEnrollModal, activeTab }) {
+export default function Header({ onOpenEnrollModal }) {
+  const { t } = useTranslation('chrome');
   const { user, role, switchRole } = useAuth();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
@@ -48,38 +39,46 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
   const isSuperAdmin = role === 'super-admin';
 
   return (
-    <header className="h-16 border-b border-border bg-surface-raised/90 backdrop-blur-md sticky top-0 z-30 px-6 flex items-center justify-between">
+    <header className="h-16 border-b border-border bg-surface-raised sticky top-0 z-sticky px-6 flex items-center justify-between">
       {/* Left Area: Search & Context Path */}
       <div className="flex items-center space-x-6">
         <div className="relative">
-          <Search className="w-4 h-4 text-subtle absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search aria-hidden="true" className="w-4 h-4 text-subtle absolute left-3 top-1/2 -translate-y-1/2" />
           <input
-            type="text"
-            placeholder="Search nodes, VIPs, users, audit logs..."
-            className="w-72 pl-9 pr-4 py-1.5 text-xs bg-surface border border-border rounded-lg text-content placeholder-subtle focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/50 font-mono transition-all"
+            type="search"
+            aria-label={t('header.searchLabel')}
+            placeholder={t('header.search')}
+            className="w-72 pl-9 pr-4 py-1.5 text-caption bg-surface-sunken border border-border-strong rounded-control text-content placeholder:text-subtle focus-visible:outline-focus font-mono"
           />
         </div>
 
         {/* Aggregate Throughput Ticker */}
-        <div className="hidden lg:flex items-center space-x-4 px-3 py-1.5 rounded-lg bg-surface border border-border/80 text-xs font-mono">
-          <div className="flex items-center space-x-1.5 text-accent">
-            <ArrowDownLeft className="w-3.5 h-3.5" />
-            <span className="text-muted">RX:</span>
+        <div
+          aria-label={t('header.throughput')}
+          className="hidden lg:flex items-center space-x-4 px-3 py-1.5 rounded-control bg-surface-sunken border border-border text-caption font-mono"
+        >
+          <div className="flex items-center space-x-1.5 text-content">
+            <ArrowDownLeft aria-hidden="true" className="w-3.5 h-3.5 text-accent" />
+            <span className="text-muted">{t('header.rx')}:</span>
             <span className="font-bold tabular-nums">{rate(live?.total_bandwidth_rx_mb_s)}</span>
           </div>
-          <span className="text-border">|</span>
-          <div className="flex items-center space-x-1.5 text-info">
-            <ArrowUpRight className="w-3.5 h-3.5" />
-            <span className="text-muted">TX:</span>
+          <span aria-hidden="true" className="text-border">
+            |
+          </span>
+          <div className="flex items-center space-x-1.5 text-content">
+            <ArrowUpRight aria-hidden="true" className="w-3.5 h-3.5 text-info" />
+            <span className="text-muted">{t('header.tx')}:</span>
             <span className="font-bold tabular-nums">{rate(live?.total_bandwidth_tx_mb_s)}</span>
           </div>
-          <span className="text-border">|</span>
+          <span aria-hidden="true" className="text-border">
+            |
+          </span>
           {/* This read "Circuits: 142". Circuits are built on request and never
               stored, so there is no count to report; live nodes is a figure the
               control plane actually holds. */}
-          <div className="flex items-center space-x-1.5 text-success">
-            <Zap className="w-3.5 h-3.5" />
-            <span className="text-muted">Nodes up:</span>
+          <div className="flex items-center space-x-1.5 text-content">
+            <Zap aria-hidden="true" className="w-3.5 h-3.5 text-success" />
+            <span className="text-muted">{t('header.nodesUp')}:</span>
             <span className="font-bold tabular-nums">{live ? `${live.active_nodes}/${live.total_nodes}` : '—'}</span>
           </div>
         </div>
@@ -89,74 +88,95 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
       <div className="flex items-center space-x-4">
         {/* Enroll Node Button */}
         <button
+          type="button"
           onClick={onOpenEnrollModal}
-          className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-accent text-accent-contrast font-semibold text-xs hover:brightness-110 transition-all"
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-control bg-accent text-accent-contrast font-semibold text-caption hover:bg-accent-strong transition-colors focus-visible:outline-focus"
         >
-          <PlusCircle className="w-3.5 h-3.5 text-surface" />
-          <span>Enroll Device</span>
+          <PlusCircle aria-hidden="true" className="w-3.5 h-3.5" />
+          <span>{t('header.enrol')}</span>
         </button>
 
         {/* Role Scoper Switcher */}
-        <div className="flex items-center bg-surface border border-border rounded-lg p-1 space-x-1">
+        <div
+          role="radiogroup"
+          aria-label={t('header.roleScope')}
+          className="flex items-center bg-surface-sunken border border-border rounded-control p-1 space-x-1"
+        >
           <button
+            type="button"
+            role="radio"
+            aria-checked={isSuperAdmin}
             onClick={() => switchRole('super-admin')}
-            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-mono font-medium transition-all ${
-              isSuperAdmin ? 'bg-info/20 text-info border border-info/40 shadow-sm' : 'text-muted hover:text-content'
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-sm text-caption font-mono font-medium transition-colors focus-visible:outline-focus ${
+              isSuperAdmin ? 'bg-info-subtle text-info border border-info/40' : 'text-muted hover:text-content'
             }`}
-            title="Super-Admin View: Global mesh overview, all relays and tenant nodes"
+            title={t('header.superAdminHint')}
           >
-            <Shield className="w-3 h-3" />
-            <span>Super-Admin</span>
+            <Shield aria-hidden="true" className="w-3 h-3" />
+            <span>{t('header.superAdmin')}</span>
           </button>
           <button
+            type="button"
+            role="radio"
+            aria-checked={!isSuperAdmin}
             onClick={() => switchRole('user')}
-            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-mono font-medium transition-all ${
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-sm text-caption font-mono font-medium transition-colors focus-visible:outline-focus ${
               !isSuperAdmin
-                ? 'bg-success/20 text-success border border-success/40 shadow-sm'
+                ? 'bg-success-subtle text-success border border-success/40'
                 : 'text-muted hover:text-content'
             }`}
-            title="Tenant User View: Isolated mesh scoped strictly to Alice's personal devices"
+            title={t('header.userHint')}
           >
-            <UserCheck className="w-3 h-3" />
-            <span>User (Alice)</span>
+            <UserCheck aria-hidden="true" className="w-3 h-3" />
+            <span>{t('header.user')}</span>
           </button>
+        </div>
+
+        {/* Language and theme. WP-402 owns the final placement. */}
+        <div className="flex items-center gap-2">
+          <LanguageSwitcher />
+          <ThemeToggle />
         </div>
 
         {/* Notifications Bell */}
         <div className="relative">
           <button
+            type="button"
             onClick={() => setNotificationsOpen(!notificationsOpen)}
-            className="p-2 rounded-lg bg-surface border border-border text-muted hover:text-content transition-colors relative"
+            aria-expanded={notificationsOpen}
+            aria-label={t('header.notificationsUnread')}
+            className="p-2 rounded-control bg-surface-sunken border border-border text-muted hover:text-content transition-colors relative focus-visible:outline-focus"
           >
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-danger animate-ping"></span>
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-danger"></span>
+            <Bell aria-hidden="true" className="w-4 h-4" />
+            <span aria-hidden="true" className="absolute top-1 right-1 w-2 h-2 rounded-pill bg-danger"></span>
           </button>
 
           {/* Notifications Dropdown */}
           {notificationsOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-surface-raised border border-border rounded-xl shadow-2xl z-50 p-3 space-y-2">
-              <div className="flex items-center justify-between pb-2 border-b border-border text-xs font-semibold">
-                <span className="text-content">Security Alerts (2)</span>
-                <span className="text-[10px] text-accent cursor-pointer hover:underline">Mark all read</span>
+            <div className="absolute right-0 mt-2 w-80 bg-surface-raised border border-border rounded-card shadow-popover z-popover p-3 space-y-2">
+              <div className="flex items-center justify-between pb-2 border-b border-border-subtle text-caption font-semibold">
+                <span className="text-content">{t('header.alerts')}</span>
+                <button type="button" className="text-micro text-accent hover:underline focus-visible:outline-focus">
+                  {t('header.markAllRead')}
+                </button>
               </div>
-              <div className="space-y-2 max-h-60 overflow-y-auto text-xs font-mono">
-                <div className="p-2 rounded bg-danger/10 border border-danger/30 text-muted">
-                  <div className="flex items-center justify-between text-[11px] text-danger font-bold">
+              <div className="space-y-2 max-h-60 overflow-y-auto text-caption font-mono">
+                <div className="p-2 rounded-sm bg-danger-subtle border border-danger/30 text-content">
+                  <div className="flex items-center justify-between text-micro text-danger font-bold">
                     <span>Posture Alert</span>
                     <span>1h ago</span>
                   </div>
-                  <p className="text-[10px] text-muted mt-1">
-                    Node 'compromised-kali-box' isolated: Unsigned kernel module detected.
+                  <p className="text-micro text-muted mt-1">
+                    Node &apos;compromised-kali-box&apos; isolated: Unsigned kernel module detected.
                   </p>
                 </div>
-                <div className="p-2 rounded bg-warning/10 border border-warning/30 text-muted">
-                  <div className="flex items-center justify-between text-[11px] text-warning font-bold">
+                <div className="p-2 rounded-sm bg-warning-subtle border border-warning/30 text-content">
+                  <div className="flex items-center justify-between text-micro text-warning font-bold">
                     <span>Battery Cutoff</span>
                     <span>3h ago</span>
                   </div>
-                  <p className="text-[10px] text-muted mt-1">
-                    Node 'carols-galaxy-s24-ultra' battery low (14%), exit routing disabled.
+                  <p className="text-micro text-muted mt-1">
+                    Node &apos;carols-galaxy-s24-ultra&apos; battery low (14%), exit routing disabled.
                   </p>
                 </div>
               </div>
@@ -165,14 +185,17 @@ export default function Header({ onOpenEnrollModal, activeTab }) {
         </div>
 
         {/* User Identity Pill */}
-        <div className="flex items-center space-x-2 pl-2 border-l border-border">
-          <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center font-mono font-bold text-xs text-white">
+        <div className="flex items-center space-x-2 pl-2 border-l border-border" aria-label={t('header.account')}>
+          <div
+            aria-hidden="true"
+            className="w-7 h-7 rounded-pill bg-accent flex items-center justify-center font-mono font-bold text-caption text-accent-contrast"
+          >
             {user?.username?.[0]?.toUpperCase() || 'U'}
           </div>
           <div className="hidden sm:block text-left font-mono">
-            <div className="text-xs font-semibold text-content">{user?.username}</div>
-            <div className="text-[10px] text-muted capitalize">
-              {user?.role === 'super-admin' ? 'Super admin' : 'User'}
+            <div className="text-caption font-semibold text-content">{user?.username}</div>
+            <div className="text-micro text-muted">
+              {user?.role === 'super-admin' ? t('header.superAdmin') : t('header.user')}
             </div>
           </div>
         </div>

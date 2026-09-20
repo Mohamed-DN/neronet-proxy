@@ -21,6 +21,7 @@ import OnionObfuscationPanel from './components/OnionObfuscationPanel';
 import DataSourceBanner from './components/DataSourceBanner';
 import { parseFeatures } from './services/features';
 import { Settings, Shield, Terminal, Cpu, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { SkipLink } from './ui';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -351,7 +352,9 @@ function MainConsole() {
 
   return (
     <div className="flex min-h-screen bg-surface text-content font-sans">
-      {/* Persistent Enterprise Cyber Sidebar */}
+      {/* First stop in the tab order: past the whole sidebar, to the page. */}
+      <SkipLink />
+      {/* Persistent navigation */}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -371,8 +374,13 @@ function MainConsole() {
         {/* Top HUD Header */}
         <Header onOpenEnrollModal={() => setIsEnrollModalOpen(true)} activeTab={activeTab} />
 
-        {/* Dynamic Tab Body */}
-        <main className="p-6 flex-1 max-w-7xl w-full mx-auto">
+        {/* Dynamic Tab Body. tabIndex -1 so the skip link moves focus here and
+            not only the viewport. */}
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="p-6 flex-1 max-w-7xl w-full mx-auto focus-visible:outline-focus"
+        >
           <div className="mb-4">
             <DataSourceBanner />
           </div>
