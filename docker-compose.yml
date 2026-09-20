@@ -29,6 +29,15 @@ x-node: &node
   profiles: ["nodes"]
   environment:
     - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
+    # The WireGuard data plane. Off by default, so the ordinary stack is the stack it
+    # was: no device, no UDP socket, no overlay dialer on the bridge. Set
+    # NERONET_DATAPLANE=netstack to run the fleet on the overlay, which is what
+    # scripts/dev/scenarios/overlay.sh measures.
+    - SOVEREIGN_DATAPLANE=${NERONET_DATAPLANE:-off}
+    # The TCP echo the scenarios dial. It only exists when the data plane is on, and
+    # it is behind the same filter as everything else, so it answers only what the
+    # policy permits.
+    - SOVEREIGN_OVERLAY_ECHO_PORT=${NERONET_OVERLAY_ECHO_PORT:-9999}
   depends_on:
     frontend:
       condition: service_healthy
@@ -118,6 +127,10 @@ services:
       # to enrol anyone in production, since /v4/control/register writes to the node
       # table and hands out overlay addresses.
       - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
+      # How long a node may keep running on a netmap it can no longer refresh. The
+      # default is a day; the fail-static scenario lowers it so the fail-closed
+      # transition can be observed in one test run.
+      - SOVEREIGN_MAX_NETMAP_STALENESS_SECONDS=${NERONET_MAX_NETMAP_STALENESS_SECONDS:-86400}
       - SOVEREIGN_DATA_DIR=/app/data
       - SOVEREIGN_FEATURE_CLOUD_PC=${SOVEREIGN_FEATURE_CLOUD_PC:-false}
       # The browser origins that reach the console and the API on the host.
