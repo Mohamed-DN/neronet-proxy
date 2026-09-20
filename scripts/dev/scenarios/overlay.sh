@@ -268,8 +268,10 @@ case "$SCENARIO" in
 
     echo "the drop counters the denied pair report:"
     for svc in "$A" "$B"; do
-      line=$($COMPOSE --profile nodes logs --no-color --tail 3000 "$svc" 2>/dev/null         | sed -n 's/.*\(Data plane drops since start.*\)/  '"$svc"': /p' | tail -1)
-      echo "${line:-  $svc: no drop reported}"
+      # --since rather than --tail: wireguard-go's own logging is verbose enough that
+      # a few thousand lines do not reach back to the start of the scenario.
+      line=$($COMPOSE --profile nodes logs --no-color --since 10m "$svc" 2>/dev/null         | grep 'Data plane drops since start' | tail -1 | sed 's/.*\(Data plane drops\)//')
+      echo "  $svc: ${line:-no drop counted}"
     done
 
     echo "deleting the scenario rules"
