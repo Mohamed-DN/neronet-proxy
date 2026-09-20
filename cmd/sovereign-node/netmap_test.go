@@ -328,11 +328,17 @@ func TestStalenessRemovesEveryPeerAndIsAppliedOnce(t *testing.T) {
 
 	netmap := netmapFor(6, a.addr, allowAllPolicy("a", a.addr, b.addr), b.peerEntry("b"))
 	netmap.MaxStalenessSeconds = 60
-	netmap.GeneratedAtUnix = time.Now().Add(-30 * time.Second).Unix()
+	netmapTime := time.Now().Add(-30 * time.Second)
+	netmap.GeneratedAtUnix = netmapTime.Unix()
 
 	if err := managerA.Apply(netmap, time.Now()); err != nil {
 		t.Fatalf("applying A's netmap: %v", err)
 	}
+
+	// Staleness is measured from the last time the control plane answered, not from
+	// the document's own age: a fleet where nothing changed for a day is not a fleet
+	// that lost its control plane.
+	managerA.Confirm(netmapTime)
 
 	// Inside the bound: fail-static, the peer stays.
 	if managerA.EnforceStaleness(time.Now()) {
@@ -351,6 +357,14 @@ func TestStalenessRemovesEveryPeerAndIsAppliedOnce(t *testing.T) {
 	}
 	if managerA.EnforceStaleness(time.Now().Add(120 * time.Second)) {
 		t.Fatal("staleness was enforced twice for the same document")
+	}
+
+	// A heartbeat that comes back is proof the control plane is reachable again, and
+	// it alone must not be mistaken for a fresh peer set: the peers return with the
+	// document.
+	managerA.Confirm(time.Now().Add(120 * time.Second))
+	if got := peerCount(t, a.dev); got != 0 {
+		t.Fatalf("peers reappeared on a heartbeat alone: %d", got)
 	}
 
 	// A fresh document brings the peers back.

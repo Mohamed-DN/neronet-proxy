@@ -200,6 +200,7 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 
 	loopCtx, stopLoops := context.WithCancel(ctx)
 	go manager.WatchStaleness(loopCtx, stalenessCheckInterval)
+	go reportDrops(loopCtx, dev, dropReportInterval)
 	if spike.ProbeTarget != "" {
 		go probeLoop(loopCtx, dev, spike)
 	}
@@ -288,6 +289,40 @@ func overlayAddresses(opts dataplaneOptions, spike *dataplane.SpikeConfig, self 
 		return spike.Addresses, nil
 	}
 	return nil, dataplane.ErrNoAddresses
+}
+
+// dropReportInterval is how often the enforcement counters are examined. Only a
+// change is reported, so a node carrying permitted traffic says nothing.
+const dropReportInterval = 15 * time.Second
+
+// reportDrops makes enforcement visible while the node runs.
+//
+// A dropped packet is silent by design: the sender sees a timeout and there is no
+// reset, because telling a peer that a rule stopped it is telling it the rule exists.
+// The counters are the only evidence the operator has that a filter acted rather than
+// a network failing, and until now they were printed once, at shutdown.
+func reportDrops(ctx context.Context, dev *dataplane.Device, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	var previous dataplane.FilterStats
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			current := dev.Stats()
+			if current == previous {
+				continue
+			}
+			log.Printf("[SOVEREIGN-NODE] Data plane drops since start: outbound %d (+%d), inbound %d (+%d), malformed %d (+%d)",
+				current.OutboundDropped, current.OutboundDropped-previous.OutboundDropped,
+				current.InboundDropped, current.InboundDropped-previous.InboundDropped,
+				current.MalformedDropped, current.MalformedDropped-previous.MalformedDropped)
+			previous = current
+		}
+	}
 }
 
 // probeLoop reports a measured round trip through the tunnel. A failed probe is

@@ -66,9 +66,15 @@ type netmapManager struct {
 	// been applied and the node is at default deny.
 	version uint64
 	peers   []control.NetmapPeer
-	// documentAt is the moment the applied document describes: the control plane's
-	// generated_at when it set one, otherwise when this node fetched it.
-	documentAt time.Time
+	// confirmedAt is the last moment the control plane was known to be reachable:
+	// the document's generated_at when it was applied, and then every heartbeat it
+	// answers.
+	//
+	// Staleness is measured against this rather than against the document's own age.
+	// The bound exists for a control plane that has gone away, and a fleet where
+	// nothing changes for a day is not one: a document that is old because nothing
+	// happened is still current.
+	confirmedAt time.Time
 	// maxStaleness is the bound the applied document carries, in seconds. Zero means
 	// the control plane set none and the node never fails closed on age.
 	maxStaleness int64
@@ -122,6 +128,11 @@ func (h *netmapHolder) onHeartbeat(ctx context.Context, nodeID string, resp *con
 		m.ApplyRevocations(resp.RevokedKeys)
 	}
 
+	// A heartbeat that came back is proof the control plane is reachable, whatever it
+	// had to say. Without this the staleness bound would fire on a healthy fleet that
+	// simply had no changes for a day.
+	m.Confirm(time.Now())
+
 	if resp.NetmapVersion > m.Version() {
 		fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		err := m.Fetch(fetchCtx, nodeID)
@@ -158,6 +169,23 @@ func newNetmapManager(
 		stunServer: stunServer,
 		revoked:    make(map[string]bool),
 	}
+}
+
+// Confirm records that the control plane answered.
+func (m *netmapManager) Confirm(now time.Time) {
+	m.mu.Lock()
+	if now.After(m.confirmedAt) {
+		m.confirmedAt = now
+		m.failClosed = false
+	}
+	m.mu.Unlock()
+}
+
+func latest(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
 
 // Version reports the version currently applied.
@@ -217,7 +245,7 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 	m.mu.Lock()
 	m.version = netmap.Version
 	m.peers = netmap.Peers
-	m.documentAt = documentTime(netmap, fetchedAt)
+	m.confirmedAt = latest(documentTime(netmap, fetchedAt), m.confirmedAt)
 	m.maxStaleness = netmap.MaxStalenessSeconds
 	m.failClosed = false
 	m.revoked = revoked
@@ -279,11 +307,11 @@ func (m *netmapManager) ApplyRevocations(keys []string) {
 func (m *netmapManager) EnforceStaleness(now time.Time) bool {
 	m.mu.Lock()
 	netmapMaxAge := m.stalenessLocked()
-	if m.version == 0 || m.failClosed || m.documentAt.IsZero() || netmapMaxAge <= 0 {
+	if m.version == 0 || m.failClosed || m.confirmedAt.IsZero() || netmapMaxAge <= 0 {
 		m.mu.Unlock()
 		return false
 	}
-	age := now.Sub(m.documentAt)
+	age := now.Sub(m.confirmedAt)
 	if age < netmapMaxAge {
 		m.mu.Unlock()
 		return false
@@ -296,7 +324,7 @@ func (m *netmapManager) EnforceStaleness(now time.Time) bool {
 		return false
 	}
 
-	log.Printf("[SOVEREIGN-NODE] Netmap is %s old, past the %s staleness bound: every peer removed (fail-closed)",
+	log.Printf("[SOVEREIGN-NODE] The control plane has been unreachable for %s, past the %s staleness bound: every peer removed (fail-closed)",
 		age.Round(time.Second), netmapMaxAge)
 	return true
 }

@@ -266,9 +266,10 @@ case "$SCENARIO" in
         | tr ',' '\n' | sed -n 's/.*"node_id":"\(pk_[^"]*\)".*/    \1/p' | sort -u
     done
 
-    echo "drop counts on the denied pair:"
+    echo "the drop counters the denied pair report:"
     for svc in "$A" "$B"; do
-      echo "  $svc: $($COMPOSE --profile nodes logs --no-color --tail 2000 "$svc" 2>/dev/null | grep -c 'dropped' || true) drop lines"
+      line=$($COMPOSE --profile nodes logs --no-color --tail 3000 "$svc" 2>/dev/null         | sed -n 's/.*\(Data plane drops since start.*\)/  '"$svc"': /p' | tail -1)
+      echo "${line:-  $svc: no drop reported}"
     done
 
     echo "deleting the scenario rules"
