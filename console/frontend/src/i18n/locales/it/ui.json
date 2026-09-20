@@ -22,7 +22,8 @@
     "title": "Impossibile caricare questa vista",
     "body": "La richiesta al piano di controllo non e riuscita.",
     "retry": "Riprova",
-    "detail": "Dettagli"
+    "detail": "Dettagli",
+    "unreachable": "Il piano di controllo non ha risposto. Potrebbe essere fermo, oppure questa console non riesce a raggiungerlo."
   },
   "notImplemented": {
     "title": "Non implementato",

@@ -1,8 +1,9 @@
 {
-  // TypeScript arrives with the design system, not with a rewrite. The pages
-  // stay JavaScript and are not type-checked (allowJs with checkJs off); the
-  // primitives under src/ui are strict, because their prop types are how the
-  // rest of the console learns what a component accepts.
+  // TypeScript covers everything written in TypeScript: the primitives, the
+  // shell, the data layer and the routes. The pages under src/components stay
+  // JavaScript and are not type-checked (allowJs with checkJs off); they are
+  // rewritten one work package at a time and converting them here would be a
+  // rewrite disguised as a configuration change.
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
@@ -24,5 +25,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/ui/**/*.ts", "src/ui/**/*.tsx", "src/i18n/**/*.ts", "src/theme/**/*.ts", "src/theme/**/*.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

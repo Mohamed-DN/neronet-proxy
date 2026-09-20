@@ -22,7 +22,8 @@
     "title": "Could not load this view",
     "body": "The request to the control plane failed.",
     "retry": "Try again",
-    "detail": "Details"
+    "detail": "Details",
+    "unreachable": "The control plane did not answer. It may be stopped, or this console cannot reach it."
   },
   "notImplemented": {
     "title": "Not implemented",
