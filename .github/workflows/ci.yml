@@ -132,11 +132,21 @@ jobs:
       - name: format:check
         run: npm run format:check
 
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: lint
+        run: npm run lint
+
       - name: build
         run: npm run build
 
       - name: test
         run: npm test
+
+      - name: contrast gate
+        working-directory: .
+        run: node scripts/design/contrast.mjs
 
   stack-smoke:
     name: stack-smoke
