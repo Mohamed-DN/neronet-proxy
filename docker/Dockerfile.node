@@ -2,7 +2,7 @@
 #
 # Separate from docker/Dockerfile, which builds the security daemon and pins Go 1.22
 # — below the 1.25 this module now requires for hybrid post-quantum TLS.
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26 AS builder
 
 WORKDIR /build
 COPY go.mod go.sum ./

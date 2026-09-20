@@ -57,12 +57,10 @@ jobs:
         working-directory: cmd/sovereign-security-daemon
         run: go test ./... -race -count=1
 
-      # Pinned to v1.1.4: later releases need Go 1.26, and go.mod requires 1.25.
-      # Raise both together.
       - name: govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
-          govulncheck ./...
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./cmd/... ./pkg/...
           cd cmd/sovereign-security-daemon
           govulncheck ./...
 

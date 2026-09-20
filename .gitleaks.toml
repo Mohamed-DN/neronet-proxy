@@ -45,3 +45,8 @@ paths = ['''^(DEVELOPER_SETUP|BUSINESS_AND_ROADMAP)\.md$''']
 description = "Architecture decision records. Prose that describes key handling (for example 'key per hop, ...') and matches the generic key pattern. No ADR carries a credential."
 targetRules = ["generic-api-key"]
 paths = ['''^docs/adr/.*\.md$''']
+
+[[allowlists]]
+description = "Test fixtures and test keys in third-party carved packages (Tailscale DERP mesh keys in unit tests)."
+targetRules = ["generic-api-key"]
+paths = ['''^third_party/.*_test\.go$''']

@@ -28,11 +28,11 @@ def markdown_files(root):
         out = subprocess.check_output(
             ["git", "-C", root, "ls-files", "-z", "*.md"], stderr=subprocess.DEVNULL
         )
-        names = [n for n in out.decode("utf-8").split("\0") if n]
+        names = [n for n in out.decode("utf-8").split("\0") if n and not n.startswith("third_party/")]
     except (OSError, subprocess.CalledProcessError):
         names = []
         for base, dirs, files in os.walk(root):
-            dirs[:] = [d for d in dirs if d not in (".git", "node_modules")]
+            dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "third_party")]
             for f in files:
                 if f.endswith(".md"):
                     names.append(os.path.relpath(os.path.join(base, f), root))
