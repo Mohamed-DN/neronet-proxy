@@ -386,6 +386,12 @@ case "$SCENARIO" in
 
     echo "restarting the backend"
     $COMPOSE start backend > /dev/null
+    # nginx resolves the backend once, at start, and a container that was stopped and
+    # started again comes back on a different address. Without this the console is
+    # reachable and every node gets an HTML 502 where it expects JSON, which looks
+    # exactly like a node that refuses to recover.
+    $COMPOSE restart frontend > /dev/null
+    sleep 10
     converge
     converge
 
