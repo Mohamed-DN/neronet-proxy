@@ -392,6 +392,12 @@ case "$SCENARIO" in
     # exactly like a node that refuses to recover.
     $COMPOSE restart frontend > /dev/null
     sleep 10
+    # Recovery from a fail-closed is slower than an ordinary change: every peer on
+    # every node has to handshake again at the same moment, and wireguard-go backs
+    # off between attempts. On the six-node fleet it took about three minutes.
+    converge
+    converge
+    converge
     converge
     converge
 
