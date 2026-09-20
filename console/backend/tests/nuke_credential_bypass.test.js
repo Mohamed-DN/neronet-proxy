@@ -8,6 +8,7 @@ const TEST_DB_PATH = path.resolve(__dirname, '../../data/test_nuke_credential_by
 
 const { initDatabase } = require('../server');
 const { getDatabase, closeDatabase } = require('../db/index');
+const { closeValkey } = require('../db/valkey');
 const NukeEngine = require('../services/NukeEngine');
 
 /**
@@ -29,6 +30,7 @@ describe('Personal dead man switch: only the stored secret unlocks', () => {
 
   after(() => {
     closeDatabase();
+    closeValkey();
     if (fs.existsSync(TEST_DB_PATH)) fs.unlinkSync(TEST_DB_PATH);
   });
 
