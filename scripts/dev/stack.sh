@@ -1,8 +1,9 @@
 #!/bin/sh
-# Usage: stack.sh up | nodes | down [compose args] | status | logs [compose args] [service]
+# Usage: stack.sh up | nodes | fleet | down [compose args] | status | logs [compose args] [service]
 #
 #   up      build and start postgres, valkey, backend and console, wait until healthy
 #   nodes   start the two DERP relays and six Go nodes (starts the core first if needed)
+#   fleet   start the simulated fleet written by scripts/sim/fleet.mjs (see scripts/sim/README.md)
 #   down    stop and remove the stack's containers and network; add -v to drop its volumes
 #   status  service health, and how many nodes sent a heartbeat in the last 60 s
 #   logs    last 200 lines of every service, or of one; pass -f to follow
@@ -15,6 +16,9 @@
 #   NERONET_<NAME>_PORT    sets one port explicitly and wins over the offset:
 #                          CONSOLE, API, DERP_EU, DERP_US, STUN_EU, STUN_US, POSTGRES, VALKEY
 #   NERONET_DEBUG_PORTS=1  also publish PostgreSQL and Valkey on 127.0.0.1
+#   NERONET_FLEET_FILE     the compose override the fleet generator wrote, relative to the repository
+#                          root. Default: scripts/sim/out/docker-compose.fleet.yml. When the file
+#                          exists every command includes it, so `down` removes the fleet as well.
 set -eu
 . "$(dirname "$0")/engine.sh"
 
@@ -49,6 +53,14 @@ export NERONET_NODE_IMAGE="${_project}-node:dev"
 cd "$REPO_ROOT"
 
 PROFILES="--profile nodes --profile debug-ports"
+
+# The fleet override is generated, not committed. When it exists it joins every command,
+# so `down` and `status` see the fleet's containers too.
+FLEET_FILE=${NERONET_FLEET_FILE:-scripts/sim/out/docker-compose.fleet.yml}
+if [ -f "$FLEET_FILE" ]; then
+  COMPOSE="$COMPOSE -f docker-compose.yml -f $FLEET_FILE"
+  PROFILES="$PROFILES --profile fleet"
+fi
 UP_PROFILES=""
 [ "${NERONET_DEBUG_PORTS:-}" = "1" ] && UP_PROFILES="--profile debug-ports"
 
@@ -72,6 +84,17 @@ case "$cmd" in
     $COMPOSE --profile nodes build derp-eu
     # shellcheck disable=SC2086
     $COMPOSE --profile nodes $UP_PROFILES up -d "$@"
+    ;;
+  fleet)
+    need_env
+    [ -f "$FLEET_FILE" ] || die "no $FLEET_FILE; run: node scripts/sim/fleet.mjs --nodes 24 --seed 1"
+    # Every service in the override uses the node image. Build it once through the first one.
+    first=$(sed -n 's/^  \(fleet-[a-z0-9-]*\):$/\1/p' "$FLEET_FILE" | head -n 1)
+    [ -n "$first" ] || die "$FLEET_FILE declares no fleet service"
+    # shellcheck disable=SC2086
+    $COMPOSE --profile fleet build "$first"
+    # shellcheck disable=SC2086
+    $COMPOSE --profile fleet $UP_PROFILES up -d "$@"
     ;;
   down)
     # shellcheck disable=SC2086
@@ -97,7 +120,7 @@ case "$cmd" in
     $COMPOSE $PROFILES logs --tail 200 "$@"
     ;;
   *)
-    sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac

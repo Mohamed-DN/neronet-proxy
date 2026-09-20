@@ -1,0 +1,8 @@
+# Tools for the fleet simulator. Applied from a sidecar that shares a node's network
+# namespace, so the production node image stays without tc, tcpdump or iperf3.
+# Built on demand by scripts/sim/shape.sh and measure.sh.
+FROM docker.io/library/alpine:3.20
+
+RUN apk add --no-cache iproute2-tc iproute2-minimal iperf3 tcpdump curl jq iputils
+
+CMD ["sh"]
