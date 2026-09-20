@@ -1,6 +1,6 @@
 # ADR NNNN: Title in the imperative or as a noun phrase
 
-- Status: Proposed | Accepted | Superseded by [NNNN](NNNN-title.md)
+- Status: Proposed | Accepted | Superseded by ADR NNNN
 - Date: YYYY-MM-DD
 
 ## Context

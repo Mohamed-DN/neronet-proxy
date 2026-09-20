@@ -196,6 +196,9 @@ jobs:
           git ls-files -z '*.sh' scripts/legacy_refactor/sovereign-setup \
             | xargs -0 shellcheck --severity=error --external-sources
 
+      - name: Markdown links
+        run: python3 scripts/dev/check-links.py .
+
       - name: YAML syntax
         run: |
           python3 -m pip install --quiet pyyaml
