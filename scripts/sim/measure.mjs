@@ -23,6 +23,7 @@ import {
 
 export const TOLERANCE_MS = 3;
 export const TOLERANCE_FRACTION = 0.15;
+const MAX_CONCURRENT_PINGS = Number(process.env.SIM_MEASURE_MAX_PINGS || 130);
 
 /** Allowed deviation for a planned round trip. */
 export const allowedDeviation = (plannedMs) => Math.max(TOLERANCE_MS, TOLERANCE_FRACTION * plannedMs);
@@ -77,7 +78,13 @@ export async function measureFleet({ project, plan: planPath, count = 20, log = 
   const order = new Map(plan.entities.map((e, i) => [e.id, i]));
   const byId = new Map(found.map((f) => [f.entity.id, f]));
 
-  const sources = await mapLimit(found, 8, async ({ entity, container }) => {
+  // Every source pings all its targets at once. With hundreds of pings in flight across
+  // several sidecars, the VM's scheduling delays showed up as lost or slow replies (up to 800 ms
+  // on a 99 ms path) and starved the nodes' own heartbeats. Run few enough sidecars that about
+  // MAX_CONCURRENT_PINGS are in flight; on a 60-node fleet that is one at a time.
+  const parallel = Math.max(1, Math.floor(MAX_CONCURRENT_PINGS / Math.max(1, found.length - 1)));
+
+  const sources = await mapLimit(found, parallel, async ({ entity, container }) => {
     const targets = found
       .filter((f) => order.get(f.entity.id) > order.get(entity.id))
       .map((f) => ({ id: f.entity.id, ip: f.ip }));
