@@ -201,7 +201,7 @@ SQL_DUMP
 ### Step 2: Apply PostgreSQL DDL Migrations
 Run the migrator against PostgreSQL:
 ```bash
-export DATABASE_URL="postgresql://neronet:neronet_secret_pass_2026@localhost:5432/neronet_db"
+export DATABASE_URL="postgresql://neronet:<POSTGRES_PASSWORD>@localhost:5432/neronet_db"
 node backend/db/migrator.js
 ```
 
@@ -214,11 +214,11 @@ Use the automated migration ingestion script to map SQLite text types to Postgre
 
 | Variable Name | Default Value | Description |
 |---|---|---|
-| `DATABASE_URL` | `postgresql://neronet:neronet_secret_pass_2026@127.0.0.1:5432/neronet_db` | PostgreSQL 16 connection string |
+| `DATABASE_URL` | `postgresql://neronet:<POSTGRES_PASSWORD>@127.0.0.1:5432/neronet_db` | PostgreSQL 16 connection string |
 | `PGHOST` | `127.0.0.1` | PostgreSQL hostname |
 | `PGPORT` | `5432` | PostgreSQL port |
 | `PGUSER` | `neronet` | Database user |
-| `PGPASSWORD` | `neronet_secret_pass_2026` | Database password |
+| `PGPASSWORD` | `<POSTGRES_PASSWORD>` | Database password |
 | `PGDATABASE` | `neronet_db` | Database name |
 | `VALKEY_URL` | `redis://127.0.0.1:6379` | Valkey 7 / Redis cluster URI |
 | `SOVEREIGN_JWT_SECRET` | `svrn_dev_secret_key...` | Symmetric signing key for auth tokens |

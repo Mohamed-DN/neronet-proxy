@@ -78,8 +78,6 @@ func main() {
 		fmt.Printf("Control Plane: %s\n", controlURL)
 		fmt.Printf("Active Exit Bridges: %d\n", len(bridges))
 		fmt.Println("Mesh Overlay CIDR:   100.64.0.0/10")
-		fmt.Println("Crypto Suite:        Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s")
-		fmt.Println("Wire Format:         SVRN (Direct UDP) / TLS 1.3 Camouflage")
 		fmt.Println("=======================================================")
 
 	case "peers":
