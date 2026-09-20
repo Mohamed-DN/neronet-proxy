@@ -1,0 +1,28 @@
+{
+  // TypeScript arrives with the design system, not with a rewrite. The pages
+  // stay JavaScript and are not type-checked (allowJs with checkJs off); the
+  // primitives under src/ui are strict, because their prop types are how the
+  // rest of the console learns what a component accepts.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
+    "allowJs": true,
+    "checkJs": false,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": false,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src/ui/**/*.ts", "src/ui/**/*.tsx", "src/i18n/**/*.ts", "src/theme/**/*.ts", "src/theme/**/*.tsx"]
+}

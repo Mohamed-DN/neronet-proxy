@@ -27,5 +27,15 @@ export default defineConfig({
         }
       }
     }
+  },
+  test: {
+    // The service tests are written against node:test and keep running under
+    // `node --test`; vitest owns the primitives and everything else in
+    // TypeScript. Splitting on the extension keeps the two runners apart.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    restoreMocks: true
   }
 });
