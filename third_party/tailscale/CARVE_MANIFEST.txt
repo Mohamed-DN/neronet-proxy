@@ -1,0 +1,111 @@
+project: tailscale
+upstream module: tailscale.com
+upstream commit: 7d96cf5a62efb0c2f7b0414a81a650ab247ee927
+goos considered: linux windows
+roots: tailscale.com/derp tailscale.com/derp/derphttp tailscale.com/derp/derpserver tailscale.com/net/stun tailscale.com/disco
+test roots: tailscale.com/derp tailscale.com/derp/derphttp tailscale.com/derp/derpserver tailscale.com/net/stun tailscale.com/disco
+shims: tailscale.com/client/local=github.com/sovereign/proxy/v4/pkg/transplant/shim/local
+packages: 76
+  tailscale.com -
+  tailscale.com/derp T
+  tailscale.com/derp/derpconst -
+  tailscale.com/derp/derphttp T
+  tailscale.com/derp/derpserver T
+  tailscale.com/disco T
+  tailscale.com/envknob -
+  tailscale.com/feature -
+  tailscale.com/feature/buildfeatures -
+  tailscale.com/health -
+  tailscale.com/hostinfo -
+  tailscale.com/kube/kubetypes -
+  tailscale.com/metrics -
+  tailscale.com/net/bakedroots -
+  tailscale.com/net/dnscache -
+  tailscale.com/net/memnet -
+  tailscale.com/net/netaddr -
+  tailscale.com/net/netknob -
+  tailscale.com/net/netmon -
+  tailscale.com/net/netns -
+  tailscale.com/net/netutil -
+  tailscale.com/net/netx -
+  tailscale.com/net/sockstats -
+  tailscale.com/net/stun T
+  tailscale.com/net/tcpinfo -
+  tailscale.com/net/tlsdial -
+  tailscale.com/net/tlsdial/blockblame -
+  tailscale.com/net/tsaddr -
+  tailscale.com/net/wsconn -
+  tailscale.com/syncs -
+  tailscale.com/tailcfg -
+  tailscale.com/tailcfg/nodecap -
+  tailscale.com/tailcfg/peercap -
+  tailscale.com/tsconst -
+  tailscale.com/tstest -
+  tailscale.com/tstest/tlstest -
+  tailscale.com/tstime -
+  tailscale.com/tstime/mono -
+  tailscale.com/tstime/rate -
+  tailscale.com/tsweb -
+  tailscale.com/tsweb/varz -
+  tailscale.com/types/dnstype -
+  tailscale.com/types/ipproto -
+  tailscale.com/types/key -
+  tailscale.com/types/lazy -
+  tailscale.com/types/logger -
+  tailscale.com/types/opt -
+  tailscale.com/types/persist -
+  tailscale.com/types/result -
+  tailscale.com/types/structs -
+  tailscale.com/types/tkatype -
+  tailscale.com/types/views -
+  tailscale.com/util/backoff -
+  tailscale.com/util/bufiox -
+  tailscale.com/util/cibuild -
+  tailscale.com/util/clientmetric -
+  tailscale.com/util/cloudenv -
+  tailscale.com/util/ctxkey -
+  tailscale.com/util/dirwalk -
+  tailscale.com/util/dnsname -
+  tailscale.com/util/eventbus -
+  tailscale.com/util/lineiter -
+  tailscale.com/util/mak -
+  tailscale.com/util/must -
+  tailscale.com/util/nocasemaps -
+  tailscale.com/util/rands -
+  tailscale.com/util/set -
+  tailscale.com/util/singleflight -
+  tailscale.com/util/slicesx -
+  tailscale.com/util/testenv -
+  tailscale.com/util/usermetric -
+  tailscale.com/util/vizerror -
+  tailscale.com/util/winutil -
+  tailscale.com/util/winutil/winenv -
+  tailscale.com/version -
+  tailscale.com/version/distro -
+external imports:
+  github.com/axiomhq/hyperloglog
+  github.com/coder/websocket
+  github.com/dblohm7/wingoes
+  github.com/frankban/quicktest
+  github.com/go-json-experiment/json
+  github.com/go-json-experiment/json/jsontext
+  github.com/go-json-experiment/json/v1
+  github.com/go4org/hashtriemap
+  github.com/golang/groupcache/lru
+  github.com/jsimonetti/rtnetlink
+  github.com/mdlayher/netlink
+  go4.org/mem
+  go4.org/netipx
+  golang.org/x/crypto/curve25519
+  golang.org/x/crypto/nacl/box
+  golang.org/x/exp/constraints
+  golang.org/x/net/dns/dnsmessage
+  golang.org/x/net/proxy
+  golang.org/x/sys/cpu
+  golang.org/x/sys/unix
+  golang.org/x/sys/windows
+  golang.org/x/sys/windows/registry
+  golang.org/x/sys/windows/svc
+  golang.org/x/sys/windows/svc/mgr
+  golang.org/x/time/rate
+  golang.zx2c4.com/wireguard/windows/tunnel/winipcfg
