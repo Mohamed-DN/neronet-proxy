@@ -37,8 +37,9 @@ SOCKS=${NERONET_NODE_SOCKS:-127.0.0.1:1080}
 DIAL_TIMEOUT=${NERONET_OVERLAY_DIAL_TIMEOUT:-5}
 API=${NERONET_API_URL:-http://127.0.0.1:$((8081 + ${NERONET_PORT_OFFSET:-0}))}
 
-# The six compose node services, plus anything the caller started by hand (the
-# seventh-node scenario).
+# The six compose node services, plus anything the caller started by hand. A node that
+# is not a compose service is named "container:<name>", which is what the seventh-node
+# scenario uses.
 NODE_SERVICES=${NERONET_NODE_SERVICES:-"relay-de relay-fr relay-us relay-nl client-it client-es"}
 NODE_SERVICES="$NODE_SERVICES ${NERONET_EXTRA_NODES:-}"
 
@@ -83,6 +84,36 @@ api() {
   fi
 }
 
+# --- Reaching a node ---------------------------------------------------------
+#
+# A node is either a compose service or, when the caller started it by hand, a plain
+# container named "container:<name>". The seventh-node scenario needs the second form:
+# the card asks for that node to be started by hand, and a hand-started container has
+# no compose service to exec into.
+
+node_logs() {
+  case "$1" in
+    container:*) $ENGINE logs "${1#container:}" ;;
+    *) $COMPOSE --profile nodes logs --no-color "$1" ;;
+  esac
+}
+
+node_logs_since() {
+  case "$1" in
+    container:*) $ENGINE logs --since "$2" "${1#container:}" ;;
+    *) $COMPOSE --profile nodes logs --no-color --since "$2" "$1" ;;
+  esac
+}
+
+node_exec() {
+  target=$1
+  shift
+  case "$target" in
+    container:*) $ENGINE exec "${target#container:}" "$@" ;;
+    *) $COMPOSE --profile nodes exec -T "$target" "$@" ;;
+  esac
+}
+
 # --- Fleet inventory ---------------------------------------------------------
 
 # The API is the control plane's own view: node ids and overlay addresses. The
@@ -99,7 +130,7 @@ build_inventory() {
   : > "$WORK/fleet"
   for svc in $NODE_SERVICES; do
     [ -n "$svc" ] || continue
-    vip=$($COMPOSE --profile nodes logs --no-color "$svc" 2>/dev/null \
+    vip=$(node_logs "$svc" 2>/dev/null \
       | sed -n 's/.*Assigned Overlay VIP: \([0-9.]*\) .*/\1/p' | tail -1)
     if [ -z "$vip" ]; then
       echo "warning: $svc has not reported an overlay address; it is left out of the matrix" >&2
@@ -120,7 +151,7 @@ build_inventory() {
 # runs inside two nested loops that read the fleet file on stdin. Without it the first
 # dial swallows the rest of the fleet and the matrix comes out with a single column.
 dial() {
-  out=$($COMPOSE --profile nodes exec -T "$1" /bin/sovereign-cli overlay-dial \
+  out=$(node_exec "$1" /bin/sovereign-cli overlay-dial \
     "$SOCKS" "$2:$ECHO_PORT" "$DIAL_TIMEOUT" 2>/dev/null < /dev/null) && rc=0 || rc=$?
   case "$rc" in
     0) printf 'ok %s\n' "$(printf '%s' "$out" | awk '{print $3}')" ;;
@@ -262,7 +293,7 @@ case "$SCENARIO" in
     echo "the peer sets the denied pair hold:"
     for svc in "$A" "$B"; do
       echo "  $svc holds:"
-      $COMPOSE --profile nodes exec -T "$svc" sh -c 'cat /var/lib/neronet/netmap.json' 2>/dev/null \
+      node_exec "$svc" sh -c 'cat /var/lib/neronet/netmap.json' 2>/dev/null \
         | tr ',' '\n' | sed -n 's/.*"node_id":"\(pk_[^"]*\)".*/    \1/p' | sort -u
     done
 
@@ -270,7 +301,7 @@ case "$SCENARIO" in
     for svc in "$A" "$B"; do
       # --since rather than --tail: wireguard-go's own logging is verbose enough that
       # a few thousand lines do not reach back to the start of the scenario.
-      line=$($COMPOSE --profile nodes logs --no-color --since 10m "$svc" 2>/dev/null         | grep 'Data plane drops since start' | tail -1 | sed 's/.*\(Data plane drops\)//')
+      line=$(node_logs_since "$svc" 10m 2>/dev/null | grep 'Data plane drops since start' | tail -1 | sed 's/.*\(Data plane drops\)//')
       echo "  $svc: ${line:-no drop counted}"
     done
 
@@ -326,7 +357,7 @@ case "$SCENARIO" in
     echo "peer counts after the revocation:"
     while read -r svc vip id; do
       [ "$svc" = "$TARGET" ] && continue
-      echo "  $svc: $($COMPOSE --profile nodes logs --no-color --tail 200 "$svc" 2>/dev/null | grep -c 'revoked' || true) revocation lines"
+      echo "  $svc: $(node_logs_since "$svc" 10m 2>/dev/null | grep -c 'revoked' || true) revocation lines"
     done < "$WORK/fleet"
 
     NODE_SERVICES=$(echo "$NODE_SERVICES" | sed "s/\b$TARGET\b//")
