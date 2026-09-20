@@ -16,6 +16,10 @@
          default-src 'self', and no operator address may reach a font CDN. -->
     <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/jetbrains-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <!-- Sets data-theme before the first paint, from the stored preference or
+         prefers-color-scheme, so the console is never drawn in the wrong theme
+         and repainted. A separate file and not inline: script-src is 'self'. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body class="min-h-screen overflow-x-hidden bg-surface text-content antialiased">
     <div id="root"></div>
