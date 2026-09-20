@@ -1,0 +1,363 @@
+{
+  "description": "Locations, access-network profiles and route factors for the fleet simulator. Coordinates are city centres. ip_class is the class the fleet intends for the location; the node does not report it yet (it always sends UNKNOWN).",
+  "model": {
+    "fibre_speed_km_s": 200000,
+    "route_factor": 1.6,
+    "path_jitter_fraction": 0.01
+  },
+  "profiles": {
+    "fibre": { "delay_ms": 1, "jitter_ms": 0.3, "loss_pct": 0.01, "note": "wired, well provisioned" },
+    "cable": { "delay_ms": 4, "jitter_ms": 1.5, "loss_pct": 0.05, "note": "DOCSIS or VDSL home line" },
+    "5g": { "delay_ms": 9, "jitter_ms": 3, "loss_pct": 0.2, "note": "5G mobile" },
+    "4g": { "delay_ms": 22, "jitter_ms": 8, "loss_pct": 0.5, "note": "4G mobile" },
+    "satellite": { "delay_ms": 27, "jitter_ms": 10, "loss_pct": 1, "note": "low-earth-orbit satellite terminal" }
+  },
+  "locations": [
+    {
+      "id": "iad",
+      "city": "Ashburn",
+      "country": "US",
+      "continent": "NA",
+      "lat": 39.0438,
+      "lon": -77.4874,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "nyc",
+      "city": "New York",
+      "country": "US",
+      "continent": "NA",
+      "lat": 40.7128,
+      "lon": -74.006,
+      "ip_class": "RESIDENTIAL",
+      "profile": "cable"
+    },
+    {
+      "id": "lax",
+      "city": "Los Angeles",
+      "country": "US",
+      "continent": "NA",
+      "lat": 34.0522,
+      "lon": -118.2437,
+      "ip_class": "RESIDENTIAL",
+      "profile": "cable"
+    },
+    {
+      "id": "yyz",
+      "city": "Toronto",
+      "country": "CA",
+      "continent": "NA",
+      "lat": 43.6532,
+      "lon": -79.3832,
+      "ip_class": "RESIDENTIAL",
+      "profile": "fibre"
+    },
+    {
+      "id": "mex",
+      "city": "Mexico City",
+      "country": "MX",
+      "continent": "NA",
+      "lat": 19.4326,
+      "lon": -99.1332,
+      "ip_class": "MOBILE_5G",
+      "profile": "5g"
+    },
+    {
+      "id": "gru",
+      "city": "Sao Paulo",
+      "country": "BR",
+      "continent": "SA",
+      "lat": -23.5505,
+      "lon": -46.6333,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "eze",
+      "city": "Buenos Aires",
+      "country": "AR",
+      "continent": "SA",
+      "lat": -34.6037,
+      "lon": -58.3816,
+      "ip_class": "RESIDENTIAL",
+      "profile": "cable"
+    },
+    {
+      "id": "fra",
+      "city": "Frankfurt",
+      "country": "DE",
+      "continent": "EU",
+      "lat": 50.1109,
+      "lon": 8.6821,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "lon",
+      "city": "London",
+      "country": "GB",
+      "continent": "EU",
+      "lat": 51.5074,
+      "lon": -0.1278,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "par",
+      "city": "Paris",
+      "country": "FR",
+      "continent": "EU",
+      "lat": 48.8566,
+      "lon": 2.3522,
+      "ip_class": "RESIDENTIAL",
+      "profile": "fibre"
+    },
+    {
+      "id": "ams",
+      "city": "Amsterdam",
+      "country": "NL",
+      "continent": "EU",
+      "lat": 52.3676,
+      "lon": 4.9041,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "mil",
+      "city": "Milan",
+      "country": "IT",
+      "continent": "EU",
+      "lat": 45.4642,
+      "lon": 9.19,
+      "ip_class": "RESIDENTIAL",
+      "profile": "cable"
+    },
+    {
+      "id": "sto",
+      "city": "Stockholm",
+      "country": "SE",
+      "continent": "EU",
+      "lat": 59.3293,
+      "lon": 18.0686,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "mad",
+      "city": "Madrid",
+      "country": "ES",
+      "continent": "EU",
+      "lat": 40.4168,
+      "lon": -3.7038,
+      "ip_class": "RESIDENTIAL",
+      "profile": "cable"
+    },
+    {
+      "id": "rkv",
+      "city": "Reykjavik",
+      "country": "IS",
+      "continent": "EU",
+      "lat": 64.1466,
+      "lon": -21.9426,
+      "ip_class": "RESIDENTIAL",
+      "profile": "satellite"
+    },
+    {
+      "id": "ist",
+      "city": "Istanbul",
+      "country": "TR",
+      "continent": "EU",
+      "lat": 41.0082,
+      "lon": 28.9784,
+      "ip_class": "MOBILE_5G",
+      "profile": "4g"
+    },
+    {
+      "id": "jnb",
+      "city": "Johannesburg",
+      "country": "ZA",
+      "continent": "AF",
+      "lat": -26.2041,
+      "lon": 28.0473,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "lag",
+      "city": "Lagos",
+      "country": "NG",
+      "continent": "AF",
+      "lat": 6.5244,
+      "lon": 3.3792,
+      "ip_class": "MOBILE_5G",
+      "profile": "4g"
+    },
+    {
+      "id": "cai",
+      "city": "Cairo",
+      "country": "EG",
+      "continent": "AF",
+      "lat": 30.0444,
+      "lon": 31.2357,
+      "ip_class": "RESIDENTIAL",
+      "profile": "cable"
+    },
+    {
+      "id": "dxb",
+      "city": "Dubai",
+      "country": "AE",
+      "continent": "AS",
+      "lat": 25.2048,
+      "lon": 55.2708,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "bom",
+      "city": "Mumbai",
+      "country": "IN",
+      "continent": "AS",
+      "lat": 19.076,
+      "lon": 72.8777,
+      "ip_class": "MOBILE_5G",
+      "profile": "5g"
+    },
+    {
+      "id": "sin",
+      "city": "Singapore",
+      "country": "SG",
+      "continent": "AS",
+      "lat": 1.3521,
+      "lon": 103.8198,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "hkg",
+      "city": "Hong Kong",
+      "country": "HK",
+      "continent": "AS",
+      "lat": 22.3193,
+      "lon": 114.1694,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "tyo",
+      "city": "Tokyo",
+      "country": "JP",
+      "continent": "AS",
+      "lat": 35.6762,
+      "lon": 139.6503,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "sel",
+      "city": "Seoul",
+      "country": "KR",
+      "continent": "AS",
+      "lat": 37.5665,
+      "lon": 126.978,
+      "ip_class": "RESIDENTIAL",
+      "profile": "fibre"
+    },
+    {
+      "id": "syd",
+      "city": "Sydney",
+      "country": "AU",
+      "continent": "OC",
+      "lat": -33.8688,
+      "lon": 151.2093,
+      "ip_class": "DATACENTER",
+      "profile": "fibre"
+    },
+    {
+      "id": "per",
+      "city": "Perth",
+      "country": "AU",
+      "continent": "OC",
+      "lat": -31.9505,
+      "lon": 115.8605,
+      "ip_class": "RESIDENTIAL",
+      "profile": "cable"
+    },
+    {
+      "id": "akl",
+      "city": "Auckland",
+      "country": "NZ",
+      "continent": "OC",
+      "lat": -36.8485,
+      "lon": 174.7633,
+      "ip_class": "RESIDENTIAL",
+      "profile": "cable"
+    }
+  ],
+  "route_factors_note": "Pairs whose real path is far from the great circle. Each factor is derived from the reference round trip (Azure inter-region P50 for the datacentre cities of the pair, dataset of 2026-07-30, https://learn.microsoft.com/en-us/azure/networking/azure-network-latency) as reference_rtt_ms * fibre_speed_km_s / (2 * distance_km * 1000). Every other pair uses model.route_factor.",
+  "route_factors": [
+    {
+      "a": "syd",
+      "b": "jnb",
+      "factor": 2.97,
+      "reference_rtt_ms": 328,
+      "why": "no direct cable between Australia and South Africa"
+    },
+    {
+      "a": "gru",
+      "b": "sin",
+      "factor": 2.07,
+      "reference_rtt_ms": 331,
+      "why": "South America to Asia goes through Europe or North America"
+    },
+    {
+      "a": "gru",
+      "b": "jnb",
+      "factor": 4.32,
+      "reference_rtt_ms": 321,
+      "why": "South Atlantic paths are few; traffic goes through Europe"
+    },
+    {
+      "a": "fra",
+      "b": "tyo",
+      "factor": 2.53,
+      "reference_rtt_ms": 236,
+      "why": "Europe to Japan follows the Asian cable systems"
+    },
+    {
+      "a": "fra",
+      "b": "gru",
+      "factor": 2.01,
+      "reference_rtt_ms": 198,
+      "why": "Europe to South America crosses the North Atlantic first"
+    },
+    {
+      "a": "fra",
+      "b": "bom",
+      "factor": 2.13,
+      "reference_rtt_ms": 140,
+      "why": "Europe to India goes through the Red Sea cables"
+    },
+    {
+      "a": "fra",
+      "b": "dxb",
+      "factor": 2.07,
+      "reference_rtt_ms": 100,
+      "why": "Europe to the Gulf goes through the Red Sea cables"
+    },
+    {
+      "a": "fra",
+      "b": "jnb",
+      "factor": 1.9,
+      "reference_rtt_ms": 165,
+      "why": "Europe to South Africa follows the west African coast"
+    },
+    {
+      "a": "iad",
+      "b": "syd",
+      "factor": 1.29,
+      "reference_rtt_ms": 202,
+      "why": "trans-Pacific cables run close to the great circle"
+    }
+  ]
+}

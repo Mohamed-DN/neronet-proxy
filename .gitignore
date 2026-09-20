@@ -60,3 +60,6 @@ coverage.html
 **/*e2e_results*.json
 adversarial_metrics.json
 **/adversarial_metrics.json
+
+# Output of scripts/sim (fleet plan, override file, measurements)
+scripts/sim/out/
