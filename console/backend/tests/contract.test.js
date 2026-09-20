@@ -90,13 +90,8 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     let registeredNodeId;
 
     it('POST /v4/control/register with RegisterRequest.json', async () => {
-      const fixture = JSON.parse(
-        fs.readFileSync(path.join(FIXTURES_DIR, 'RegisterRequest.json'), 'utf8')
-      );
-      const res = await request(app)
-        .post('/v4/control/register')
-        .set(AUTH)
-        .send(fixture);
+      const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'RegisterRequest.json'), 'utf8'));
+      const res = await request(app).post('/v4/control/register').set(AUTH).send(fixture);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
       registeredNodeId = res.body.assigned_node_id;
@@ -107,14 +102,9 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     });
 
     it('POST /v4/control/heartbeat with HeartbeatRequest.json', async () => {
-      const fixture = JSON.parse(
-        fs.readFileSync(path.join(FIXTURES_DIR, 'HeartbeatRequest.json'), 'utf8')
-      );
+      const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'HeartbeatRequest.json'), 'utf8'));
       fixture.node_id = registeredNodeId;
-      const res = await request(app)
-        .post('/v4/control/heartbeat')
-        .set(AUTH)
-        .send(fixture);
+      const res = await request(app).post('/v4/control/heartbeat').set(AUTH).send(fixture);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
 
@@ -123,13 +113,8 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     });
 
     it('POST /v4/control/discover with DiscoverRequest.json', async () => {
-      const fixture = JSON.parse(
-        fs.readFileSync(path.join(FIXTURES_DIR, 'DiscoverRequest.json'), 'utf8')
-      );
-      const res = await request(app)
-        .post('/v4/control/discover')
-        .set(AUTH)
-        .send(fixture);
+      const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'DiscoverRequest.json'), 'utf8'));
+      const res = await request(app).post('/v4/control/discover').set(AUTH).send(fixture);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
 
@@ -138,13 +123,8 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     });
 
     it('POST /v4/control/circuit with CircuitRequest.json', async () => {
-      const fixture = JSON.parse(
-        fs.readFileSync(path.join(FIXTURES_DIR, 'CircuitRequest.json'), 'utf8')
-      );
-      const res = await request(app)
-        .post('/v4/control/circuit')
-        .set(AUTH)
-        .send(fixture);
+      const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'CircuitRequest.json'), 'utf8'));
+      const res = await request(app).post('/v4/control/circuit').set(AUTH).send(fixture);
 
       // Either 200 or 503 (if test db has fewer than 3 distinct relays for diversity)
       assert.ok([200, 503].includes(res.status));
@@ -155,14 +135,9 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     });
 
     it('POST /v4/control/sync-acls with ACLSyncRequest.json', async () => {
-      const fixture = JSON.parse(
-        fs.readFileSync(path.join(FIXTURES_DIR, 'ACLSyncRequest.json'), 'utf8')
-      );
+      const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'ACLSyncRequest.json'), 'utf8'));
       fixture.node_id = registeredNodeId;
-      const res = await request(app)
-        .post('/v4/control/sync-acls')
-        .set(AUTH)
-        .send(fixture);
+      const res = await request(app).post('/v4/control/sync-acls').set(AUTH).send(fixture);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
 
@@ -171,14 +146,9 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     });
 
     it('POST /v4/control/sync-routes with RouteSyncRequest.json', async () => {
-      const fixture = JSON.parse(
-        fs.readFileSync(path.join(FIXTURES_DIR, 'RouteSyncRequest.json'), 'utf8')
-      );
+      const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'RouteSyncRequest.json'), 'utf8'));
       fixture.node_id = registeredNodeId;
-      const res = await request(app)
-        .post('/v4/control/sync-routes')
-        .set(AUTH)
-        .send(fixture);
+      const res = await request(app).post('/v4/control/sync-routes').set(AUTH).send(fixture);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
 
@@ -187,14 +157,9 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     });
 
     it('POST /v4/control/netmap with NetmapRequest.json', async () => {
-      const fixture = JSON.parse(
-        fs.readFileSync(path.join(FIXTURES_DIR, 'NetmapRequest.json'), 'utf8')
-      );
+      const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'NetmapRequest.json'), 'utf8'));
       fixture.node_id = registeredNodeId;
-      const res = await request(app)
-        .post('/v4/control/netmap')
-        .set(AUTH)
-        .send(fixture);
+      const res = await request(app).post('/v4/control/netmap').set(AUTH).send(fixture);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
 
@@ -205,20 +170,14 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
 
   describe('Strict 400 Bad Request with RFC 6901 JSON pointer on invalid inputs', () => {
     it('/register rejects missing public_key_hex with pointer /public_key_hex', async () => {
-      const res = await request(app)
-        .post('/v4/control/register')
-        .set(AUTH)
-        .send({});
+      const res = await request(app).post('/v4/control/register').set(AUTH).send({});
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/public_key_hex');
     });
 
     it('/register rejects wrong type for public_key_hex with pointer /public_key_hex', async () => {
-      const res = await request(app)
-        .post('/v4/control/register')
-        .set(AUTH)
-        .send({ public_key_hex: 12345 });
+      const res = await request(app).post('/v4/control/register').set(AUTH).send({ public_key_hex: 12345 });
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/public_key_hex');
@@ -251,23 +210,17 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     });
 
     it('/heartbeat rejects missing node_id with pointer /node_id', async () => {
-      const res = await request(app)
-        .post('/v4/control/heartbeat')
-        .set(AUTH)
-        .send({});
+      const res = await request(app).post('/v4/control/heartbeat').set(AUTH).send({});
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/node_id');
     });
 
     it('/heartbeat rejects wrong type for cpu_usage_pct with pointer /cpu_usage_pct', async () => {
-      const res = await request(app)
-        .post('/v4/control/heartbeat')
-        .set(AUTH)
-        .send({
-          node_id: 'pk_1234567890abcdef',
-          cpu_usage_pct: 'not-a-number'
-        });
+      const res = await request(app).post('/v4/control/heartbeat').set(AUTH).send({
+        node_id: 'pk_1234567890abcdef',
+        cpu_usage_pct: 'not-a-number'
+      });
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/cpu_usage_pct');
@@ -298,104 +251,77 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     });
 
     it('/discover rejects non-number limit with pointer /limit', async () => {
-      const res = await request(app)
-        .post('/v4/control/discover')
-        .set(AUTH)
-        .send({
-          limit: 'twenty'
-        });
+      const res = await request(app).post('/v4/control/discover').set(AUTH).send({
+        limit: 'twenty'
+      });
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/limit');
     });
 
     it('/circuit rejects missing target_country with pointer /target_country', async () => {
-      const res = await request(app)
-        .post('/v4/control/circuit')
-        .set(AUTH)
-        .send({});
+      const res = await request(app).post('/v4/control/circuit').set(AUTH).send({});
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/target_country');
     });
 
     it('/circuit rejects non-integer hop_count with pointer /hop_count', async () => {
-      const res = await request(app)
-        .post('/v4/control/circuit')
-        .set(AUTH)
-        .send({
-          target_country: 'US',
-          hop_count: 'three'
-        });
+      const res = await request(app).post('/v4/control/circuit').set(AUTH).send({
+        target_country: 'US',
+        hop_count: 'three'
+      });
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/hop_count');
     });
 
     it('/sync-acls rejects missing node_id with pointer /node_id', async () => {
-      const res = await request(app)
-        .post('/v4/control/sync-acls')
-        .set(AUTH)
-        .send({});
+      const res = await request(app).post('/v4/control/sync-acls').set(AUTH).send({});
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/node_id');
     });
 
     it('/sync-acls rejects non-integer policy_epoch with pointer /policy_epoch', async () => {
-      const res = await request(app)
-        .post('/v4/control/sync-acls')
-        .set(AUTH)
-        .send({
-          node_id: 'pk_test',
-          policy_epoch: 'epoch-one'
-        });
+      const res = await request(app).post('/v4/control/sync-acls').set(AUTH).send({
+        node_id: 'pk_test',
+        policy_epoch: 'epoch-one'
+      });
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/policy_epoch');
     });
 
     it('/sync-routes rejects missing node_id with pointer /node_id', async () => {
-      const res = await request(app)
-        .post('/v4/control/sync-routes')
-        .set(AUTH)
-        .send({});
+      const res = await request(app).post('/v4/control/sync-routes').set(AUTH).send({});
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/node_id');
     });
 
     it('/sync-routes rejects non-integer route_epoch with pointer /route_epoch', async () => {
-      const res = await request(app)
-        .post('/v4/control/sync-routes')
-        .set(AUTH)
-        .send({
-          node_id: 'pk_test',
-          route_epoch: 'epoch-two'
-        });
+      const res = await request(app).post('/v4/control/sync-routes').set(AUTH).send({
+        node_id: 'pk_test',
+        route_epoch: 'epoch-two'
+      });
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/route_epoch');
     });
 
     it('/netmap rejects missing node_id with pointer /node_id', async () => {
-      const res = await request(app)
-        .post('/v4/control/netmap')
-        .set(AUTH)
-        .send({});
+      const res = await request(app).post('/v4/control/netmap').set(AUTH).send({});
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/node_id');
     });
 
     it('/netmap rejects non-integer version with pointer /version', async () => {
-      const res = await request(app)
-        .post('/v4/control/netmap')
-        .set(AUTH)
-        .send({
-          node_id: 'pk_test',
-          version: 'version-one'
-        });
+      const res = await request(app).post('/v4/control/netmap').set(AUTH).send({
+        node_id: 'pk_test',
+        version: 'version-one'
+      });
 
       assert.strictEqual(res.status, 400);
       assert.strictEqual(res.body.pointer, '/version');

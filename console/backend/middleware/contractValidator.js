@@ -4,9 +4,7 @@ const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
 const logger = require('../utils/logger');
 
-const SCHEMA_DIR =
-  process.env.SOVEREIGN_CONTRACT_SCHEMA_DIR ||
-  path.resolve(__dirname, '../../../api/contract/v4');
+const SCHEMA_DIR = process.env.SOVEREIGN_CONTRACT_SCHEMA_DIR || path.resolve(__dirname, '../../../api/contract/v4');
 
 const ajv = new Ajv2020({
   strict: true,
@@ -50,9 +48,7 @@ function initContractSchemas() {
       validators.set(baseName, validate);
 
       // Also register friendly aliases, e.g. RegisterRequest -> register.request
-      const dotName = baseName
-        .replace(/([a-z0-9])([A-Z])/g, '$1.$2')
-        .toLowerCase();
+      const dotName = baseName.replace(/([a-z0-9])([A-Z])/g, '$1.$2').toLowerCase();
       validators.set(dotName, validate);
     } catch (err) {
       logger.error(`[CONTRACT] Failed compiling schema ${baseName}: ${err.message}`);
@@ -68,9 +64,7 @@ initContractSchemas();
 function extractJsonPointer(err) {
   if (!err) return '/';
   if (err.keyword === 'required' && err.params && err.params.missingProperty) {
-    return err.instancePath
-      ? `${err.instancePath}/${err.params.missingProperty}`
-      : `/${err.params.missingProperty}`;
+    return err.instancePath ? `${err.instancePath}/${err.params.missingProperty}` : `/${err.params.missingProperty}`;
   }
   if (err.keyword === 'additionalProperties' && err.params && err.params.additionalProperty) {
     return err.instancePath
