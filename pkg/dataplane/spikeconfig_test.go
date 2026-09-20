@@ -4,6 +4,8 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+
+	"github.com/sovereign/proxy/v4/pkg/acl"
 )
 
 func mustAddr(s string) netip.Addr { return netip.MustParseAddr(s) }
@@ -16,7 +18,21 @@ const validSpikeDocument = `{
   "echo_port": 9999,
   "probe_target": "100.64.0.2",
   "probe_interval_seconds": 5,
-  "enforce": false,
+  "policy": {
+    "node_id": "pk_0000000000000001",
+    "overlay_ipv4": "100.64.0.1",
+    "inbound_rules": [],
+    "outbound_rules": [
+      {
+        "allowed_peer_vip": "100.64.0.2",
+        "protocol": "ALL",
+        "port_ranges": [{"start": 0, "end": 65535}],
+        "action": "ACCEPT",
+        "is_directional": false
+      }
+    ],
+    "epoch": 1
+  },
   "peers": [
     {
       "public_key": "8f40c5adb68f25624ae5b214ea767a6ec94d829d3d7b5e1ad1ba6f3e2138285f",
@@ -50,8 +66,13 @@ func TestParseSpikeConfig(t *testing.T) {
 	if cfg.Peers[0].PersistentKeepalive != 25 {
 		t.Fatalf("persistent keepalive = %d, want 25", cfg.Peers[0].PersistentKeepalive)
 	}
-	if cfg.Enforce {
-		t.Fatal("enforce read back as true from a document that says false")
+	// The filter is installed unconditionally now, so a lab document that wants to
+	// move traffic has to carry the policy that permits it.
+	if cfg.Policy == nil || len(cfg.Policy.OutboundRules) != 1 {
+		t.Fatalf("policy not read back: %+v", cfg.Policy)
+	}
+	if cfg.Policy.OutboundRules[0].Action != acl.ActionAccept {
+		t.Fatalf("policy action = %q, want ACCEPT", cfg.Policy.OutboundRules[0].Action)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"os"
 	"time"
 
 	"github.com/sovereign/proxy/v4/pkg/acl"
@@ -15,12 +16,28 @@ import (
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
 )
 
-// dataplaneOptions is everything the spike data plane needs from main.
+// dataplaneOptions is everything the data plane needs from main.
 type dataplaneOptions struct {
 	Mode        string
 	SpikeConfig string
 
-	Keypair *crypto.Keypair
+	// EchoPort, when non-zero, answers TCP on this node's overlay address. It is how
+	// the fleet scenarios prove reachability, and it is subject to the same filter as
+	// everything else, so it answers only what the policy permits.
+	EchoPort uint16
+
+	// StunServer, when set, is asked for this node's reflexive address so peers
+	// behind other networks have a candidate to try.
+	StunServer string
+
+	Keypair      *crypto.Keypair
+	IdentityPath string
+
+	// Control is the control plane client, and NodeID the identifier it assigned.
+	// Nil and empty when registration failed: the node then runs on whatever it has
+	// stored, or at default deny.
+	Control *control.Client
+	NodeID  string
 
 	// Registration is the control plane's answer, which carries the overlay
 	// addresses. Nil when registration failed and the node runs standalone.
@@ -28,6 +45,9 @@ type dataplaneOptions struct {
 
 	Netfilter *acl.NetstackFilter
 	Bridge    *bridge.NetstackBridge
+
+	// Netmaps is where the heartbeat loop finds the manager once it exists.
+	Netmaps *netmapHolder
 }
 
 // overlayPrefixBits is the prefix length of the mesh IPv4 range. The address is
@@ -38,11 +58,20 @@ const (
 	overlayV6PrefixBits = 48
 )
 
-// startDataplane brings up the WP-201 spike data plane.
+// stalenessCheckInterval is how often the node re-examines the age of the document it
+// is running on. It is unrelated to the heartbeat, because the case it exists for is
+// the one where no heartbeat comes back.
+const stalenessCheckInterval = 10 * time.Second
+
+// startDataplane brings the WireGuard data plane up and puts the node on its netmap.
 //
-// It returns a no-op closer when the mode is off, which is the default: a node
-// started without -dataplane runs exactly the code it ran before this package
-// existed.
+// It returns a no-op closer when the mode is off, which is the default: a node started
+// without -dataplane runs exactly the code it ran before this package existed.
+//
+// The order matters. The enforcement filter is installed with the device, before a
+// single packet can cross it, and pkg/acl with no policy loaded drops everything: a
+// node that never obtains a netmap moves nothing rather than falling back to something
+// permissive.
 func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) {
 	mode, err := dataplane.ParseMode(opts.Mode)
 	if err != nil {
@@ -62,7 +91,30 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		spike = &dataplane.SpikeConfig{}
 	}
 
-	addrs, err := overlayAddresses(opts, spike)
+	netmapPath := netmapPathFor(opts.IdentityPath)
+
+	// The stored document is read before anything is built, because the device's
+	// addresses, MTU and listen port come out of a netmap and a node restarted with
+	// the control plane down has only this one.
+	stored, storedErr := readPersistedNetmap(netmapPath)
+	if storedErr != nil && !os.IsNotExist(storedErr) {
+		log.Printf("[SOVEREIGN-NODE] Stored netmap at %s could not be read: %v", netmapPath, storedErr)
+	}
+
+	var fetched *control.NetmapResponse
+	if opts.Control != nil && opts.NodeID != "" {
+		fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		fetched, err = opts.Control.Netmap(fetchCtx, opts.NodeID, 0)
+		cancel()
+		if err != nil {
+			log.Printf("[SOVEREIGN-NODE] Initial netmap fetch failed: %v", err)
+			fetched = nil
+		}
+	}
+
+	self := selfFrom(fetched, stored)
+
+	addrs, err := overlayAddresses(opts, spike, self)
 	if err != nil {
 		return nil, err
 	}
@@ -71,16 +123,15 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		Mode:       mode,
 		PrivateKey: opts.Keypair.PrivateKey,
 		Addresses:  addrs,
-		ListenPort: listenPort(spike),
-		MTU:        spike.MTU,
-		Verbose:    true,
-		Logf:       log.Printf,
-	}
-	if spike.Enforce {
-		// Enforcement is opt-in for the spike and default-deny once on: with no
-		// policy loaded pkg/acl rejects every packet, which is the correct
-		// behaviour and a useless measurement.
-		cfg.Filter = dataplane.NewACLFilter(opts.Netfilter)
+		ListenPort: listenPort(spike, self),
+		MTU:        overlayMTU(spike, self),
+		// Unconditional. There is no configuration that turns this off: the filter is
+		// where the compiled policy meets the packets, and a node that carries traffic
+		// it has not been given a policy for is the failure this whole package exists
+		// to prevent.
+		Filter:  dataplane.NewACLFilter(opts.Netfilter),
+		Verbose: true,
+		Logf:    log.Printf,
 	}
 
 	dev, err := dataplane.New(cfg)
@@ -88,34 +139,73 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		return nil, err
 	}
 
-	log.Printf("[SOVEREIGN-NODE] Data plane up in %s mode on %v (wireguard public key %s, udp port %d, enforcement %t)",
-		dev.Mode(), dev.Addresses(), hex.EncodeToString(opts.Keypair.PublicKey[:]), listenPort(spike), spike.Enforce)
+	log.Printf("[SOVEREIGN-NODE] Data plane up in %s mode on %v (wireguard public key %s, udp port %d, mtu %d, enforcement on)",
+		dev.Mode(), dev.Addresses(), hex.EncodeToString(opts.Keypair.PublicKey[:]), cfg.ListenPort, cfg.MTU)
 
-	if err := dev.SetPeers(spike.Peers); err != nil {
-		dev.Close()
-		return nil, err
+	manager := newNetmapManager(opts.Control, dev, opts.Netfilter, opts.IdentityPath, cfg.ListenPort, opts.StunServer)
+
+	switch {
+	case fetched != nil:
+		if applyErr := manager.Apply(fetched, time.Now()); applyErr != nil {
+			dev.Close()
+			return nil, fmt.Errorf("applying the initial netmap: %w", applyErr)
+		}
+	default:
+		loaded, loadErr := manager.LoadPersisted(time.Now())
+		if loadErr != nil {
+			log.Printf("[SOVEREIGN-NODE] Stored netmap could not be applied: %v", loadErr)
+		}
+		if !loaded {
+			log.Printf("[SOVEREIGN-NODE] No netmap: the node is at default deny and carries no peer")
+		} else {
+			log.Printf("[SOVEREIGN-NODE] Running fail-static on the stored netmap until the control plane answers")
+		}
 	}
-	log.Printf("[SOVEREIGN-NODE] Data plane peers applied: %d", len(spike.Peers))
+
+	// The spike peer document still overrides the peer set, for the two-container lab
+	// that has no control plane at all. It is never combined with a netmap: a document
+	// from the control plane is the authority whenever there is one.
+	if fetched == nil && len(spike.Peers) > 0 {
+		if err := dev.SetPeers(spike.Peers); err != nil {
+			dev.Close()
+			return nil, err
+		}
+		if spike.Policy != nil {
+			opts.Netfilter.UpdatePolicy(spike.Policy)
+		}
+		log.Printf("[SOVEREIGN-NODE] Spike peer document applied: %d peer(s), policy %s",
+			len(spike.Peers), policyNote(spike.Policy))
+	}
+
+	if opts.Netmaps != nil {
+		opts.Netmaps.set(manager)
+	}
 
 	opts.Bridge.SetOverlayDialer(dev)
 
+	echoPort := opts.EchoPort
+	if echoPort == 0 {
+		echoPort = spike.EchoPort
+	}
+
 	var echo *dataplane.EchoResponder
-	if spike.EchoPort != 0 {
-		echo, err = dataplane.ListenEcho(dev, spike.EchoPort, log.Printf)
+	if echoPort != 0 {
+		echo, err = dataplane.ListenEcho(dev, echoPort, log.Printf)
 		if err != nil {
 			dev.Close()
 			return nil, err
 		}
-		log.Printf("[SOVEREIGN-NODE] Spike measurement responder listening on %s", echo.Addr())
+		log.Printf("[SOVEREIGN-NODE] Overlay echo listening on %s", echo.Addr())
 	}
 
-	probeCtx, stopProbe := context.WithCancel(ctx)
+	loopCtx, stopLoops := context.WithCancel(ctx)
+	go manager.WatchStaleness(loopCtx, stalenessCheckInterval)
 	if spike.ProbeTarget != "" {
-		go probeLoop(probeCtx, dev, spike)
+		go probeLoop(loopCtx, dev, spike)
 	}
 
 	return func() {
-		stopProbe()
+		stopLoops()
 		if echo != nil {
 			_ = echo.Close()
 		}
@@ -127,24 +217,52 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 	}, nil
 }
 
-func listenPort(spike *dataplane.SpikeConfig) uint16 {
-	if spike.ListenPort == 0 {
-		return dataplane.DefaultListenPort
+// selfFrom prefers the document just fetched over the stored one.
+func selfFrom(fetched *control.NetmapResponse, stored *persistedNetmap) control.NetmapSelf {
+	if fetched != nil {
+		return fetched.Self
 	}
-	return spike.ListenPort
+	if stored != nil && stored.Netmap != nil {
+		return stored.Netmap.Self
+	}
+	return control.NetmapSelf{}
 }
 
-// overlayAddresses prefers the addresses the control plane assigned. The spike file
-// supplies them only when there are none, which is how a node measured without a
-// control plane gets an address at all.
-func overlayAddresses(opts dataplaneOptions, spike *dataplane.SpikeConfig) ([]netip.Prefix, error) {
+func listenPort(spike *dataplane.SpikeConfig, self control.NetmapSelf) uint16 {
+	if self.ListenPort != 0 {
+		return self.ListenPort
+	}
+	if spike.ListenPort != 0 {
+		return spike.ListenPort
+	}
+	return dataplane.DefaultListenPort
+}
+
+// overlayMTU is a configured constant end to end: the control plane sends the same
+// value to every node. There is no path MTU discovery, which is recorded in ADR 0020.
+func overlayMTU(spike *dataplane.SpikeConfig, self control.NetmapSelf) int {
+	if self.MTU != 0 {
+		return self.MTU
+	}
+	return spike.MTU
+}
+
+// overlayAddresses prefers the netmap, then what registration assigned, then the spike
+// document. A node with none of the three cannot receive anything and says so.
+func overlayAddresses(opts dataplaneOptions, spike *dataplane.SpikeConfig, self control.NetmapSelf) ([]netip.Prefix, error) {
 	type assignedAddr struct {
 		addr string
 		bits int
 	}
 
 	var assigned []assignedAddr
-	if opts.Registration != nil {
+	switch {
+	case self.OverlayIPv4 != "" || self.OverlayIPv6 != "":
+		assigned = []assignedAddr{
+			{self.OverlayIPv4, overlayPrefixBits},
+			{self.OverlayIPv6, overlayV6PrefixBits},
+		}
+	case opts.Registration != nil:
 		assigned = []assignedAddr{
 			{opts.Registration.OverlayIPv4, overlayPrefixBits},
 			{opts.Registration.OverlayIPv6, overlayV6PrefixBits},
@@ -158,7 +276,7 @@ func overlayAddresses(opts dataplaneOptions, spike *dataplane.SpikeConfig) ([]ne
 		}
 		a, err := netip.ParseAddr(pair.addr)
 		if err != nil {
-			return nil, fmt.Errorf("control plane assigned overlay address %q is not an IP: %w", pair.addr, err)
+			return nil, fmt.Errorf("overlay address %q is not an IP: %w", pair.addr, err)
 		}
 		out = append(out, netip.PrefixFrom(a, pair.bits))
 	}

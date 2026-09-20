@@ -36,6 +36,8 @@ func main() {
 	maxBandwidthKbps := config.BindIntFlag(flag.CommandLine, "max-bandwidth-kbps", "SOVEREIGN_MAX_BANDWIDTH_KBPS", 0, "Self-declared uplink capacity in kbps; 0 means not declared")
 	dataplaneMode := config.BindStringFlag(flag.CommandLine, "dataplane", "SOVEREIGN_DATAPLANE", "off", "WireGuard data plane mode: off, netstack or tun")
 	spikePeers := config.BindStringFlag(flag.CommandLine, "spike-peers", "SOVEREIGN_SPIKE_PEERS", "", "Path to the WP-201 spike peers document")
+	overlayEchoPort := config.BindIntFlag(flag.CommandLine, "overlay-echo-port", "SOVEREIGN_OVERLAY_ECHO_PORT", 0, "TCP port answering on this node's overlay address; 0 disables it")
+	stunServer := config.BindStringFlag(flag.CommandLine, "stun-server", "SOVEREIGN_STUN_SERVER", "", "STUN server (host:port) asked for this node's reflexive address; empty disables it")
 	flag.Parse()
 
 	log.Printf("[SOVEREIGN-NODE] Initializing SovereignMesh client daemon (%s)...", ClientVersion)
@@ -86,7 +88,16 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// The heartbeat loop starts as soon as registration succeeds; the data plane comes
+	// up after it, because it needs the overlay addresses registration returned. This
+	// is where the loop finds the netmap manager once it exists.
+	netmaps := &netmapHolder{}
+
 	log.Printf("[SOVEREIGN-NODE] Country %s is self-declared by the operator, not measured", *countryCode)
+
+	// The identifier the data plane starts with. Empty when registration failed, in
+	// which case the node runs on its stored netmap or at default deny.
+	dataplaneNodeID := ""
 
 	regCtx, regCancel := context.WithTimeout(ctx, 5*time.Second)
 	regResp, err := ctrlClient.Register(regCtx, keypair.PublicKey, role, nil, capability(*enableExit, *countryCode, *maxBandwidthKbps))
@@ -124,6 +135,12 @@ func main() {
 			log.Printf("[SOVEREIGN-NODE] Subnet routes synced (epoch: %d, count: %d)", routeEpoch, len(routesList))
 		}
 
+		// Snapshot for the data plane's first fetch. The loop below may re-enrol and
+		// reassign nodeID, and reading a variable another goroutine writes is a race
+		// whatever the value turns out to be; the loop passes its own current id to
+		// every later netmap fetch.
+		dataplaneNodeID = nodeID
+
 		// Start periodic heartbeat and continuous posture attestation loop
 		go func() {
 			ticker := time.NewTicker(15 * time.Second)
@@ -157,7 +174,7 @@ func main() {
 
 					hbCtx, hbCancel := context.WithTimeout(ctx, 5*time.Second)
 					hbResp, hbErr := ctrlClient.SendHeartbeatWithPosture(
-						hbCtx, nodeID, nil, 0, cpuPctUnmeasured, memoryMB, batteryPctUnmeasured, false, att,
+						hbCtx, nodeID, netmaps.endpoints(), 0, cpuPctUnmeasured, memoryMB, batteryPctUnmeasured, false, att,
 					)
 					hbCancel()
 
@@ -237,6 +254,12 @@ func main() {
 						}
 					}
 
+					// The data plane's own update path: revocations reach the device at
+					// once, and a newer netmap version is fetched and applied whole.
+					// The two epoch syncs below stay for a node running without a data
+					// plane, which sees no netmap version at all.
+					netmaps.onHeartbeat(ctx, nodeID, hbResp)
+
 					// Update routes if epoch advanced
 					if hbResp.RouteEpoch > routeEpoch {
 						rCtx, rCancel := context.WithTimeout(ctx, 5*time.Second)
@@ -255,15 +278,22 @@ func main() {
 		}()
 	}
 
-	// WP-201 spike data plane. Off unless -dataplane names a mode, in which case
-	// the SOCKS5 and HTTP proxies start routing overlay destinations through it.
+	// The WireGuard data plane. Off unless -dataplane names a mode, in which case the
+	// SOCKS5 and HTTP proxies start routing overlay destinations through it and the
+	// node runs on the netmap the control plane serves.
 	stopDataplane, dpErr := startDataplane(ctx, dataplaneOptions{
 		Mode:         *dataplaneMode,
 		SpikeConfig:  *spikePeers,
+		EchoPort:     uint16(*overlayEchoPort),
+		StunServer:   *stunServer,
 		Keypair:      keypair,
+		IdentityPath: *identityPath,
+		Control:      ctrlClient,
+		NodeID:       dataplaneNodeID,
 		Registration: regResp,
 		Netfilter:    netfilter,
 		Bridge:       netstackBridge,
+		Netmaps:      netmaps,
 	})
 	if dpErr != nil {
 		log.Fatalf("Failed to start data plane: %v", dpErr)

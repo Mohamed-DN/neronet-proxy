@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+
+	"github.com/sovereign/proxy/v4/pkg/acl"
 )
 
 // SpikeConfig is the file the -spike-peers flag points at.
@@ -41,11 +43,15 @@ type SpikeConfig struct {
 	// ProbeIntervalSeconds is how often ProbeTarget is pinged. Zero selects 10.
 	ProbeIntervalSeconds int `json:"probe_interval_seconds,omitempty"`
 
-	// Enforce applies the compiled ACL policy to the packets crossing the tunnel.
-	// It is off by default in the spike because a node that has not yet loaded a
-	// policy drops everything under default deny, which would make the measurement
-	// a measurement of the filter rather than of the transport.
-	Enforce bool `json:"enforce"`
+	// Policy is the compiled policy the node's filter enforces while it runs on this
+	// document.
+	//
+	// It replaces the spike's `enforce` switch, which turned the filter off. The
+	// filter is now installed unconditionally, so a lab that wants to move traffic
+	// has to say what it permits -- which is also the only way to measure the
+	// transport with enforcement on, and ADR 0020 records that this had never been
+	// measured.
+	Policy *acl.CompiledPeerPolicy `json:"policy,omitempty"`
 
 	// Peers is the complete peer set. An empty list is valid and means this node
 	// talks to nobody.
