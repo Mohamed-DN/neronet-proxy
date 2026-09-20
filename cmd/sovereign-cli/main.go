@@ -26,6 +26,11 @@ Commands:
   circuit <country>     Build and inspect a 3-Hop Layered Onion Circuit
   keygen                Generate a fresh Curve25519 identity keypair and Node ID
   stun-ping <host:port> Ping a STUN endpoint and measure NAT reflection latency
+  overlay-dial <socks5 host:port> <overlay host:port> [timeout seconds]
+                        Dial an overlay address through this node's own SOCKS5 inbound
+                        and read the echo back. Prints "ok <target> <rtt ms>",
+                        "denied <target> (<reason>)" or "timeout <target>", and exits
+                        0, 2 or 3 respectively.
   help                  Show this help message
 
 Global Options:
@@ -184,6 +189,9 @@ func main() {
 
 		fmt.Printf("STUN Reply Received in %v!\n", rtt)
 		fmt.Printf("  Public Mapped Endpoint: %s\n", mapped.String())
+
+	case "overlay-dial":
+		os.Exit(overlayDial(cmdArgs[1:]))
 
 	case "help":
 		printHelp()
