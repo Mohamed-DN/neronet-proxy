@@ -48,6 +48,11 @@ function formatNode(row) {
     ip_class: row.ip_class,
     country_code: row.country_code,
     city: row.city || '',
+    // Null when the node never declared a position. When present, the value is what
+    // the node's operator configured, not something the control plane measured.
+    latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
+    longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+    location_source: metadata.location_source === 'declared' ? 'declared' : null,
     asn: Number(row.asn) || 0,
     endpoints: Array.isArray(endpoints) ? endpoints : [],
     onion_routing_enabled: onionEnabled,

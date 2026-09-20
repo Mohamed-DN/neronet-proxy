@@ -168,7 +168,15 @@ router.post('/register', async (req, res) => {
     // UNKNOWN, not RESIDENTIAL. Nothing classifies a node's uplink, and a node that
     // does not declare one is not evidence of a domestic line.
     const ipClass = String(capability.ip_class || 'UNKNOWN');
-    const city = String(capability.city || '');
+    const city = String(capability.city || '')
+      .trim()
+      .slice(0, 128);
+    // City and coordinates are what the operator typed into the node's configuration.
+    // Nothing verifies them, so they are stored as declared and reported as such.
+    const declared = parseDeclaredCoordinates(capability);
+    if (declared.error) {
+      return res.status(400).json({ error: declared.error });
+    }
     const asn = Number.isFinite(capability.asn) ? capability.asn : 0;
     const endpoints = Array.isArray(req.body.endpoints) ? req.body.endpoints : [];
 
@@ -180,9 +188,9 @@ router.post('/register', async (req, res) => {
     // allocating new ones, otherwise every restart burns an address and orphans the
     // previous lease.
     const existing = await runQuery(
-      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code FROM nodes WHERE id = $1',
+      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code, latitude, longitude FROM nodes WHERE id = $1',
       [nodeId],
-      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code FROM nodes WHERE id = ?',
+      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code, latitude, longitude FROM nodes WHERE id = ?',
       [nodeId]
     );
 
@@ -210,7 +218,8 @@ router.post('/register', async (req, res) => {
     // changed only through the authenticated console API. Endpoints are different:
     // they change whenever the node moves, and a wrong one costs reachability
     // rather than policy.
-    const mismatch = existing.length > 0 ? describeMismatch(existing[0], { role, ipClass, countryCode }) : null;
+    const mismatch =
+      existing.length > 0 ? describeMismatch(existing[0], { role, ipClass, countryCode, declared }) : null;
 
     if (isPostgres()) {
       const pool = getPgPool();
@@ -262,6 +271,29 @@ router.post('/register', async (req, res) => {
         overlayIpv4,
         overlayIpv6,
         endpointsJson
+      );
+    }
+
+    // The declared position is written only while the row has none, which is the
+    // same rule the country follows: a re-registration cannot move an enrolled node.
+    // A node enrolled before it could declare a position gets one the first time it
+    // does; a different value later is recorded by describeMismatch and not applied.
+    if (declared.latitude !== null) {
+      await runQuery(
+        `UPDATE nodes SET
+           latitude = $1,
+           longitude = $2,
+           city = CASE WHEN city IS NULL OR city = '' THEN $3 ELSE city END,
+           metadata = metadata || '{"location_source":"declared"}'::jsonb
+         WHERE id = $4 AND latitude IS NULL AND longitude IS NULL`,
+        [declared.latitude, declared.longitude, city, nodeId],
+        `UPDATE nodes SET
+           latitude = ?,
+           longitude = ?,
+           city = CASE WHEN city IS NULL OR city = '' THEN ? ELSE city END,
+           metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.location_source', 'declared')
+         WHERE id = ? AND latitude IS NULL AND longitude IS NULL`,
+        [declared.latitude, declared.longitude, city, nodeId]
       );
     }
 
@@ -736,13 +768,59 @@ function describeMismatch(stored, requested) {
 
   const changed = fields.filter(([, was, asked]) => was !== asked).map(([field]) => field);
 
+  // A node that declares a position when the row already holds one. The columns are
+  // single-precision on PostgreSQL, hence the tolerance.
+  const declared = requested.declared;
+  const moved =
+    declared &&
+    declared.latitude !== null &&
+    stored.latitude !== null &&
+    stored.longitude !== null &&
+    (Math.abs(Number(stored.latitude) - declared.latitude) > COORDINATE_TOLERANCE ||
+      Math.abs(Number(stored.longitude) - declared.longitude) > COORDINATE_TOLERANCE);
+  if (moved) changed.push('latitude', 'longitude');
+
   if (changed.length === 0) return null;
 
-  return {
-    changed,
-    stored: { role: stored.role, ip_class: stored.ip_class, country_code: stored.country_code },
-    requested: { role: requested.role, ip_class: requested.ipClass, country_code: requested.countryCode }
-  };
+  const storedValues = { role: stored.role, ip_class: stored.ip_class, country_code: stored.country_code };
+  const requestedValues = { role: requested.role, ip_class: requested.ipClass, country_code: requested.countryCode };
+  if (moved) {
+    storedValues.latitude = Number(stored.latitude);
+    storedValues.longitude = Number(stored.longitude);
+    requestedValues.latitude = declared.latitude;
+    requestedValues.longitude = declared.longitude;
+  }
+
+  return { changed, stored: storedValues, requested: requestedValues };
+}
+
+// Degrees. Larger than the single-precision rounding of the REAL columns, smaller than
+// anything a person would type as a different place.
+const COORDINATE_TOLERANCE = 0.001;
+
+/**
+ * Read the declared latitude and longitude from a registration's capability object.
+ *
+ * Both absent means the node declared nothing. Anything else must be a pair of JSON
+ * numbers inside the geographic range: half a coordinate, a string or an out-of-range
+ * value is refused, not stored as something plausible.
+ */
+function parseDeclaredCoordinates(capability) {
+  const lat = capability.latitude;
+  const lon = capability.longitude;
+  const absent = (v) => v === undefined || v === null;
+
+  if (absent(lat) && absent(lon)) return { latitude: null, longitude: null };
+  if (absent(lat) || absent(lon)) {
+    return { error: 'latitude and longitude must be declared together' };
+  }
+  if (typeof lat !== 'number' || typeof lon !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return { error: 'latitude and longitude must be numbers' };
+  }
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    return { error: 'latitude must be within [-90, 90] and longitude within [-180, 180]' };
+  }
+  return { latitude: lat, longitude: lon };
 }
 
 /** Endpoints are JSONB on PostgreSQL and a TEXT column on SQLite. */
