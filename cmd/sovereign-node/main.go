@@ -99,9 +99,7 @@ func main() {
 	// which case the node runs on its stored netmap or at default deny.
 	dataplaneNodeID := ""
 
-	regCtx, regCancel := context.WithTimeout(ctx, 5*time.Second)
-	regResp, err := ctrlClient.Register(regCtx, keypair.PublicKey, role, nil, capability(*enableExit, *countryCode, *maxBandwidthKbps))
-	regCancel()
+	regResp, err := registerWithRetry(ctx, ctrlClient, keypair.PublicKey, role, capability(*enableExit, *countryCode, *maxBandwidthKbps))
 
 	if err != nil {
 		log.Printf("[SOVEREIGN-NODE] Warning: Initial control plane registration failed: %v (operating in local standalone mode)", err)
@@ -449,6 +447,61 @@ func loadOrCreateIdentity(path string) (*crypto.Keypair, error) {
 // curve25519Basepoint is the generator, used to recover a public key from a stored
 // private one.
 var curve25519Basepoint = [crypto.KeySize]byte{9}
+
+// registerWithRetry enrols the node, retrying while the control plane is not answering
+// yet.
+//
+// One attempt was not enough. A failed registration leaves the node standalone for the
+// rest of its life -- the heartbeat loop only starts once it has succeeded -- so a
+// control plane that was still warming up, or six nodes enrolling into it at the same
+// instant, cost the node every update the control plane would ever have sent it. The
+// whole fleet came up on whatever it had stored and never heard from the control plane
+// again.
+//
+// The per-attempt deadline is unchanged; what was missing was the second attempt.
+func registerWithRetry(
+	ctx context.Context,
+	client *control.Client,
+	publicKey [crypto.KeySize]byte,
+	role string,
+	cap control.CapabilityDesc,
+) (*control.RegisterResponse, error) {
+	const attempts = 6
+
+	delay := time.Second
+	var lastErr error
+
+	for attempt := 1; attempt <= attempts; attempt++ {
+		regCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		resp, err := client.Register(regCtx, publicKey, role, nil, cap)
+		cancel()
+		if err == nil {
+			if attempt > 1 {
+				log.Printf("[SOVEREIGN-NODE] Registered on attempt %d", attempt)
+			}
+			return resp, nil
+		}
+
+		lastErr = err
+		if attempt == attempts {
+			break
+		}
+		log.Printf("[SOVEREIGN-NODE] Registration attempt %d/%d failed: %v (retrying in %s)", attempt, attempts, err, delay)
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+
+		delay *= 2
+		if delay > 15*time.Second {
+			delay = 15 * time.Second
+		}
+	}
+
+	return nil, lastErr
+}
 
 // reregister enrols this node again using the identity it already holds.
 //
