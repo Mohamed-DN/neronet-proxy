@@ -34,7 +34,8 @@ export async function run(ctx) {
 
   const shaped = ctx.opts.reshape || (await isShaped(ctx));
 
-  await Promise.all(victims.map((e) => engine(['stop', '-t', '2', before.get(e.id).container.id], { check: true })));
+  const victimIds = victims.map((e) => before.get(e.id).container.id);
+  await engine(['stop', '-t', '2', ...victimIds], { check: true });
 
   // The liveness window is what tells the console a node is gone; wait for it to notice.
   const window = baseline.liveness_window_seconds ?? 60;
@@ -48,7 +49,7 @@ export async function run(ctx) {
     `active ${baseline.active_nodes} -> ${during.active_nodes} after ${dropped.seconds} s`
   );
 
-  await Promise.all(victims.map((e) => engine(['start', before.get(e.id).container.id], { check: true })));
+  await engine(['start', ...victimIds], { check: true });
 
   // A restarted container has a new network namespace, so the shaping has to be applied again.
   if (shaped) await shapeFleet({ project: ctx.cfg.project, plan: ctx.opts.plan, log: () => {} });

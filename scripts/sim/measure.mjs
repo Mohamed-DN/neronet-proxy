@@ -28,17 +28,21 @@ const MAX_CONCURRENT_PINGS = Number(process.env.SIM_MEASURE_MAX_PINGS || 130);
 /** Allowed deviation for a planned round trip. */
 export const allowedDeviation = (plannedMs) => Math.max(TOLERANCE_MS, TOLERANCE_FRACTION * plannedMs);
 
-/** Shell run by the sidecar: one background ping per target, one result line each. */
-export function pingScript(targets, count) {
+/** Shell run by the sidecar: background pings per target in batches to avoid scheduling stalls. */
+export function pingScript(targets, count, batchSize = 16) {
   const lines = ['set +e'];
-  for (const t of targets) {
-    lines.push(
-      `( ping -n -c ${count} -i 0.2 -W 4 ${t.ip} 2>/dev/null | sed -n 's/.*time=\\([0-9.]*\\) ms.*/\\1/p' | sort -n | ` +
-        `awk -v id=${t.id} '{a[NR]=$1} END {if (NR==0) {print id, "nan", 0} else ` +
-        `printf "%s %.3f %d\\n", id, (a[int((NR+1)/2)]+a[int(NR/2)+1])/2, NR}' ) &`
-    );
+  for (let i = 0; i < targets.length; i += batchSize) {
+    const chunk = targets.slice(i, i + batchSize);
+    for (const t of chunk) {
+      lines.push(
+        `( ping -n -c ${count} -i 0.2 -W 4 ${t.ip} 2>/dev/null | sed -n 's/.*time=\\([0-9.]*\\) ms.*/\\1/p' | sort -n | ` +
+          `awk -v id=${t.id} '{a[NR]=$1} END {if (NR==0) {print id, "nan", 0} else ` +
+          `printf "%s %.3f %d\\n", id, (a[int((NR+1)/2)]+a[int(NR/2)+1])/2, NR}' ) &`
+      );
+    }
+    lines.push('wait');
   }
-  lines.push('wait', '');
+  lines.push('');
   return lines.join('\n');
 }
 
