@@ -1,0 +1,10 @@
+{
+  "assigned_node_id": "pk_0123456789abcdef",
+  "overlay_ipv4": "100.64.0.2",
+  "overlay_ipv6": "fd00::2",
+  "relays": [],
+  "lease_expiry_utc": 1726944000,
+  "network_psk_hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "policy_epoch": 1,
+  "route_epoch": 1
+}

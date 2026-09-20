@@ -1,0 +1,12 @@
+{
+  "acknowledged": true,
+  "force_rekey": false,
+  "drain_and_exit": false,
+  "revoked_keys": [
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  ],
+  "is_quarantined": false,
+  "policy_epoch": 1,
+  "route_epoch": 1,
+  "netmap_version": 1
+}

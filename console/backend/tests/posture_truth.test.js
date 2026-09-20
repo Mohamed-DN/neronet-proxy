@@ -13,6 +13,7 @@ const { seedDatabase } = require('../db/seed');
 const { createApp } = require('../server');
 const HeartbeatBuffer = require('../services/HeartbeatBuffer');
 const MetricsCollector = require('../services/MetricsCollector');
+const { buildPostureDocument } = require('../utils/posture');
 
 /**
  * Posture reached the console as a schema default: every node compliant, every disk
@@ -215,7 +216,8 @@ describe('posture reports only what was measured', () => {
     });
 
     it('does not convert a missing or non-boolean check into true', async () => {
-      await request(app)
+      // Under WP-102 contract validation, a non-boolean check returns 400 Bad Request at the wire.
+      const res = await request(app)
         .post('/v4/control/heartbeat')
         .send({
           node_id: nodeId,
@@ -229,12 +231,19 @@ describe('posture reports only what was measured', () => {
           })
         });
 
-      await HeartbeatBuffer.flush();
+      assert.strictEqual(res.status, 400);
+      assert.strictEqual(res.body.pointer, '/posture/disk_encrypted');
 
-      const stored = storedPosture(db, nodeId);
-      assert.strictEqual(stored.disk_encrypted, null, 'an absent check became a value');
-      assert.strictEqual(stored.firewall_active, null, 'the string "true" was read as a measurement');
-      assert.strictEqual(stored.os_version, null, 'whitespace was stored as an OS version');
+      // Assert buildPostureDocument defensively converts non-boolean and whitespace checks to null
+      const doc = buildPostureDocument({
+        node_id: nodeId,
+        disk_encrypted: undefined,
+        firewall_active: 'true',
+        os_version: '   '
+      });
+      assert.strictEqual(doc.disk_encrypted, null, 'an absent check became a value');
+      assert.strictEqual(doc.firewall_active, null, 'the string "true" was read as a measurement');
+      assert.strictEqual(doc.os_version, null, 'whitespace was stored as an OS version');
     });
 
     it('keeps the stored document when a later beat carries no attestation', async () => {

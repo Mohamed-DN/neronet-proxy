@@ -1,0 +1,28 @@
+{
+  "public_key_hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "role": "EXIT_BRIDGE",
+  "endpoints": [
+    {
+      "ip_address": "198.51.100.1",
+      "port": 51820,
+      "protocol": "udp",
+      "is_stun_discovered": false
+    }
+  ],
+  "auth_token": "valid-test-token",
+  "client_version": "v4.0.0",
+  "os_arch": "linux/amd64",
+  "capability": {
+    "enabled": true,
+    "country_code": "DE",
+    "city": "Frankfurt",
+    "latitude": 50.1109,
+    "longitude": 8.6821,
+    "asn": 12345,
+    "ip_class": "DATACENTER",
+    "max_bandwidth_kbps": 100000,
+    "max_concurrent_streams": 100,
+    "allow_udp": true,
+    "ac_power_only": true
+  }
+}

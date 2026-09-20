@@ -45,6 +45,11 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      - name: contractgen schema drift check
+        run: |
+          go run ./cmd/contractgen
+          git diff --exit-code api/contract/v4
+
       - name: go test -race
         run: go test ./... -race -count=1
 

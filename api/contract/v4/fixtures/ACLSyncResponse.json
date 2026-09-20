@@ -1,0 +1,23 @@
+{
+  "new_policy_epoch": 2,
+  "policy": {
+    "node_id": "pk_0123456789abcdef",
+    "overlay_ipv4": "100.64.0.2",
+    "inbound_rules": [
+      {
+        "allowed_peer_vip": "100.64.0.3",
+        "protocol": "TCP",
+        "port_ranges": [
+          {
+            "start": 80,
+            "end": 443
+          }
+        ],
+        "action": "ACCEPT",
+        "is_directional": true
+      }
+    ],
+    "outbound_rules": [],
+    "epoch": 2
+  }
+}

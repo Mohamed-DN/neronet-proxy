@@ -1,0 +1,52 @@
+{
+  "circuit_id": 34829104,
+  "hops": [
+    {
+      "hop_index": 0,
+      "node_id": "pk_1111111111111111",
+      "public_key_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+      "endpoints": [
+        {
+          "ip_address": "198.51.100.10",
+          "port": 51820,
+          "protocol": "udp",
+          "is_stun_discovered": false
+        }
+      ]
+    },
+    {
+      "hop_index": 1,
+      "node_id": "pk_2222222222222222",
+      "public_key_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+      "endpoints": [
+        {
+          "ip_address": "198.51.100.20",
+          "port": 51820,
+          "protocol": "udp",
+          "is_stun_discovered": false
+        }
+      ]
+    },
+    {
+      "hop_index": 2,
+      "node_id": "pk_3333333333333333",
+      "public_key_hex": "3333333333333333333333333333333333333333333333333333333333333333",
+      "endpoints": [
+        {
+          "ip_address": "198.51.100.30",
+          "port": 51820,
+          "protocol": "udp",
+          "is_stun_discovered": false
+        }
+      ]
+    }
+  ],
+  "expiry_timestamp": 1726941200,
+  "diversity": {
+    "distinct_operators": true,
+    "distinct_networks": true,
+    "operator_count": 3,
+    "network_count": 3,
+    "note": "Full path independence"
+  }
+}

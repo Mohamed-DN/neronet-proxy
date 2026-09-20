@@ -1,0 +1,32 @@
+{
+  "node_id": "pk_0123456789abcdef",
+  "sequence_num": 42,
+  "endpoints": [
+    {
+      "ip_address": "198.51.100.1",
+      "port": 51820,
+      "protocol": "udp",
+      "is_stun_discovered": false
+    }
+  ],
+  "active_circuits": 2,
+  "tx_bytes_sec": 1048576,
+  "rx_bytes_sec": 2097152,
+  "cpu_usage_pct": 35,
+  "memory_usage_mb": 256,
+  "battery_level_pct": 90,
+  "on_battery_power": true,
+  "rtt_ms": 15,
+  "posture": {
+    "node_id": "pk_0123456789abcdef",
+    "os_name": "linux",
+    "os_version": "6.8.0",
+    "client_version": "v4.0.0",
+    "country_code": "DE",
+    "asn": 12345,
+    "disk_encrypted": true,
+    "firewall_active": true,
+    "is_rootless": true,
+    "timestamp_utc": "2026-09-20T17:30:00Z"
+  }
+}

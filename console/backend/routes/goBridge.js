@@ -36,8 +36,21 @@ const NetmapService = require('../services/NetmapService');
 const config = require('../config/env');
 const logger = require('../utils/logger');
 const { logAuditEvent } = require('../utils/audit');
+const { validateRequest, responseValidationInterceptor } = require('../middleware/contractValidator');
 
 const router = express.Router();
+
+router.use(
+  responseValidationInterceptor({
+    '/register': 'RegisterResponse',
+    '/heartbeat': 'HeartbeatResponse',
+    '/discover': 'DiscoverResponse',
+    '/circuit': 'CircuitResponse',
+    '/sync-acls': 'ACLSyncResponse',
+    '/sync-routes': 'RouteSyncResponse',
+    '/netmap': 'NetmapResponse'
+  })
+);
 
 // The node derives its own id as pk_<first 8 bytes of the public key, hex>
 // (control.GenerateNodeID). The control plane assigns the same value so that both
@@ -146,7 +159,7 @@ async function runQuery(pgSql, pgParams, sqliteSql, sqliteParams) {
 }
 
 // POST /v4/control/register
-router.post('/register', async (req, res) => {
+router.post('/register', validateRequest('RegisterRequest'), async (req, res) => {
   try {
     const auth = checkRegistrationToken(req);
     if (!auth.ok) {
@@ -345,7 +358,7 @@ router.post('/register', async (req, res) => {
 });
 
 // POST /v4/control/heartbeat
-router.post('/heartbeat', async (req, res) => {
+router.post('/heartbeat', validateRequest('HeartbeatRequest'), async (req, res) => {
   try {
     // Authenticated before anything else, and before the database is touched.
     //
@@ -505,7 +518,7 @@ router.post('/heartbeat', async (req, res) => {
 // Requires the enrolment token: this returns the node inventory, including public
 // keys and endpoints, which is not something an unauthenticated caller should be able
 // to enumerate.
-router.post('/discover', async (req, res) => {
+router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) => {
   try {
     const auth = checkRegistrationToken(req);
     if (!auth.ok) {
@@ -597,7 +610,7 @@ router.post('/discover', async (req, res) => {
 // The node sends the epoch it currently holds. An unchanged epoch is answered without
 // compiling or transferring a policy: at fleet scale that is the difference between
 // every node pulling a full policy every 15 seconds and almost none of them doing so.
-router.post('/sync-acls', async (req, res) => {
+router.post('/sync-acls', validateRequest('ACLSyncRequest'), async (req, res) => {
   try {
     const auth = checkRegistrationToken(req);
     if (!auth.ok) {
@@ -637,7 +650,7 @@ router.post('/sync-acls', async (req, res) => {
 //
 // Same epoch protocol as ACL sync: an unchanged epoch is answered without building or
 // transferring the route set.
-router.post('/sync-routes', async (req, res) => {
+router.post('/sync-routes', validateRequest('RouteSyncRequest'), async (req, res) => {
   try {
     const auth = checkRegistrationToken(req);
     if (!auth.ok) {
@@ -687,7 +700,7 @@ router.post('/sync-routes', async (req, res) => {
 // any other node's netmap. This is the same limitation the ACL and route endpoints
 // already have and it is WP-103's to close; it is recorded in ADR 0020 rather than
 // papered over here.
-router.post('/netmap', async (req, res) => {
+router.post('/netmap', validateRequest('NetmapRequest'), async (req, res) => {
   try {
     const auth = checkRegistrationToken(req);
     if (!auth.ok) {
@@ -727,7 +740,7 @@ router.post('/netmap', async (req, res) => {
 // Onion circuit path selection. pkg/routing.Build3HopCircuit has always been able to
 // seal a cell for three hops; this is the control plane telling a node which three.
 // Without it the differentiating feature was unreachable from a deployment.
-router.post('/circuit', async (req, res) => {
+router.post('/circuit', validateRequest('CircuitRequest'), async (req, res) => {
   try {
     const auth = checkRegistrationToken(req);
     if (!auth.ok) {

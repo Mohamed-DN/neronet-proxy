@@ -1,0 +1,79 @@
+{
+  "version": 2,
+  "unchanged": false,
+  "self": {
+    "overlay_ipv4": "100.64.0.2",
+    "overlay_ipv6": "fd00::2",
+    "mtu": 1380,
+    "listen_port": 51820
+  },
+  "peers": [
+    {
+      "node_id": "pk_fedcba9876543210",
+      "public_key_hex": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+      "allowed_ips": [
+        "100.64.0.3/32",
+        "fd00::3/128"
+      ],
+      "endpoints": [
+        "198.51.100.2:51820"
+      ],
+      "derp_region": null,
+      "keepalive_seconds": 25
+    }
+  ],
+  "acl": {
+    "node_id": "pk_0123456789abcdef",
+    "overlay_ipv4": "100.64.0.2",
+    "inbound_rules": [
+      {
+        "allowed_peer_vip": "100.64.0.3",
+        "protocol": "TCP",
+        "port_ranges": [
+          {
+            "start": 80,
+            "end": 443
+          }
+        ],
+        "action": "ACCEPT",
+        "is_directional": true
+      }
+    ],
+    "outbound_rules": [],
+    "epoch": 2
+  },
+  "routes": [
+    {
+      "id": "route-corp-vpc",
+      "network_id": "corp-vpc",
+      "description": "Internal VPC Subnet",
+      "network_cidr": {
+        "IP": "10.100.0.0",
+        "Mask": "////AA=="
+      },
+      "masquerade": true,
+      "failover_mode": "ACTIVE_PASSIVE",
+      "routing_peers": [
+        {
+          "node_id": "pk_0123456789abcdef",
+          "priority": 1,
+          "is_healthy": true,
+          "last_probe_at": "2026-09-20T12:00:00Z",
+          "latency_rtt_ms": 5,
+          "fail_count": 0
+        }
+      ],
+      "groups": [
+        "group:all"
+      ],
+      "enabled": true,
+      "created_at": "2026-09-20T12:00:00Z",
+      "updated_at": "2026-09-20T12:00:00Z"
+    }
+  ],
+  "revoked_keys": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+  ],
+  "generated_at_unix": 1726940000,
+  "max_staleness_seconds": 86400
+}

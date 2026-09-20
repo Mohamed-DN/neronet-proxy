@@ -1,0 +1,29 @@
+{
+  "bridges": [
+    {
+      "node_id": "pk_0123456789abcdef",
+      "public_key_hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "overlay_ipv4": "100.64.0.3",
+      "endpoints": [
+        {
+          "ip_address": "198.51.100.2",
+          "port": 51820,
+          "protocol": "udp",
+          "is_stun_discovered": false
+        }
+      ],
+      "capability": {
+        "enabled": true,
+        "country_code": "DE",
+        "city": "Berlin",
+        "asn": 12345,
+        "ip_class": "DATACENTER",
+        "max_bandwidth_kbps": 50000,
+        "max_concurrent_streams": 50,
+        "allow_udp": true,
+        "ac_power_only": true
+      },
+      "score": 1
+    }
+  ]
+}

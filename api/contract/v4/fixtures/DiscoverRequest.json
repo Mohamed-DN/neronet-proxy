@@ -1,0 +1,7 @@
+{
+  "target_country": "DE",
+  "target_asn": 12345,
+  "ip_class": "DATACENTER",
+  "explicit_host_id": "pk_0123456789abcdef",
+  "limit": 20
+}

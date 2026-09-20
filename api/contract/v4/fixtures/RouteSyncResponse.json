@@ -1,0 +1,32 @@
+{
+  "new_route_epoch": 2,
+  "routes": [
+    {
+      "id": "route-corp-vpc",
+      "network_id": "corp-vpc",
+      "description": "Internal VPC Subnet",
+      "network_cidr": {
+        "IP": "10.100.0.0",
+        "Mask": "////AA=="
+      },
+      "masquerade": true,
+      "failover_mode": "ACTIVE_PASSIVE",
+      "routing_peers": [
+        {
+          "node_id": "pk_0123456789abcdef",
+          "priority": 1,
+          "is_healthy": true,
+          "last_probe_at": "2026-09-20T12:00:00Z",
+          "latency_rtt_ms": 5,
+          "fail_count": 0
+        }
+      ],
+      "groups": [
+        "group:all"
+      ],
+      "enabled": true,
+      "created_at": "2026-09-20T12:00:00Z",
+      "updated_at": "2026-09-20T12:00:00Z"
+    }
+  ]
+}

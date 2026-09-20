@@ -85,10 +85,10 @@ type PeerAttestation struct {
 
 	// Nil means the node did not measure host disk encryption, which is not the
 	// same as measuring it and finding it off.
-	DiskEncrypted *bool `json:"disk_encrypted"`
+	DiskEncrypted *bool `json:"disk_encrypted" jsonschema:"nullable"`
 
 	// Nil means the node did not measure the host firewall.
-	FirewallActive *bool `json:"firewall_active"`
+	FirewallActive *bool `json:"firewall_active" jsonschema:"nullable"`
 
 	// IsRootless is measured on every platform the node runs on, so it has no
 	// unknown state.
