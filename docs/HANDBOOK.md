@@ -50,10 +50,11 @@ Features that other products in this market do not offer, and that the code cont
 - **NeroNuke**, three tiers of destruction: scheduled, personal dead man's switch, and
   owner global cascade.
 
-The plausible-deniability passwords and the personal dead man's switch are outside the
-offer to banks and public administration. The decision is that they are off by default
-behind server-side feature flags. The flags do not exist yet, and on `main` these
-features are active.
+NeroNuke, the plausible-deniability passwords, the personal dead man's switch and onion
+routing are active by default. An organisation that cannot hold them, such as a bank with
+retention duties, switches them off with the `regulated` profile (ADR 0015). The
+per-organisation profile does not exist yet: on `main` the features are active for
+everyone.
 
 In this market being *verifiable* matters more than being *fast*. The goal is that a
 reviewer can read the critical path in an afternoon and believe it.
@@ -437,9 +438,10 @@ After a `DELETE`, the rows remain in:
 - streaming replicas, until they apply and vacuum
 
 The designed answer is per-organisation encryption keys, with destruction meaning key
-destruction. It is not implemented. Under the decision for this market, destruction
-requires two people and respects a legal hold, and the tiers that act without an
-administrator (the personal switch) are outside the offer.
+destruction. It is not implemented. Organisation-wide destruction
+requires two people and respects a legal hold. The tiers that act without an
+administrator (the personal switch) are available in the default profile and switched off
+in the `regulated` one (ADR 0015).
 
 Crypto-shredding has a trap worth stating: wrapping a symmetric organisation key
 (already post-quantum safe) with X25519 or RSA makes it post-quantum vulnerable.
