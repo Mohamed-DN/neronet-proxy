@@ -366,6 +366,12 @@ func TestStalenessRemovesEveryPeerAndIsAppliedOnce(t *testing.T) {
 	if got := peerCount(t, a.dev); got != 0 {
 		t.Fatalf("peers reappeared on a heartbeat alone: %d", got)
 	}
+	// The node must still know it is failed closed, because the version it holds is
+	// the one the control plane is serving: without this it would wait for a change
+	// that is never coming and stay dark for good.
+	if !managerA.FailedClosed() {
+		t.Fatal("the node forgot it had failed closed, so it would never ask for the document again")
+	}
 
 	// A fresh document brings the peers back.
 	if err := managerA.Apply(netmapFor(7, a.addr, allowAllPolicy("a", a.addr, b.addr), b.peerEntry("b")), time.Now()); err != nil {
@@ -373,6 +379,9 @@ func TestStalenessRemovesEveryPeerAndIsAppliedOnce(t *testing.T) {
 	}
 	if got := peerCount(t, a.dev); got != 1 {
 		t.Fatalf("A holds %d peer(s) after recovering, want 1", got)
+	}
+	if managerA.FailedClosed() {
+		t.Fatal("the node is still marked failed closed after applying a document")
 	}
 }
 

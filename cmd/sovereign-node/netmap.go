@@ -133,12 +133,24 @@ func (h *netmapHolder) onHeartbeat(ctx context.Context, nodeID string, resp *con
 	// simply had no changes for a day.
 	m.Confirm(time.Now())
 
-	if resp.NetmapVersion > m.Version() {
+	// A node that failed closed asks again even though the version has not moved: the
+	// control plane is serving the same document, and it is the one that brings the
+	// peers back.
+	recovering := m.FailedClosed()
+
+	if recovering || resp.NetmapVersion > m.Version() {
+		held := m.Version()
+		if recovering {
+			held = 0
+		}
+
 		fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		err := m.Fetch(fetchCtx, nodeID)
+		err := m.fetchAt(fetchCtx, nodeID, held)
 		cancel()
 		if err != nil {
 			log.Printf("[SOVEREIGN-NODE] Netmap fetch failed: %v (keeping version %d)", err, m.Version())
+		} else if recovering {
+			log.Printf("[SOVEREIGN-NODE] The control plane is answering again: peers restored")
 		}
 	}
 }
@@ -176,7 +188,6 @@ func (m *netmapManager) Confirm(now time.Time) {
 	m.mu.Lock()
 	if now.After(m.confirmedAt) {
 		m.confirmedAt = now
-		m.failClosed = false
 	}
 	m.mu.Unlock()
 }
@@ -186,6 +197,18 @@ func latest(a, b time.Time) time.Time {
 		return a
 	}
 	return b
+}
+
+// FailedClosed reports whether staleness has emptied the peer set.
+//
+// It matters on recovery: a node that failed closed still holds the version the
+// control plane is serving, so "fetch when the version advances" would never bring its
+// peers back. It has to ask for the document again even though the number has not
+// moved.
+func (m *netmapManager) FailedClosed() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.failClosed
 }
 
 // Version reports the version currently applied.
@@ -201,7 +224,13 @@ func (m *netmapManager) Version() uint64 {
 // the node on what it already holds: that is the fail-static behaviour, and it is why
 // the error is returned rather than acted on.
 func (m *netmapManager) Fetch(ctx context.Context, nodeID string) error {
-	netmap, err := m.client.Netmap(ctx, nodeID, m.Version())
+	return m.fetchAt(ctx, nodeID, m.Version())
+}
+
+// fetchAt asks for the document as if the node held `held`. Passing 0 forces a full
+// answer even when the control plane's version has not moved.
+func (m *netmapManager) fetchAt(ctx context.Context, nodeID string, held uint64) error {
+	netmap, err := m.client.Netmap(ctx, nodeID, held)
 	if err != nil {
 		return err
 	}
