@@ -66,7 +66,10 @@ func TestResponderDrainReportsWhatItReceived(t *testing.T) {
 	if received == 0 {
 		t.Fatal("the responder counted no bytes although the stream was written for the whole window")
 	}
-	if elapsed < window {
+	// The responder times the read from its own clock, which can land a few
+	// microseconds under the requested window. A tolerance of a tenth of the window
+	// still catches a responder that stops early.
+	if elapsed < window-window/10 {
 		t.Fatalf("the responder measured %v, less than the %v window it was asked for", elapsed, window)
 	}
 }
