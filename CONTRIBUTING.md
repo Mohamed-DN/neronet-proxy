@@ -26,7 +26,7 @@ The best way to contribute code is to fork the repository, make your changes, an
 2. Name your branch logically (e.g., `feat/add-wireguard-fallback` or `fix/memory-leak-router`).
 3. Make sure you have read `DEVELOPER_SETUP.md` and successfully run the project locally.
 4. If you've added code that should be tested, add tests!
-5. Ensure the test suite passes (`go test ./...` and `make test-e2e`).
+5. Ensure the test suites pass: `sh scripts/dev/test-go.sh`, `sh scripts/dev/test-backend.sh` and `sh scripts/dev/test-frontend.sh`.
 6. Format your code (e.g., `go fmt`).
 7. Submit the PR with a comprehensive description of the changes.
 
@@ -38,9 +38,9 @@ Documentation is just as important as code! You can help by:
 - Translating documents
 
 ## Development Guidelines
-- **Language:** Go (v1.21+), Python (for tests/automation).
-- **Architecture:** Follow the clean architecture principles outlined in the codebase. Networking logic belongs in `pkg/net`, cryptographic logic in `pkg/crypto`.
-- **Security First:** Any PR modifying cryptographic handshakes (Noise protocol), eBPF filters, or user authentication (OIDC/SAML) will require a strict review process and potentially an external audit before merge.
+- **Languages:** Go (1.25 or later) for the nodes, Node.js 22 for the control plane, React for the console.
+- **Architecture:** Read `docs/HANDBOOK.md` and the decision records in `docs/adr/` first. A change that departs from a decision needs a new record.
+- **Security First:** Any PR modifying cryptographic code, the node protocol, or user authentication will require a strict review process and potentially an external audit before merge.
 - **Auto-Scaling & Cloud:** If modifying `docs/AUTOSCALING.md` or Helm charts, ensure backwards compatibility with local bare-metal deployments.
 
 ## Licensing
