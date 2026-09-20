@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net/netip"
@@ -116,6 +117,16 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 
 	addrs, err := overlayAddresses(opts, spike, self)
 	if err != nil {
+		if errors.Is(err, dataplane.ErrNoAddresses) {
+			// No registration, no stored netmap and no spike document: the node has
+			// no overlay address, so it could not receive anything even if it built a
+			// device. Default deny is exactly this state, and it is not a reason to
+			// exit: the SOCKS5 and HTTP proxies keep running, overlay destinations
+			// are rejected as bogons because no overlay dialer is attached, and
+			// nothing crosses.
+			log.Printf("[SOVEREIGN-NODE] No overlay address from the control plane and no stored netmap: the data plane stays down and the node is at default deny")
+			return func() {}, nil
+		}
 		return nil, err
 	}
 

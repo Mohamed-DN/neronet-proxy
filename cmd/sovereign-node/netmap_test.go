@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/sovereign/proxy/v4/pkg/acl"
+	"github.com/sovereign/proxy/v4/pkg/bridge"
 	"github.com/sovereign/proxy/v4/pkg/control"
 	"github.com/sovereign/proxy/v4/pkg/crypto"
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
@@ -501,6 +502,44 @@ func TestAMalformedNetmapLeavesThePreviousPeerSetInPlace(t *testing.T) {
 	}
 	if got := manager.Version(); got != 12 {
 		t.Fatalf("version moved to %d on a rejected document, want 12", got)
+	}
+}
+
+// A node with nothing to run on must stay up at default deny rather than exit.
+//
+// It exited: dataplane.New returns ErrNoAddresses and main treated it as fatal, so a
+// node restarted with no control plane and no stored document crash-looped instead of
+// coming up carrying nothing.
+func TestNoAddressAnywhereLeavesTheNodeUpAndCarryingNothing(t *testing.T) {
+	netfilter := acl.NewNetstackFilter()
+	keys, err := crypto.GenerateKeypair()
+	if err != nil {
+		t.Fatalf("generating identity: %v", err)
+	}
+
+	bridgeSandbox := bridge.NewSandboxPolicyEngine(bridge.SandboxPolicyConfig{})
+	netstackBridge := bridge.NewNetstackBridge(bridgeSandbox, bridge.NewDoHResolver(nil), bridge.NewGuardian(0))
+
+	stop, err := startDataplane(context.Background(), dataplaneOptions{
+		Mode:         string(dataplane.ModeNetstack),
+		Keypair:      keys,
+		IdentityPath: filepath.Join(t.TempDir(), "node.key"),
+		Netfilter:    netfilter,
+		Bridge:       netstackBridge,
+	})
+	if err != nil {
+		t.Fatalf("a node with no address must come up at default deny, not fail: %v", err)
+	}
+	defer stop()
+
+	// Nothing was attached to the bridge, so an overlay destination is still refused
+	// as a bogon, which is what it was before this package existed.
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	if dialErr := netstackBridge.DialAndPipe(context.Background(), server, "100.64.0.2:9999", 0); dialErr == nil {
+		t.Fatal("an overlay destination was accepted with no data plane attached")
 	}
 }
 
