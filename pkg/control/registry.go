@@ -30,7 +30,12 @@ type CapabilityDesc struct {
 	// CountryCode is declared by the operator, not measured. The node has no way to
 	// establish where it is.
 	CountryCode string `json:"country_code"`
-	City        string `json:"city"`
+
+	// City, Latitude and Longitude are declared by the operator, not measured, and
+	// are omitted from the wire when the operator declared nothing.
+	City      string   `json:"city,omitempty"`
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
 
 	// ASN is 0 when it was not measured. The node does not resolve its own ASN.
 	ASN uint32 `json:"asn"`
