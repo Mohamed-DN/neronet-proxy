@@ -29,10 +29,11 @@ every direct test of the sync endpoint still passes.
 
 - An administrator who has not written any rule has an open mesh. The console has to
   say so.
-- The node loads the delivered policy into its filter, but no traffic passes through
-  that filter today, because there is no data plane. The policy is delivered and
-  discarded. Enforcement arrives with the data plane
-  ([ADR 0008](0008-wireguard-data-plane-transport.md)).
+- The node loads the delivered policy into its filter. In the default configuration no
+  traffic passes through that filter, because there is no data plane, so the policy is
+  delivered and not applied. The data plane spike applies the filter to packets when it
+  is switched on, with enforcement off unless configured
+  ([ADR 0008](0008-wireguard-data-plane-transport.md), [ADR 0020](0020-data-plane.md)).
 - The target architecture replaces the implicit default with an organisation setting,
   `default_policy`, with values `open` (laboratories) and `deny` (production), shown in
   the console. Delivery then follows that setting, and enforcement stays default-deny.

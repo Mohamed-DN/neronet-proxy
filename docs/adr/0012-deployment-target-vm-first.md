@@ -7,9 +7,9 @@
 ## Context
 
 The repository holds a compose stack for development, a Helm chart, Kustomize overlays
-for six cloud providers, Terraform modules and a GitOps workflow. Only the compose
-stack has been run. The Helm chart and the manifests have never been applied to a
-cluster, and the GitOps workflow does not deploy anything. The typical installation in a
+for six cloud providers and Terraform modules. Only the compose stack has been run. The
+Helm chart and the manifests have never been applied to a cluster, and the GitOps
+workflow, which deployed nothing, was removed by the CI rework. The typical installation in a
 bank or a public administration is on virtual machines on premises.
 
 ## Decision
@@ -23,8 +23,8 @@ The order is:
 3. Kubernetes and OpenShift: the Helm chart, proven in CI on `kind`, after the two
    above.
 
-The multi-cloud Terraform modules and the GitOps deploy workflow are removed until a
-customer asks for them.
+The multi-cloud Terraform modules are removed until a customer asks for them. The GitOps
+deploy workflow, which deployed nothing, has already been removed.
 
 ## Consequences
 
@@ -32,5 +32,5 @@ customer asks for them.
   mention them say so.
 - Installation documentation is written for a virtual machine first. The lab used to
   prove it can be a Proxmox host.
-- Removal of the Terraform modules and the workflow is separate work; until it is done
-  they remain in the tree.
+- Removal of the Terraform modules is separate work; until it is done they remain in the
+  tree.
