@@ -3,7 +3,7 @@
 Working document. Figures are measured against a running deployment; the methods are
 reproducible from the commands in each section.
 
-Last updated 2026-09-13.
+Last updated 2026-09-20. Decisions taken since are recorded in [`docs/adr/`](adr/).
 
 ---
 
@@ -12,6 +12,8 @@ Last updated 2026-09-13.
 This section comes first because the constraint shapes everything else.
 
 ### 1.1 Architecture decision: no multi-master PostgreSQL
+
+Recorded as [ADR 0001](adr/0001-no-multi-master-postgresql.md).
 
 Multi-master replication (BDR, Bucardo, bidirectional streaming) does not remove
 split-brain. It converts it into write conflict resolution, and for network state
@@ -70,8 +72,8 @@ multi-master.
 | State | Current location | Target | Status |
 |---|---|---|---|
 | VIP allocator (Node) | database sequence | database sequence | done — `71cb108` |
-| VIP allocator (Go) | in-memory map | seeded via `Restore` | partial |
-| Node registry (Go) | in-memory map + mutex | PostgreSQL | open |
+| VIP allocator (Go) | in-memory map | removed with the Go server ([ADR 0007](adr/0007-remove-go-control-plane-server.md)) | open |
+| Node registry (Go) | in-memory map + mutex | removed with the Go server | open |
 | Token blacklist | Valkey | Valkey | done |
 | Rate limit counters | Valkey | Valkey | done — `71cb108` |
 | Heartbeat state | Valkey, flushed in batches | Valkey | done |
@@ -105,10 +107,11 @@ The Go server half has no persistence, no authentication and no tenancy. The cli
 and the protocol structs in the same package **are** used, by `cmd/sovereign-node`
 and `cmd/sovereign-cli`, and the struct tags define the wire contract.
 
-Decision required: complete the Go server (persistence, auth, tenancy — roughly the
-work already done on the Node.js side), or remove the server half and keep the
-package as protocol definition and client. Until then, changes to the server half are
-changes to unused code. See `pkg/control/README.md`.
+Decision: remove the server half and keep the package as protocol definition and
+client; the contract becomes a JSON Schema generated from the Go structs
+([ADR 0007](adr/0007-remove-go-control-plane-server.md)). The removal is not done. Until
+it is, changes to the server half are changes to unused code. See
+`pkg/control/README.md`.
 
 ---
 
@@ -150,11 +153,11 @@ Trade-off: up to one flush interval of telemetry is lost if Valkey goes down. Co
 and a last-seen timestamp can absorb that. Registration and quarantine remain direct
 writes.
 
-### 3.4 Outstanding
+### 3.4 Fill factor — resolved
 
-`ALTER TABLE nodes SET (fillfactor = 70)`. No column the heartbeat updates is
-indexed, so PostgreSQL can use HOT updates and skip index maintenance — but only with
-free space in the page, and the default fillfactor is 100.
+No column the heartbeat updates is indexed, so PostgreSQL can use HOT updates and skip
+index maintenance, but only with free space in the page, and the default fillfactor is
+100. Migration `010` sets the `nodes` fillfactor to 70.
 
 ---
 
@@ -223,8 +226,10 @@ which currently drop anything:
 This needs, in order:
 
 - Revocation propagated to data-plane nodes, not only recorded in the database. The
-  control plane already returns `revoked_keys` in `HeartbeatResponse`; it is always
-  empty.
+  control plane returns `revoked_keys` in `HeartbeatResponse` for a retention window
+  (24 hours by default), and a node that receives a new key re-syncs its policy. Revoking
+  an agreement and destroying a user put keys in the window. Withdrawing one shared
+  device does not yet. Without a data plane in use there is no tunnel to close.
 - A peer liveness check, so a peer that stops responding is treated as gone after a
   defined interval rather than indefinitely.
 - Cascade from NeroNuke into peering agreements: a wipe on either side must revoke
@@ -258,16 +263,16 @@ The third is the product.
 
 **Decision: NeroDrop is deferred.** File transfer over a mesh is a solved problem
 (Syncthing, Magic Wormhole, or scp over the overlay). It does not differentiate.
-Effort belongs in NeroNuke, the dead man's switch, the warrant canary and onion
-routing, where nothing comparable exists.
+Effort belongs in NeroNuke, the warrant canary and onion routing, where nothing
+comparable exists.
 
-NeroDrop is deleted (D8). Its routes were never ported off SQLite, so on a PostgreSQL
+NeroDrop is deleted (D8, [ADR 0003](adr/0003-remove-nerodrop.md)). Its routes were never ported off SQLite, so on a PostgreSQL
 deployment, the production configuration, the page answered 500 and the client
 substituted fixture transfers, presenting a history of transfers that had never
 occurred. The component, the routes, the client methods and the fixtures are removed;
 the `nerodrop_sessions` table is dropped in WP-104.
 
-App Bundles is deleted (D8). `routes/apps.js` was SQLite-only and `api.apps` in the
+App Bundles is deleted (D8, [ADR 0014](adr/0014-confirm-earlier-decisions.md)). `routes/apps.js` was SQLite-only and `api.apps` in the
 frontend had no callers. It claimed more than it did: `POST /apps/:id/start` set
 `status = 'running'` in a table and started no container, then answered success. The
 routes, the client methods, the fixtures and the seeded rows are removed; the
@@ -275,7 +280,7 @@ routes, the client methods, the fixtures and the seeded rows are removed; the
 labelled "Sovereign Cloud PC" rendered `components/AppBundles.jsx`, which despite its
 filename calls `/cloud-pc`; that component is Cloud PC and is handled separately.
 
-Cloud PC is frozen (D4). Its instances still point at `wss://signal.internal.
+Cloud PC is frozen (D4, [ADR 0010](adr/0010-freeze-cloud-pc.md)). Its instances still point at `wss://signal.internal.
 darknero.com`, which does not resolve, so streaming cannot connect: the listing and
 the custom-domain management are real, the session is not. The code stays behind the
 server-side flag `SOVEREIGN_FEATURE_CLOUD_PC`, off by default. With the flag off every
@@ -287,7 +292,7 @@ console hides the menu entry because `/api/features` reports it off. The compone
 
 ## 6. Messaging
 
-**Decision: no message broker for now.**
+**Decision: no message broker for now** ([ADR 0002](adr/0002-no-message-broker.md)).
 
 Valkey pub/sub covers topology events. A broker would add durable queues and retries,
 which nothing currently needs. The cost is a second consensus system to keep from
@@ -323,7 +328,9 @@ A nonce reuse defect was found in the onion layer on 2026-09-12 that removed bot
 confidentiality and integrity. The Noise implementation in `pkg/crypto` is correct.
 Same codebase, same week, opposite outcomes.
 
-**Recommendation: WireGuard as transport, Rosenpass for post-quantum.** Gains:
+**Decision: WireGuard as transport, Rosenpass for post-quantum**
+([ADR 0008](adr/0008-wireguard-data-plane-transport.md); design and measurements in
+[ADR 0020](adr/0020-data-plane.md)). Gains:
 existing formal audits, kernel performance, and the ability to state that the
 transport is WireGuard rather than asking for trust in an unaudited implementation.
 
@@ -336,7 +343,7 @@ where the differentiation is, and where external audit effort belongs.
 
 | Layer | Status | Next |
 |---|---|---|
-| Control plane TLS | Hybrid X25519MLKEM768 (`949e441`) | Two guard tests in CI |
+| Node to control plane TLS | Go's defaults negotiate hybrid X25519MLKEM768 (`949e441`) and a test guards it. The compose stack serves the control plane over plain HTTP, so no node negotiates it yet | TLS at the edge |
 | nginx edge | `ssl_ecdh_curve` set | Requires OpenSSL 3.5+ |
 | Data at rest | ChaCha20-Poly1305 / AES-256 | None. Grover halves 256 to 128 effective bits |
 | Tunnel KEX | X25519 only | Rosenpass via PSK |
@@ -358,9 +365,10 @@ the shredding achieved nothing.
 
 ## 9. Removing monetisation
 
-Target: no paid features, no tiers, no quotas.
-
-Remove:
+Decision: no paid features, no tiers, no quotas
+([ADR 0004](adr/0004-remove-monetisation.md)). Done: the columns, the quota checks and the
+frontend components are removed (migration `011_remove_tiering`), and so are the business
+chapters of `BUSINESS_AND_ROADMAP.md`. What was removed:
 
 - `users.tier` and the values `cloud_managed`, `managed_cloud`, `hybrid_byos`,
   `free_core`.
@@ -376,7 +384,7 @@ Keep:
 - Technical limits: rate limiting, page size, VIP pool. Infrastructure protection, not
   commercial gating.
 
-Migration `007_remove_tiering` after every code reference is removed, not before.
+The migration was written after every code reference was removed, not before.
 
 ---
 
@@ -439,15 +447,16 @@ dropped the column: 46 coordinates destroyed.
 
 ## 12. Deployment beyond a workstation
 
-Currently running on Docker Desktop. For bare metal, Proxmox or a VPS:
+The development stack runs on Podman or Docker. The order of deployment targets is in
+[ADR 0012](adr/0012-deployment-target-vm-first.md). For bare metal, Proxmox or a VPS:
 
 - Compose runs unchanged on Docker Engine. Review `127.0.0.1` bindings for services
   that must be reachable.
 - On Proxmox: one VM for the control plane, one for PostgreSQL, and the third etcd
   voter **outside** the Proxmox cluster. Losing the host otherwise takes quorum and
   data together.
-- `charts/` and `k8s/` exist and have never been applied to a real cluster. Treat them
-  as untested.
+- `charts/`, `k8s/` and `terraform/` exist and have never been applied to a real cluster
+  or account. Treat them as untested.
 - The PostgreSQL password is written into the volume at first initialisation.
   Changing the environment variable does not rotate it; use `ALTER USER ... PASSWORD`.
 - Migrating from a root container to the unprivileged image leaves volume files owned
