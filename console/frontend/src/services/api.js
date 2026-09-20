@@ -1,725 +1,165 @@
 /**
- * NeroNet Enterprise API Client & State Layer
- * Connects to the Control Plane Backend (/api) with automatic mock fallback.
+ * The adapter the pages still call.
+ *
+ * WP-402 moved transport, authentication and caching into `apiClient` and the
+ * query hooks beside it. The pages under src/components are redesigned one work
+ * package at a time and have not moved yet, so this file stays as the shape
+ * they expect: a namespace per resource, over `apiClient` and nothing else. It
+ * shrinks to nothing as each page takes its hooks.
+ *
+ * What is gone from it is the fixtures. This file used to import 2,170 lines of
+ * demo data, keep nine mutable arrays seeded from it, and answer a failed
+ * request out of them: a console pointed at an unreachable control plane
+ * displayed 120 invented devices, a busy 24-hour traffic ramp, a risk
+ * distribution and an armed dead man's switch, none of which existed. All of it
+ * shipped inside the production bundle.
+ *
+ * The two conventions the pages rely on are kept, deliberately:
+ *
+ * - a read that fails returns null, or an empty list where the caller expects
+ *   one. A page cannot yet tell that from an empty answer, which is why the
+ *   connection indicator exists and why the query hooks, which do distinguish
+ *   them, are where each page is headed.
+ * - a write that fails throws. It used to return null too, and twenty-three
+ *   mutation methods answered by applying the change to a JavaScript object and
+ *   reporting `{ success: true }`: quarantining a node, deleting a user,
+ *   accepting a federation, arming the self-destruct. Nothing that changes
+ *   state may report success it cannot account for.
  */
 
-import QRCode from 'qrcode';
-import { markReachable, markUnreachable, resolveList, resolveOne } from './dataSource.js';
+import { ApiError, apiRequest } from './apiClient';
 import { parseFeatures } from './features.js';
-import {
-  MOCK_USERS,
-  MOCK_NODES,
-  MOCK_AUDIT_LOGS,
-  MOCK_TIMESERIES,
-  MOCK_GEO_MATRIX,
-  MOCK_ACL_RULES,
-  MOCK_PEERING_AGREEMENTS,
-  MOCK_RISK_EVENTS,
-  MOCK_GEOFENCING_POLICIES,
-  MOCK_SOVEREIGN_CLOUD_PC,
-  MOCK_CUSTOM_DOMAINS,
-  MOCK_NERONUKE_CONFIG
-} from './mockData.js';
 
-// Mutable in-memory store for fallback mode with normalized node attributes
-let inMemoryNodes = MOCK_NODES.map((n, index) => {
-  const name = n.name || n.hostname || n.id;
-  const overlay_ipv4 = n.overlay_ipv4 || n.mesh_ip || `100.64.0.${index + 1}`;
-  const mesh_ip = n.mesh_ip || n.overlay_ipv4 || `100.64.0.${index + 1}`;
-  const role = n.role === 'EDGE_CLIENT' ? 'CLIENT_ORIGIN' : n.role || 'CLIENT_ORIGIN';
-  const is_quarantined = n.is_quarantined ? 1 : 0;
-  const is_healthy = n.is_healthy !== undefined ? (n.is_healthy ? 1 : 0) : n.status === 'active' ? 1 : 0;
-  const country_code = n.country_code || 'US';
-  const city =
-    n.city ||
-    (country_code === 'US'
-      ? 'Ashburn'
-      : country_code === 'DE'
-        ? 'Frankfurt'
-        : country_code === 'GB'
-          ? 'London'
-          : country_code === 'FR'
-            ? 'Paris'
-            : country_code === 'NL'
-              ? 'Amsterdam'
-              : 'Regional');
-  const asn =
-    n.asn || (country_code === 'US' ? 7922 : country_code === 'DE' ? 3320 : country_code === 'GB' ? 5089 : 13335);
-
-  return {
-    id: n.id,
-    user_id: n.user_id || 'usr-admin-001',
-    name,
-    hostname: n.hostname || name,
-    overlay_ipv4,
-    mesh_ip,
-    overlay_ipv6: n.overlay_ipv6 || `fd7a:115c:a1e0::${index + 1}`,
-    role,
-    ip_class: n.ip_class || (role === 'RELAY' ? 'DATACENTER' : 'RESIDENTIAL'),
-    country_code,
-    city,
-    asn,
-    status: n.status || (is_healthy ? 'active' : 'offline'),
-    is_healthy,
-    is_quarantined,
-    quarantine_reason: n.quarantine_reason || null,
-    risk_score: n.risk_score || 0,
-    risk_factors: n.risk_factors || [],
-    latency_ms: n.latency_ms || (role === 'RELAY' ? 15.0 : 45.0),
-    bandwidth_rx_mb_s: n.bandwidth_rx_mb_s || +(Math.random() * 200 + 20).toFixed(2),
-    bandwidth_tx_mb_s: n.bandwidth_tx_mb_s || +(Math.random() * 150 + 15).toFixed(2),
-    public_key: n.public_key || `K7lF8X${index + 100}+q32M4r1Z4w9v9G5e1bL3mN7oP9qR2sT4uV8w=`,
-    preshared_key: n.preshared_key || `psk_${index + 100}_randomKey==`,
-    endpoints: n.endpoints || [`${n.public_ip || '192.168.1.1'}:51820`],
-    onion_routing_enabled: n.onion_routing_enabled ? 1 : 0,
-    onion_hops: n.onion_hops || 0,
-    kill_switch_enabled: n.kill_switch_enabled ? 1 : 0,
-    cpu_usage_pct: n.cpu_usage_pct ?? +(10 + ((index * 7) % 30)).toFixed(1),
-    memory_usage_pct: n.memory_usage_pct ?? +(20 + ((index * 11) % 40)).toFixed(1),
-    battery_pct: n.battery_pct ?? (role === 'RELAY' ? 100 : 70 + ((index * 13) % 30)),
-    os_type: n.os_type || (role === 'RELAY' ? 'linux' : ['macos', 'windows', 'linux', 'ios', 'android'][index % 5]),
-    last_heartbeat: n.last_heartbeat || new Date().toISOString(),
-    created_at: n.created_at || new Date().toISOString()
-  };
-});
-let inMemoryUsers = [...MOCK_USERS];
-let inMemoryAuditLogs = [...MOCK_AUDIT_LOGS];
-let inMemoryAclRules = [...MOCK_ACL_RULES];
-let inMemoryPeering = [...MOCK_PEERING_AGREEMENTS];
-let inMemoryRiskEvents = [...MOCK_RISK_EVENTS];
-let inMemoryGeoPolicies = [...MOCK_GEOFENCING_POLICIES];
-let inMemoryCloudPc = [...MOCK_SOVEREIGN_CLOUD_PC];
-let inMemoryCustomDomains = [...MOCK_CUSTOM_DOMAINS];
-let inMemoryNukeConfig = JSON.parse(JSON.stringify(MOCK_NERONUKE_CONFIG));
-const API_BASE = '/api';
-
-const TOKEN_KEY = 'neronet_jwt_token';
-const REFRESH_KEY = 'neronet_refresh_token';
-
-function readStored(key) {
+/** A read. Returns null when the control plane did not answer. */
+async function read(endpoint, options = {}) {
   try {
-    return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function writeStored(key, value) {
-  try {
-    if (typeof localStorage === 'undefined') return;
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch (e) {
-    // Private browsing, or storage disabled. The session then lasts as long as the
-    // tab, which is a degradation rather than a failure.
-  }
-}
-
-function getAuthHeader() {
-  const token = readStored(TOKEN_KEY);
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-// Access tokens last fifteen minutes. A 401 used to delete the token and report the
-// control plane as unreachable, so a console left open quietly logged itself out and
-// showed every panel as failed, even though a refresh token was issued at sign-in
-// and never stored. One refresh is attempted per expiry, shared between concurrent
-// callers: the overview alone fires five requests at once, and each retrying
-// independently would spend five refresh tokens on one expiry.
-let refreshInFlight = null;
-
-async function refreshAccessToken() {
-  const refreshToken = readStored(REFRESH_KEY);
-  if (!refreshToken) return null;
-
-  if (!refreshInFlight) {
-    refreshInFlight = (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken })
-        });
-
-        if (!res.ok) {
-          // The refresh token is spent, revoked or expired. Clearing both is what
-          // sends the user back to the sign-in screen.
-          writeStored(TOKEN_KEY, null);
-          writeStored(REFRESH_KEY, null);
-          return null;
-        }
-
-        const body = await res.json();
-        if (!body?.token) return null;
-
-        writeStored(TOKEN_KEY, body.token);
-        return body.token;
-      } catch (e) {
-        // A network failure is not proof the session ended, so the tokens are kept
-        // and the next request tries again.
-        return null;
-      } finally {
-        // Cleared on the next tick so callers awaiting this promise all observe the
-        // same result before a new attempt can start.
-        setTimeout(() => {
-          refreshInFlight = null;
-        }, 0);
-      }
-    })();
-  }
-
-  return refreshInFlight;
-}
-
-const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-function isMutation(method) {
-  return MUTATION_METHODS.has(String(method || 'GET').toUpperCase());
-}
-
-async function request(endpoint, options = {}, isRetry = false) {
-  const url = `${API_BASE}${endpoint}`;
-  const headers = {
-    'Content-Type': 'application/json',
-    ...getAuthHeader(),
-    ...options.headers
-  };
-
-  try {
-    const res = await fetch(url, { ...options, headers });
-    if (!res.ok) {
-      // Never on an /auth/ call: refreshing in response to a failed sign-in or a
-      // failed refresh would loop.
-      if (res.status === 401 && !isRetry && !endpoint.startsWith('/auth/')) {
-        const fresh = await refreshAccessToken();
-        if (fresh) return request(endpoint, options, true);
-        writeStored(TOKEN_KEY, null);
-      }
-
-      const errorData = await res.json().catch(() => ({}));
-      const err = new Error(errorData.error || `HTTP error ${res.status}`);
-      err.status = res.status;
-      err.data = errorData;
-      throw err;
-    }
-    const body = await res.json();
-    markReachable();
-    return body;
+    return await apiRequest(endpoint, options);
   } catch (err) {
-    if (endpoint.startsWith('/auth/')) {
-      throw err;
-    }
-
-    markUnreachable(err?.message || 'control plane unreachable');
-
-    // A read that fails returns null, which downstream treats as "the control plane
-    // did not answer" — distinct from an empty list, which is a real answer an
-    // operator needs to be able to see.
-    //
-    // A write that fails throws. It used to return null too, and twenty-three
-    // mutation methods below responded by applying the change to a JavaScript
-    // object and answering `{ success: true }`: quarantining a node, deleting a
-    // user, accepting a federation, arming the self-destruct. The console reported
-    // each as done while the control plane had never heard of it. Nothing that
-    // changes state may report success it cannot account for, so the caller is made
-    // to deal with the failure. The in-memory branches below are now unreachable.
-    if (isMutation(options.method)) {
-      throw err;
-    }
-
-    return null;
+    if (err instanceof ApiError) return null;
+    throw err;
   }
 }
 
-// Generate realistic Curve25519 base64 keys
-function generateRandomBase64Key() {
-  const bytes = new Uint8Array(32);
-  if (typeof window !== 'undefined' && window.crypto) {
-    window.crypto.getRandomValues(bytes);
-    // Curve25519 clamping
-    bytes[0] &= 248;
-    bytes[31] &= 127;
-    bytes[31] |= 64;
-  } else {
-    for (let i = 0; i < 32; i++) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
+/** A write. Throws whatever went wrong, always. */
+function write(endpoint, method, body) {
+  return apiRequest(endpoint, body === undefined ? { method } : { method, body });
 }
 
 export const api = {
-  // Which optional features the server has switched on. A failed request reads as
-  // "all off", never as a fixture.
+  // Which optional features the server has switched on. A failed request reads
+  // as "all off", never as a fixture.
   features: {
     async get() {
-      return parseFeatures(await request('/features'));
+      return parseFeatures(await read('/features'));
     }
   },
 
-  // Authentication
-  auth: {
-    async login(username, password) {
-      const live = await request('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ username, password })
-      });
-      if (live && live.token) {
-        writeStored(TOKEN_KEY, live.token);
-        // Issued by the server since sign-in was built and dropped on the floor here,
-        // which is why sessions ended after fifteen minutes.
-        if (live.refreshToken) writeStored(REFRESH_KEY, live.refreshToken);
-        return live;
-      }
-      throw new Error((live && live.error) || 'Invalid username or password');
-    },
-
-    async me() {
-      const live = await request('/auth/me');
-      if (live && live.user) return live.user;
-      return null;
-    },
-
-    async logout() {
-      try {
-        await request('/auth/logout', { method: 'POST' });
-      } catch (e) {
-        // ignore logout network errors
-      }
-      // Both, or the refresh token outlives the session it belonged to and can be
-      // exchanged for a working access token after the user signed out.
-      writeStored(TOKEN_KEY, null);
-      writeStored(REFRESH_KEY, null);
-      return { success: true };
-    }
-  },
-
-  // Nodes Management
   nodes: {
-    // The roleFilter argument is accepted and ignored. It used to filter the
-    // response down to rows whose user_id was one of two fixture accounts, or whose
-    // role was RELAY — so a real tenant saw an empty list, and anyone's relays were
-    // visible to everyone. /nodes is scoped to the caller by the server, which is
-    // where that decision belongs. The parameter is kept so the five call sites do
-    // not all have to change at once.
-    async list(_roleFilter = null) {
-      const live = await request('/nodes');
-      if (live?.nodes && Array.isArray(live.nodes)) return live.nodes;
+    // Callers still pass a role filter. It is ignored, and the extra argument
+    // is harmless: it used to filter the response down to rows whose user_id
+    // was one of two fixture accounts, or whose role was RELAY, so a real
+    // tenant saw an empty list and anyone's relays were visible to everyone.
+    // /nodes is scoped to the caller by the server, which is where that
+    // decision belongs.
+    async list() {
+      const live = await read('/nodes');
+      if (Array.isArray(live?.nodes)) return live.nodes;
       return Array.isArray(live) ? live : [];
     },
 
     async get(id) {
-      const live = await request(`/nodes/${id}`);
-      return resolveOne(`/nodes/${id}`, live?.node ?? null, inMemoryNodes.find((n) => n.id === id) ?? null);
+      const live = await read(`/nodes/${encodeURIComponent(id)}`);
+      return live?.node ?? null;
     },
 
     async action(id, actionType, params = {}) {
-      const live = await request(`/nodes/${id}/action`, {
-        method: 'POST',
-        body: JSON.stringify({ action: actionType, params })
-      });
-      if (live) return live;
-
-      // In-Memory state update
-      const nodeIndex = inMemoryNodes.findIndex((n) => n.id === id);
-      if (nodeIndex !== -1) {
-        if (actionType === 'quarantine') {
-          inMemoryNodes[nodeIndex] = {
-            ...inMemoryNodes[nodeIndex],
-            is_quarantined: 1,
-            is_healthy: 0,
-            quarantine_reason: params.reason || 'Manual Zero-Trust Security Isolation'
-          };
-          inMemoryAuditLogs.unshift({
-            id: Date.now(),
-            event_type: 'QUARANTINE_TRIGGER',
-            severity: 'critical',
-            actor_user_id: 'usr_admin_01',
-            actor_username: 'admin',
-            target_id: id,
-            target_type: 'node',
-            message: `Node '${inMemoryNodes[nodeIndex].name}' was quarantined by security admin`,
-            ip_address: '100.64.0.1',
-            user_agent: 'NeroNet-Console/4.0.0',
-            metadata_json: JSON.stringify({ action: 'quarantine', reason: params.reason || 'Manual' }),
-            created_at: new Date().toISOString()
-          });
-          return { success: true, message: 'Node quarantined successfully', node: inMemoryNodes[nodeIndex] };
-        } else if (actionType === 'lift_quarantine') {
-          inMemoryNodes[nodeIndex] = {
-            ...inMemoryNodes[nodeIndex],
-            is_quarantined: 0,
-            is_healthy: 1,
-            quarantine_reason: null
-          };
-          return { success: true, message: 'Quarantine lifted', node: inMemoryNodes[nodeIndex] };
-        } else if (actionType === 'set_exit') {
-          const currentRole = inMemoryNodes[nodeIndex].role;
-          const newRole = currentRole === 'EXIT_BRIDGE' ? 'CLIENT_ORIGIN' : 'EXIT_BRIDGE';
-          inMemoryNodes[nodeIndex] = {
-            ...inMemoryNodes[nodeIndex],
-            role: newRole
-          };
-          return { success: true, message: `Node role updated to ${newRole}`, node: inMemoryNodes[nodeIndex] };
-        } else if (actionType === 'toggle_onion' || actionType === 'set_onion') {
-          const currentOnion = Boolean(inMemoryNodes[nodeIndex].onion_routing_enabled);
-          const newOnion = params.enabled !== undefined ? Boolean(params.enabled) : !currentOnion;
-          inMemoryNodes[nodeIndex] = {
-            ...inMemoryNodes[nodeIndex],
-            onion_routing_enabled: newOnion ? 1 : 0,
-            onion_hops: newOnion ? 3 : 0
-          };
-          return {
-            success: true,
-            onion_routing_enabled: newOnion,
-            onion_hops: newOnion ? 3 : 0,
-            node: inMemoryNodes[nodeIndex],
-            result: {
-              onion_routing_enabled: newOnion,
-              onion_hops: newOnion ? 3 : 0
-            }
-          };
-        } else if (actionType === 'toggle_kill_switch' || actionType === 'set_kill_switch') {
-          const currentKillSwitch = Boolean(inMemoryNodes[nodeIndex].kill_switch_enabled);
-          const newKillSwitch = params.enabled !== undefined ? Boolean(params.enabled) : !currentKillSwitch;
-          inMemoryNodes[nodeIndex] = {
-            ...inMemoryNodes[nodeIndex],
-            kill_switch_enabled: newKillSwitch
-          };
-          return {
-            success: true,
-            kill_switch_enabled: newKillSwitch,
-            node: inMemoryNodes[nodeIndex]
-          };
-        } else if (actionType === 'ping') {
-          const baseLatency = inMemoryNodes[nodeIndex].latency_ms || 15.0;
-          const jitter = +(Math.random() * 2.5).toFixed(2);
-          const rtt = +(baseLatency + (Math.random() * 4 - 2)).toFixed(2);
-          return {
-            success: true,
-            result: {
-              rtt_ms: rtt,
-              jitter_ms: jitter,
-              packet_loss_pct: 0,
-              min_ms: +(rtt - 1.2).toFixed(2),
-              avg_ms: rtt,
-              max_ms: +(rtt + 2.1).toFixed(2),
-              status: inMemoryNodes[nodeIndex].is_quarantined ? 'unreachable' : 'active'
-            }
-          };
-        } else if (actionType === 'revoke') {
-          inMemoryNodes = inMemoryNodes.filter((n) => n.id !== id);
-          return { success: true, message: 'Node revoked and removed from mesh' };
-        }
-      }
-      return { success: false, error: 'Node not found' };
+      return write(`/nodes/${encodeURIComponent(id)}/action`, 'POST', { action: actionType, params });
     }
   },
 
-  // User Management
   users: {
     async list() {
-      const live = await request('/users');
-      return resolveList('/users', Array.isArray(live?.users) ? live.users : null, inMemoryUsers);
+      const live = await read('/users');
+      return Array.isArray(live?.users) ? live.users : [];
     },
 
     async create(userData) {
-      const live = await request('/users', {
-        method: 'POST',
-        body: JSON.stringify(userData)
-      });
-      if (live && live.user) return live.user;
-
-      const newUser = {
-        id: `usr_${Math.random().toString(36).substring(2, 9)}`,
-        username: userData.username,
-        email: userData.email,
-        role: userData.role || 'user',
-        status: 'active',
-        bandwidth_used_bytes: 0,
-        max_nodes: Number(userData.max_nodes) || 5,
-        bypass_apps: userData.bypass_apps || [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      inMemoryUsers.push(newUser);
-      return newUser;
+      const live = await write('/users', 'POST', userData);
+      if (!live?.user) throw new Error('The control plane did not return the created user');
+      return live.user;
     },
 
     async update(id, updates) {
-      const live = await request(`/users/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(updates)
-      });
-      if (live && live.user) return live.user;
-
-      const idx = inMemoryUsers.findIndex((u) => u.id === id);
-      if (idx !== -1) {
-        inMemoryUsers[idx] = { ...inMemoryUsers[idx], ...updates, updated_at: new Date().toISOString() };
-        return inMemoryUsers[idx];
-      }
-      throw new Error('User not found');
+      const live = await write(`/users/${encodeURIComponent(id)}`, 'PATCH', updates);
+      if (!live?.user) throw new Error('The control plane did not return the updated user');
+      return live.user;
     },
 
     async delete(id) {
-      const live = await request(`/users/${id}`, { method: 'DELETE' });
-      if (live) return live;
-      inMemoryUsers = inMemoryUsers.filter((u) => u.id !== id);
-      return { success: true };
+      return write(`/users/${encodeURIComponent(id)}`, 'DELETE');
     },
 
     async revokeSessions(id) {
-      const live = await request(`/users/${id}/revoke-sessions`, { method: 'POST' });
-      return live || { success: true, message: 'All user refresh tokens revoked' };
+      return write(`/users/${encodeURIComponent(id)}/revoke-sessions`, 'POST');
     },
 
+    // The fallback here generated a Curve25519 private key in the browser,
+    // wrote it into a WireGuard profile naming a relay endpoint that does not
+    // exist, rendered it as a QR code and presented it as an onboarding
+    // profile. A device that scanned it would have been configured against
+    // nothing.
     async generateQrOnboarding(userId) {
-      const live = await request(`/users/${userId}/onboard-qr`);
-      if (live && live.qr_code_data_url) return live;
-
-      const user = inMemoryUsers.find((u) => u.id === userId) || inMemoryUsers[0];
-      const privateKey = generateRandomBase64Key();
-      const serverPubKey = 'K7lF8X+q32M4r1Z4w9v9G5e1bL3mN7oP9qR2sT4uV8w=';
-      const psk = generateRandomBase64Key();
-      const randomOctet = Math.floor(Math.random() * 200) + 20;
-      const overlayIp = `100.64.0.${randomOctet}`;
-
-      const clientConfig = `# NeroNet Mobile Auto-Onboarding Profile
-# User: ${user.username} (${user.id})
-# Generated: ${new Date().toISOString()}
-
-[Interface]
-PrivateKey = ${privateKey}
-Address = ${overlayIp}/32
-DNS = 100.64.0.1, 1.1.1.1
-MTU = 1380
-
-[Peer]
-PublicKey = ${serverPubKey}
-PresharedKey = ${psk}
-Endpoint = relay-iad-01.darknero.net:51820
-AllowedIPs = 100.64.0.0/10, 0.0.0.0/0
-PersistentKeepalive = 25
-`;
-
-      let qrCodeUrl = '';
-      try {
-        qrCodeUrl = await QRCode.toDataURL(clientConfig, {
-          errorCorrectionLevel: 'M',
-          margin: 2,
-          color: {
-            dark: '#38bdf8',
-            light: '#0f172a'
-          }
-        });
-      } catch (err) {
-        qrCodeUrl =
-          "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><rect fill='%230f172a' width='120' height='120'/><text fill='%2338bdf8' x='10' y='60'>QR Code</text></svg>";
+      const live = await apiRequest(`/users/${encodeURIComponent(userId)}/onboard-qr`);
+      if (!live?.qr_code_data_url) {
+        throw new Error('The control plane did not return an onboarding profile');
       }
-
-      return {
-        user_id: user.id,
-        username: user.username,
-        overlay_ip: overlayIp,
-        config_text: clientConfig,
-        qr_code_data_url: qrCodeUrl
-      };
+      return live;
     },
 
     async updateSplitTunneling(userId, bypassApps) {
-      const live = await request(`/users/${userId}/split-tunneling`, {
-        method: 'PUT',
-        body: JSON.stringify({ bypass_apps: bypassApps })
+      const live = await write(`/users/${encodeURIComponent(userId)}/split-tunneling`, 'PUT', {
+        bypass_apps: bypassApps
       });
-      if (live && live.user) return live.user;
-
-      const idx = inMemoryUsers.findIndex((u) => u.id === userId);
-      if (idx !== -1) {
-        inMemoryUsers[idx] = {
-          ...inMemoryUsers[idx],
-          bypass_apps: bypassApps,
-          updated_at: new Date().toISOString()
-        };
-        return inMemoryUsers[idx];
-      }
-      throw new Error('User not found');
+      if (!live?.user) throw new Error('The control plane did not return the updated user');
+      return live.user;
     }
   },
 
-  // Crypto & Config Generator
   configs: {
+    // As with the onboarding profile above: this used to mint keys in the
+    // browser and hand back a complete profile, node identifier included, for a
+    // node the control plane had never heard of.
     async generate(configParams) {
-      const live = await request('/configs/generate', {
-        method: 'POST',
-        body: JSON.stringify(configParams)
-      });
-      if (live && live.wireguard_conf) return live;
-
-      // Real in-browser cryptographic calculation
-      const privateKey = generateRandomBase64Key();
-      const publicKey = generateRandomBase64Key();
-      const psk = generateRandomBase64Key();
-      const randomOctet = Math.floor(Math.random() * 200) + 20;
-      const ipv4 = `100.64.0.${randomOctet}`;
-      const ipv6 = `fd7a:115c:a1e0::${randomOctet}`;
-      const serverEndpoint = 'relay-iad-01.darknero.net:51820';
-      const serverPubKey = 'K7lF8X+q32M4r1Z4w9v9G5e1bL3mN7oP9qR2sT4uV8w=';
-      const onionEnabled = Boolean(configParams.onion_routing_enabled || Number(configParams.onion_hops) > 0);
-      const onionHops = onionEnabled ? Number(configParams.onion_hops) || 3 : 0;
-
-      const wireguardConf = `# =========================================================
-# NeroNet Sovereign Mesh DirectFrame v4.0 WireGuard Profile
-# Device: ${configParams.name || 'New-Device'}
-# Role: ${configParams.role || 'CLIENT_ORIGIN'} | IP Class: ${configParams.ip_class || 'RESIDENTIAL'}
-# Onion Obfuscation: ${onionEnabled ? '3-Hop Multi-Route' : 'Direct (0-Hop)'}
-# Generated: ${new Date().toUTCString()}
-# =========================================================
-
-[Interface]
-PrivateKey = ${privateKey}
-Address = ${ipv4}/32, ${ipv6}/128
-DNS = 100.64.0.1, 1.1.1.1
-MTU = 1380
-
-[Peer]
-PublicKey = ${serverPubKey}
-PresharedKey = ${psk}
-Endpoint = ${serverEndpoint}
-AllowedIPs = 100.64.0.0/10, fd7a:115c:a1e0::/48, 0.0.0.0/0, ::/0
-PersistentKeepalive = 25
-`;
-
-      const jsonProfile = {
-        version: '4.0.0',
-        schema: 'neronet_directframe_v4',
-        identity: {
-          node_id: `svrn-node-${Math.random().toString(36).substring(2, 9)}`,
-          name: configParams.name || 'New-Device',
-          role: configParams.role || 'CLIENT_ORIGIN',
-          country_code: configParams.country_code || 'US'
-        },
-        network: {
-          overlay_ipv4: ipv4,
-          overlay_ipv6: ipv6,
-          dns_servers: ['100.64.0.1', '1.1.1.1'],
-          mtu: 1380,
-          keepalive_interval_sec: 25
-        },
-        crypto: {
-          handshake_protocol: 'Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s',
-          curve: 'Curve25519',
-          cipher: 'ChaCha20-Poly1305',
-          hash: 'BLAKE2s',
-          clamped_public_key: publicKey,
-          preshared_key: psk
-        },
-        relays: [
-          {
-            name: 'neronet-relay-iad-01',
-            endpoint: serverEndpoint,
-            public_key: serverPubKey
-          }
-        ],
-        routing: {
-          egress_mode: configParams.role || 'CLIENT_ORIGIN',
-          preferred_countries: configParams.country_code ? [configParams.country_code, 'US', 'DE'] : ['US', 'DE', 'CH'],
-          onion_hops: onionHops,
-          onion_routing_enabled: onionEnabled
-        }
-      };
-
-      // Generate Base64 QR Code using QRCode library
-      let qrCodeUrl = '';
-      try {
-        qrCodeUrl = await QRCode.toDataURL(wireguardConf, {
-          errorCorrectionLevel: 'M',
-          margin: 2,
-          color: {
-            dark: '#06b6d4',
-            light: '#09090b'
-          }
-        });
-      } catch (err) {
-        qrCodeUrl =
-          "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect fill='%23000' width='100' height='100'/><text fill='%23fff' x='10' y='50'>QR Code</text></svg>";
+      const live = await write('/configs/generate', 'POST', configParams);
+      if (!live?.wireguard_conf) {
+        throw new Error('The control plane did not return a device profile');
       }
-
-      // Add to in-memory nodes list
-      const newNode = {
-        id: jsonProfile.identity.node_id,
-        user_id: 'usr_admin_01',
-        name: configParams.name || 'New-Device',
-        public_key: publicKey,
-        preshared_key: psk,
-        overlay_ipv4: ipv4,
-        overlay_ipv6: ipv6,
-        role: configParams.role || 'CLIENT_ORIGIN',
-        ip_class: configParams.ip_class || 'RESIDENTIAL',
-        country_code: configParams.country_code || 'US',
-        city: configParams.city || 'San Francisco',
-        asn: 7922,
-        endpoints: [`192.168.1.${randomOctet}:51820`],
-        onion_routing_enabled: onionEnabled ? 1 : 0,
-        onion_hops: onionHops,
-        is_healthy: 1,
-        is_quarantined: 0,
-        quarantine_reason: null,
-        last_heartbeat: new Date().toISOString(),
-        latency_ms: onionEnabled ? 48.4 : 18.4,
-        tx_bytes: 0,
-        rx_bytes: 0,
-        cpu_usage_pct: 12.0,
-        memory_usage_pct: 35.0,
-        battery_pct: 100.0,
-        os_type: configParams.os_type || 'macos',
-        created_at: new Date().toISOString()
-      };
-      inMemoryNodes.push(newNode);
-
-      return {
-        node_id: jsonProfile.identity.node_id,
-        node: newNode,
-        private_key: privateKey,
-        public_key: publicKey,
-        preshared_key: psk,
-        overlay_ipv4: ipv4,
-        overlay_ipv6: ipv6,
-        onion_routing_enabled: onionEnabled,
-        onion_hops: onionHops,
-        wireguard_conf: wireguardConf,
-        json_profile: jsonProfile,
-        qrcode_data_url: qrCodeUrl
-      };
+      return live;
     }
   },
 
-  // Analytics & Stats
-  //
-  // These three read the control plane and nothing else. They used to fall back to
-  // fixtures — a constant 88.4 MB/s, a synthetic 24-hour ramp, and a six-country
-  // matrix — which meant a console pointed at an empty or unreachable backend still
-  // displayed a busy, healthy network. An empty result is now returned as empty and
-  // rendered as such.
+  // These read the control plane and nothing else. They used to fall back to
+  // fixtures - a constant 88.4 MB/s, a synthetic 24-hour ramp, and a
+  // six-country matrix - so a console pointed at an empty or unreachable
+  // backend still displayed a busy, healthy network.
   stats: {
     async getOverview() {
-      return request('/stats/overview');
+      return read('/stats/overview');
     },
 
     async getTimeseries(range = '24h') {
-      const series = await request(`/stats/timeseries?range=${encodeURIComponent(range)}`);
+      const series = await read(`/stats/timeseries?range=${encodeURIComponent(range)}`);
       return Array.isArray(series) ? series : [];
     },
 
     async getGeoMatrix() {
-      const matrix = await request('/stats/geo-matrix');
+      const matrix = await read('/stats/geo-matrix');
       return Array.isArray(matrix) ? matrix : [];
     },
 
     // Nodes plus the edges the ACL policy permits between them.
     async getTopology() {
-      const t = await request('/stats/topology');
+      const t = await read('/stats/topology');
       return {
         nodes: Array.isArray(t?.nodes) ? t.nodes : [],
         links: Array.isArray(t?.links) ? t.links : [],
@@ -729,30 +169,26 @@ PersistentKeepalive = 25
     }
   },
 
-  // Forensic Audit Logs
-  //
-  // Two faults in one line. The path was '/audit', and the server mounts the stats
-  // router there, so GET /api/audit answered with the overview figures — active
-  // nodes, total nodes, connected users. The response was then read for `events`,
-  // which the audit handler does not return either; it returns `audit_logs`. Both
-  // misses fell through to a fixture, so the forensic log displayed fabricated
-  // entries, and went on displaying them throughout the period when the ledger was
-  // recording nothing at all.
+  // Two faults in one line, before this. The path was '/audit', where the
+  // server mounts the stats router, so GET /api/audit answered with the
+  // overview figures. The response was then read for `events`, which the audit
+  // handler does not return either. Both misses fell through to a fixture, so
+  // the forensic log displayed fabricated entries throughout the period when
+  // the ledger was recording nothing at all.
   audit: {
     async list({ limit = 200 } = {}) {
-      const live = await request(`/audit/events?limit=${encodeURIComponent(limit)}`);
+      const live = await read(`/audit/events?limit=${encodeURIComponent(limit)}`);
       return Array.isArray(live?.audit_logs) ? live.audit_logs : [];
     }
   },
 
-  // ACL & Settings
-  // These three used to operate on a JavaScript array in this file. The engine that
-  // compiles and delivers ACLs to the fleet was never contacted, so a rule written
-  // in the console was gone on reload and never reached a node, while the page
-  // showed it as active policy.
+  // These three used to operate on a JavaScript array in this file. The engine
+  // that compiles and delivers ACLs to the fleet was never contacted, so a rule
+  // written in the console was gone on reload and never reached a node, while
+  // the page showed it as active policy.
   acl: {
     async list() {
-      const res = await request('/acl/rules');
+      const res = await read('/acl/rules');
       return {
         rules: Array.isArray(res?.rules) ? res.rules : [],
         epoch: res?.epoch ?? null,
@@ -762,467 +198,223 @@ PersistentKeepalive = 25
     },
 
     async create(rule) {
-      const res = await request('/acl/rules', {
-        method: 'POST',
-        body: JSON.stringify(rule)
-      });
-      if (!res) throw new Error('The control plane did not accept the rule');
-      return res;
+      return write('/acl/rules', 'POST', rule);
     },
 
     async delete(id) {
-      const res = await request(`/acl/rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      if (!res) throw new Error('The control plane did not confirm the deletion');
-      return res;
+      return write(`/acl/rules/${encodeURIComponent(id)}`, 'DELETE');
     },
 
     /** The policy a node will actually enforce, for confirming a rule landed. */
     async compiledFor(nodeId) {
-      return request(`/acl/compiled/${encodeURIComponent(nodeId)}`);
+      return read(`/acl/compiled/${encodeURIComponent(nodeId)}`);
     }
   },
 
-  // Cross-Mesh Peering Management
   peering: {
     async list() {
-      const live = await request('/peering');
-      return resolveList('/peering', Array.isArray(live?.agreements) ? live.agreements : null, inMemoryPeering);
+      const live = await read('/peering');
+      return Array.isArray(live?.agreements) ? live.agreements : [];
     },
 
     async create(data) {
-      const live = await request('/peering', {
-        method: 'POST',
-        body: JSON.stringify(data)
-      });
-      if (live && live.agreement) return live.agreement;
-
-      const newAg = {
-        id: `peer_ag_${Math.random().toString(36).substring(2, 7)}`,
-        remote_mesh_name: data.remote_mesh_name || 'Custom-Peer-Mesh',
-        remote_endpoint: data.remote_endpoint,
-        remote_public_key: data.remote_public_key || `ed25519_${Math.random().toString(36).substring(2, 20)}`,
-        scope_mode: data.scope_mode || 'ALL',
-        shared_subnets: data.shared_subnets || ['100.64.0.0/16'],
-        shared_devices_count: data.shared_devices_count || 1,
-        latency_ms: +(15 + Math.random() * 25).toFixed(1),
-        status: 'active',
-        expires_at: data.expires_at || new Date(Date.now() + 30 * 86400000).toISOString(),
-        created_at: new Date().toISOString()
-      };
-      inMemoryPeering.unshift(newAg);
-      return newAg;
+      const live = await write('/peering', 'POST', data);
+      if (!live?.agreement) throw new Error('The control plane did not return the agreement');
+      return live.agreement;
     },
 
     async accept(id) {
-      const live = await request(`/peering/${id}/accept`, { method: 'POST' });
-      if (live) return live;
-
-      const idx = inMemoryPeering.findIndex((p) => p.id === id);
-      if (idx !== -1) {
-        inMemoryPeering[idx] = { ...inMemoryPeering[idx], status: 'active' };
-        return { success: true, agreement: inMemoryPeering[idx] };
-      }
-      return { success: false, error: 'Agreement not found' };
+      return write(`/peering/${encodeURIComponent(id)}/accept`, 'POST');
     },
 
     async revoke(id) {
-      const live = await request(`/peering/${id}/revoke`, { method: 'POST' });
-      if (live) return live;
-
-      const idx = inMemoryPeering.findIndex((p) => p.id === id);
-      if (idx !== -1) {
-        inMemoryPeering[idx] = { ...inMemoryPeering[idx], status: 'revoked' };
-        return { success: true, agreement: inMemoryPeering[idx] };
-      }
-      return { success: false, error: 'Agreement not found' };
+      return write(`/peering/${encodeURIComponent(id)}/revoke`, 'POST');
     },
 
+    // The fallback signed a peering token with random bytes and returned it as
+    // a federation offer. A remote mesh handed that token would have rejected
+    // it, after the operator had already sent it.
     async generateToken(params) {
-      const live = await request('/peering/generate-token', {
-        method: 'POST',
-        body: JSON.stringify(params)
-      });
-      if (live && live.token) return live;
-
-      const tokenPayload = {
-        version: '1.0',
-        peering_id: `peer_req_${Math.random().toString(36).substring(2, 9)}`,
-        initiator_endpoint: 'https://console.neronet.darknero.com',
-        initiator_public_key: generateRandomBase64Key(),
-        scope_mode: params.scope_mode || 'ALL',
-        shared_device_ids: params.shared_device_ids || [],
-        shared_subnets: params.shared_subnets || ['100.64.0.0/16'],
-        expires_at: params.expires_at || new Date(Date.now() + 7 * 86400000).toISOString(),
-        signature: generateRandomBase64Key() + generateRandomBase64Key()
-      };
-
-      return {
-        token: btoa(JSON.stringify(tokenPayload)),
-        payload: tokenPayload
-      };
+      const live = await write('/peering/generate-token', 'POST', params);
+      if (!live?.token) throw new Error('The control plane did not return a peering token');
+      return live;
     }
   },
 
-  // Behavioral Risk Dashboard & Anomaly Engine
+  // These three endpoints did not exist on the server, so each call 404ed and
+  // returned the fixture below it: the risk page reported a distribution of
+  // 14 low / 2 medium / 2 high and an average of 21.4 on any fleet.
   risk: {
-    // These three endpoints did not exist on the server, so each call 404ed and
-    // returned the fixture below it: the risk page reported a distribution of
-    // 14 low / 2 medium / 2 high and an average of 21.4 on any fleet. They exist
-    // now and the fixtures are gone.
     async getSummary() {
-      return request('/risk/summary');
+      return read('/risk/summary');
     },
 
     async listEvents() {
-      const live = await request('/risk/events');
+      const live = await read('/risk/events');
       return Array.isArray(live?.events) ? live.events : [];
     },
 
     async getLeaderboard() {
-      const live = await request('/risk/leaderboard');
+      const live = await read('/risk/leaderboard');
       return Array.isArray(live?.leaderboard) ? live.leaderboard : [];
     },
 
     async quarantine(nodeId, reason) {
-      const res = await api.nodes.action(nodeId, 'quarantine', { reason });
-      const nodeIndex = inMemoryNodes.findIndex((n) => n.id === nodeId);
-      if (nodeIndex !== -1) {
-        inMemoryNodes[nodeIndex].risk_score = Math.max(80, inMemoryNodes[nodeIndex].risk_score || 85);
-      }
-      return res;
+      return api.nodes.action(nodeId, 'quarantine', { reason });
     },
 
     async clearRisk(nodeId) {
-      const live = await request(`/risk/nodes/${nodeId}/clear`, { method: 'POST' });
-      if (live) return live;
-
-      const nodeIndex = inMemoryNodes.findIndex((n) => n.id === nodeId);
-      if (nodeIndex !== -1) {
-        inMemoryNodes[nodeIndex] = {
-          ...inMemoryNodes[nodeIndex],
-          risk_score: 10,
-          risk_factors: [],
-          is_quarantined: 0,
-          is_healthy: 1,
-          quarantine_reason: null
-        };
-        inMemoryRiskEvents = inMemoryRiskEvents.filter((e) => e.node_id !== nodeId);
-        return { success: true, node: inMemoryNodes[nodeIndex] };
-      }
-      return { success: false, error: 'Node not found' };
+      return write(`/risk/nodes/${encodeURIComponent(nodeId)}/clear`, 'POST');
     }
   },
 
-  // Geo-Fencing Policy Engine (PostGIS)
   geofencing: {
+    // This returned fixtures whenever the live list was empty, so a deployment
+    // with no geo policy configured displayed six countries of policy.
     async listPolicies() {
-      const live = await request('/geofencing/policies');
-      if (live?.policies && Array.isArray(live.policies) && live.policies.length > 0) return live.policies;
-      return inMemoryGeoPolicies.map((p) => ({
-        ...p,
-        node_count: inMemoryNodes.filter((n) => n.country_code === p.country_code).length
-      }));
+      const live = await read('/geofencing/policies');
+      return Array.isArray(live?.policies) ? live.policies : [];
     },
 
     async updatePolicy(countryCode, action, egressAllowed = true) {
-      const live = await request(`/geofencing/policies/${countryCode}`, {
-        method: 'PUT',
-        body: JSON.stringify({ action, egress_allowed: egressAllowed })
-      });
-      if (live && live.policy) return live.policy;
-
-      const idx = inMemoryGeoPolicies.findIndex((p) => p.country_code === countryCode);
-      if (idx !== -1) {
-        inMemoryGeoPolicies[idx] = {
-          ...inMemoryGeoPolicies[idx],
-          action,
-          egress_allowed: egressAllowed,
-          updated_at: new Date().toISOString()
-        };
-        return inMemoryGeoPolicies[idx];
-      }
-      const newPol = {
-        country_code: countryCode,
-        country_name: countryCode,
+      const live = await write(`/geofencing/policies/${encodeURIComponent(countryCode)}`, 'PUT', {
         action,
-        node_count: inMemoryNodes.filter((n) => n.country_code === countryCode).length,
-        egress_allowed: egressAllowed,
-        updated_at: new Date().toISOString()
-      };
-      inMemoryGeoPolicies.push(newPol);
-      return newPol;
+        egress_allowed: egressAllowed
+      });
+      if (!live?.policy) throw new Error('The control plane did not confirm the policy');
+      return live.policy;
     },
 
     async bulkUpdatePolicies(policies) {
-      const live = await request('/geofencing/policies/bulk', {
-        method: 'POST',
-        body: JSON.stringify({ policies })
-      });
-      if (live && live.policies) return live.policies;
-
-      policies.forEach((p) => {
-        const idx = inMemoryGeoPolicies.findIndex((g) => g.country_code === p.country_code);
-        if (idx !== -1) {
-          inMemoryGeoPolicies[idx] = { ...inMemoryGeoPolicies[idx], ...p, updated_at: new Date().toISOString() };
-        } else {
-          inMemoryGeoPolicies.push({ ...p, updated_at: new Date().toISOString() });
-        }
-      });
-      return inMemoryGeoPolicies;
+      const live = await write('/geofencing/policies/bulk', 'POST', { policies });
+      return Array.isArray(live?.policies) ? live.policies : [];
     }
   },
 
-  // Sovereign Cloud PC (WebRTC Native / Selkies-GStreamer & Custom Domains)
   cloudPc: {
     async list() {
-      const live = await request('/cloud-pc');
-      return resolveList('/cloud-pc', Array.isArray(live?.instances) ? live.instances : null, inMemoryCloudPc);
+      const live = await read('/cloud-pc');
+      return Array.isArray(live?.instances) ? live.instances : [];
     },
 
     async project(id) {
-      const live = await request(`/cloud-pc/${id}/project`, { method: 'POST' });
-      if (live) return live;
-
-      const instance = inMemoryCloudPc.find((c) => c.id === id) || inMemoryCloudPc[0];
-      const streamToken = `stream_tok_${Math.random().toString(36).substring(2, 16)}`;
-      return {
-        session_id: `sess_webrtc_${Math.random().toString(36).substring(2, 10)}`,
-        cpc_id: instance.id,
-        cpc_name: instance.name,
-        signaling_url: instance.webrtc_signaling_url,
-        ice_servers: instance.stun_turn_servers,
-        stream_token: streamToken,
-        viewer_url: `https://workspace.neronet.darknero.com/webrtc-viewer?stream_token=${streamToken}&cpc=${instance.id}`,
-        fps: instance.fps,
-        resolution: instance.resolution,
-        codec: instance.codec
-      };
+      return write(`/cloud-pc/${encodeURIComponent(id)}/project`, 'POST');
     },
 
     async listCustomDomains() {
-      const live = await request('/cloud-pc/custom-domains');
-      return resolveList(
-        '/custom-domains',
-        Array.isArray(live?.custom_domains) ? live.custom_domains : null,
-        inMemoryCustomDomains
-      );
+      const live = await read('/cloud-pc/custom-domains');
+      return Array.isArray(live?.custom_domains) ? live.custom_domains : [];
     },
 
     async addCustomDomain(domainData) {
-      const live = await request('/cloud-pc/custom-domains', {
-        method: 'POST',
-        body: JSON.stringify(domainData)
-      });
-      if (live && live.domain) return live.domain;
-
-      const newDom = {
-        domain: domainData.domain,
-        cpc_id: domainData.cpc_id,
-        cpc_name: domainData.cpc_name || 'Sovereign Cloud PC',
-        dns_status: 'verified',
-        ssl_status: 'active',
-        sso_enforced: domainData.sso_enforced ?? true,
-        otp_gateway_required: domainData.otp_gateway_required ?? true,
-        cname_target: 'cpc-ingress.neronet.darknero.com',
-        created_at: new Date().toISOString()
-      };
-      inMemoryCustomDomains.unshift(newDom);
-      return newDom;
+      const live = await write('/cloud-pc/custom-domains', 'POST', domainData);
+      if (!live?.domain) throw new Error('The control plane did not return the domain');
+      return live.domain;
     },
 
     async deleteCustomDomain(domain) {
-      const live = await request(`/cloud-pc/custom-domains/${domain}`, { method: 'DELETE' });
-      if (live) return live;
-      inMemoryCustomDomains = inMemoryCustomDomains.filter((d) => d.domain !== domain);
-      return { success: true };
+      return write(`/cloud-pc/custom-domains/${encodeURIComponent(domain)}`, 'DELETE');
     },
 
     async verifyCustomDomain(domain) {
-      const live = await request(`/cloud-pc/custom-domains/${domain}/verify`, { method: 'POST' });
-      if (live) return live;
-      const item = inMemoryCustomDomains.find((d) => d.domain === domain);
-      if (item) item.dns_status = 'verified';
-      return { verified: true, ssl_status: 'active' };
+      return write(`/cloud-pc/custom-domains/${encodeURIComponent(domain)}/verify`, 'POST');
     }
   },
 
-  // NeroNuke 3-Tier Dead Man's Switch & Self-Destruct System
+  // /nuke/state had no route. The 404 returned a fixture reporting a personal
+  // dead man's switch armed on a 30-day interval, an owner switch pointed at a
+  // Matrix webhook and a valid warrant canary, on a deployment where none of it
+  // was configured. For a set of destructive controls, showing armed when
+  // nothing is armed is the worst available failure.
   nuke: {
-    // /nuke/state had no route. The 404 returned the fixture below, which reported
-    // a personal dead man's switch armed on a 30-day interval, an owner switch
-    // pointed at a Matrix webhook and a valid warrant canary — on a deployment
-    // where none of it was configured. For a set of destructive controls, showing
-    // armed when nothing is armed is the worst available failure.
     async getGlobalState() {
-      return request('/nuke/state');
+      return read('/nuke/state');
     },
 
-    // Tier 1: User Account Self-Destruct (Immediate)
+    // Tier 1: user account self-destruct, immediate.
     async userSelfDestruct(confirmationText, disclaimerAccepted) {
       if (confirmationText !== 'DELETE MY ACCOUNT' || !disclaimerAccepted) {
         throw new Error("Must accept disclaimer and type exact confirmation 'DELETE MY ACCOUNT'");
       }
-      const live = await request('/nuke/user/self-destruct', {
-        method: 'POST',
-        body: JSON.stringify({ confirmation_text: confirmationText, disclaimer_accepted: disclaimerAccepted })
+      return write('/nuke/user/self-destruct', 'POST', {
+        confirmation_text: confirmationText,
+        disclaimer_accepted: disclaimerAccepted
       });
-      if (live) return live;
-
-      // In-Memory destruction
-      inMemoryNodes = inMemoryNodes.filter((n) => n.user_id !== 'usr_alice_01');
-      inMemoryUsers = inMemoryUsers.filter((u) => u.id !== 'usr_alice_01');
-      return {
-        success: true,
-        message: 'Account and personal keys hard-deleted. Cryptographic wipe executed.'
-      };
     },
 
-    // Tier 1: User Scheduled Self-Destruct
     async scheduleSelfDestruct(scheduledAt) {
-      const live = await request('/nuke/user/schedule', {
-        method: 'POST',
-        body: JSON.stringify({ scheduled_deletion_at: scheduledAt })
-      });
-      if (live) return live;
-
-      inMemoryNukeConfig.tier1_scheduled_kill = {
-        armed: true,
-        scheduled_at: scheduledAt,
-        phrase: 'DELETE MY ACCOUNT'
-      };
-      return inMemoryNukeConfig.tier1_scheduled_kill;
+      return write('/nuke/user/schedule', 'POST', { scheduled_deletion_at: scheduledAt });
     },
 
+    // Was '/nuke/user/schedule/cancel'; the route is '/nuke/user/cancel-scheduled'.
+    // The 404 fell through to a fixture that cleared a local object and reported
+    // the cancellation done, so a scheduled self-destruct the operator believed
+    // they had called off was still scheduled.
     async cancelScheduledDestruct() {
-      // Was '/nuke/user/schedule/cancel'; the route is '/nuke/user/cancel-scheduled'.
-      // The 404 fell through to a fixture that cleared a local object and reported
-      // the cancellation done, so a scheduled self-destruct the operator believed
-      // they had called off was still scheduled.
-      const live = await request('/nuke/user/cancel-scheduled', { method: 'POST' });
-      if (live) return live;
-
-      inMemoryNukeConfig.tier1_scheduled_kill = {
-        armed: false,
-        scheduled_at: null,
-        phrase: 'DELETE MY ACCOUNT'
-      };
-      return { success: true };
+      return write('/nuke/user/cancel-scheduled', 'POST');
     },
 
-    // Tier 1b: Per-User Dead Man's Switch (Steganographic Hidden Mode)
+    // Tier 1b: per-user dead man's switch.
     async setupPersonalDms(passphrase, heartbeatIntervalSeconds, steganographyMode) {
-      const live = await request('/nuke/personal-dms/setup', {
-        method: 'POST',
-        body: JSON.stringify({
-          passphrase,
-          heartbeat_interval_seconds: heartbeatIntervalSeconds,
-          steganography_mode: steganographyMode
-        })
-      });
-      if (live) return live;
-
-      inMemoryNukeConfig.tier1b_personal_dms = {
-        armed: true,
-        heartbeat_interval_seconds: Number(heartbeatIntervalSeconds),
-        last_heartbeat_at: new Date().toISOString(),
+      return write('/nuke/personal-dms/setup', 'POST', {
+        passphrase,
+        heartbeat_interval_seconds: heartbeatIntervalSeconds,
         steganography_mode: steganographyMode
-      };
-      return inMemoryNukeConfig.tier1b_personal_dms;
+      });
     },
 
+    // The credential is verified by the server only. When the server cannot be
+    // reached the switch stays locked; a client-side check would accept values
+    // the server never saw.
     async verifyPersonalDmsSecret(method, credential) {
-      const live = await request('/nuke/personal-dms/auth', {
+      const live = await read('/nuke/personal-dms/auth', {
         method: 'POST',
-        body: JSON.stringify({ method, credential })
+        body: { method, credential }
       });
-      if (live) return live;
-
-      // The credential is verified by the server only. When the server cannot be reached
-      // the switch stays locked; a client-side check would accept values the server never saw.
-      return { authenticated: false, dms_state: null, time_remaining_seconds: 0 };
+      return live ?? { authenticated: false, dms_state: null, time_remaining_seconds: 0 };
     },
 
     async resetPersonalDmsHeartbeat(passphrase) {
-      const live = await request('/nuke/personal-dms/heartbeat', {
-        method: 'POST',
-        body: JSON.stringify({ passphrase })
-      });
-      if (live) return live;
-
-      inMemoryNukeConfig.tier1b_personal_dms.last_heartbeat_at = new Date().toISOString();
-      return {
-        success: true,
-        message: 'Personal DMS heartbeat re-confirmed. Timer reset.',
-        last_heartbeat_at: inMemoryNukeConfig.tier1b_personal_dms.last_heartbeat_at
-      };
+      return write('/nuke/personal-dms/heartbeat', 'POST', { passphrase });
     },
 
-    // Tier 2: Network Owner Dead Man's Switch (Global Wipe)
+    // Tier 2: network owner dead man's switch.
     async setupOwnerDms(passphrase, heartbeatIntervalSeconds, webhookUrl) {
-      const live = await request('/nuke/owner-dms/setup', {
-        method: 'POST',
-        body: JSON.stringify({
-          passphrase,
-          heartbeat_interval_seconds: heartbeatIntervalSeconds,
-          webhook_url: webhookUrl
-        })
-      });
-      if (live) return live;
-
-      inMemoryNukeConfig.tier2_owner_dms = {
-        armed: true,
-        heartbeat_interval_seconds: Number(heartbeatIntervalSeconds),
-        last_heartbeat_at: new Date().toISOString(),
+      return write('/nuke/owner-dms/setup', 'POST', {
+        passphrase,
+        heartbeat_interval_seconds: heartbeatIntervalSeconds,
         webhook_url: webhookUrl
-      };
-      return inMemoryNukeConfig.tier2_owner_dms;
+      });
     },
 
     async resetOwnerDmsHeartbeat(passphrase) {
-      const live = await request('/nuke/owner-dms/heartbeat', {
-        method: 'POST',
-        body: JSON.stringify({ passphrase })
-      });
-      if (live) return live;
-
-      inMemoryNukeConfig.tier2_owner_dms.last_heartbeat_at = new Date().toISOString();
-      return {
-        success: true,
-        message: 'Network Owner DMS heartbeat confirmed. Global wipe timer reset.',
-        last_heartbeat_at: inMemoryNukeConfig.tier2_owner_dms.last_heartbeat_at
-      };
+      return write('/nuke/owner-dms/heartbeat', 'POST', { passphrase });
     },
 
     // Was '/nuke/owner-dms/trigger-wipe'; the route is '/nuke/owner-dms/trigger',
-    // so this 404ed and the fixture below emptied some arrays and reported the wipe
-    // done. The server now requires the phrase and the caller's own password: the
-    // field sent here was named `passphrase` and the handler read neither.
+    // so this 404ed and the fixture below it emptied some arrays and reported
+    // the wipe done. That fixture also assigned to an undeclared variable, which
+    // would have thrown before it finished lying about what it had destroyed.
     async triggerOwnerWipe({ confirmationPhrase, password }) {
-      const live = await request('/nuke/owner-dms/trigger', {
-        method: 'POST',
-        body: JSON.stringify({
-          confirmation_phrase: confirmationPhrase,
-          password
-        })
+      return write('/nuke/owner-dms/trigger', 'POST', {
+        confirmation_phrase: confirmationPhrase,
+        password
       });
-      if (live) return live;
-
-      inMemoryNodes = [];
-      inMemoryUsers = [];
-      inMemoryApps = [];
-      inMemoryPeering = [];
-      inMemoryRiskEvents = [];
-      return {
-        success: true,
-        message: 'Cascading global wipe executed. Canary webhook alerted.'
-      };
     },
 
-    // Tier 3: Warrant Canary
+    // Tier 3: warrant canary. Served as text from outside /api, so it does not
+    // go through apiRequest. A canary that cannot be fetched is reported as
+    // absent; the fixture that used to stand in for it declared the canary
+    // valid, which is the one statement about a canary that must never be
+    // invented.
     async getWarrantCanary() {
-      const live = await request('/.well-known/canary.txt');
-      if (typeof live === 'string') return live;
-      return inMemoryNukeConfig.tier3_warrant_canary;
+      try {
+        const res = await fetch('/.well-known/canary.txt');
+        if (!res.ok) return null;
+        return await res.text();
+      } catch {
+        return null;
+      }
     }
   }
 };

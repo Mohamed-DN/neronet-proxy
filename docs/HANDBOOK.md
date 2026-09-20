@@ -317,8 +317,12 @@ plaintext on a trusted socket while appearing stronger.
 
 `request()` collapsed every failure into `return null`, and nineteen endpoints
 answered that null with demo fixtures. A crashed backend, a network error and an
-empty database were indistinguishable. Now an empty successful response is returned
-as-is, fixtures are opt-in (`VITE_ALLOW_MOCK_DATA`), and a banner names the state.
+empty database were indistinguishable. An empty successful response is now returned
+as-is, and the fixtures, which were opt-in behind `VITE_ALLOW_MOCK_DATA` for a time,
+are gone: `services/mockData.js` and `services/dataSource.js` were deleted in
+WP-402 and no fixture module is in the production bundle. The banner that named the
+data source is now a connection indicator that says whether the control plane is
+answering and whether live updates are arriving.
 
 The control plane wrote `latency_ms = floor(random() * 50 + 10)` on every heartbeat.
 The node sent `cpu=5, mem=32, battery=100` constants. Both removed; memory is now
