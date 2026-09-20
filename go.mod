@@ -1,6 +1,6 @@
 module github.com/sovereign/proxy/v4
 
-go 1.26.0
+go 1.26.8
 
 require (
 	github.com/axiomhq/hyperloglog v0.2.6
