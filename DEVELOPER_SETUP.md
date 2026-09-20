@@ -1,97 +1,71 @@
-# Developer Onboarding & Deployment Guide — Sovereign Proxy v4.0 (NeroNet)
+# Developer guide
 
-Welcome to the **Sovereign Proxy v4.0 (NeroNet)** developer guide. This document provides an end-to-end, step-by-step onboarding walkthrough for software engineers, security researchers, and DevOps operators.
+How to run the development stack, run the tests, and work on the code. For what the
+system is and does, read [the handbook](docs/HANDBOOK.md) first.
 
 ---
 
 ## Table of Contents
-1. [Architecture Overview & System Topology](#1-architecture-overview--system-topology)
-2. [Prerequisites & Development Environment](#2-prerequisites--development-environment)
-3. [Local Development Environment](#3-local-development-environment)
-4. [Centralized Configuration & Precedence Hierarchy](#4-centralized-configuration--precedence-hierarchy)
-5. [Compose Stack Reference](#5-compose-stack-reference)
-6. [Multi-Cloud Provisioning with OpenTofu / Terraform](#6-multi-cloud-provisioning-with-opentofu--terraform)
-7. [Kubernetes & Helm Deployment Guide](#7-kubernetes--helm-deployment-guide)
-8. [Testing, Health Checks & Diagnostics](#8-testing-health-checks--diagnostics)
-9. [Security Hardening & Zero-Trust Best Practices](#9-security-hardening--zero-trust-best-practices)
-10. [Troubleshooting & Frequently Asked Questions (FAQ)](#10-troubleshooting--frequently-asked-questions-faq)
+1. [Architecture overview](#1-architecture-overview)
+2. [Prerequisites](#2-prerequisites)
+3. [Local development environment](#3-local-development-environment)
+4. [Configuration](#4-configuration)
+5. [Compose stack reference](#5-compose-stack-reference)
+6. [Cloud provisioning](#6-cloud-provisioning)
+7. [Kubernetes and Helm](#7-kubernetes-and-helm)
+8. [Testing and diagnostics](#8-testing-and-diagnostics)
+9. [Hardening notes](#9-hardening-notes)
+10. [Troubleshooting](#10-troubleshooting)
 
 ---
 
-## 1. Architecture Overview & System Topology
-
-Sovereign Proxy v4.0 is a decentralized, zero-trust overlay mesh engineered for high-throughput connectivity, active network defense, and anti-censorship resilience across heterogeneous cloud providers and residential edge gateways.
+## 1. Architecture overview
 
 ```
-                     ┌────────────────────────────────────────────────────────┐
-                     │          NeroNet Control Plane Coordinator             │
-                     │          (Embedded Raft Consensus / VIP Alloc)         │
-                     │              Port 8443 (REST) / 9443 (gRPC)            │
-                     └───────────────────────▲────────────────────────────────┘
-                                             │ Node Registration & Policy Sync
-                                             │ (Noise Handshake / Mutual Auth)
-                                             ▼
-                 ┌────────────────────────────────────────────────────────┐
-                 │           Camouflaged DERP Relay Fleet                 │
-                 │   - Cloud-neutral Mesh Relay (TCP 443 / WebSocket)     │
-                 │   - STUN NAT-Traversal Reflection (UDP 3478)           │
-                 │   - Anti-Probing Active Decoy Server (Port 8080)       │
-                 │   - Security Daemon Threat Watcher (eBPF / IPSet)      │
-                 └───────────────▲────────────────────────▲───────────────┘
-                                 │ Direct UDP /           │
-                                 │ DERP Camouflage        │
-          ┌──────────────────────┴───────┐        ┌───────┴──────────────────────┐
-          │     Client Origin Node       │        │   Sandboxed Exit Gateway     │
-          │  - Inbound SOCKS5 (1080)     │◄──────►│  - Residential / Cloud Exit  │
-          │  - Inbound HTTP (8080)       │        │  - gVisor Netstack Sandbox   │
-          │  - Curve25519 Identity       │        │  - Strict RFC 1918 Bogon Drop│
-          │  - Posture Attestation Loop  │        │  - DoH Recursive Resolver    │
-          └──────────────────────────────┘        └──────────────────────────────┘
+   Go nodes (cmd/sovereign-node)  ── HTTP, /v4/control/* ──►  nginx (console/frontend)
+        │  local SOCKS5 and HTTP proxy                            │  /api, /ws, /v4
+        │  dials destinations directly                            ▼
+        │                                                    Node.js API (console/backend)
+   DERP relays + STUN (cmd/sovereign-derp-relay)                  │             │
+   started by the compose stack, used by no node               PostgreSQL     Valkey
 ```
 
-### Core Subsystems & Components
+There is no data plane in the default configuration: nodes do not tunnel to each other.
+A spike of one exists behind the node's `-dataplane` flag; see
+[ADR 0020](docs/adr/0020-data-plane.md).
 
-| Component | Path | Description |
+### Components
+
+| Component | Path | What it is |
 |---|---|---|
-| **Control Plane** | `cmd/sovereign-control-plane` | Centralized coordinator handling node enrollment, Raft consensus state, dynamic ACL distribution, and endpoint posture attestation. |
-| **DERP Relay** | `cmd/sovereign-derp-relay` | Camouflaged Tailscale-compatible DERP-v4 packet relay supporting WebSocket fallback, STUN NAT hairpinning, and anti-probing decoys. |
-| **Client Node** | `cmd/sovereign-node` | Zero-trust client daemon providing local SOCKS5 (`127.0.0.1:1080`) and HTTP CONNECT (`127.0.0.1:8080`) proxy endpoints with user-space netstack isolation. |
-| **Security Daemon** | `cmd/sovereign-security-daemon` | Active defense engine with dynamic honeypot listeners, token bucket rate limiters, threat scoring, and automated multi-backend firewall banning (`ipset`, `nftables`, `ufw`). |
-| **Operator CLI** | `cmd/sovereign-cli` | Diagnostic and operational CLI for keypair generation, peer discovery, 3-Hop Onion circuit synthesis, and STUN latency probes. |
-| **Configuration Engine** | `pkg/config` | Layered configuration manager supporting CLI flags, `.env` file parsing, YAML cluster validation, and secret sanitization. |
+| Control plane | `console/backend` | REST API, WebSocket, and `/v4/control` for nodes. Node enrolment, overlay addresses, ACL and route delivery, posture, revocation |
+| Console | `console/frontend` | React single-page application, served by nginx, which also proxies `/api` and `/v4` |
+| Node | `cmd/sovereign-node` | Enrols, sends heartbeats, syncs ACLs and routes, runs a local SOCKS5 (`127.0.0.1:1080`) and HTTP CONNECT (`127.0.0.1:8080`) proxy |
+| DERP relay | `cmd/sovereign-derp-relay` | Relay server and STUN server. Started by the compose stack; no node connects to it |
+| Operator CLI | `cmd/sovereign-cli` | `status`, `peers`, `circuit`, `keygen`, `stun-ping` |
+| Go control plane | `cmd/sovereign-control-plane` | Not the control plane to run. Scheduled for removal ([ADR 0007](docs/adr/0007-remove-go-control-plane-server.md)) |
+| Security daemon | `cmd/sovereign-security-daemon` | Honeypot listener, threat scorer and firewall drivers. Separate Go module, has tests, not started by the compose stack |
+| Configuration | `pkg/config` | Flag and environment binding for the Go binaries |
 
 ---
 
-## 2. Prerequisites & Development Environment
+## 2. Prerequisites
 
-Ensure your development workstation satisfies the following requirements:
-
-### Required Tooling
-
-- **Go**: Version `1.22.0` or higher (`go version`)
-- **Python**: Version `3.11` or higher (`python3 --version`)
-- **Container engine with Compose v2**: Podman 5+ or Docker Engine 24+ (`podman compose version` / `docker compose version`).
-  The scripts in `scripts/dev/` use Podman when it is installed and Docker otherwise.
-  Go and Node.js on the host are optional: the stack and the test suites run in containers.
-- **Windows 11**: Git for Windows (Git Bash). Run the scripts from Git Bash, not from PowerShell or cmd.
-- **OpenTofu / Terraform**: OpenTofu `1.6+` or Terraform `1.5+` (`tofu version` / `terraform version`)
-- **Helm & Kubectl**: Helm `v3.14+`, Kubectl `v1.28+` (`helm version`, `kubectl version`)
-- **OpenSSL / Utilities**: `openssl`, `uuidgen`, `make`, `curl`, `git`
-
-### Recommended System Settings (Linux / macOS)
-
-For high-throughput relay and netstack performance:
-
-```bash
-# Enable BBR and tune network buffers (Linux)
-sudo sysctl -w net.core.default_qdisc=fq
-sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
-sudo sysctl -w net.ipv4.ip_forward=1
-```
+- **Container engine with Compose v2**: Podman 5+ or Docker Engine 24+
+  (`podman compose version` / `docker compose version`). The scripts in `scripts/dev/`
+  use Podman when it is installed and Docker otherwise. Go and Node.js on the host are
+  optional: the stack and the test suites run in containers.
+- **Windows 11**: Git for Windows (Git Bash). Run the scripts from Git Bash, not from
+  PowerShell or cmd.
+- **Go 1.25 or later** (`go version`), only to build or run the binaries on the host.
+- **Python 3**, only for `scripts/dev/check-links.py` and the legacy tool tests.
+- `curl`, `git`, `make`, `openssl`.
+- OpenTofu or Terraform, Helm and kubectl are needed only for the deployment manifests,
+  which are unsupported (sections 6 and 7).
 
 ---
 
-## 3. Local Development Environment
+## 3. Local development environment
 
 The development stack and the test suites are driven by scripts in `scripts/dev/`.
 They are POSIX `sh` and run everything in containers.
@@ -183,114 +157,88 @@ keeps the SQLite files the tests create in a tmpfs. Do not point the backend tes
 the Valkey of a running stack: the tests key their data by process id, and ids collide
 across containers.
 
-### Building and running the Go binaries directly
+### Running a node on the host
 
-This needs Go on the host and is not required for working on the console.
-
-### Step 1: Initialize Configuration from Template
-
-```bash
-cp .env.example .env
-chmod 600 .env
-```
-
-### Step 2: Build Core Binaries
+This needs Go on the host and is not required for working on the console. Start the
+stack first, then:
 
 ```bash
-make build
+set -a && . ./.env && set +a
+SOVEREIGN_NODE_KEY_PATH=./node_identity.key \
+  go run ./cmd/sovereign-node -control-url http://127.0.0.1:8443 -country IT
 ```
-*Compiled binaries will be placed in the `bin/` directory:*
-- `bin/sovereign-control-plane`
-- `bin/sovereign-derp-relay`
-- `bin/sovereign-node`
-- `bin/sovereign-cli`
 
-### Step 3: Generate Identity Keypairs
+The node reads `SOVEREIGN_REGISTRATION_TOKEN` from the environment. Without a writable
+`SOVEREIGN_NODE_KEY_PATH` it stops, because an identity that changes on every start is
+not an identity. The console lists the node once it enrols.
 
-Generate a fresh Curve25519 node identity keypair using the CLI:
+The command line tool talks to the same address:
 
 ```bash
-./bin/sovereign-cli keygen
-```
-*Example Output:*
-```text
-Generated NeroNet Curve25519 Keypair:
-  Node ID:     node-6b583dfb12c9431e
-  Public Key:  a8b79213efc1234901f4c781d098e217834bcdef901234567890abcdef123456
-  Private Key: f912384091823740918237409182374091823740918237409182374091823740
+go run ./cmd/sovereign-cli peers DE --control-url http://127.0.0.1:8443
+go run ./cmd/sovereign-cli circuit US --control-url http://127.0.0.1:8443
+go run ./cmd/sovereign-cli keygen
+go run ./cmd/sovereign-cli stun-ping 127.0.0.1:3478   # needs the nodes profile
 ```
 
-Insert the generated private key into your `.env` file (`NOISE_PRIVATE_KEY=...`).
+`make build` writes `bin/sovereign-node`, `bin/sovereign-cli`,
+`bin/sovereign-derp-relay` and `bin/sovereign-control-plane`. The last is not to be run.
 
-### Step 4: Launch Local Daemons
-
-In separate terminal sessions (or via background jobs):
-
-**1. Start Control Plane Coordinator:**
-```bash
-./bin/sovereign-control-plane --listen-addr 127.0.0.1:8443
-```
-
-**2. Start Camouflaged Relay Node:**
-```bash
-./bin/sovereign-derp-relay --listen-addr 127.0.0.1:8444 --stun-addr 127.0.0.1:3478 --region local-dev
-```
-
-**3. Start Client Node Ingress:**
-```bash
-./bin/sovereign-node --socks-addr 127.0.0.1:1080 --http-addr 127.0.0.1:8080 --control-url http://127.0.0.1:8443
-```
-
-### Step 5: Test Local Ingress Proxy
-
-Route an HTTP request through the local SOCKS5 proxy:
-
-```bash
-curl -x socks5h://127.0.0.1:1080 https://cloudflare.com/cdn-cgi/trace
-```
-
-Inspect cluster status via CLI:
-
-```bash
-./bin/sovereign-cli status --control-url http://127.0.0.1:8443
-```
+To try the data plane spike, see `scripts/dev/dataplane-spike-lab.sh` and
+[ADR 0020](docs/adr/0020-data-plane.md).
 
 ---
 
-## 4. Centralized Configuration & Precedence Hierarchy
+## 4. Configuration
 
-Sovereign Proxy implements a strict 4-layer configuration precedence hierarchy:
+The Go binaries read a command-line flag first, then the environment (a `.env` file in
+the working directory is loaded), then a built-in default. The backend reads the
+environment. `.env.example` also lists variables of the legacy scripts under
+`scripts/legacy_refactor` and of a configuration engine that no component of the compose
+stack uses; only the variables below matter to the running stack.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 1. CLI Command-Line Flags (--listen-addr, --enable-exit)    │ (Highest Priority)
-├─────────────────────────────────────────────────────────────┤
-│ 2. OS Environment Variables & '.env' File                   │
-├─────────────────────────────────────────────────────────────┤
-│ 3. Structured Cluster YAML (configs/mesh-cluster.yaml)      │
-├─────────────────────────────────────────────────────────────┤
-│ 4. In-Code Hardened Defaults                                │ (Lowest Priority)
-└─────────────────────────────────────────────────────────────┘
-```
+### Go node
 
-### Subsystem Configuration Matrix (`.env`)
-
-| # | Subsystem | Key Variables | Description |
+| Variable | Flag | Default | Meaning |
 |---|---|---|---|
-| **1** | **Global Metadata** | `SOVEREIGN_CLUSTER_NAME`, `SOVEREIGN_DOMAIN`, `SOVEREIGN_OVERLAY_CIDR`, `SOVEREIGN_SSH_PORT` | Cluster naming, ACME domain, CGNAT CIDR block, and SSH port. |
-| **2** | **Control Plane** | `SOVEREIGN_CONTROL_PLANE_LISTEN_ADDR`, `SOVEREIGN_CONTROL_PLANE_URL`, `SOVEREIGN_STATE_STORE_TYPE` | REST/gRPC bind addresses, Raft data directory, and registration token. |
-| **3** | **Crypto & Noise** | `NOISE_SUITE`, `NOISE_PRIVATE_KEY`, `NOISE_PSK`, `NOISE_KEY_ROTATION_HOURS` | Curve25519 keypairs, Noise protocol suite, and rotation schedule. |
-| **4** | **Relay Fleet** | `SOVEREIGN_RELAY_LISTEN_ADDR`, `SOVEREIGN_STUN_LISTEN_ADDR`, `SOVEREIGN_DECOY_DOMAIN` | DERP/STUN addresses, region tag, and anti-probing decoy mimicry target. |
-| **5** | **Client & Exit Bridge**| `SOVEREIGN_SOCKS5_LISTEN_ADDR`, `SOVEREIGN_HTTP_LISTEN_ADDR`, `SOVEREIGN_ENABLE_EXIT_BRIDGE` | Inbound SOCKS5/HTTP proxy listeners and exit routing mode. |
-| **6** | **Xray / VLESS Core** | `CLIENT_UUID`, `REALITY_PRIVATE_KEY`, `REALITY_SHORT_ID`, `WARP_PRIVATE_KEY` | VLESS authentication, REALITY TLS camouflage, and WARP exit keys. |
-| **7** | **Active Defense** | `SOVEREIGN_HONEYPOT_PORT`, `SOVEREIGN_FIREWALL_DRIVER`, `SOVEREIGN_BAN_THRESHOLD` | Honeypot listener, threat scoring engine, and firewall driver (`ipset`/`nftables`). |
-| **8** | **Notifications** | `NTFY_URL`, `NTFY_TOPIC`, `DUCKDNS_DOMAIN`, `DUCKDNS_TOKEN` | Push notification webhook and Dynamic DNS sync. |
-| **9** | **Backups & Telemetry** | `GPG_RECIPIENT`, `BACKUP_PASSPHRASE`, `B2_BUCKET`, `PROMETHEUS_ENABLED` | Encrypted disaster recovery snapshots and Prometheus/Loki endpoints. |
-| **10**| **Cloud Provisioning** | `OCI_COMPARTMENT_ID`, `AWS_REGION`, `GCP_PROJECT_ID`, `CONTAINER_REGISTRY` | Cloud provider credentials and container registry namespaces. |
+| `SOVEREIGN_CONTROL_PLANE_URL` | `-control-url` | `http://127.0.0.1:8443` | Where to enrol. In the stack: `http://frontend:8443` |
+| `SOVEREIGN_REGISTRATION_TOKEN` | none | none | Enrolment token, sent as a bearer credential. The same value for the whole fleet |
+| `SOVEREIGN_NODE_KEY_PATH` | `-identity` | `/var/lib/neronet/node_identity.key` | Persistent identity key, created on first start |
+| `SOVEREIGN_COUNTRY_CODE` | `-country` | `US` | Self-declared country. Not measured |
+| `SOVEREIGN_ENABLE_EXIT_BRIDGE` | `-enable-exit` | `false` | Register as an exit bridge |
+| `SOVEREIGN_MAX_BANDWIDTH_KBPS` | `-max-bandwidth-kbps` | `0` | Self-declared capacity; 0 means not declared |
+| `SOVEREIGN_SOCKS5_LISTEN_ADDR` | `-socks-addr` | `127.0.0.1:1080` | SOCKS5 proxy |
+| `SOVEREIGN_HTTP_LISTEN_ADDR` | `-http-addr` | `127.0.0.1:8080` | HTTP CONNECT proxy |
+| `SOVEREIGN_DATAPLANE` | `-dataplane` | `off` | `off`, `netstack` or `tun` |
+| `SOVEREIGN_SPIKE_PEERS` | `-spike-peers` | none | Peers document for the data plane spike |
+
+### DERP relay
+
+`SOVEREIGN_RELAY_LISTEN_ADDR` (`-listen-addr`), `SOVEREIGN_STUN_LISTEN_ADDR`
+(`-stun-addr`), `SOVEREIGN_RELAY_REGION` (`-region`), `SOVEREIGN_DECOY_TITLE`
+(`-decoy-title`).
+
+### Backend
+
+`.env.example`, section 0, documents the variables the backend reads. The ones that
+matter:
+
+| Variable | Meaning |
+|---|---|
+| `NODE_ENV` | `production` in the stack. Turns on the secret checks and HSTS |
+| `SOVEREIGN_JWT_SECRET`, `SOVEREIGN_REFRESH_SECRET` | Signing keys. Required in production, and a value that has ever been committed is refused |
+| `SOVEREIGN_ADMIN_PASS` | Password of the `admin` account created at first start |
+| `SOVEREIGN_REGISTRATION_TOKEN` | Enrolment token that nodes present |
+| `DATABASE_URL`, `POSTGRES_*` | PostgreSQL connection |
+| `VALKEY_URL` | Valkey connection |
+| `SOVEREIGN_DATA_DIR` | Writable directory for the federation identity |
+| `SOVEREIGN_FEATURE_CLOUD_PC` | Off by default; the feature cannot stream and is frozen |
+| `SOVEREIGN_TRUST_PROXY_HOPS` | Number of proxies in front of the API. See the handbook, section 8.2 |
+| `CORS_ORIGIN` | Browser origins allowed to call the API |
 
 ---
 
-## 5. Compose Stack Reference
+## 5. Compose stack reference
 
 `docker-compose.yml` is the only compose file for development. It sets no
 `container_name` and no subnet, so several stacks can share a host.
@@ -334,188 +282,116 @@ folder name. Changing the name, or running from a folder with another name, star
 with empty volumes. `stack.sh down` keeps the volumes; `stack.sh down -v` deletes them,
 which makes every node enrol again as a new device.
 
-## 6. Multi-Cloud Provisioning with OpenTofu / Terraform
+---
 
-Sovereign Proxy includes Terraform / OpenTofu modules supporting **6 major cloud providers**:
-1. **Oracle Cloud Infrastructure (OCI)**: Always-Free Tier Ampere A1 ARM64 (4 OCPUs, 24 GB RAM)
-2. **Amazon Web Services (AWS)**: EC2 Graviton ARM64 (`t4g.small` / `t4g.medium`)
-3. **Google Cloud Platform (GCP)**: Tau T2A Compute instances (`t2a-standard-1`)
-4. **DigitalOcean**: Basic Droplets
-5. **Hetzner Cloud**: CAX ARM64 cloud servers
-6. **Vultr**: Cloud Compute instances
+## 6. Cloud provisioning
 
-### Step 1: Export Terraform Variables from Mesh Config
+`terraform/` holds modules for six cloud providers, and `scripts/tools/export_tfvars.go`
+generates variable files from `configs/mesh-cluster.yaml`. They have never been applied
+to a real account and are not supported. The decision is to deploy on virtual machines
+first ([ADR 0012](docs/adr/0012-deployment-target-vm-first.md)), and the modules are to be
+removed until a customer asks for them.
 
-The Go configuration engine can automatically generate provider `.tfvars.json` files directly from `configs/mesh-cluster.yaml`:
+---
+
+## 7. Kubernetes and Helm
+
+`charts/sovereign-mesh` and `k8s/` have never been applied to a real cluster and are not
+supported ([ADR 0012](docs/adr/0012-deployment-target-vm-first.md)). The chart is to be
+proven on `kind` in CI after the virtual-machine deployment. `helm lint` and `helm
+template` catch syntax errors and nothing else.
+
+---
+
+## 8. Testing and diagnostics
+
+### The suites
 
 ```bash
-go run -tags tools ./scripts/tools/export_tfvars.go \
-  --config configs/mesh-cluster.yaml \
-  --out-dir terraform/environments/prod-multi-cloud
+sh scripts/dev/test-go.sh        # gofmt, go vet, go test -race, and the daemon module
+sh scripts/dev/test-backend.sh   # backend suite against a throw-away Valkey
+sh scripts/dev/test-frontend.sh  # production build and unit tests
 ```
 
-### Step 2: Initialize & Apply Terraform Infrastructure
+With Go on the host: `make test` runs `go test -v -race ./pkg/...` and `make lint` runs
+`go vet ./...`.
+
+CI (`.github/workflows/ci.yml`) runs the Go suite, the backend suite three times, the
+frontend build and tests, the compose stack with six nodes and a smoke check
+(`scripts/dev/smoke.sh`), the console security headers check, linters, the legacy tool
+tests and the image builds. Secret scanning, CodeQL and dependency audits run from
+`security-scan.yml`.
+
+### Documentation links
 
 ```bash
-cd terraform/environments/prod-multi-cloud
+python3 scripts/dev/check-links.py
+```
 
-# Copy example variables
-cp terraform.tfvars.example terraform.tfvars
+Fails, with one line per link, if a relative link in a tracked Markdown file points at a
+path that does not exist. CI runs it in the `lint` job. It does not check anchors.
 
-# Initialize OpenTofu / Terraform
-tofu init
+### Diagnostic commands
 
-# Review execution plan
-tofu plan
-
-# Deploy across all configured cloud providers
-tofu apply -auto-approve
+```bash
+sh scripts/dev/stack.sh status                   # service health and live node count
+sh scripts/dev/stack.sh logs backend             # last 200 lines of one service
+sh scripts/dev/smoke.sh 6 180                    # wait for 6 nodes, check /api/health
+sh scripts/dev/check-console-headers.sh http://127.0.0.1:8443
 ```
 
 ---
 
-## 7. Kubernetes & Helm Deployment Guide
+## 9. Hardening notes
 
-For high-availability production environments, deploy Sovereign Proxy to Kubernetes using the official Helm chart (`charts/sovereign-mesh`).
-
-### Step 1: Inspect and Customize `values.yaml`
-
-```bash
-cd charts/sovereign-mesh
-cat values.yaml
-```
-
-Key customizable parameters in `values.yaml`:
-```yaml
-global:
-  domain: mesh.example.com
-  clusterName: sovereign-prod-k8s
-  imageRegistry: ghcr.io/your-github-username
-
-controlPlane:
-  replicas: 3
-  podDisruptionBudget:
-    minAvailable: 2
-  resources:
-    requests:
-      cpu: 250m
-      memory: 512Mi
-
-relay:
-  replicas: 3
-  hostNetwork: true # Required for STUN UDP port 3478 binding
-```
-
-### Step 2: Install or Upgrade via Helm
-
-```bash
-# Create dedicated namespace
-kubectl create namespace sovereign-mesh
-
-# Deploy chart
-helm upgrade --install sovereign-mesh ./charts/sovereign-mesh \
-  --namespace sovereign-mesh \
-  --set global.domain="mesh.example.com" \
-  --set global.acmeEmail="admin@example.com"
-```
-
-### Step 3: Verify Deployment Health
-
-```bash
-kubectl get pods,svc,pdb -n sovereign-mesh -o wide
-```
+1. **Secrets.** Keep `.env` at mode 600. `gen-env.sh` writes random values and does not
+   overwrite an existing file. In production containers mount secrets as files or
+   environment from a secret store, not from a committed file.
+2. **Enrolment token.** One value authenticates every node. Rotate it by changing the
+   backend and all nodes together. Per-node credentials are not implemented.
+3. **Containers.** The backend runs as uid 10001 with a read-only root filesystem, no
+   capabilities and `no-new-privileges`. Keep that when changing the compose file.
+4. **Egress from a node.** The node's proxy refuses private address ranges and a list of
+   abuse ports before it dials. The dial itself is an ordinary operating-system
+   connection.
+5. **TLS.** The edge nginx of the compose stack serves plain HTTP. Put TLS in front of it
+   for anything beyond a workstation; native TLS termination is not configured yet.
 
 ---
 
-## 8. Testing, Health Checks & Diagnostics
+## 10. Troubleshooting
 
-### Running the Complete Test Suite
-
-```bash
-# 0. The three suites in containers, from any host with Podman or Docker
-sh scripts/dev/test-go.sh
-sh scripts/dev/test-backend.sh
-sh scripts/dev/test-frontend.sh
-
-# 1. Run unit and race detection tests across all Go packages (Go on the host)
-make test
-
-# 2. Run Go vet linter
-make lint
-
-# 3. Execute the 5-Tier E2E automated test runner
-python3 tests/e2e/runner.py --tier all
-```
-
-### Automated Preflight & GitOps Readiness Check
-
-Run the comprehensive preflight audit script to verify zero-plaintext secrets, valid JSON schemas, and clean formatting:
-
-```bash
-bash scripts/gitops/preflight_check.sh
-```
-
-### Diagnostic CLI Commands
-
-```bash
-# 1. Inspect Control Plane status and active bridges
-./bin/sovereign-cli status --control-url http://127.0.0.1:8443
-
-# 2. Query available exit bridges in a specific country (e.g. US, DE, JP)
-./bin/sovereign-cli peers US --control-url http://127.0.0.1:8443
-
-# 3. Synthesize a 3-Hop Onion Obfuscation Circuit
-./bin/sovereign-cli circuit US --control-url http://127.0.0.1:8443
-
-# 4. Measure STUN NAT reflection latency
-./bin/sovereign-cli stun-ping 127.0.0.1:3478
-```
-
----
-
-## 9. Security Hardening & Zero-Trust Best Practices
-
-1. **Zero-Plaintext Secret Storage**:
-   - In production containers, mount sensitive tokens to `/var/run/secrets/sovereign/<KEY>`.
-   - Ensure local `.env` files have strict POSIX permissions (`chmod 600 .env`).
-2. **Decoy Domain Camouflage**:
-   - Set `SOVEREIGN_DECOY_DOMAIN` to high-reputation domains (e.g. `aws.amazon.com`, `www.microsoft.com`).
-   - Active probing requests that do not perform the Noise/VLESS handshake will receive genuine HTTP decoy responses or silent tarpits.
-3. **Firewall Backend Enforcement**:
-   - For Linux production hosts, configure `SOVEREIGN_FIREWALL_DRIVER=ipset` or `nftables` in `.env` to enable sub-millisecond kernel packet drops for adversarial scanners.
-4. **User-Space Sandboxing**:
-   - Client and exit bridges enforce gVisor netstack user-space isolation, preventing untrusted proxy traffic from interacting with local LAN devices (RFC 1918 suppression).
-
----
-
-## 10. Troubleshooting & Frequently Asked Questions (FAQ)
-
-### Q1: `bind: permission denied` on port 443 or 80
-**Cause**: Linux non-root processes cannot bind to privileged ports (< 1024) by default.  
-**Resolution**: Grant the binary `CAP_NET_BIND_SERVICE` capability or run via Docker with port mapping:
+### `bind: permission denied` on port 443 or 80
+Non-root processes cannot bind privileged ports on Linux. Grant the binary
+`CAP_NET_BIND_SERVICE` or publish a high port and map it:
 ```bash
 sudo setcap 'cap_net_bind_service=+ep' bin/sovereign-derp-relay
 ```
 
-### Q2: STUN reflection fails or returns symmetric NAT warnings
-**Cause**: UDP port `3478` is blocked by a host firewall (UFW/AWS Security Group) or behind a symmetric carrier NAT.  
-**Resolution**:
-- Allow UDP port 3478 inbound on your cloud firewall:
-  ```bash
-  sudo ufw allow 3478/udp
-  ```
-- In Kubernetes, ensure `hostNetwork: true` is enabled on the relay DaemonSet/StatefulSet.
+### STUN reflection fails or reports a symmetric NAT
+UDP port 3478 is blocked by a firewall or the network is behind a symmetric NAT. Allow
+UDP 3478 inbound to the relay. No node uses STUN today; only `sovereign-cli stun-ping`
+does.
 
-### Q3: Control plane registration returns `invalid posture attestation`
-**Cause**: Node attestation failed posture compliance checks (e.g. unencrypted disk, disabled firewall, or outdated client version).  
-**Resolution**: Check node logs for `⚠️ WARNING: Node is QUARANTINED`. Ensure local OS firewall is active and client version matches `ClientVersion` in `cmd/sovereign-node/main.go`.
+### A node logs `Initial control plane registration failed`
+The node keeps running in standalone mode. Check that `SOVEREIGN_REGISTRATION_TOKEN`
+matches the backend's, that `-control-url` reaches nginx (`http://frontend:8443` inside
+the stack), and the backend logs: with `NODE_ENV=production` and no token set, every
+node endpoint answers 503.
 
-### Q4: How to rotate Noise Protocol keys safely?
-**Resolution**:
-1. Generate a new keypair using `sovereign-cli keygen`.
-2. Update `NOISE_PRIVATE_KEY` in `.env` or Kubernetes secret.
-3. Restart the node daemon (`systemctl restart sovereign-node` or `kubectl rollout restart deployment/sovereign-node`). Nodes automatically negotiate epoch transition without dropping in-flight TCP sessions.
+### A node logs `WARNING: Node is QUARANTINED`
+The control plane has quarantined the node. The reason is in the log line and in the
+console. Quarantine is set by an administrator or by the risk engine.
+
+### Every node shows as unverified
+Correct. Nodes do not measure disk encryption or firewall state yet, so no node can be
+verified compliant.
+
+### `stack.sh nodes` finishes and `status` shows fewer than 6 nodes
+Wait about a minute for the first heartbeats. If a node is still missing, read its log
+with `sh scripts/dev/stack.sh logs relay-de`.
 
 ---
 
-*For security vulnerability disclosures or architecture queries, refer to the [Project Roadmap](BUSINESS_AND_ROADMAP.md) and repository issue tracker.*
+*Decisions are recorded in [`docs/adr/`](docs/adr/). For vulnerability reports and
+architecture questions use the repository issue tracker.*
