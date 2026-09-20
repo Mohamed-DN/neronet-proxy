@@ -264,6 +264,19 @@ function validateEndpoints(raw) {
   return { endpoints: kept, rejected, truncated };
 }
 
+/**
+ * A comparison key that does not depend on how the database gave the value back.
+ *
+ * PostgreSQL stores this column as jsonb, which normalises key order, so comparing
+ * JSON.stringify of the stored value against JSON.stringify of the new one reported a
+ * change on every single heartbeat -- the content was identical and the key order was
+ * not. On the six-node fleet that moved the netmap version twice every fifteen
+ * seconds and made every node re-fetch a document it already had.
+ */
+function endpointKey(list) {
+  return list.map((e) => `${e.ip_address}|${e.port}|${e.protocol}|${e.is_stun_discovered ? 1 : 0}`).join(',');
+}
+
 function storedShape(endpoints) {
   return endpoints.map((e) => ({
     ip_address: e.ip_address,
@@ -306,8 +319,8 @@ async function recordEndpoints(nodeId, reported, now = new Date()) {
   }
 
   const stored = storedShape(endpoints);
-  const previous = parseJsonColumn(rows[0].endpoints, []);
-  const changed = JSON.stringify(previous) !== JSON.stringify(stored);
+  const previous = storedShape(validateEndpoints(parseJsonColumn(rows[0].endpoints, [])).endpoints);
+  const changed = endpointKey(previous) !== endpointKey(stored);
 
   if (!changed) {
     return { stored: true, changed: false, bumped: false, rejected, truncated };

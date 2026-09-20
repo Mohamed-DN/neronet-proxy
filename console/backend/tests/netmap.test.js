@@ -462,6 +462,29 @@ describe('Netmap delivery', () => {
       assert.ok((await NetmapService.getVersion()) > afterFirst);
     });
 
+    it('does not bump when the stored value comes back with its keys in another order', async () => {
+      // PostgreSQL stores this column as jsonb and hands the value back with its keys
+      // normalised. Comparing the serialised forms therefore reported a change on
+      // every heartbeat, which moved the netmap version twice every fifteen seconds
+      // on the six-node fleet and made every node re-fetch a document it already had.
+      const at = new Date('2026-09-19T12:00:00Z');
+      await NetmapService.recordEndpoints(beta.id, [{ ip_address: '10.89.0.40', port: 51820 }], at);
+      const version = await NetmapService.getVersion();
+
+      getDatabase()
+        .prepare('UPDATE nodes SET endpoints = ? WHERE id = ?')
+        .run(
+          JSON.stringify([{ protocol: 'udp', port: 51820, is_stun_discovered: false, ip_address: '10.89.0.40' }]),
+          beta.id
+        );
+
+      const later = new Date(at.getTime() + 600_000);
+      const result = await NetmapService.recordEndpoints(beta.id, [{ ip_address: '10.89.0.40', port: 51820 }], later);
+
+      assert.strictEqual(result.changed, false, 'a re-ordered stored value was read as a change');
+      assert.strictEqual(await NetmapService.getVersion(), version);
+    });
+
     it('does not bump when the reported endpoints are unchanged', async () => {
       const at = new Date('2026-09-19T11:00:00Z');
       await NetmapService.recordEndpoints(beta.id, [{ ip_address: '10.89.0.30', port: 51820 }], at);
