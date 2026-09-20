@@ -3,17 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NeroNet — Decentralized Post-Quantum Mesh Network | neronet.darknero.com</title>
-  <meta name="description" content="NeroNet is an enterprise-grade decentralized mesh network and sovereign residential proxy routing system on DARKNERO.COM powered by eBPF/XDP, Noise IKpsk2, and Post-Quantum cryptography.">
+  <title>NeroNet: overlay mesh network</title>
+  <meta name="description" content="NeroNet is an overlay mesh network with a web management console. The control plane runs; the data plane is a spike that is off by default.">
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%2300f0ff'/><polygon points='30,70 50,30 70,70' fill='%230a0c10'/></svg>">
 </head>
 <body>
-  <!-- Canvas for dynamic background particle mesh -->
-  <canvas id="mesh-canvas"></canvas>
-
   <div class="content-wrapper">
-    <!-- Header Navigation -->
     <header>
       <div class="nav-container">
         <a href="index.html" class="logo">
@@ -27,189 +23,118 @@
             <line x1="70" y1="40" x2="50" y2="75" stroke="rgba(255,255,255,0.4)" stroke-width="3"/>
           </svg>
           <span>NeroNet</span>
-          <span class="logo-badge">v4.0 NeroNet</span>
+          <span class="logo-badge">pre-release</span>
         </a>
         <nav class="nav-links">
-          <a href="#features">Features</a>
-          <a href="#simulation">Live Network</a>
-          <a href="#downloads">Downloads</a>
+          <a href="#state">State</a>
+          <a href="#get-started">Get started</a>
           <a href="docs.html">Documentation</a>
-          <a href="https://github.com/Mohamed-DN/sovereign-oci-proxy" target="_blank" class="btn-cta">GitHub</a>
+          <a href="https://github.com/Mohamed-DN/neronet-proxy" class="btn-cta">GitHub</a>
         </nav>
       </div>
     </header>
 
-    <!-- Hero Section -->
     <section class="hero">
-      <div class="hero-pill">
-        <span class="pulse-dot">⚡</span> Line-Rate eBPF Fast-Path & Hybrid Post-Quantum Crypto
-      </div>
-      <h1>NeroNet Mesh Network</h1>
+      <div class="hero-pill">Pre-release</div>
+      <h1>NeroNet</h1>
       <p>
-        Next-generation sovereign mesh VPN and residential exit bridge network. 
-        Engineered with zero-trust ACLs, 3-hop onion obfuscation, eBPF XDP acceleration, 
-        and seamless multi-cloud Kubernetes clustering.
+        An overlay mesh VPN with a web management console, for banks and public
+        administration. Go nodes and a Node.js control plane backed by PostgreSQL and
+        Valkey. Licensed under AGPL-3.0.
       </p>
 
       <div class="hero-actions">
-        <a href="#downloads" class="btn-cta">Download Client</a>
-        <a href="docs.html" class="btn-secondary">Read Architecture Docs</a>
-      </div>
-
-      <!-- Quickstart Install Script -->
-      <div class="quickstart-box">
-        <span class="quickstart-code">$ curl -fsSL https://get.darknero.com | bash</span>
-        <button id="btn-copy-install" class="btn-copy">Copy</button>
+        <a href="#get-started" class="btn-cta">Run it locally</a>
+        <a href="docs.html" class="btn-secondary">Read the documentation</a>
       </div>
     </section>
 
-    <!-- Interactive Simulation HUD -->
-    <section id="simulation" class="sim-hud">
-      <div class="hud-header">
-        <div>
-          <h3>Live Telemetry & Egress Routing Simulation</h3>
-          <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">
-            Experience adaptive path quality scoring and real-time routing modes
-          </p>
-        </div>
-        <div class="hud-modes">
-          <button class="mode-btn active" data-mode="country">Country Exit</button>
-          <button class="mode-btn" data-mode="host">Direct Host Anchor</button>
-          <button class="mode-btn" data-mode="onion">3-Hop Onion</button>
-        </div>
-      </div>
-
-      <div class="hud-stats-grid">
-        <div class="stat-card">
-          <div class="label">Round-Trip Latency</div>
-          <div id="stat-ping" class="value highlight">18 ms</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Downlink Throughput</div>
-          <div id="stat-downlink" class="value green">124.5 Mbps</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Uplink Throughput</div>
-          <div id="stat-uplink" class="value">52.1 Mbps</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Circuit Topology</div>
-          <div id="stat-hops" class="value" style="font-size: 1.1rem; padding-top: 0.6rem;">1 Hop (Direct)</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Jitter Sigma</div>
-          <div id="stat-jitter" class="value">0.8 ms</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Core Features Grid -->
-    <section id="features" class="features-section">
+    <section id="state" class="features-section">
       <div class="section-title">
-        <h2>Enterprise Sovereign Mesh Capabilities</h2>
-        <p>Built from scratch for uncompromised privacy, censorship resistance, and line-rate throughput</p>
+        <h2>What the code does today</h2>
+        <p>Checked against the code on the main branch</p>
       </div>
 
       <div class="features-grid">
         <div class="feature-card">
-          <div class="feature-icon">🔐</div>
-          <h3>Zero-Trust ACLs & Posture Checks</h3>
+          <h3>Control plane: runs</h3>
           <p>
-            NetBird & Netmaker feature parity with dynamic peer access control lists, continuous OS/firewall posture attestation, and opt-in geo-fencing (uncensored worldwide by default).
+            Nodes enrol, receive an overlay address from 100.64.0.0/10, send a heartbeat every
+            15 seconds and receive ACL and subnet-route updates. The console shows the
+            values nodes report, and shows a value a node did not measure as unknown.
           </p>
         </div>
 
         <div class="feature-card">
-          <div class="feature-icon">☁️</div>
-          <h3>Multi-Cloud & Kubernetes Native</h3>
+          <h3>Node proxy: runs</h3>
           <p>
-            Unified configuration engine (mesh-cluster.yaml), production Helm charts (charts/sovereign-mesh), and Kustomize overlays for OCI, AWS, GCP, DO, Hetzner, and Vultr.
+            A node runs a local SOCKS5 and HTTP CONNECT proxy. It refuses private address
+            ranges and a list of abuse ports, then dials the destination directly.
           </p>
         </div>
 
         <div class="feature-card">
-          <div class="feature-icon">⚡</div>
-          <h3>eBPF/XDP Line-Rate & ICE NAT</h3>
+          <h3>Path selection: runs</h3>
           <p>
-            In-kernel XDP packet classifier with direct flow bypass table, Dual-STUN ICE candidate probing, sequential port prediction, and 256-port birthday spray traversal.
+            The control plane ranks exit bridges by country and selects a three-hop path,
+            with a report of how independent the hops are. No node builds a circuit from it
+            yet.
           </p>
         </div>
 
         <div class="feature-card">
-          <div class="feature-icon">🛡️</div>
-          <h3>Residential Bridges & 3-Hop Onion</h3>
+          <h3>Data plane: spike</h3>
           <p>
-            Connected client devices act as sovereign exit bridges with strict RFC 1918 bogon isolation, anti-abuse port blocks, and 3-hop layered onion obfuscation with timing jitter.
+            There is no tunnel between nodes in the default configuration. A WireGuard data
+            plane exists behind a node flag, off by default, and reads its peers from a file.
           </p>
         </div>
 
         <div class="feature-card">
-          <div class="feature-icon">🧬</div>
-          <h3>Post-Quantum Cryptography</h3>
+          <h3>Implemented, not used by a node</h3>
           <p>
-            Future-proof hybrid Noise_IKpsk2_PQ handshake combining NIST ML-KEM-768 (Kyber) and Curve25519 with ChaCha20-Poly1305 AEAD and BLAKE2s anti-replay sliding window.
+            Onion cell sealing, NAT traversal, the relay client and the internal Noise
+            transport are implemented and tested. No running node uses them.
           </p>
         </div>
 
         <div class="feature-card">
-          <div class="feature-icon">🔋</div>
-          <h3>Intelligent Battery Guardian</h3>
+          <h3>Not implemented</h3>
           <p>
-            Auto-pauses exit bridge forwarding when client mobile battery drops below 15%, conserving power while maintaining seamless local encrypted egress.
+            Per-node credentials, single sign-on, cryptographic erasure, tamper-evident
+            audit, a post-quantum handshake, release signing, and client applications for
+            any platform.
           </p>
         </div>
       </div>
     </section>
 
-    <!-- Multi-Platform Downloads -->
-    <section id="downloads" class="download-section">
+    <section id="get-started" class="features-section">
       <div class="section-title">
-        <h2>Cross-Platform Native Apps</h2>
-        <p>Available on all major desktop, mobile, and server environments</p>
+        <h2>Run it locally</h2>
+        <p>Needs Podman or Docker. On Windows, use Git Bash.</p>
       </div>
 
-      <div class="download-grid">
-        <a href="https://github.com/Mohamed-DN/sovereign-oci-proxy/releases" class="download-card">
-          <div class="download-icon">🍎</div>
-          <div class="platform">macOS</div>
-          <div class="meta">Apple Silicon & Intel DMG</div>
-        </a>
-
-        <a href="https://github.com/Mohamed-DN/sovereign-oci-proxy/releases" class="download-card">
-          <div class="download-icon">🪟</div>
-          <div class="platform">Windows</div>
-          <div class="meta">WinTUN MSI 64-bit</div>
-        </a>
-
-        <a href="https://github.com/Mohamed-DN/sovereign-oci-proxy/releases" class="download-card">
-          <div class="download-icon">🐧</div>
-          <div class="platform">Linux</div>
-          <div class="meta">DEB / RPM / Tarball</div>
-        </a>
-
-        <a href="https://github.com/Mohamed-DN/sovereign-oci-proxy/releases" class="download-card">
-          <div class="download-icon">📱</div>
-          <div class="platform">iOS & iPadOS</div>
-          <div class="meta">App Store / TestFlight</div>
-        </a>
-
-        <a href="https://github.com/Mohamed-DN/sovereign-oci-proxy/releases" class="download-card">
-          <div class="download-icon">🤖</div>
-          <div class="platform">Android</div>
-          <div class="meta">Google Play / APK</div>
-        </a>
+      <div class="code-block">
+git clone https://github.com/Mohamed-DN/neronet-proxy.git
+cd neronet-proxy
+sh scripts/dev/gen-env.sh
+sh scripts/dev/stack.sh up
+sh scripts/dev/stack.sh nodes
       </div>
+      <p>
+        The console is on http://127.0.0.1:8443. There is no installer and there are no
+        release downloads.
+      </p>
     </section>
 
-    <!-- Footer -->
     <footer>
       <p>
-        © 2026 NeroNet (DARKNERO.COM) — DarkNero Mesh Project. 
-        Open Source under Apache 2.0. | <a href="docs.html">Docs</a> | <a href="https://github.com/Mohamed-DN/sovereign-oci-proxy">GitHub</a>
+        NeroNet is released under the AGPL-3.0 licence. |
+        <a href="docs.html">Documentation</a> |
+        <a href="https://github.com/Mohamed-DN/neronet-proxy">GitHub</a>
       </p>
     </footer>
   </div>
-
-  <script src="app.js"></script>
 </body>
 </html>

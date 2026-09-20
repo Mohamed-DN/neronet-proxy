@@ -3,14 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NeroNet Documentation Portal — DarkNero Mesh & Egress Architecture | neronet.darknero.com</title>
-  <meta name="description" content="Comprehensive technical documentation, architecture guides, and deployment references for NeroNet (DARKNERO.COM / DarkNero Mesh).">
+  <title>NeroNet documentation</title>
+  <meta name="description" content="What NeroNet does today, how to run it, and what is not implemented.">
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%2300f0ff'/><polygon points='30,70 50,30 70,70' fill='%230a0c10'/></svg>">
 </head>
 <body>
   <div class="content-wrapper">
-    <!-- Header Navigation -->
     <header>
       <div class="nav-container">
         <a href="index.html" class="logo">
@@ -24,210 +23,126 @@
             <line x1="70" y1="40" x2="50" y2="75" stroke="rgba(255,255,255,0.4)" stroke-width="3"/>
           </svg>
           <span>NeroNet</span>
-          <span class="logo-badge">Docs Portal</span>
+          <span class="logo-badge">Documentation</span>
         </a>
         <nav class="nav-links">
           <a href="index.html">Home</a>
-          <a href="index.html#features">Features</a>
-          <a href="index.html#downloads">Downloads</a>
-          <a href="https://github.com/Mohamed-DN/sovereign-oci-proxy" target="_blank" class="btn-cta">GitHub</a>
+          <a href="https://github.com/Mohamed-DN/neronet-proxy" class="btn-cta">GitHub</a>
         </nav>
       </div>
     </header>
 
-    <!-- Docs Layout -->
     <div class="docs-layout">
-      <!-- Sidebar Navigation -->
       <aside class="docs-sidebar">
-        <h4>Getting Started</h4>
+        <h4>Getting started</h4>
         <ul>
-          <li><a href="#quickstart" class="active">Quickstart Guide</a></li>
-          <li><a href="#installation">Installation</a></li>
-          <li><a href="#node-joining">Joining the Mesh</a></li>
+          <li><a href="#quickstart" class="active">Run it locally</a></li>
         </ul>
 
         <h4>Architecture</h4>
         <ul>
-          <li><a href="#core-architecture">Core Architecture</a></li>
-          <li><a href="#cryptography">Noise & Post-Quantum</a></li>
-          <li><a href="#ebpf-fastpath">eBPF/XDP Line-Rate</a></li>
-          <li><a href="#nat-ice">ICE NAT Traversal</a></li>
-          <li><a href="#onion-routing">3-Hop Onion Circuit</a></li>
+          <li><a href="#architecture">What runs</a></li>
+          <li><a href="#state">State of each part</a></li>
+          <li><a href="#onion">Onion routing</a></li>
         </ul>
 
-        <h4>Deployment</h4>
+        <h4>Operations</h4>
         <ul>
-          <li><a href="#kubernetes">Kubernetes & Helm</a></li>
-          <li><a href="#multi-cloud">Multi-Cloud Orchestration</a></li>
-          <li><a href="#exit-bridges">Residential Exit Bridges</a></li>
-        </ul>
-
-        <h4>Parity & Security</h4>
-        <ul>
-          <li><a href="#parity-matrix">Feature Parity Matrix</a></li>
-          <li><a href="#zero-trust">Zero-Trust ACLs & Posture</a></li>
-          <li><a href="#security-invariants">Security Invariants</a></li>
+          <li><a href="#deployment">Deployment</a></li>
+          <li><a href="#security">Security status</a></li>
         </ul>
       </aside>
 
-      <!-- Main Docs Content -->
       <main class="docs-content">
-        <h1>NeroNet Technical Documentation</h1>
+        <h1>NeroNet documentation</h1>
         <p>
-          Welcome to the official technical documentation for <strong>NeroNet (DARKNERO.COM / DarkNero Mesh)</strong>.
-          NeroNet is a next-generation decentralized peer-to-peer mesh networking platform and sovereign proxy routing system engineered for zero-trust enterprise security, censorship evasion, line-rate eBPF acceleration, and multi-cloud Kubernetes deployment.
+          This page summarises the state of the code. The authoritative documents are in the
+          repository: the engineering handbook (<code>docs/HANDBOOK.md</code>), the roadmap
+          (<code>docs/ROADMAP.md</code>) and the decision records (<code>docs/adr/</code>).
         </p>
 
-        <!-- Quickstart Section -->
-        <h2 id="quickstart">1. Quickstart Guide</h2>
-        <p>Install the NeroNet CLI and join the mesh with a single command:</p>
+        <h2 id="quickstart">1. Run it locally</h2>
+        <p>The stack and the tests run in containers, with Podman or Docker.</p>
         <div class="code-block">
-# Install NeroNet CLI daemon (macOS / Linux)
-curl -fsSL https://get.darknero.com | bash
-
-# Initialize control plane
-sovereign-control-plane --config configs/mesh-cluster.yaml &
-
-# Join edge node as exit bridge
-sovereign-node --join-token &lt;YOUR_TOKEN&gt; --role EXIT_BRIDGE --country US
+git clone https://github.com/Mohamed-DN/neronet-proxy.git
+cd neronet-proxy
+sh scripts/dev/gen-env.sh        # .env with fresh random secrets
+sh scripts/dev/stack.sh up       # postgres, valkey, backend, console on 127.0.0.1:8443
+sh scripts/dev/stack.sh nodes    # two DERP relays and six Go nodes
+sh scripts/dev/stack.sh status
         </div>
 
-        <h2 id="core-architecture">2. Architecture & Networking Principles</h2>
-        <p>
-          NeroNet operates entirely on a decentralized zero-trust model. Nodes communicate directly peer-to-peer via authenticated WireGuard/SVRN binary frames over UDP, falling back to port-443 camouflaged DERP relays only when symmetric NAT conditions prevent direct traversal.
-        </p>
-
-        <h3>Key Subsystems:</h3>
+        <h2 id="architecture">2. What runs</h2>
         <ul>
-          <li><strong>DirectFrame SVRN Protocol:</strong> 24-byte header binary wire format with cryptographic AEAD tag, monotonic sequence counter, and anti-replay sliding window.</li>
-          <li><strong>eBPF / XDP Fast-Path:</strong> Line-rate packet classification in the Linux kernel driver path (<code>XDP_DRV</code>), redirecting active peer flows with zero userspace context switching.</li>
-          <li><strong>Adaptive ICE & Disco-v4 NAT Traversal:</strong> Multi-candidate endpoint discovery querying Dual-STUN servers concurrently, sequential delta port prediction, and 256-port birthday spray.</li>
-          <li><strong>Local LAN Beaconing:</strong> Zero-configuration multicast (<code>239.255.42.99:51830</code>) and broadcast discovery for 0-hop local high-speed routing.</li>
-          <li><strong>Layered 3-Hop Onion Obfuscation:</strong> Encapsulates payloads across 3 hops (Entry Relay $\rightarrow$ Intermediate Hop $\rightarrow$ Residential Exit Bridge) with fixed 1420-byte cell padding and timing jitter injection.</li>
+          <li><strong>Control plane</strong> (<code>console/backend</code>): REST API, WebSocket and the node protocol under <code>/v4/control</code>. State in PostgreSQL 16 and Valkey 7.</li>
+          <li><strong>Console</strong> (<code>console/frontend</code>): React application served by nginx.</li>
+          <li><strong>Node</strong> (<code>cmd/sovereign-node</code>): enrols, sends a heartbeat every 15 seconds, syncs ACL and route epochs, and runs a local SOCKS5 and HTTP CONNECT proxy that dials destinations directly.</li>
+          <li><strong>DERP relay with STUN</strong> (<code>cmd/sovereign-derp-relay</code>): started by the compose stack. No node connects to it.</li>
         </ul>
-
-        <!-- Parity Matrix Table -->
-        <h2 id="parity-matrix">3. Comprehensive Feature Parity Matrix</h2>
         <p>
-          The table below demonstrates NeroNet's comprehensive technical parity against leading open-source overlay networks (NetBird, Netmaker, and Tailscale):
+          There is no tunnel between nodes in the default configuration. The overlay address a
+          node is assigned is not configured on an interface, and the ACL policy it downloads
+          is not applied to traffic. A WireGuard data plane exists as a spike behind the node
+          flag <code>-dataplane</code>; it is off by default.
         </p>
 
+        <h2 id="state">3. State of each part</h2>
         <table>
           <thead>
             <tr>
-              <th>Feature Capability</th>
-              <th>NeroNet (v4.0)</th>
-              <th>NetBird</th>
-              <th>Netmaker</th>
-              <th>Tailscale</th>
+              <th>Part</th>
+              <th>State</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td><strong>P2P Mesh Topology</strong></td>
-              <td>Full P2P + Relay</td>
-              <td>Full P2P + Relay</td>
-              <td>Full P2P</td>
-              <td>Full P2P + DERP</td>
-            </tr>
-            <tr>
-              <td><strong>Residential Exit Bridges</strong></td>
-              <td>Native (Multi-Mode)</td>
-              <td>Route Gateway only</td>
-              <td>Egress Gateway only</td>
-              <td>Exit Node only</td>
-            </tr>
-            <tr>
-              <td><strong>3-Hop Onion Obfuscation</strong></td>
-              <td>Yes (Native 3-Hop)</td>
-              <td>No</td>
-              <td>No</td>
-              <td>No</td>
-            </tr>
-            <tr>
-              <td><strong>eBPF / XDP Line-Rate Bypass</strong></td>
-              <td>Yes (pkg/ebpf)</td>
-              <td>No</td>
-              <td>Kernel WireGuard</td>
-              <td>No (Userspace)</td>
-            </tr>
-            <tr>
-              <td><strong>Post-Quantum Handshake</strong></td>
-              <td>ML-KEM-768 + X25519</td>
-              <td>No (Curve25519)</td>
-              <td>No (WireGuard)</td>
-              <td>No (Classic)</td>
-            </tr>
-            <tr>
-              <td><strong>Dual-STUN & Birthday Spray</strong></td>
-              <td>Yes (pkg/nat)</td>
-              <td>Standard ICE</td>
-              <td>UPnP / Basic STUN</td>
-              <td>DERP + STUN</td>
-            </tr>
-            <tr>
-              <td><strong>Dynamic Peer ACLs</strong></td>
-              <td>Yes (Bidirectional)</td>
-              <td>Yes</td>
-              <td>Yes</td>
-              <td>Yes</td>
-            </tr>
-            <tr>
-              <td><strong>Device Posture & Geofence</strong></td>
-              <td>Configurable (Allow Default)</td>
-              <td>Yes (Posture)</td>
-              <td>No</td>
-              <td>Device Posture</td>
-            </tr>
-            <tr>
-              <td><strong>Kubernetes Helm Charts</strong></td>
-              <td>Production (HA)</td>
-              <td>Community Helm</td>
-              <td>Community Helm</td>
-              <td>Kubernetes Operator</td>
-            </tr>
-            <tr>
-              <td><strong>Intelligent Battery Guardian</strong></td>
-              <td>&lt;15% Auto-Pause</td>
-              <td>No</td>
-              <td>No</td>
-              <td>No</td>
-            </tr>
+            <tr><td>Node enrolment, heartbeat, overlay addresses</td><td>Implemented and running</td></tr>
+            <tr><td>ACL and subnet-route delivery by epoch</td><td>Implemented and running; the policy is not applied to traffic without the data plane</td></tr>
+            <tr><td>Exit bridge discovery and three-hop path selection</td><td>Implemented and running</td></tr>
+            <tr><td>Local SOCKS5 and HTTP CONNECT proxy with egress checks</td><td>Implemented and running</td></tr>
+            <tr><td>Posture attestation</td><td>Implemented and running; disk encryption and firewall state are not measured, so nodes are shown as unverified</td></tr>
+            <tr><td>Warrant canary, federation, revocation window</td><td>Implemented and running</td></tr>
+            <tr><td>WireGuard data plane</td><td>Spike, off by default</td></tr>
+            <tr><td>Onion cell sealing (<code>pkg/routing</code>)</td><td>Implemented and tested, not used by a node</td></tr>
+            <tr><td>NAT traversal (<code>pkg/nat</code>), relay client (<code>pkg/derp</code>)</td><td>Implemented and tested, not used by a node</td></tr>
+            <tr><td>Active-defence daemon</td><td>Implemented and tested, not started by the compose stack</td></tr>
+            <tr><td>Per-node credentials, single sign-on, cryptographic erasure, tamper-evident audit</td><td>Not implemented</td></tr>
+            <tr><td>Post-quantum handshake, release signing</td><td>Not implemented</td></tr>
+            <tr><td>Cloud PC</td><td>Frozen behind a feature flag; cannot stream</td></tr>
           </tbody>
         </table>
 
-        <!-- Kubernetes Deployment -->
-        <h2 id="kubernetes">4. Kubernetes & Multi-Cloud Deployment</h2>
+        <h2 id="onion">4. Onion routing</h2>
         <p>
-          NeroNet includes production-ready Helm charts and Kustomize overlays designed for multi-cloud deployments across OCI, AWS, GCP, DigitalOcean, Hetzner, and Vultr.
+          The control plane selects a three-hop path and reports how independent the hops are.
+          The library that seals a cell for each hop exists and is tested. No node builds a
+          circuit or sends a cell yet. Onion routing hides traffic from network observers and
+          from the destination. It does not hide it from the operator of the mesh.
         </p>
 
-        <div class="code-block">
-# Install via Helm with high availability
-helm repo add neronet https://charts.darknero.com
-helm install neronet-cluster charts/sovereign-mesh \
-  --namespace sovereign-system \
-  --create-namespace \
-  --set controlPlane.replicas=3 \
-  --set derpRelay.service.type=LoadBalancer \
-  --set edgeBridge.tolerations[0].operator=Exists
-        </div>
+        <h2 id="deployment">5. Deployment</h2>
+        <p>
+          The compose stack is the only deployment that has been run. The order of work is a
+          single virtual machine with compose and systemd, then high availability on three
+          virtual machines, then Kubernetes. The Helm chart, the Kustomize overlays and the
+          Terraform modules in the repository have never been applied to a cluster or a cloud
+          account and are not supported.
+        </p>
 
-        <h2 id="security-invariants">5. Security Invariants & Compliance</h2>
-        <ol>
-          <li><strong>Zero Plaintext Egress:</strong> No unencrypted payload ever traverses host interfaces.</li>
-          <li><strong>Anti-Censorship by Default:</strong> Jurisdictions under strict censorship (Russia, Egypt, China, India) are unconditionally allowed unless explicitly restricted by administrator policy.</li>
-          <li><strong>Strict Bogon Isolation:</strong> RFC 1918 private subnets and CGNAT ranges are isolated from external exit sockets.</li>
-          <li><strong>Deterministic Cryptographic Verification:</strong> All handshakes, cell decapsulations, and anti-replay counters are enforced by authenticated AEAD cipher suites.</li>
-        </ol>
+        <h2 id="security">6. Security status</h2>
+        <ul>
+          <li>Secrets are never committed. The backend refuses to start in production on a missing or previously committed secret.</li>
+          <li>Nodes authenticate with one enrolment token shared by the fleet. Per-node credentials are not implemented.</li>
+          <li>The cryptographic code has had no external review.</li>
+          <li>The edge of the compose stack serves plain HTTP; TLS is not configured there.</li>
+        </ul>
       </main>
     </div>
 
-    <!-- Footer -->
     <footer>
       <p>
-        © 2026 NeroNet (DARKNERO.COM) — DarkNero Mesh Project. 
-        Open Source under Apache 2.0. | <a href="index.html">Home</a> | <a href="https://github.com/Mohamed-DN/sovereign-oci-proxy">GitHub</a>
+        NeroNet is released under the AGPL-3.0 licence. |
+        <a href="index.html">Home</a> |
+        <a href="https://github.com/Mohamed-DN/neronet-proxy">GitHub</a>
       </p>
     </footer>
   </div>
