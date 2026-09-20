@@ -1,0 +1,68 @@
+{
+  "brand": {
+    "name": "NeroNet",
+    "tagline": "Mesh sovrana v4.0"
+  },
+  "nav": {
+    "landmark": "Principale",
+    "sections": {
+      "mesh": "Mesh e rete",
+      "compute": "Calcolo e archiviazione",
+      "security": "Sicurezza e governance",
+      "danger": "Sistema e zona critica"
+    },
+    "collapseSection": "Comprimi la sezione",
+    "expandSection": "Espandi la sezione",
+    "items": {
+      "overview": "Panoramica globale",
+      "topology": "Topologia della mesh",
+      "nodes": "Matrice dei nodi",
+      "onion": "Onion e offuscamento",
+      "peering": "Peering fra mesh",
+      "geofencing": "Mappa di geo-fencing",
+      "cloudpc": "Cloud PC sovrano",
+      "risk": "Punteggio di rischio comportamentale",
+      "acls": "ACL zero-trust",
+      "audit": "Registri forensi",
+      "users": "Directory utenti",
+      "settings": "Impostazioni della mesh",
+      "nuke": "Autodistruzione"
+    },
+    "alertCount_one": "{{count}} richiede attenzione",
+    "alertCount_other": "{{count}} richiedono attenzione"
+  },
+  "sidebar": {
+    "nodesReachable": "{{reachable}}/{{total}} attivi",
+    "noNodes": "Nessun nodo",
+    "reachable": "Raggiungibili: {{percent}}",
+    "reachableUnknown": "Raggiungibili: non applicabile",
+    "quarantined_one": "{{count}} in quarantena",
+    "quarantined_other": "{{count}} in quarantena",
+    "noneQuarantined": "Nessuno in quarantena",
+    "reachabilityBar": "Quota di nodi registrati che hanno risposto entro la finestra di liveness",
+    "armed": "Autodistruzione armata",
+    "armedPinned": "Fissata",
+    "destroyNow": "Distruggi ora",
+    "armedInstant": "Armata, immediata",
+    "triggered": "Attivata"
+  },
+  "header": {
+    "search": "Cerca nodi, indirizzi, utenti, registri",
+    "searchLabel": "Cerca nella console",
+    "throughput": "Traffico aggregato",
+    "rx": "In entrata",
+    "tx": "In uscita",
+    "nodesUp": "Nodi attivi",
+    "enrol": "Registra dispositivo",
+    "roleScope": "Ambito del ruolo",
+    "superAdmin": "Super amministratore",
+    "superAdminHint": "Panoramica globale della mesh, tutti i relay e i nodi dei tenant",
+    "user": "Utente",
+    "userHint": "Mesh limitata ai dispositivi di questo tenant",
+    "notifications": "Notifiche",
+    "notificationsUnread": "Notifiche, non lette",
+    "alerts": "Avvisi di sicurezza",
+    "markAllRead": "Segna tutte come lette",
+    "account": "Account"
+  }
+}

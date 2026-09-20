@@ -1,0 +1,82 @@
+{
+  "state": {
+    "ok": "Reported",
+    "loading": "Loading",
+    "empty": "Nothing here",
+    "error": "Could not load",
+    "notMeasured": "Not measured",
+    "notImplemented": "Not implemented"
+  },
+  "status": {
+    "ok": "Healthy",
+    "warning": "Degraded",
+    "critical": "Critical",
+    "unknown": "Unknown",
+    "notMeasured": "Not measured"
+  },
+  "empty": {
+    "title": "Nothing to show",
+    "body": "There is no data for this view yet."
+  },
+  "error": {
+    "title": "Could not load this view",
+    "body": "The request to the control plane failed.",
+    "retry": "Try again",
+    "detail": "Details"
+  },
+  "notImplemented": {
+    "title": "Not implemented",
+    "body": "This part of the console is not built yet. Nothing is measured behind it."
+  },
+  "loading": {
+    "label": "Loading"
+  },
+  "notMeasured": {
+    "explain": "The control plane has never received a value for this."
+  },
+  "table": {
+    "sortAscending": "Sort ascending",
+    "sortDescending": "Sort descending",
+    "sortedAscending": "sorted ascending",
+    "sortedDescending": "sorted descending",
+    "notSorted": "not sorted",
+    "selectRow": "Select row",
+    "selectAll": "Select all rows",
+    "selectedCount_one": "{{count}} row selected",
+    "selectedCount_other": "{{count}} rows selected",
+    "density": "Row density",
+    "comfortable": "Comfortable",
+    "compact": "Compact"
+  },
+  "dialog": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "confirm": "Confirm"
+  },
+  "confirm": {
+    "prompt": "This cannot be undone. Type <1>{{phrase}}</1> to confirm.",
+    "label": "Confirmation phrase",
+    "mismatch": "The phrase does not match yet."
+  },
+  "code": {
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Could not copy"
+  },
+  "field": {
+    "optional": "optional",
+    "required": "required"
+  },
+  "skipToContent": "Skip to content",
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "it": "Italiano"
+  }
+}

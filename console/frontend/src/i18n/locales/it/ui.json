@@ -1,0 +1,82 @@
+{
+  "state": {
+    "ok": "Rilevato",
+    "loading": "Caricamento",
+    "empty": "Nessun dato",
+    "error": "Caricamento non riuscito",
+    "notMeasured": "Non misurato",
+    "notImplemented": "Non implementato"
+  },
+  "status": {
+    "ok": "Integro",
+    "warning": "Degradato",
+    "critical": "Critico",
+    "unknown": "Sconosciuto",
+    "notMeasured": "Non misurato"
+  },
+  "empty": {
+    "title": "Niente da mostrare",
+    "body": "Per questa vista non ci sono ancora dati."
+  },
+  "error": {
+    "title": "Impossibile caricare questa vista",
+    "body": "La richiesta al piano di controllo non e riuscita.",
+    "retry": "Riprova",
+    "detail": "Dettagli"
+  },
+  "notImplemented": {
+    "title": "Non implementato",
+    "body": "Questa parte della console non e ancora realizzata. Dietro non viene misurato nulla."
+  },
+  "loading": {
+    "label": "Caricamento"
+  },
+  "notMeasured": {
+    "explain": "Il piano di controllo non ha mai ricevuto un valore per questo dato."
+  },
+  "table": {
+    "sortAscending": "Ordina in modo crescente",
+    "sortDescending": "Ordina in modo decrescente",
+    "sortedAscending": "ordinata in modo crescente",
+    "sortedDescending": "ordinata in modo decrescente",
+    "notSorted": "non ordinata",
+    "selectRow": "Seleziona la riga",
+    "selectAll": "Seleziona tutte le righe",
+    "selectedCount_one": "{{count}} riga selezionata",
+    "selectedCount_other": "{{count}} righe selezionate",
+    "density": "Densita delle righe",
+    "comfortable": "Comoda",
+    "compact": "Compatta"
+  },
+  "dialog": {
+    "close": "Chiudi",
+    "cancel": "Annulla",
+    "confirm": "Conferma"
+  },
+  "confirm": {
+    "prompt": "L'operazione non e reversibile. Digita <1>{{phrase}}</1> per confermare.",
+    "label": "Frase di conferma",
+    "mismatch": "La frase non corrisponde ancora."
+  },
+  "code": {
+    "copy": "Copia",
+    "copied": "Copiato",
+    "copyFailed": "Copia non riuscita"
+  },
+  "field": {
+    "optional": "facoltativo",
+    "required": "obbligatorio"
+  },
+  "skipToContent": "Vai al contenuto",
+  "theme": {
+    "label": "Tema",
+    "light": "Chiaro",
+    "dark": "Scuro",
+    "system": "Sistema"
+  },
+  "language": {
+    "label": "Lingua",
+    "en": "English",
+    "it": "Italiano"
+  }
+}

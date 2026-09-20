@@ -1,0 +1,68 @@
+{
+  "brand": {
+    "name": "NeroNet",
+    "tagline": "Sovereign mesh v4.0"
+  },
+  "nav": {
+    "landmark": "Main",
+    "sections": {
+      "mesh": "Mesh and network",
+      "compute": "Compute and storage",
+      "security": "Security and governance",
+      "danger": "System and danger zone"
+    },
+    "collapseSection": "Collapse section",
+    "expandSection": "Expand section",
+    "items": {
+      "overview": "Global overview",
+      "topology": "Mesh topology",
+      "nodes": "Node matrix",
+      "onion": "Onion and obfuscation",
+      "peering": "Cross-mesh peering",
+      "geofencing": "Geo-fencing map",
+      "cloudpc": "Sovereign cloud PC",
+      "risk": "Behavioural risk score",
+      "acls": "Zero-trust ACLs",
+      "audit": "Forensic audit logs",
+      "users": "User directory",
+      "settings": "Mesh settings",
+      "nuke": "Self-destruct"
+    },
+    "alertCount_one": "{{count}} needs attention",
+    "alertCount_other": "{{count}} need attention"
+  },
+  "sidebar": {
+    "nodesReachable": "{{reachable}}/{{total}} up",
+    "noNodes": "No nodes",
+    "reachable": "Reachable: {{percent}}",
+    "reachableUnknown": "Reachable: not applicable",
+    "quarantined_one": "{{count}} quarantined",
+    "quarantined_other": "{{count}} quarantined",
+    "noneQuarantined": "None quarantined",
+    "reachabilityBar": "Share of enrolled nodes that answered within the liveness window",
+    "armed": "Self-destruct armed",
+    "armedPinned": "Pinned",
+    "destroyNow": "Destroy now",
+    "armedInstant": "Armed, immediate",
+    "triggered": "Triggered"
+  },
+  "header": {
+    "search": "Search nodes, addresses, users, audit logs",
+    "searchLabel": "Search the console",
+    "throughput": "Aggregate throughput",
+    "rx": "In",
+    "tx": "Out",
+    "nodesUp": "Nodes up",
+    "enrol": "Enrol device",
+    "roleScope": "Role scope",
+    "superAdmin": "Super admin",
+    "superAdminHint": "Global mesh overview, all relays and tenant nodes",
+    "user": "User",
+    "userHint": "Mesh scoped to this tenant's own devices",
+    "notifications": "Notifications",
+    "notificationsUnread": "Notifications, unread",
+    "alerts": "Security alerts",
+    "markAllRead": "Mark all read",
+    "account": "Account"
+  }
+}
