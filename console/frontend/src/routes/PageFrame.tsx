@@ -18,6 +18,18 @@ import { useLocation } from 'react-router-dom';
  * layout would move focus while the suspense fallback is on screen, to a
  * heading that has not been rendered yet.
  */
+/*
+ * The address the last focus move was made for, across route components, since
+ * each one mounts and unmounts with its route. `null` means nothing has been
+ * focused since the document loaded.
+ */
+let lastFocusedPath: string | null = null;
+
+/** Test seam, so one test's navigation does not decide the next test's. */
+export function resetPageFocusHistory(): void {
+  lastFocusedPath = null;
+}
+
 export function PageFrame({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
@@ -25,6 +37,16 @@ export function PageFrame({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
+
+    // Not on the first page of a session. Focus starts at the top of the
+    // document, where the skip link is the first thing in the tab order;
+    // moving it into the content on load would put the whole sidebar behind
+    // the operator with no way forward to it and no skip link to use.
+    const isFirstPage = lastFocusedPath === null;
+    const unchanged = lastFocusedPath === pathname;
+    lastFocusedPath = pathname;
+    if (isFirstPage || unchanged) return;
+
     const target = root.querySelector('h1') ?? root;
     // Headings are not focusable by default. -1 keeps it out of the tab order
     // while allowing focus to be moved there programmatically.

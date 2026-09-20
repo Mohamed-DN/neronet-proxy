@@ -9,7 +9,7 @@ import { clearSession, storeSession } from '../services/authToken';
 import { resetConnectionState } from '../services/connection';
 import { createQueryClient } from '../services/queries';
 import { renderUI } from '../test/harness';
-import { PageFrame } from './PageFrame';
+import { PageFrame, resetPageFocusHistory } from './PageFrame';
 import { RequireAuth } from './RequireAuth';
 import { RootLayout } from './RootLayout';
 import { RouteError } from './RouteError';
@@ -190,6 +190,7 @@ describe('the shell', () => {
   beforeEach(() => {
     localStorage.clear();
     resetConnectionState();
+    resetPageFocusHistory();
     stubEnvironment();
   });
 
@@ -221,6 +222,17 @@ describe('the shell', () => {
 
     await screen.findByRole('heading', { name: 'Global overview' });
     await waitFor(() => expect(document.title).toBe('Global overview - NeroNet console'));
+  });
+
+  it('leaves focus at the top of the document on the first page, where the skip link is', async () => {
+    storeSession({ token: 'tok' });
+    renderAt([ROUTES.overview]);
+    const heading = await screen.findByRole('heading', { name: 'Global overview' });
+
+    // Moving focus into the content on load would put the whole sidebar behind
+    // the operator, with no skip link ahead of them to get back to it.
+    await waitFor(() => expect(document.title).toBe('Global overview - NeroNet console'));
+    expect(heading).not.toHaveFocus();
   });
 
   it('is navigable from the keyboard and moves focus to the heading of the page it lands on', async () => {
