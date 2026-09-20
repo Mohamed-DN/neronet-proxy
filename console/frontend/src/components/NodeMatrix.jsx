@@ -362,7 +362,7 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
                             >
                               {n.role}
                             </span>
-                            {Boolean(n.onion_routing_enabled || n.onion_hops > 0) ? (
+                            {n.onion_routing_enabled || n.onion_hops > 0 ? (
                               <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-accent/20 text-accent border border-accent/30">
                                 3-Hop Onion
                               </span>

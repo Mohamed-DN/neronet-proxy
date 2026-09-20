@@ -36,21 +36,18 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    chunkSizeWarningLimit: 1500,
-    rollupOptions: {
-      output: {
-        /*
-         * three and recharts are reached only through the lazy route chunks that
-         * import them, so naming them here keeps each one in a single file shared
-         * by those routes rather than duplicated into every one. Neither is
-         * reachable from the entry, so neither is preloaded by index.html.
-         */
-        manualChunks: {
-          three_vendor: ['three', 'react-force-graph-3d', 'three-spritetext'],
-          recharts_vendor: ['recharts']
-        }
-      }
-    }
+    chunkSizeWarningLimit: 1500
+    /*
+     * No manualChunks. Naming a package in manualChunks places that package and
+     * everything it depends on in the chunk, so `recharts_vendor: ['recharts']`
+     * put React itself there: the entry then imported the chunk, index.html
+     * preloaded it, and 151 kB of charting arrived with the sign-in form.
+     *
+     * Every page is behind a dynamic import, which is enough for Rollup to give
+     * each one its own chunk and to hoist what several pages share into a chunk
+     * that loads with the first of them. three reaches only the topology route
+     * and recharts only the pages that draw charts.
+     */
   },
   test: {
     // The service tests are written against node:test and keep running under

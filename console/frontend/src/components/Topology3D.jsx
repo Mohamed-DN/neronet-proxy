@@ -278,7 +278,10 @@ export default function Topology3D({ onSelectNode }) {
         fgRef.current.d3Force('charge')?.strength(-30);
         fgRef.current.d3VelocityDecay(0.3);
         fgRef.current.d3AlphaDecay(0.035);
-      } catch (e) {}
+      } catch (err) {
+        // The force-graph handle is not ready on every render; tuning it is an
+        // optimisation, not a requirement for drawing the graph.
+      }
     }
   }, [graphData]);
 
@@ -306,7 +309,10 @@ export default function Topology3D({ onSelectNode }) {
           starfield.name = 'neronet_starfield';
           scene.add(starfield);
         }
-      } catch (e) {}
+      } catch (err) {
+        // Decoration. A WebGL context that refuses the point cloud still draws
+        // the nodes and the links, which are the data.
+      }
     }
   }, [dimensions]);
 

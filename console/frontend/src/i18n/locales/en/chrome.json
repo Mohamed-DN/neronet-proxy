@@ -13,6 +13,8 @@
     },
     "collapseSection": "Collapse section",
     "expandSection": "Expand section",
+    "collapseSidebar": "Collapse the navigation",
+    "expandSidebar": "Expand the navigation",
     "items": {
       "overview": "Global overview",
       "topology": "Mesh topology",
@@ -63,6 +65,56 @@
     "notificationsUnread": "Notifications, unread",
     "alerts": "Security alerts",
     "markAllRead": "Mark all read",
-    "account": "Account"
+    "account": "Account",
+    "noAlerts": "No alerts. The console has no notification feed behind this yet."
+  },
+  "connection": {
+    "label": "Control plane",
+    "unknown": "Checking the control plane",
+    "online": "Connected",
+    "degraded": "Live updates interrupted",
+    "offline": "Control plane unreachable",
+    "degradedBody": "Requests still get through, but the live channel is down. Figures change only when a page refreshes them.",
+    "offlineBody": "Nothing is getting through. What is on screen is the last answer this console received, not the state of the mesh.",
+    "retryIn": "Reconnecting in {{seconds}}s",
+    "lastFailure": "Last failure"
+  },
+  "routeError": {
+    "title": "This page could not be drawn",
+    "body": "The console kept running. The rest of it is still usable, and the navigation on the left still works.",
+    "appTitle": "The console could not be drawn",
+    "appBody": "The failure happened above every page, so there is nothing left to show but this.",
+    "retry": "Try this page again",
+    "reload": "Reload the console",
+    "overview": "Go to the overview",
+    "errorId": "Error id",
+    "errorIdHint": "Quote this identifier when reporting the failure. The console prints the full error to the browser console and shows nothing more here."
+  },
+  "notFound": {
+    "title": "No such page",
+    "body": "This address does not belong to the console. It may have been renamed, or the link may be wrong.",
+    "back": "Go to the overview"
+  },
+  "narrow": {
+    "title": "Use a wider window",
+    "body": "The console is a desktop tool: its tables and the topology need at least 1024 pixels of width. Widen the window or move it to a larger display."
+  },
+  "page": {
+    "title": "{{page}} - NeroNet console",
+    "loading": "Loading the page",
+    "announce": "{{page}}"
+  },
+  "nodeDetail": {
+    "title": "Node"
+  },
+  "login": {
+    "title": "NeroNet Enterprise",
+    "subtitle": "Sovereign mesh control plane - v4.0",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in",
+    "working": "Signing in",
+    "failed": "Sign-in failed.",
+    "method": "Password sign-in - bcrypt - signed session token"
   }
 }

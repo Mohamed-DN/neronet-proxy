@@ -13,6 +13,8 @@
     },
     "collapseSection": "Comprimi la sezione",
     "expandSection": "Espandi la sezione",
+    "collapseSidebar": "Comprimi la navigazione",
+    "expandSidebar": "Espandi la navigazione",
     "items": {
       "overview": "Panoramica globale",
       "topology": "Topologia della mesh",
@@ -63,6 +65,56 @@
     "notificationsUnread": "Notifiche, non lette",
     "alerts": "Avvisi di sicurezza",
     "markAllRead": "Segna tutte come lette",
-    "account": "Account"
+    "account": "Account",
+    "noAlerts": "Nessun avviso. Dietro a questo la console non ha ancora un flusso di notifiche."
+  },
+  "connection": {
+    "label": "Piano di controllo",
+    "unknown": "Verifica del piano di controllo",
+    "online": "Connesso",
+    "degraded": "Aggiornamenti in tempo reale interrotti",
+    "offline": "Piano di controllo irraggiungibile",
+    "degradedBody": "Le richieste passano ancora, ma il canale in tempo reale e fermo. I valori cambiano solo quando una pagina li ricarica.",
+    "offlineBody": "Non passa piu nulla. Quello che vedi e l'ultima risposta ricevuta da questa console, non lo stato della mesh.",
+    "retryIn": "Nuovo tentativo fra {{seconds}} s",
+    "lastFailure": "Ultimo errore"
+  },
+  "routeError": {
+    "title": "Impossibile disegnare questa pagina",
+    "body": "La console e rimasta in funzione. Il resto e ancora utilizzabile e la navigazione a sinistra funziona.",
+    "appTitle": "Impossibile disegnare la console",
+    "appBody": "L'errore si e verificato sopra ogni pagina, quindi non resta altro da mostrare.",
+    "retry": "Riprova questa pagina",
+    "reload": "Ricarica la console",
+    "overview": "Vai alla panoramica",
+    "errorId": "Identificativo dell'errore",
+    "errorIdHint": "Cita questo identificativo quando segnali l'errore. La console scrive l'errore completo nella console del browser e qui non mostra altro."
+  },
+  "notFound": {
+    "title": "Pagina inesistente",
+    "body": "Questo indirizzo non appartiene alla console. Potrebbe essere stato rinominato, oppure il collegamento e sbagliato.",
+    "back": "Vai alla panoramica"
+  },
+  "narrow": {
+    "title": "Usa una finestra piu larga",
+    "body": "La console e uno strumento da scrivania: le tabelle e la topologia richiedono almeno 1024 pixel di larghezza. Allarga la finestra o spostala su uno schermo piu grande."
+  },
+  "page": {
+    "title": "{{page}} - Console NeroNet",
+    "loading": "Caricamento della pagina",
+    "announce": "{{page}}"
+  },
+  "nodeDetail": {
+    "title": "Nodo"
+  },
+  "login": {
+    "title": "NeroNet Enterprise",
+    "subtitle": "Piano di controllo della mesh sovrana - v4.0",
+    "username": "Nome utente",
+    "password": "Password",
+    "submit": "Accedi",
+    "working": "Accesso in corso",
+    "failed": "Accesso non riuscito.",
+    "method": "Accesso con password - bcrypt - token di sessione firmato"
   }
 }

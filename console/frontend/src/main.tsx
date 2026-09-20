@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 
-import App from './App.jsx';
+import App from './App';
 import { initI18n } from './i18n';
 import { ThemeProvider } from './theme/ThemeProvider';
 import { ToastProvider } from './ui/Toast';
@@ -10,9 +10,13 @@ import './index.css';
 
 initI18n();
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
+const container = document.getElementById('root');
+if (!container) {
+  throw new Error('The document has no #root element to mount the console into');
+}
+const root = ReactDOM.createRoot(container);
 
-function mount(children) {
+function mount(children: React.ReactNode) {
   root.render(
     <React.StrictMode>
       <ThemeProvider>
