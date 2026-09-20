@@ -1,5 +1,7 @@
 # NeroNet Enterprise Management Console — Complete Technical Architecture & System Specification
 
+> Design document from an earlier phase. It has not been checked against the code. Where it differs from [the handbook](HANDBOOK.md), the handbook is right. It was written for a console that supported two database dialects and features that have since been removed.
+
 **Document Version:** 4.0.0 (v5.0 Enterprise Ready)  
 **System Name:** NeroNet Enterprise Management Console  
 **Repository:** `console/`  

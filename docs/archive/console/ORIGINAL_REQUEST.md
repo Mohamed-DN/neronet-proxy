@@ -1,3 +1,5 @@
+> Historical document, not maintained. It is the task statement of an earlier development phase of the console and does not describe the current code. For the current state read [the handbook](../../HANDBOOK.md).
+
 # Original User Request
 
 ## Initial Request — 2026-09-01T08:21:28Z

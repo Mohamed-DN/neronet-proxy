@@ -1,3 +1,5 @@
+> Historical document, not maintained. It is a database migration guide of an earlier phase and does not describe the current code. For the current state read [the handbook](../../docs/HANDBOOK.md).
+
 # NeroNet Sovereign Mesh Enterprise Console — Database & State Architecture Migration Guide
 
 **Document Version:** 4.0.0  

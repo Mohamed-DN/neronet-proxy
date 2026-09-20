@@ -1,5 +1,7 @@
 # NeroNet Sovereign Mesh Enterprise Console — High Availability (HA) Architecture & Scaling Guide
 
+> Design document from an earlier phase. It has not been checked against the code. Where it differs from [the handbook](HANDBOOK.md), the handbook is right. The high-availability design is not built; the decision is in [ADR 0001](adr/0001-no-multi-master-postgresql.md).
+
 **Document Version:** 4.0.0 (v5.0 Enterprise Ready)  
 **Target Audience:** Site Reliability Engineers, Enterprise Architects, Security Operations  
 **Applies to:** NeroNet Control Plane Backend, Enterprise Management Console, PostgreSQL 16 & Valkey 7  

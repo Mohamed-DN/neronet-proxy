@@ -65,7 +65,6 @@ log_info "Target Directory: ${PROJECT_ROOT}"
 log_header "1. Core Documentation & Metadata Verification"
 
 REQUIRED_DOCS=(
-  "PROJECT.md"
   "README.md"
 )
 
@@ -78,7 +77,7 @@ for doc in "${REQUIRED_DOCS[@]}"; do
 done
 
 # Check for optional documentation if present
-for opt_doc in "ORIGINAL_REQUEST.md" "DEVELOPER_SETUP.md" "BUSINESS_AND_ROADMAP.md" "CHANGELOG.md" "FUTURE_PLANS.md" "TEST_INFRA.md" "TEST_READY.md"; do
+for opt_doc in "DEVELOPER_SETUP.md" "BUSINESS_AND_ROADMAP.md" "CHANGELOG.md"; do
   if [ -f "${PROJECT_ROOT}/${opt_doc}" ]; then
     record_pass "Found project documentation: ${opt_doc}"
   fi

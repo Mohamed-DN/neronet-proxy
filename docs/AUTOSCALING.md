@@ -1,5 +1,7 @@
 # Sovereign Proxy v4.0 (NeroNet) — Auto-Scaling Architecture & Engineering Specification
 
+> Design document from an earlier phase. It has not been checked against the code. Where it differs from [the handbook](HANDBOOK.md), the handbook is right. The Helm chart, the Terraform modules and the cloud scaling groups it describes have never been applied to a real cluster or cloud account ([ADR 0012](adr/0012-deployment-target-vm-first.md)).
+
 ## Document Overview
 - **Author**: Sovereign Mesh Architecture Team
 - **Version**: 4.0.0

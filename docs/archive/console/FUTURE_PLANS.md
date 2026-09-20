@@ -1,3 +1,5 @@
+> Historical document, not maintained. It is a version 5 wish list written before the current plan and does not describe the current code. For the current state read [the handbook](../../HANDBOOK.md).
+
 # NeroNet v5.0 (DarkNero Mesh): Next-Generation Architecture Roadmap & Technical Specification
 
 ## Executive Summary

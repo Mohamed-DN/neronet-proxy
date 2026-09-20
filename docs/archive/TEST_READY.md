@@ -1,4 +1,4 @@
-> Historical document, not maintained. It is a test run report of an earlier development phase and does not describe the current code. For the current state read [the handbook](../HANDBOOK.md).
+> Historical document, not maintained. It is a test run report of an earlier phase. The suites it describes have been deleted, and it does not describe the current code. For the current state read [the handbook](../HANDBOOK.md).
 
 # NeroNet Enterprise Management Console — Test Readiness Signal (TEST_READY.md)
 
