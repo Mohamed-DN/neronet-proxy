@@ -16,6 +16,7 @@
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
 const { normalisePublicKeyHex } = require('../utils/crypto');
 const { bumpEpoch } = require('./AclEngine');
+const NodeCredentialService = require('./NodeCredentialService');
 const logger = require('../utils/logger');
 
 // Long enough to cover a node that was off overnight, short enough that the list
@@ -53,6 +54,10 @@ async function revokeNodeKeys(nodeIds, { reason = 'manual', actorId = null } = {
     `SELECT id, public_key FROM nodes WHERE id IN (${placeholdersLite})`,
     ids
   );
+
+  for (const id of ids) {
+    await NodeCredentialService.revokeNodeCredentials(id);
+  }
 
   const expiresAt = new Date(Date.now() + RETENTION_HOURS * 3600_000).toISOString();
   const revoked = [];

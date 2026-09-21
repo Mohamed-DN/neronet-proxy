@@ -9,6 +9,7 @@ const { allocateNextVip, generateCurve25519Keypair } = require('../utils/crypto'
 const { broadcastNodeEvent } = require('../services/TopologySync');
 const { derivePostureStatus } = require('../utils/posture');
 const { bumpNetmap } = require('../services/AclEngine');
+const NodeCredentialService = require('../services/NodeCredentialService');
 
 router.use(authenticateToken);
 
@@ -507,6 +508,8 @@ router.delete('/:id', async (req, res, next) => {
       db.prepare('DELETE FROM nodes WHERE id = ?').run(req.params.id);
     }
 
+    await NodeCredentialService.revokeNodeCredentials(req.params.id);
+
     // A removed node has to disappear from every other node's peer set.
     await bumpNetmap();
 
@@ -700,6 +703,8 @@ router.post('/:id/action', async (req, res, next) => {
         `
         ).run(reason, node.id);
       }
+
+      await NodeCredentialService.revokeNodeCredentials(node.id);
 
       await bumpNetmap();
 

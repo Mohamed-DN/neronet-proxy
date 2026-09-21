@@ -3,13 +3,20 @@ package control
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/curve25519"
+	"golang.org/x/crypto/hkdf"
 
 	"github.com/sovereign/proxy/v4/pkg/acl"
 	"github.com/sovereign/proxy/v4/pkg/crypto"
@@ -215,7 +222,139 @@ func (c *Client) SendHeartbeatWithPosture(
 		return nil, err
 	}
 
+	if hbResp.NewCredential != "" {
+		c.authToken = hbResp.NewCredential
+	}
+
 	return &hbResp, nil
+}
+
+// GetChallenge requests a single-use challenge nonce from the control plane
+func (c *Client) GetChallenge(ctx context.Context) (*ChallengeResponse, error) {
+	req, err := c.newRequest(ctx, "/v4/control/challenge", ChallengeRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("control plane challenge request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("control plane challenge returned status %d", resp.StatusCode)
+	}
+
+	var chResp ChallengeResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chResp); err != nil {
+		return nil, err
+	}
+
+	return &chResp, nil
+}
+
+// RegisterWithProof enrols a node using the ADR 0017 challenge-response proof of possession
+func (c *Client) RegisterWithProof(
+	ctx context.Context,
+	nodePriv [crypto.KeySize]byte,
+	nodePub [crypto.KeySize]byte,
+	role string,
+	endpoints []EndpointDesc,
+	capability CapabilityDesc,
+	enrolmentString string,
+) (*RegisterResponse, error) {
+	var preauthKey string
+	var expectedFingerprint string
+
+	trimmedEnrol := strings.TrimSpace(enrolmentString)
+	if strings.HasPrefix(trimmedEnrol, "nnk1:") {
+		parts := strings.Split(trimmedEnrol, ":")
+		if len(parts) >= 2 {
+			preauthKey = parts[1]
+		}
+		if len(parts) >= 3 {
+			expectedFingerprint = parts[2]
+		}
+	} else {
+		preauthKey = trimmedEnrol
+	}
+
+	ch, err := c.GetChallenge(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed fetching challenge: %w", err)
+	}
+
+	rawCpPub, err := hex.DecodeString(ch.ControlPlanePubHex)
+	if err != nil || len(rawCpPub) != 32 {
+		return nil, fmt.Errorf("invalid control plane public key: %v", err)
+	}
+
+	if expectedFingerprint != "" {
+		hash := sha256.Sum256(rawCpPub)
+		actualFingerprint := hex.EncodeToString(hash[:])
+		if !strings.EqualFold(actualFingerprint, expectedFingerprint) {
+			return nil, fmt.Errorf("control plane fingerprint mismatch: expected %s, got %s", expectedFingerprint, actualFingerprint)
+		}
+	}
+
+	sharedSecret, err := curve25519.X25519(nodePriv[:], rawCpPub)
+	if err != nil {
+		return nil, fmt.Errorf("Diffie-Hellman derivation failed: %w", err)
+	}
+
+	hkdfReader := hkdf.New(sha256.New, sharedSecret, nil, []byte("neronet/v4/register"))
+	derivedKey := make([]byte, 32)
+	if _, err := io.ReadFull(hkdfReader, derivedKey); err != nil {
+		return nil, fmt.Errorf("HKDF key derivation failed: %w", err)
+	}
+
+	nonceBytes, err := hex.DecodeString(ch.Nonce)
+	if err != nil {
+		return nil, fmt.Errorf("invalid nonce hex: %w", err)
+	}
+
+	mac := hmac.New(sha256.New, derivedKey)
+	mac.Write(append(nonceBytes, nodePub[:]...))
+	proofHex := hex.EncodeToString(mac.Sum(nil))
+
+	reqBody := RegisterRequest{
+		PublicKeyHex:  hex.EncodeToString(nodePub[:]),
+		Role:          role,
+		Endpoints:     endpoints,
+		AuthToken:     c.authToken,
+		ClientVersion: ClientVersion,
+		Capability:    capability,
+		PreAuthKey:    preauthKey,
+		Nonce:         ch.Nonce,
+		Proof:         proofHex,
+	}
+
+	req, err := c.newRequest(ctx, "/v4/control/register", reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("control plane register failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("control plane returned error status %d", resp.StatusCode)
+	}
+
+	var regResp RegisterResponse
+	if err := json.NewDecoder(resp.Body).Decode(&regResp); err != nil {
+		return nil, err
+	}
+
+	if regResp.Credential != "" {
+		c.authToken = regResp.Credential
+	}
+
+	return &regResp, nil
 }
 
 // DiscoverExitBridges queries candidate exit bridges

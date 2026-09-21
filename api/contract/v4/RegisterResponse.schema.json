@@ -71,6 +71,12 @@
     },
     "route_epoch": {
       "type": "integer"
+    },
+    "credential": {
+      "type": "string"
+    },
+    "credential_expires_at": {
+      "type": "string"
     }
   },
   "additionalProperties": false,

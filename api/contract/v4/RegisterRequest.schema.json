@@ -95,6 +95,15 @@
     },
     "capability": {
       "$ref": "#/$defs/CapabilityDesc"
+    },
+    "preauth_key": {
+      "type": "string"
+    },
+    "nonce": {
+      "type": "string"
+    },
+    "proof": {
+      "type": "string"
     }
   },
   "additionalProperties": false,

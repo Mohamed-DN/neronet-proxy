@@ -92,6 +92,16 @@ type RelayDesc struct {
 
 // --- Request / Response JSON Structs ---
 
+type ChallengeRequest struct {
+	PublicKeyHex string `json:"public_key_hex,omitempty"`
+}
+
+type ChallengeResponse struct {
+	Nonce              string `json:"nonce"`
+	ControlPlanePubHex string `json:"cp_public_key"`
+	ExpiresAt          string `json:"expires_at"`
+}
+
 type RegisterRequest struct {
 	PublicKeyHex  string         `json:"public_key_hex"`
 	Role          string         `json:"role,omitempty"`
@@ -100,17 +110,22 @@ type RegisterRequest struct {
 	ClientVersion string         `json:"client_version,omitempty"`
 	OSArch        string         `json:"os_arch,omitempty"`
 	Capability    CapabilityDesc `json:"capability,omitempty"`
+	PreAuthKey    string         `json:"preauth_key,omitempty"`
+	Nonce         string         `json:"nonce,omitempty"`
+	Proof         string         `json:"proof,omitempty"`
 }
 
 type RegisterResponse struct {
-	AssignedNodeID string       `json:"assigned_node_id"`
-	OverlayIPv4    string       `json:"overlay_ipv4"`
-	OverlayIPv6    string       `json:"overlay_ipv6"`
-	Relays         []*RelayDesc `json:"relays"`
-	LeaseExpiryUTC uint64       `json:"lease_expiry_utc"`
-	NetworkPSKHex  string       `json:"network_psk_hex"`
-	PolicyEpoch    uint64       `json:"policy_epoch"`
-	RouteEpoch     uint64       `json:"route_epoch"`
+	AssignedNodeID      string       `json:"assigned_node_id"`
+	OverlayIPv4         string       `json:"overlay_ipv4"`
+	OverlayIPv6         string       `json:"overlay_ipv6"`
+	Relays              []*RelayDesc `json:"relays"`
+	LeaseExpiryUTC      uint64       `json:"lease_expiry_utc"`
+	NetworkPSKHex       string       `json:"network_psk_hex"`
+	PolicyEpoch         uint64       `json:"policy_epoch"`
+	RouteEpoch          uint64       `json:"route_epoch"`
+	Credential          string       `json:"credential,omitempty"`
+	CredentialExpiresAt string       `json:"credential_expires_at,omitempty"`
 }
 
 type HeartbeatRequest struct {
@@ -136,21 +151,23 @@ type HeartbeatRequest struct {
 }
 
 type HeartbeatResponse struct {
-	Acknowledged     bool     `json:"acknowledged"`
-	ForceRekey       bool     `json:"force_rekey"`
-	DrainAndExit     bool     `json:"drain_and_exit"`
-	RevokedKeys      []string `json:"revoked_keys"`
-	IsQuarantined    bool     `json:"is_quarantined"`
-	QuarantineReason string   `json:"quarantine_reason,omitempty"`
-	PolicyEpoch      uint64   `json:"policy_epoch"`
-	RouteEpoch       uint64   `json:"route_epoch"`
+	Acknowledged        bool     `json:"acknowledged"`
+	ForceRekey          bool     `json:"force_rekey"`
+	DrainAndExit        bool     `json:"drain_and_exit"`
+	RevokedKeys         []string `json:"revoked_keys"`
+	IsQuarantined       bool     `json:"is_quarantined"`
+	QuarantineReason    string   `json:"quarantine_reason,omitempty"`
+	PolicyEpoch         uint64   `json:"policy_epoch"`
+	RouteEpoch          uint64   `json:"route_epoch"`
 
 	// NetmapVersion is the one number a node with a data plane compares against what
 	// it holds. It advances on anything that changes who may reach whom: a rule, a
 	// route, a registration or removal, a quarantine, a revocation, a health
 	// transition, or a peer's endpoints. Zero from a control plane that does not
 	// serve netmaps, which is why the node treats zero as "nothing to fetch".
-	NetmapVersion uint64 `json:"netmap_version"`
+	NetmapVersion       uint64   `json:"netmap_version"`
+	NewCredential       string   `json:"new_credential,omitempty"`
+	CredentialExpiresAt string   `json:"credential_expires_at,omitempty"`
 }
 
 type DiscoverRequest struct {

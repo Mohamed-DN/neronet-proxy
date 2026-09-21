@@ -19,6 +19,8 @@ func TestContractFixturesRoundTrip(t *testing.T) {
 		name     string
 		instance func() any
 	}{
+		{"ChallengeRequest.json", func() any { return &control.ChallengeRequest{} }},
+		{"ChallengeResponse.json", func() any { return &control.ChallengeResponse{} }},
 		{"RegisterRequest.json", func() any { return &control.RegisterRequest{} }},
 		{"RegisterResponse.json", func() any { return &control.RegisterResponse{} }},
 		{"HeartbeatRequest.json", func() any { return &control.HeartbeatRequest{} }},

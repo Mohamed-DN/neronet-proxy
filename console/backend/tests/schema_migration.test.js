@@ -30,7 +30,7 @@ describe('PostgreSQL Schema & Migration Verification', () => {
     for (const file of files) {
       assert.ok(applied.has(file), `Migration ${file} is not recorded in _migrations`);
     }
-    assert.strictEqual(applied.size >= 14, true, 'At least 14 migrations must be applied');
+    assert.strictEqual(applied.size >= 15, true, 'At least 15 migrations must be applied');
   });
 
   it('declares the expected production schema tables', async () => {
@@ -56,7 +56,9 @@ describe('PostgreSQL Schema & Migration Verification', () => {
       'acl_rules',
       'mesh_epochs',
       'network_routes',
-      'revoked_keys'
+      'revoked_keys',
+      'preauth_keys',
+      'node_credentials'
     ];
 
     for (const t of expectedTables) {

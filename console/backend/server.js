@@ -30,6 +30,7 @@ const geofencingRoutes = require('./routes/geofencing');
 const cloudPcRoutes = require('./routes/cloudPc');
 const nukeRoutes = require('./routes/nuke');
 const canaryRoutes = require('./routes/canary');
+const preauthKeysRoutes = require('./routes/preauthKeys');
 const securityHeaders = require('./middleware/securityHeaders');
 const { requireFeature } = require('./middleware/featureFlag');
 const { apiLimiter, enrolmentLimiter } = require('./middleware/rateLimit');
@@ -80,6 +81,7 @@ function createApp() {
   app.use('/api/acl', aclRoutes);
   app.use('/api/geofencing', geofencingRoutes);
   app.use('/api/cloud-pc', requireFeature('cloud_pc'), cloudPcRoutes);
+  app.use('/api/preauth-keys', preauthKeysRoutes);
   app.use('/api/nuke', nukeRoutes);
   // The nuke router is mounted at /api/nuke and nowhere else. It used to be mounted
   // at the root as well, so that the warrant canary could be fetched from
@@ -111,6 +113,19 @@ async function initDatabase() {
     const pool = getPgPool();
     await runMigrations(pool);
     await bootstrapPostgresAdmin(pool);
+
+    const { getControlPlaneKeypair } = require('./services/ControlPlaneKeyService');
+    getControlPlaneKeypair();
+
+    if (process.env.SOVEREIGN_BOOTSTRAP_PREAUTH_KEY) {
+      const { ensureBootstrapKey } = require('./services/PreAuthKeyService');
+      const adminRes = await pool.query(
+        "SELECT id FROM users WHERE role = 'super-admin' ORDER BY created_at ASC LIMIT 1"
+      );
+      if (adminRes.rows.length > 0) {
+        await ensureBootstrapKey(process.env.SOVEREIGN_BOOTSTRAP_PREAUTH_KEY, adminRes.rows[0].id);
+      }
+    }
 
     // After migrations: the collector writes to system_metrics, which the
     // migrations create.

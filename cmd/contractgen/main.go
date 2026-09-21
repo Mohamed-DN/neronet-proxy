@@ -26,6 +26,8 @@ func main() {
 	}
 
 	entries := []typeEntry{
+		{Name: "ChallengeRequest", Instance: &control.ChallengeRequest{}},
+		{Name: "ChallengeResponse", Instance: &control.ChallengeResponse{}},
 		{Name: "RegisterRequest", Instance: &control.RegisterRequest{}},
 		{Name: "RegisterResponse", Instance: &control.RegisterResponse{}},
 		{Name: "HeartbeatRequest", Instance: &control.HeartbeatRequest{}},

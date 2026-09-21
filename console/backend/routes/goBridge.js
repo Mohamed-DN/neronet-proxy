@@ -33,6 +33,9 @@ const RouteEngine = require('../services/RouteEngine');
 const CircuitEngine = require('../services/CircuitEngine');
 const RevocationEngine = require('../services/RevocationEngine');
 const NetmapService = require('../services/NetmapService');
+const ControlPlaneKeyService = require('../services/ControlPlaneKeyService');
+const PreAuthKeyService = require('../services/PreAuthKeyService');
+const NodeCredentialService = require('../services/NodeCredentialService');
 const config = require('../config/env');
 const logger = require('../utils/logger');
 const { logAuditEvent } = require('../utils/audit');
@@ -42,6 +45,7 @@ const router = express.Router();
 
 router.use(
   responseValidationInterceptor({
+    '/challenge': 'ChallengeResponse',
     '/register': 'RegisterResponse',
     '/heartbeat': 'HeartbeatResponse',
     '/discover': 'DiscoverResponse',
@@ -113,32 +117,71 @@ async function resolveOwnerId() {
  * authentication of any kind, so anyone able to reach the port could enrol nodes into
  * the mesh and exhaust the address pool.
  */
-function checkRegistrationToken(req) {
-  const expected = process.env.SOVEREIGN_REGISTRATION_TOKEN;
-
-  if (!expected) {
-    if (config.IS_PRODUCTION) {
-      return { ok: false, status: 503, error: 'node enrolment is disabled: SOVEREIGN_REGISTRATION_TOKEN is not set' };
-    }
-    // Development convenience only, and noisy on purpose.
-    logger.warn('SOVEREIGN_REGISTRATION_TOKEN is not set - node enrolment is unauthenticated.');
-    return { ok: true };
+/**
+ * Authenticates node requests on /v4/control/* endpoints.
+ *
+ * Implements ADR 0017 (Node Identity v2):
+ * - Accepts 256-bit bearer node credentials (nnt1_<hex>)
+ * - Enforces node ID invariance: request body node_id must match authenticated identity (403 Forbidden)
+ * - Validates credential revocation and expiration (401 Unauthorized)
+ * - Retains legacy registration token support during transition and development
+ */
+async function checkNodeAuth(req) {
+  const header = String(req.get('authorization') || '').trim();
+  let bearer = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
+  if (!bearer && req.body && req.body.credential) {
+    bearer = String(req.body.credential).trim();
+  }
+  if (!bearer && req.body && req.body.auth_token) {
+    bearer = String(req.body.auth_token).trim();
   }
 
-  // Accept the token from the Authorization header or the request body. Only
-  // RegisterRequest carries an auth_token field, so every other endpoint has to use
-  // the header; register keeps working either way.
-  const header = String(req.get('authorization') || '');
-  const bearer = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
-  const provided = bearer || req.body.auth_token || '';
-  const a = Buffer.from(String(provided), 'utf8');
-  const b = Buffer.from(expected, 'utf8');
+  // 1. Node Credential (nnt1_...)
+  if (bearer && bearer.startsWith('nnt1_')) {
+    const credResult = await NodeCredentialService.validateCredential(bearer);
+    if (!credResult.ok) {
+      return { ok: false, status: credResult.status || 401, error: credResult.error || 'invalid node credential' };
+    }
 
+    const node = credResult.node;
+    const bodyNodeId = req.body && req.body.node_id ? String(req.body.node_id).trim() : null;
+    const queryNodeId = req.query && req.query.node_id ? String(req.query.node_id).trim() : null;
+    const declaredNodeId = bodyNodeId || queryNodeId;
+
+    if (declaredNodeId && declaredNodeId !== node.id) {
+      logger.warn(`Node identity spoofing attempted: credential for ${node.id} attempted to act as ${declaredNodeId}`);
+      return { ok: false, status: 403, error: 'forbidden: credential belongs to another node' };
+    }
+
+    req.node = node;
+    return { ok: true, node, token: bearer };
+  }
+
+  // 2. Shared Registration Token fallback
+  const expected = process.env.SOVEREIGN_REGISTRATION_TOKEN;
+  if (!expected) {
+    if (config.IS_PRODUCTION) {
+      return { ok: false, status: 401, error: 'node credential required (Authorization: Bearer <token>)' };
+    }
+    logger.warn('SOVEREIGN_REGISTRATION_TOKEN is not set - node control request permitted in dev.');
+    return { ok: true, legacy: true };
+  }
+
+  if (!bearer) {
+    return { ok: false, status: 401, error: 'node credential or enrolment token required' };
+  }
+
+  const a = Buffer.from(String(bearer), 'utf8');
+  const b = Buffer.from(expected, 'utf8');
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
     return { ok: false, status: 401, error: 'invalid enrolment token' };
   }
 
-  return { ok: true };
+  return { ok: true, legacy: true };
+}
+
+function checkRegistrationToken(req) {
+  return checkNodeAuth(req);
 }
 
 /** Run a query against the PostgreSQL database. */
@@ -148,19 +191,85 @@ async function runQuery(pgSql, pgParams = []) {
   return res.rows;
 }
 
+// POST /v4/control/challenge
+router.post('/challenge', validateRequest('ChallengeRequest'), async (req, res) => {
+  try {
+    const challenge = await ControlPlaneKeyService.createChallenge();
+    return res.json({
+      nonce: challenge.nonce,
+      cp_public_key: challenge.cp_public_key,
+      expires_at: challenge.expires_at
+    });
+  } catch (err) {
+    logger.error(`[GO-BRIDGE] Challenge generation failed: ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /v4/control/register
 router.post('/register', validateRequest('RegisterRequest'), async (req, res) => {
   try {
-    const auth = checkRegistrationToken(req);
-    if (!auth.ok) {
-      return res.status(auth.status).json({ error: auth.error });
-    }
-
     const publicKeyHex = String(req.body.public_key_hex || '').trim();
     if (!PUBLIC_KEY_RE.test(publicKeyHex)) {
       // A registration without a usable public key has no stable identity. The old
       // handler substituted a random string here and stored the result anyway.
       return res.status(400).json({ error: 'public_key_hex must be 64 hex characters' });
+    }
+
+    const nodeId = deriveNodeId(publicKeyHex);
+    let ownerId = null;
+
+    // Check if node exists already (needed for owner check & role check)
+    const existing = await runQuery(
+      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code, latitude, longitude, user_id FROM nodes WHERE id = $1',
+      [nodeId]
+    );
+
+    // Node Identity v2: Pre-auth key & Proof of possession
+    if (req.body.proof || req.body.nonce || req.body.preauth_key) {
+      const nonce = String(req.body.nonce || '').trim();
+      const proof = String(req.body.proof || '').trim();
+      const preauthKey = String(req.body.preauth_key || '').trim();
+
+      if (!nonce || !proof) {
+        return res.status(401).json({ error: 'nonce and proof are required for proof of possession' });
+      }
+      if (!preauthKey) {
+        return res.status(401).json({ error: 'preauth_key is required' });
+      }
+
+      // 1. Consume challenge nonce (single-use anti-replay)
+      const consumed = await ControlPlaneKeyService.consumeChallenge(nonce);
+      if (!consumed) {
+        return res.status(401).json({ error: 'invalid or expired challenge nonce' });
+      }
+
+      // 2. Verify proof of possession
+      const validProof = ControlPlaneKeyService.verifyProof(publicKeyHex, nonce, proof);
+      if (!validProof) {
+        return res.status(401).json({ error: 'invalid proof of possession' });
+      }
+
+      // 3. Validate pre-auth key
+      const requestedRole = String(req.body.role || 'CLIENT_ORIGIN');
+      const preauthResult = await PreAuthKeyService.validateAndConsumePreAuthKey(preauthKey, requestedRole);
+      if (!preauthResult.ok) {
+        return res.status(preauthResult.status || 401).json({ error: preauthResult.error });
+      }
+
+      ownerId = preauthResult.key.owner_id;
+
+      // 4. Invariance: if node already exists, owner must match
+      if (existing.length > 0 && existing[0].user_id && existing[0].user_id !== ownerId) {
+        return res.status(403).json({ error: 'pre-auth key owner does not match existing node owner' });
+      }
+    } else {
+      // Legacy fallback
+      const auth = await checkNodeAuth(req);
+      if (!auth.ok) {
+        return res.status(auth.status).json({ error: auth.error });
+      }
+      ownerId = await resolveOwnerId();
     }
 
     const role = String(req.body.role || 'CLIENT_ORIGIN');
@@ -183,20 +292,11 @@ router.post('/register', validateRequest('RegisterRequest'), async (req, res) =>
     const asn = Number.isFinite(capability.asn) ? capability.asn : 0;
     const endpoints = Array.isArray(req.body.endpoints) ? req.body.endpoints : [];
 
-    const nodeId = deriveNodeId(publicKeyHex);
     const name = `Go-Node-${publicKeyHex.slice(0, 8)}`;
-    const ownerId = await resolveOwnerId();
 
     // Re-registration must return the addresses the node already holds rather than
     // allocating new ones, otherwise every restart burns an address and orphans the
     // previous lease.
-    const existing = await runQuery(
-      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code, latitude, longitude FROM nodes WHERE id = $1',
-      [nodeId],
-      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code, latitude, longitude FROM nodes WHERE id = ?',
-      [nodeId]
-    );
-
     let overlayIpv4;
     let overlayIpv6;
 
@@ -297,6 +397,8 @@ router.post('/register', validateRequest('RegisterRequest'), async (req, res) =>
       await AclEngine.bumpEpoch('acl');
     }
 
+    const cred = await NodeCredentialService.mintCredential(nodeId);
+
     logger.info(`[GO-BRIDGE] Registered ${nodeId} (${role}) with overlay ${overlayIpv4} / ${overlayIpv6}`);
 
     // Field names and shape must match control.RegisterResponse exactly.
@@ -312,7 +414,9 @@ router.post('/register', validateRequest('RegisterRequest'), async (req, res) =>
       // permanently false, so a running node never learned that an ACL rule had
       // changed. Policy delivery worked at enrolment and never again.
       policy_epoch: await AclEngine.getEpoch('acl'),
-      route_epoch: await AclEngine.getEpoch('routes')
+      route_epoch: await AclEngine.getEpoch('routes'),
+      credential: cred.credential,
+      credential_expires_at: cred.expiresAt
     });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Registration failed: ${err.message}`);
@@ -323,14 +427,7 @@ router.post('/register', validateRequest('RegisterRequest'), async (req, res) =>
 // POST /v4/control/heartbeat
 router.post('/heartbeat', validateRequest('HeartbeatRequest'), async (req, res) => {
   try {
-    // Authenticated before anything else, and before the database is touched.
-    //
-    // This was the only /v4/control handler that required no credential. It looked
-    // the node up first and answered 404 for an id it did not know against 200 for
-    // one it did, so an anonymous caller could enumerate node ids, then forge that
-    // node's telemetry and read back its quarantine state. Rejecting after the
-    // lookup would close the forgery and keep the oracle.
-    const auth = checkRegistrationToken(req);
+    const auth = await checkNodeAuth(req);
     if (!auth.ok) {
       return res.status(auth.status).json({ error: auth.error });
     }
@@ -448,8 +545,15 @@ router.post('/heartbeat', validateRequest('HeartbeatRequest'), async (req, res) 
     const quarantined = Boolean(known[0].is_quarantined);
     const quarantineReason = known[0].quarantine_reason || '';
 
-    // Shape must match control.HeartbeatResponse.
-    return res.json({
+    let rotatedCred = null;
+    if (auth.token && auth.node && auth.node.credentialId) {
+      const rot = await NodeCredentialService.checkAndRotateCredential(auth.node.credentialId, nodeId);
+      if (rot.rotated) {
+        rotatedCred = rot;
+      }
+    }
+
+    const responsePayload = {
       acknowledged: true,
       force_rekey: false,
       drain_and_exit: false,
@@ -465,7 +569,14 @@ router.post('/heartbeat', validateRequest('HeartbeatRequest'), async (req, res) 
       // It replaces both epochs above on the node side; they stay on the wire for a
       // node running without the data plane.
       netmap_version: await NetmapService.getVersion()
-    });
+    };
+
+    if (rotatedCred) {
+      responsePayload.new_credential = rotatedCred.new_credential;
+      responsePayload.credential_expires_at = rotatedCred.credential_expires_at;
+    }
+
+    return res.json(responsePayload);
   } catch (err) {
     logger.error(`[GO-BRIDGE] Heartbeat failed: ${err.message}`);
     return res.status(500).json({ error: err.message });
@@ -483,7 +594,7 @@ router.post('/heartbeat', validateRequest('HeartbeatRequest'), async (req, res) 
 // to enumerate.
 router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) => {
   try {
-    const auth = checkRegistrationToken(req);
+    const auth = await checkNodeAuth(req);
     if (!auth.ok) {
       return res.status(auth.status).json({ error: auth.error });
     }
@@ -573,7 +684,7 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
 // every node pulling a full policy every 15 seconds and almost none of them doing so.
 router.post('/sync-acls', validateRequest('ACLSyncRequest'), async (req, res) => {
   try {
-    const auth = checkRegistrationToken(req);
+    const auth = await checkNodeAuth(req);
     if (!auth.ok) {
       return res.status(auth.status).json({ error: auth.error });
     }
@@ -613,7 +724,7 @@ router.post('/sync-acls', validateRequest('ACLSyncRequest'), async (req, res) =>
 // transferring the route set.
 router.post('/sync-routes', validateRequest('RouteSyncRequest'), async (req, res) => {
   try {
-    const auth = checkRegistrationToken(req);
+    const auth = await checkNodeAuth(req);
     if (!auth.ok) {
       return res.status(auth.status).json({ error: auth.error });
     }
@@ -663,7 +774,7 @@ router.post('/sync-routes', validateRequest('RouteSyncRequest'), async (req, res
 // papered over here.
 router.post('/netmap', validateRequest('NetmapRequest'), async (req, res) => {
   try {
-    const auth = checkRegistrationToken(req);
+    const auth = await checkNodeAuth(req);
     if (!auth.ok) {
       return res.status(auth.status).json({ error: auth.error });
     }
@@ -703,7 +814,7 @@ router.post('/netmap', validateRequest('NetmapRequest'), async (req, res) => {
 // Without it the differentiating feature was unreachable from a deployment.
 router.post('/circuit', validateRequest('CircuitRequest'), async (req, res) => {
   try {
-    const auth = checkRegistrationToken(req);
+    const auth = await checkNodeAuth(req);
     if (!auth.ok) {
       return res.status(auth.status).json({ error: auth.error });
     }

@@ -31,6 +31,12 @@
     },
     "netmap_version": {
       "type": "integer"
+    },
+    "new_credential": {
+      "type": "string"
+    },
+    "credential_expires_at": {
+      "type": "string"
     }
   },
   "additionalProperties": false,
