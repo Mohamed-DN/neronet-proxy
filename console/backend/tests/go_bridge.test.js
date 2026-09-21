@@ -1,16 +1,9 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
-const path = require('node:path');
-const fs = require('node:fs');
 const crypto = require('node:crypto');
 const request = require('supertest');
 
-const testDbPath = path.resolve(__dirname, '../../data/test_go_bridge.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
-const { seedDatabase } = require('../db/seed');
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 
 /**
@@ -43,22 +36,16 @@ function registerBody(publicKeyHex, overrides = {}) {
 }
 
 describe('Go data-plane bridge', () => {
+  let dbHelper;
   let app;
 
-  before(() => {
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    const db = getDatabase(testDbPath);
-    runMigrations(db);
-    seedDatabase(db);
+  before(async () => {
+    dbHelper = await setupTestDatabase();
     app = createApp();
   });
 
-  after(() => {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    }
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
   });
 
   describe('registration', () => {
@@ -92,8 +79,10 @@ describe('Go data-plane bridge', () => {
     it('stores the public key the node sent', async () => {
       await request(app).post('/v4/control/register').send(registerBody(GO_PUBKEY_A));
 
-      const db = getDatabase();
-      const row = db.prepare('SELECT public_key FROM nodes WHERE id = ?').get(`pk_${GO_PUBKEY_A.slice(0, 16)}`);
+      const qRes = await dbHelper.pool.query('SELECT public_key FROM nodes WHERE id = $1', [
+        `pk_${GO_PUBKEY_A.slice(0, 16)}`
+      ]);
+      const row = qRes.rows[0];
 
       // The old bridge read req.body.PublicKeyHex, which is not what the node sends,
       // and fell back to a random string -- every node was stored as svrn-go-unknown-
@@ -167,10 +156,11 @@ describe('Go data-plane bridge', () => {
         rx_bytes_sec: 700
       });
 
-      const db = getDatabase();
-      const row = db
-        .prepare('SELECT cpu_usage_pct, memory_usage_pct, battery_pct, last_heartbeat FROM nodes WHERE id = ?')
-        .get(nodeId);
+      const qRes = await dbHelper.pool.query(
+        'SELECT cpu_usage_pct, memory_usage_pct, battery_pct, last_heartbeat FROM nodes WHERE id = $1',
+        [nodeId]
+      );
+      const row = qRes.rows[0];
 
       assert.strictEqual(row.cpu_usage_pct, 37);
       assert.strictEqual(row.memory_usage_pct, 256);
@@ -179,17 +169,17 @@ describe('Go data-plane bridge', () => {
     });
 
     it('does not invent a latency figure', async () => {
-      const db = getDatabase();
-      db.prepare('UPDATE nodes SET latency_ms = 0 WHERE id = ?').run(nodeId);
+      await dbHelper.pool.query('UPDATE nodes SET latency_ms = 0 WHERE id = $1', [nodeId]);
 
       await request(app).post('/v4/control/heartbeat').send({ node_id: nodeId, cpu_usage_pct: 10 });
 
-      const row = db.prepare('SELECT latency_ms FROM nodes WHERE id = ?').get(nodeId);
+      const qRes = await dbHelper.pool.query('SELECT latency_ms FROM nodes WHERE id = $1', [nodeId]);
+      const row = qRes.rows[0];
 
       // The old handler wrote floor(random() * 50 + 10) on every beat, so the console
       // displayed a fabricated round-trip time for every node. The node does not
       // measure RTT yet; nothing should appear until it does.
-      assert.strictEqual(row.latency_ms, 0, 'a latency value was invented by the control plane');
+      assert.strictEqual(Number(row.latency_ms), 0, 'a latency value was invented by the control plane');
     });
 
     it('rejects a heartbeat with no node id instead of silently dropping it', async () => {
@@ -272,13 +262,12 @@ describe('Go data-plane bridge', () => {
     });
 
     it('does not offer quarantined nodes', async () => {
-      const db = getDatabase();
-      db.prepare('UPDATE nodes SET is_quarantined = 1 WHERE id = ?').run(bridgeId);
+      await dbHelper.pool.query('UPDATE nodes SET is_quarantined = TRUE WHERE id = $1', [bridgeId]);
 
       const res = await request(app).post('/v4/control/discover').send({ limit: 100 });
       assert.ok(!res.body.bridges.some((b) => b.node_id === bridgeId), 'a quarantined node was offered as a bridge');
 
-      db.prepare('UPDATE nodes SET is_quarantined = 0 WHERE id = ?').run(bridgeId);
+      await dbHelper.pool.query('UPDATE nodes SET is_quarantined = FALSE WHERE id = $1', [bridgeId]);
     });
 
     it('requires the enrolment token when one is configured', async () => {

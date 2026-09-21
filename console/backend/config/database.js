@@ -61,14 +61,20 @@ function resolvePostgresPassword() {
 const dbConfig = {
   // PostgreSQL 16 Configuration
   postgres: {
-    connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL || null,
-    host: process.env.PGHOST || process.env.POSTGRES_HOST || '127.0.0.1',
+    get connectionString() {
+      return process.env.DATABASE_URL || process.env.POSTGRES_URL || null;
+    },
+    get host() {
+      return process.env.PGHOST || process.env.POSTGRES_HOST || '127.0.0.1';
+    },
     port: parseInt(process.env.PGPORT || process.env.POSTGRES_PORT || '5432', 10),
     user: process.env.PGUSER || process.env.POSTGRES_USER || 'neronet',
     get password() {
       return resolvePostgresPassword();
     },
-    database: process.env.PGDATABASE || process.env.POSTGRES_DB || 'neronet_db',
+    get database() {
+      return process.env.PGDATABASE || process.env.POSTGRES_DB || 'neronet_db';
+    },
     max: parseInt(process.env.PGPOOL_MAX || '20', 10),
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
@@ -93,11 +99,6 @@ const dbConfig = {
     // exist to provide across processes.
     lazyConnect: false,
     maxRetriesPerRequest: 1
-  },
-
-  // Fallback SQLite Path
-  sqlite: {
-    path: config.DB_PATH || path.resolve(__dirname, '../../data/neronet.db')
   }
 };
 

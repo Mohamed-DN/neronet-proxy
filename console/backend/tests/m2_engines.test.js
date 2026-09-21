@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp, initDatabase } = require('../server');
 const { getDatabase, closeDatabase } = require('../db/index');
 const { initTopologyWebSocket, closeTopologyWebSocket } = require('../ws/topologyServer');
@@ -15,9 +16,8 @@ const PolicyEngine = require('../services/PolicyEngine');
 const PeeringEngine = require('../services/PeeringEngine');
 const WebRtcSignalingEngine = require('../services/WebRtcSignalingEngine');
 
-const TEST_DB_PATH = path.resolve(__dirname, '../../data/test_m2.db');
-
 describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
+  let dbHelper;
   let app;
   let server;
   let adminToken;
@@ -26,13 +26,7 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
   let testNodeId;
 
   before(async () => {
-    process.env.SOVEREIGN_DB_PATH = TEST_DB_PATH;
-    if (fs.existsSync(TEST_DB_PATH)) {
-      try {
-        fs.unlinkSync(TEST_DB_PATH);
-      } catch (e) {}
-    }
-
+    dbHelper = await setupTestDatabase();
     await initDatabase();
     app = createApp();
 
@@ -79,13 +73,8 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
     if (server) {
       await new Promise((resolve) => server.close(resolve));
     }
-    closeDatabase();
     closeValkey();
-    if (fs.existsSync(TEST_DB_PATH)) {
-      try {
-        fs.unlinkSync(TEST_DB_PATH);
-      } catch (e) {}
-    }
+    if (dbHelper) await dbHelper.cleanup();
   });
 
   // ===========================================================================

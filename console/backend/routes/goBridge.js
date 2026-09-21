@@ -24,7 +24,7 @@
 const express = require('express');
 const crypto = require('crypto');
 
-const { getDatabase, isPostgres, getPgPool } = require('../db/index');
+const { getPgPool } = require('../db/index');
 const { allocateNextVip, normalisePublicKeyHex } = require('../utils/crypto');
 const { buildPostureDocument } = require('../utils/posture');
 const HeartbeatBuffer = require('../services/HeartbeatBuffer');
@@ -141,21 +141,11 @@ function checkRegistrationToken(req) {
   return { ok: true };
 }
 
-/** Run a query against whichever backend is configured. */
-async function runQuery(pgSql, pgParams, sqliteSql, sqliteParams) {
-  if (isPostgres()) {
-    const pool = getPgPool();
-    const res = await pool.query(pgSql, pgParams);
-    return res.rows;
-  }
-
-  const db = getDatabase();
-  const statement = db.prepare(sqliteSql);
-  if (/^\s*select/i.test(sqliteSql)) {
-    return statement.all(...sqliteParams);
-  }
-  statement.run(...sqliteParams);
-  return [];
+/** Run a query against the PostgreSQL database. */
+async function runQuery(pgSql, pgParams = []) {
+  const pool = getPgPool();
+  const res = await pool.query(pgSql, pgParams);
+  return res.rows;
 }
 
 // POST /v4/control/register
@@ -214,7 +204,7 @@ router.post('/register', validateRequest('RegisterRequest'), async (req, res) =>
       overlayIpv4 = existing[0].overlay_ipv4;
       overlayIpv6 = existing[0].overlay_ipv6;
     } else {
-      const vip = await allocateNextVip(isPostgres() ? getPgPool() : getDatabase());
+      const vip = await allocateNextVip(getPgPool());
       overlayIpv4 = vip.overlayIpv4;
       overlayIpv6 = vip.overlayIpv6;
     }
@@ -234,44 +224,17 @@ router.post('/register', validateRequest('RegisterRequest'), async (req, res) =>
     const mismatch =
       existing.length > 0 ? describeMismatch(existing[0], { role, ipClass, countryCode, declared }) : null;
 
-    if (isPostgres()) {
-      const pool = getPgPool();
-      await pool.query(
-        `INSERT INTO nodes (
-           id, user_id, name, role, ip_class, country_code, city, asn,
-           is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb)
-         ON CONFLICT (id) DO UPDATE SET
-           is_healthy = TRUE,
-           endpoints = EXCLUDED.endpoints,
-           updated_at = NOW()`,
-        [
-          nodeId,
-          ownerId,
-          name,
-          role,
-          ipClass,
-          countryCode,
-          city,
-          asn,
-          publicKeyHex,
-          overlayIpv4,
-          overlayIpv6,
-          endpointsJson
-        ]
-      );
-    } else {
-      const db = getDatabase();
-      db.prepare(
-        `INSERT INTO nodes (
-           id, user_id, name, role, ip_class, country_code, city, asn,
-           is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET
-           is_healthy = 1,
-           endpoints = excluded.endpoints,
-           updated_at = CURRENT_TIMESTAMP`
-      ).run(
+    const pool = getPgPool();
+    await pool.query(
+      `INSERT INTO nodes (
+         id, user_id, name, role, ip_class, country_code, city, asn,
+         is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb)
+       ON CONFLICT (id) DO UPDATE SET
+         is_healthy = TRUE,
+         endpoints = EXCLUDED.endpoints,
+         updated_at = NOW()`,
+      [
         nodeId,
         ownerId,
         name,
@@ -284,8 +247,8 @@ router.post('/register', validateRequest('RegisterRequest'), async (req, res) =>
         overlayIpv4,
         overlayIpv6,
         endpointsJson
-      );
-    }
+      ]
+    );
 
     // The declared position is written only while the row has none, which is the
     // same rule the country follows: a re-registration cannot move an enrolled node.
@@ -563,9 +526,7 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
                           ip_class, latency_ms, risk_score, last_heartbeat
                      FROM nodes WHERE ${where} ${order} LIMIT $${params.length + 1}`;
 
-    const sqliteSql = pgSql.replace(/\$\d+/g, '?').replace(/TRUE/g, '1').replace(/FALSE/g, '0');
-
-    const rows = await runQuery(pgSql, [...params, limit], sqliteSql, [...params, limit]);
+    const rows = await runQuery(pgSql, [...params, limit]);
 
     // The nodes table holds hex from Go nodes and base64 from console-minted keys.
     // The wire field is public_key_hex, so the base64 form must be converted or the

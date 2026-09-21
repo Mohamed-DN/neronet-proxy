@@ -20,29 +20,23 @@ const crypto = require('node:crypto');
 const request = require('supertest');
 
 const scenarioName = process.argv[2] || 'unknown';
-const testDbPath = path.resolve(__dirname, `../../../data/test_probe_${scenarioName}_${process.pid}.db`);
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
-const { getDatabase, closeDatabase } = require('../../db/index');
-const { runMigrations } = require('../../db/migrator');
-const { seedDatabase } = require('../../db/seed');
+const { setupTestDatabase } = require('./db');
 const { getValkeyClient } = require('../../db/valkey');
 const { signToken } = require('../../middleware/auth');
 const { createApp } = require('../../server');
 
-function freshApp() {
-  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-  const db = getDatabase(testDbPath);
-  runMigrations(db);
-  seedDatabase(db);
+let dbHelper;
+
+async function freshApp() {
+  if (dbHelper) await dbHelper.cleanup();
+  dbHelper = await setupTestDatabase();
   return createApp();
 }
 
-function cleanUp() {
-  closeDatabase();
-  for (const suffix of ['', '-wal', '-shm']) {
-    const f = `${testDbPath}${suffix}`;
-    if (fs.existsSync(f)) fs.unlinkSync(f);
+async function cleanUp() {
+  if (dbHelper) {
+    await dbHelper.cleanup();
+    dbHelper = null;
   }
 }
 
@@ -51,8 +45,9 @@ function counterBacking() {
   return getValkeyClient() ? 'valkey' : 'in-process';
 }
 
-function anAccount() {
-  const row = getDatabase().prepare("SELECT id, username, role FROM users WHERE role = 'super-admin' LIMIT 1").get();
+async function anAccount() {
+  const res = await dbHelper.pool.query("SELECT id, username, role FROM users WHERE role = 'super-admin' LIMIT 1");
+  const row = res.rows[0];
   return { user: row, token: signToken({ id: row.id, username: row.username, role: row.role }) };
 }
 
@@ -63,8 +58,8 @@ const scenarios = {
    * from a different address: the budget belongs to the account, not the address.
    */
   async dmsUnlock() {
-    const app = freshApp();
-    const { token } = anAccount();
+    const app = await freshApp();
+    const { token } = await anAccount();
     const passphrase = crypto.randomBytes(16).toString('hex');
 
     const setup = await request(app)
@@ -97,8 +92,8 @@ const scenarios = {
 
   /** The other two paths to the same verification share one budget. */
   async dmsUnlockAliases() {
-    const app = freshApp();
-    const { token } = anAccount();
+    const app = await freshApp();
+    const { token } = await anAccount();
     const passphrase = crypto.randomBytes(16).toString('hex');
 
     await request(app)
@@ -126,15 +121,13 @@ const scenarios = {
 
   /** A second account is metered separately. */
   async dmsUnlockPerUser() {
-    const app = freshApp();
-    const db = getDatabase();
-    const admin = anAccount();
+    const app = await freshApp();
+    const admin = await anAccount();
 
     const otherId = `usr-probe-${crypto.randomBytes(4).toString('hex')}`;
-    db.prepare("INSERT INTO users (id, username, email, password_hash, role) VALUES (?, ?, ?, 'x', 'user')").run(
-      otherId,
-      `probe-${otherId}`,
-      `${otherId}@example.test`
+    await dbHelper.pool.query(
+      "INSERT INTO users (id, username, email, password_hash, role) VALUES ($1, $2, $3, 'x', 'user')",
+      [otherId, `probe-${otherId}`, `${otherId}@example.test`]
     );
     const otherToken = signToken({ id: otherId, username: `probe-${otherId}`, role: 'user' });
 
@@ -167,7 +160,7 @@ const scenarios = {
    * has to meter attempts that fail, or it meters nothing an attacker does.
    */
   async gatewayAuth() {
-    const app = freshApp();
+    const app = await freshApp();
 
     const codes = [];
     for (let i = 0; i < 11; i++) {
@@ -183,7 +176,7 @@ const scenarios = {
 
   /** A second domain, and a second address, each get their own budget. */
   async gatewayIsolation() {
-    const app = freshApp();
+    const app = await freshApp();
 
     const exhausted = [];
     for (let i = 0; i < 11; i++) {
@@ -218,7 +211,7 @@ const scenarios = {
    * not catch this on its own.
    */
   async gatewayPerDomain() {
-    const app = freshApp();
+    const app = await freshApp();
 
     let lastAllowed = null;
     let refused = null;
@@ -253,14 +246,14 @@ async function main() {
     // the database shutdown all print after this line.
     console.log(`PROBE_RESULT ${JSON.stringify(await scenario())}`);
   } finally {
-    cleanUp();
+    await cleanUp();
   }
 
   process.exit(0);
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error(err.stack || String(err));
-  cleanUp();
+  await cleanUp();
   process.exit(1);
 });

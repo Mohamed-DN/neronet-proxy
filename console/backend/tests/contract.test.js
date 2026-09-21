@@ -5,15 +5,10 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const request = require('supertest');
 
-const testDbPath = path.resolve(__dirname, '../../data/test_contract.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
 const REGISTRATION_TOKEN = crypto.randomBytes(24).toString('hex');
 process.env.SOVEREIGN_REGISTRATION_TOKEN = REGISTRATION_TOKEN;
 
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
-const { seedDatabase } = require('../db/seed');
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const { validateResponse, validators } = require('../middleware/contractValidator');
 
@@ -48,42 +43,25 @@ describe('Contract Schema Compilation and Shared Fixtures', () => {
     it(`validates shared fixture ${typeName}.json against schema`, () => {
       const fixturePath = path.join(FIXTURES_DIR, `${typeName}.json`);
       assert.ok(fs.existsSync(fixturePath), `fixture missing: ${fixturePath}`);
-
-      const raw = fs.readFileSync(fixturePath, 'utf8');
-      const fixtureData = JSON.parse(raw);
-
-      const res = validateResponse(typeName, fixtureData);
-      assert.strictEqual(
-        res.valid,
-        true,
-        `fixture ${typeName} failed schema validation: ${res.pointer} ${res.message}`
-      );
+      const data = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+      const val = validateResponse(typeName, data);
+      assert.strictEqual(val.valid, true, `fixture ${typeName}.json failed schema: ${val.pointer} ${val.message}`);
     });
   }
 });
 
 describe('Wire contract enforcement on /v4/control/* endpoints', () => {
+  let dbHelper;
   let app;
   const AUTH = { Authorization: `Bearer ${REGISTRATION_TOKEN}` };
 
   before(async () => {
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    for (const suffix of ['-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    }
-    const db = getDatabase(testDbPath);
-    runMigrations(db);
-    seedDatabase(db);
+    dbHelper = await setupTestDatabase();
     app = createApp();
   });
 
-  after(() => {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    }
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
   });
 
   describe('Valid request fixtures succeed against real handlers', () => {

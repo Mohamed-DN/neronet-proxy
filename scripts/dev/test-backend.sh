@@ -17,16 +17,21 @@ set -eu
 RUN_ID="tb$$_$(date +%s)"
 NET="neronet-test-$RUN_ID"
 VK="neronet-valkey-$RUN_ID"
+PG="neronet-postgres-$RUN_ID"
 
 cleanup() {
-  $ENGINE rm -f "$VK" >/dev/null 2>&1 || true
+  $ENGINE rm -f "$VK" "$PG" >/dev/null 2>&1 || true
   $ENGINE network rm "$NET" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
 $ENGINE network create "$NET" >/dev/null
 $ENGINE run -d --rm --name "$VK" --network "$NET" --network-alias valkey \
-  docker.io/valkey/valkey:7.2-alpine >/dev/null
+  docker.io/valkey/valkey:9.1-alpine >/dev/null
+$ENGINE run -d --rm --name "$PG" --network "$NET" --network-alias postgres \
+  -e POSTGRES_USER=neronet -e POSTGRES_PASSWORD=neronet_dev_password -e POSTGRES_DB=neronet_test \
+  -e PGDATA=/var/lib/postgresql/data \
+  docker.io/library/postgres:18-alpine >/dev/null
 
 # Wait for Valkey rather than assuming it is ready.
 i=0
@@ -36,10 +41,20 @@ until $ENGINE exec "$VK" valkey-cli ping 2>/dev/null | grep -q PONG; do
   sleep 1
 done
 
+# Wait for PostgreSQL rather than assuming it is ready.
+i=0
+until $ENGINE exec "$PG" pg_isready -U neronet -d neronet_test >/dev/null 2>&1; do
+  i=$((i + 1))
+  [ "$i" -le 30 ] || die "the throw-away PostgreSQL did not start"
+  sleep 1
+done
+
 LOG=${TEST_LOG:-${TMPDIR:-/tmp}/neronet-backend-$RUN_ID.log}
 rc=0
 $ENGINE run --rm --network "$NET" \
   -e VALKEY_URL=redis://valkey:6379 -e VALKEY_HOST=valkey \
+  -e DATABASE_URL=postgresql://neronet:neronet_dev_password@postgres:5432/neronet_test \
+  -e PGDATABASE=neronet_test -e PGUSER=neronet -e PGPASSWORD=neronet_dev_password -e PGHOST=postgres -e PGPORT=5432 \
   -v "$(HOST_PATH "$REPO_ROOT"):/repo" \
   -v /repo/console/backend/node_modules \
   --tmpfs /repo/console/data \

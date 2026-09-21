@@ -4,10 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 
-const TEST_DB_PATH = path.resolve(__dirname, '../../data/test_nuke_credential_bypass.db');
-
-const { initDatabase } = require('../server');
-const { getDatabase, closeDatabase } = require('../db/index');
+const { setupTestDatabase } = require('./helpers/db');
 const { closeValkey } = require('../db/valkey');
 const NukeEngine = require('../services/NukeEngine');
 
@@ -18,20 +15,20 @@ const NukeEngine = require('../services/NukeEngine');
  * valid session could open the switch. Only the stored secret may open it.
  */
 describe('Personal dead man switch: only the stored secret unlocks', () => {
+  let dbHelper;
   let userId;
 
   before(async () => {
-    closeDatabase();
-    process.env.SOVEREIGN_DB_PATH = TEST_DB_PATH;
-    if (fs.existsSync(TEST_DB_PATH)) fs.unlinkSync(TEST_DB_PATH);
-    await initDatabase();
-    userId = getDatabase().prepare('SELECT id FROM users ORDER BY id LIMIT 1').get().id;
+    dbHelper = await setupTestDatabase();
+    const res = await dbHelper.pool.query('SELECT id FROM users ORDER BY id LIMIT 1');
+    userId = res.rows[0].id;
   });
 
-  after(() => {
-    closeDatabase();
+  after(async () => {
     closeValkey();
-    if (fs.existsSync(TEST_DB_PATH)) fs.unlinkSync(TEST_DB_PATH);
+    if (dbHelper) {
+      await dbHelper.cleanup();
+    }
   });
 
   async function configure(mode) {

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getDatabase, isPostgres, getPgPool } = require('../db/index');
+const { getPgPool } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
 const { logAuditEvent } = require('../utils/audit');
 const {
@@ -41,63 +41,27 @@ router.post('/generate', async (req, res, next) => {
 
     let overlayIpv4, overlayIpv6;
 
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const vips = await allocateNextVip(pool);
-      overlayIpv4 = vips.overlayIpv4;
-      overlayIpv6 = vips.overlayIpv6;
+    const pool = getPgPool();
+    const vips = await allocateNextVip(pool);
+    overlayIpv4 = vips.overlayIpv4;
+    overlayIpv6 = vips.overlayIpv6;
 
-      const lat = nodeCountry === 'US' ? 38.9072 : 50.1109;
-      const lon = nodeCountry === 'US' ? -77.0369 : 8.6821;
+    const lat = nodeCountry === 'US' ? 38.9072 : 50.1109;
+    const lon = nodeCountry === 'US' ? -77.0369 : 8.6821;
 
-      await pool.query(
-        `
-        INSERT INTO nodes (
-          id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6,
-          role, ip_class, country_code, onion_routing_enabled, onion_hops, kill_switch_enabled,
-          is_healthy, is_quarantined, latency_ms, longitude, latitude
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7,
-          $8, 'RESIDENTIAL', $9, $10, $11, $12,
-          TRUE, FALSE, 10.0, $13, $14
-        )
-      `,
-        [
-          kp.nodeId,
-          req.user.id,
-          name.trim(),
-          kp.publicKeyBase64,
-          kp.presharedKeyBase64,
-          overlayIpv4,
-          overlayIpv6,
-          nodeRole,
-          nodeCountry,
-          onionEnabled,
-          hops,
-          killSwitch,
-          lon,
-          lat
-        ]
-      );
-    } else {
-      const db = getDatabase();
-      const vips = await allocateNextVip(db);
-      overlayIpv4 = vips.overlayIpv4;
-      overlayIpv6 = vips.overlayIpv6;
-
-      db.prepare(
-        `
-        INSERT INTO nodes (
-          id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6,
-          role, ip_class, country_code, onion_routing_enabled, onion_hops, kill_switch_enabled,
-          is_healthy, is_quarantined, latency_ms
-        ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?,
-          ?, 'RESIDENTIAL', ?, ?, ?, ?,
-          1, 0, 10.0
-        )
+    await pool.query(
       `
-      ).run(
+      INSERT INTO nodes (
+        id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6,
+        role, ip_class, country_code, onion_routing_enabled, onion_hops, kill_switch_enabled,
+        is_healthy, is_quarantined, latency_ms, longitude, latitude
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7,
+        $8, 'RESIDENTIAL', $9, $10, $11, $12,
+        TRUE, FALSE, 10.0, $13, $14
+      )
+    `,
+      [
         kp.nodeId,
         req.user.id,
         name.trim(),
@@ -107,11 +71,13 @@ router.post('/generate', async (req, res, next) => {
         overlayIpv6,
         nodeRole,
         nodeCountry,
-        onionEnabled ? 1 : 0,
+        onionEnabled,
         hops,
-        killSwitch ? 1 : 0
-      );
-    }
+        killSwitch,
+        lon,
+        lat
+      ]
+    );
 
     const wgConf = buildWireGuardConfig({
       deviceName: name ? name.trim() : 'Sovereign-Client',
@@ -184,15 +150,9 @@ router.post('/generate', async (req, res, next) => {
 // 2. Get WireGuard Config for existing node
 router.get('/wireguard/:id', async (req, res, next) => {
   try {
-    let node = null;
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
-      node = nodeRes.rows[0] || null;
-    } else {
-      const db = getDatabase();
-      node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id) || null;
-    }
+    const pool = getPgPool();
+    const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
+    const node = nodeRes.rows[0] || null;
 
     if (!node) {
       return res.status(404).json({ error: 'Node not found' });
@@ -224,15 +184,9 @@ router.get('/wireguard/:id', async (req, res, next) => {
 // 3. Get Noise JSON Profile for existing node
 router.get('/noise/:id', async (req, res, next) => {
   try {
-    let node = null;
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
-      node = nodeRes.rows[0] || null;
-    } else {
-      const db = getDatabase();
-      node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id) || null;
-    }
+    const pool = getPgPool();
+    const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
+    const node = nodeRes.rows[0] || null;
 
     if (!node) {
       return res.status(404).json({ error: 'Node not found' });

@@ -12,7 +12,7 @@
  * rather than by remembering a four-line pattern.
  */
 
-const { getDatabase, isPostgres, getPgPool } = require('../db/index');
+const { getPgPool } = require('../db/index');
 
 /**
  * Require that the addressed row belongs to the caller.
@@ -29,13 +29,8 @@ function requireOwnership({ table, param = 'id', ownerColumn = 'user_id' }) {
         return res.status(400).json({ error: `missing ${param}` });
       }
 
-      let row;
-      if (isPostgres()) {
-        const result = await getPgPool().query(`SELECT ${ownerColumn} AS owner FROM ${table} WHERE id = $1`, [id]);
-        row = result.rows[0];
-      } else {
-        row = getDatabase().prepare(`SELECT ${ownerColumn} AS owner FROM ${table} WHERE id = ?`).get(id);
-      }
+      const result = await getPgPool().query(`SELECT ${ownerColumn} AS owner FROM ${table} WHERE id = $1`, [id]);
+      const row = result.rows[0];
 
       if (!row) {
         return res.status(404).json({ error: 'not found' });

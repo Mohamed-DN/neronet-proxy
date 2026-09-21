@@ -1,23 +1,16 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
-const path = require('node:path');
-const fs = require('node:fs');
 const crypto = require('node:crypto');
 const request = require('supertest');
 
-const testDbPath = path.resolve(__dirname, '../../data/test_heartbeat_auth.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
+const { setupTestDatabase } = require('./helpers/db');
+const { createApp } = require('../server');
 
 // The bridge only enforces the shared token when one is configured; with the
 // variable unset it warns and lets every caller in, which is the development
 // default the other bridge suites run under.
 const REGISTRATION_TOKEN = crypto.randomBytes(24).toString('hex');
 process.env.SOVEREIGN_REGISTRATION_TOKEN = REGISTRATION_TOKEN;
-
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
-const { seedDatabase } = require('../db/seed');
-const { createApp } = require('../server');
 
 /**
  * /v4/control/heartbeat was the only /v4/control handler that authenticated
@@ -30,14 +23,12 @@ const GO_PUBKEY = 'c'.repeat(64);
 const UNKNOWN_NODE_ID = 'pk_00000000deadbeef';
 
 describe('Heartbeat authentication', () => {
+  let dbHelper;
   let app;
   let nodeId;
 
   before(async () => {
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    const db = getDatabase(testDbPath);
-    runMigrations(db);
-    seedDatabase(db);
+    dbHelper = await setupTestDatabase();
     app = createApp();
 
     const registered = await request(app)
@@ -49,12 +40,8 @@ describe('Heartbeat authentication', () => {
     nodeId = registered.body.assigned_node_id;
   });
 
-  after(() => {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    }
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
   });
 
   it('refuses a heartbeat that carries no credential', async () => {
@@ -84,20 +71,20 @@ describe('Heartbeat authentication', () => {
   });
 
   it('does not read the nodes table before authenticating', async () => {
-    const db = getDatabase();
-    const realPrepare = db.prepare.bind(db);
+    const realQuery = dbHelper.pool.query.bind(dbHelper.pool);
     let nodeReads = 0;
 
-    db.prepare = (sql) => {
+    dbHelper.pool.query = (...args) => {
+      const sql = typeof args[0] === 'string' ? args[0] : args[0]?.text || '';
       if (/from\s+nodes/i.test(sql)) nodeReads += 1;
-      return realPrepare(sql);
+      return realQuery(...args);
     };
 
     try {
       await request(app).post('/v4/control/heartbeat').send({ node_id: nodeId });
       await request(app).post('/v4/control/heartbeat').send({ node_id: UNKNOWN_NODE_ID });
     } finally {
-      delete db.prepare;
+      dbHelper.pool.query = realQuery;
     }
 
     // Rejecting after the lookup would still leak existence through timing and

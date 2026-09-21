@@ -2,7 +2,7 @@ const express = require('express');
 const { readPageParams, pageEnvelope } = require('../utils/pagination');
 const router = express.Router();
 const crypto = require('crypto');
-const { getDatabase, isPostgres, getPgPool } = require('../db/index');
+const { getPgPool, isPostgres } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
 const { logAuditEvent } = require('../utils/audit');
 const { allocateNextVip, generateCurve25519Keypair } = require('../utils/crypto');
@@ -14,9 +14,11 @@ router.use(authenticateToken);
 
 function parseJsonField(val, defaultVal = {}) {
   if (!val) return defaultVal;
-  if (typeof val === 'object') return val;
+  if (typeof val === 'object' && val !== null) return val;
   try {
-    return JSON.parse(val);
+    const parsed = JSON.parse(val);
+    if (typeof parsed === 'object' && parsed !== null) return parsed;
+    return defaultVal;
   } catch (e) {
     return defaultVal;
   }

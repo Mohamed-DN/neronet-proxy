@@ -1,16 +1,9 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
-const path = require('node:path');
-const fs = require('node:fs');
 const crypto = require('node:crypto');
 const request = require('supertest');
 
-const testDbPath = path.resolve(__dirname, '../../data/test_circuit.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
-const { seedDatabase } = require('../db/seed');
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const { normalisePublicKeyHex } = require('../utils/crypto');
 const CircuitEngine = require('../services/CircuitEngine');
@@ -46,6 +39,7 @@ describe('Public key normalisation', () => {
 });
 
 describe('Circuit path selection', () => {
+  let dbHelper;
   let app;
 
   // A monotonic counter, not a row count: tests delete relays between cases, so a
@@ -53,48 +47,44 @@ describe('Circuit path selection', () => {
   // the UNIQUE constraint -- which surfaces as an unrelated 503 much later.
   let addressCounter = 0;
 
-  function addRelay({ id, owner, asn, country = 'US', role = 'EXIT_BRIDGE' }) {
-    const db = getDatabase();
+  async function addRelay({ id, owner, asn, country = 'US', role = 'EXIT_BRIDGE' }) {
     addressCounter += 1;
 
-    db.prepare(
-      `INSERT OR IGNORE INTO users (id, username, email, password_hash, role)
-       VALUES (?, ?, ?, 'x', 'user')`
-    ).run(owner, owner, `${owner}@example.com`);
+    await dbHelper.pool.query(
+      `INSERT INTO users (id, username, email, password_hash, role)
+       VALUES ($1, $2, $3, 'x', 'user')
+       ON CONFLICT (id) DO NOTHING`,
+      [owner, owner, `${owner}@example.com`]
+    );
 
-    db.prepare(
+    await dbHelper.pool.query(
       `INSERT INTO nodes (id, user_id, name, public_key, overlay_ipv4, overlay_ipv6,
                           role, country_code, asn, is_healthy, is_quarantined)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`
-    ).run(
-      id,
-      owner,
-      id,
-      crypto.randomBytes(32).toString('hex'),
-      `100.64.9.${addressCounter}`,
-      `fd7a:115c:a1e0::9${addressCounter.toString(16)}`,
-      role,
-      country,
-      asn
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, FALSE)
+       ON CONFLICT (id) DO UPDATE SET is_healthy = TRUE, is_quarantined = FALSE, role = $7, asn = $9, country_code = $8`,
+      [
+        id,
+        owner,
+        id,
+        crypto.randomBytes(32).toString('hex'),
+        `100.64.9.${addressCounter}`,
+        `fd7a:115c:a1e0::9${addressCounter.toString(16)}`,
+        role,
+        country,
+        asn
+      ]
     );
   }
 
-  before(() => {
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    const db = getDatabase(testDbPath);
-    runMigrations(db);
-    seedDatabase(db);
+  before(async () => {
+    dbHelper = await setupTestDatabase();
     app = createApp();
 
-    db.prepare("UPDATE nodes SET role = 'CLIENT_ORIGIN'").run();
+    await dbHelper.pool.query("UPDATE nodes SET role = 'CLIENT_ORIGIN'");
   });
 
-  after(() => {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    }
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
   });
 
   it('refuses when there are not enough relays', async () => {
@@ -103,9 +93,9 @@ describe('Circuit path selection', () => {
   });
 
   it('builds a path and reports full independence when operators and networks differ', async () => {
-    addRelay({ id: 'relay-a', owner: 'op-a', asn: 100 });
-    addRelay({ id: 'relay-b', owner: 'op-b', asn: 200 });
-    addRelay({ id: 'relay-c', owner: 'op-c', asn: 300 });
+    await addRelay({ id: 'relay-a', owner: 'op-a', asn: 100 });
+    await addRelay({ id: 'relay-b', owner: 'op-b', asn: 200 });
+    await addRelay({ id: 'relay-c', owner: 'op-c', asn: 300 });
 
     const res = await request(app).post('/v4/control/circuit').send({ target_country: 'US' });
 
@@ -131,8 +121,8 @@ describe('Circuit path selection', () => {
   });
 
   it('varies the path across requests', async () => {
-    addRelay({ id: 'relay-d', owner: 'op-d', asn: 400 });
-    addRelay({ id: 'relay-e', owner: 'op-e', asn: 500 });
+    await addRelay({ id: 'relay-d', owner: 'op-d', asn: 400 });
+    await addRelay({ id: 'relay-e', owner: 'op-e', asn: 500 });
 
     const seen = new Set();
     const failures = [];
@@ -169,16 +159,15 @@ describe('Circuit path selection', () => {
   });
 
   it('reports limited independence rather than hiding it', async () => {
-    const db = getDatabase();
-    db.prepare("DELETE FROM nodes WHERE id LIKE 'relay-%'").run();
+    await dbHelper.pool.query("DELETE FROM nodes WHERE id LIKE 'relay-%'");
 
     // A self-hosted mesh: one owner, one network. Onion routing still hides traffic
     // from network observers and the destination, so the path is built -- but the
     // caller must be told what it is, or they will act as though they have anonymity
     // they do not have.
-    addRelay({ id: 'solo-a', owner: 'solo', asn: 7018 });
-    addRelay({ id: 'solo-b', owner: 'solo', asn: 7018 });
-    addRelay({ id: 'solo-c', owner: 'solo', asn: 7018 });
+    await addRelay({ id: 'solo-a', owner: 'solo', asn: 7018 });
+    await addRelay({ id: 'solo-b', owner: 'solo', asn: 7018 });
+    await addRelay({ id: 'solo-c', owner: 'solo', asn: 7018 });
 
     const res = await request(app).post('/v4/control/circuit').send({ target_country: 'US' });
 
@@ -189,15 +178,14 @@ describe('Circuit path selection', () => {
   });
 
   it('excludes the requester from its own path', async () => {
-    const db = getDatabase();
-    db.prepare("DELETE FROM nodes WHERE id LIKE 'solo-%'").run();
+    await dbHelper.pool.query("DELETE FROM nodes WHERE id LIKE 'solo-%'");
 
     // Four relays, not three: the requester is removed from the pool, so a three-hop
     // path needs three others.
-    addRelay({ id: 'self-node', owner: 'op-self', asn: 100 });
-    addRelay({ id: 'other-a', owner: 'op-a', asn: 200 });
-    addRelay({ id: 'other-b', owner: 'op-b', asn: 300 });
-    addRelay({ id: 'other-c', owner: 'op-c', asn: 400 });
+    await addRelay({ id: 'self-node', owner: 'op-self', asn: 100 });
+    await addRelay({ id: 'other-a', owner: 'op-a', asn: 200 });
+    await addRelay({ id: 'other-b', owner: 'op-b', asn: 300 });
+    await addRelay({ id: 'other-c', owner: 'op-c', asn: 400 });
 
     for (let i = 0; i < 10; i++) {
       const res = await request(app).post('/v4/control/circuit').send({ target_country: 'US', node_id: 'self-node' });
@@ -208,7 +196,7 @@ describe('Circuit path selection', () => {
   });
 
   it('honours the exit country', async () => {
-    addRelay({ id: 'exit-de', owner: 'op-de', asn: 600, country: 'DE' });
+    await addRelay({ id: 'exit-de', owner: 'op-de', asn: 600, country: 'DE' });
 
     const res = await request(app).post('/v4/control/circuit').send({ target_country: 'DE' });
 
@@ -226,9 +214,8 @@ describe('Circuit path selection', () => {
   });
 
   it('does not select quarantined or unhealthy relays', async () => {
-    const db = getDatabase();
-    db.prepare("UPDATE nodes SET is_quarantined = 1 WHERE id = 'other-a'").run();
-    db.prepare("UPDATE nodes SET is_healthy = 0 WHERE id = 'other-b'").run();
+    await dbHelper.pool.query("UPDATE nodes SET is_quarantined = TRUE WHERE id = 'other-a'");
+    await dbHelper.pool.query("UPDATE nodes SET is_healthy = FALSE WHERE id = 'other-b'");
 
     for (let i = 0; i < 10; i++) {
       const res = await request(app).post('/v4/control/circuit').send({ target_country: 'US' });
@@ -239,7 +226,7 @@ describe('Circuit path selection', () => {
       assert.ok(!ids.includes('other-b'), 'an unhealthy relay was used as a hop');
     }
 
-    db.prepare('UPDATE nodes SET is_quarantined = 0, is_healthy = 1').run();
+    await dbHelper.pool.query('UPDATE nodes SET is_quarantined = FALSE, is_healthy = TRUE');
   });
 
   it('sets an expiry so circuits rotate', async () => {

@@ -4,12 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const request = require('supertest');
 
-const testDbPath = path.resolve(__dirname, '../../data/test_tenant_isolation.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
-const { seedDatabase } = require('../db/seed');
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 
 /**
@@ -65,11 +60,10 @@ async function createNode(token, name) {
 }
 
 describe('Tenant isolation', () => {
+  let dbHelper;
+
   before(async () => {
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    const db = getDatabase(testDbPath);
-    runMigrations(db);
-    seedDatabase(db);
+    dbHelper = await setupTestDatabase();
     app = createApp();
 
     alice = await signUp(`alice_${Date.now()}`);
@@ -79,11 +73,9 @@ describe('Tenant isolation', () => {
     bob.nodeId = await createNode(bob.token, 'bob-laptop');
   });
 
-  after(() => {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
+  after(async () => {
+    if (dbHelper) {
+      await dbHelper.cleanup();
     }
   });
 

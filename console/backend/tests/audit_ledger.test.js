@@ -1,13 +1,6 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
-const path = require('node:path');
-const fs = require('node:fs');
-
-const testDbPath = path.resolve(__dirname, '../../data/test_audit_ledger.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
+const { setupTestDatabase } = require('./helpers/db');
 const { logAuditEvent, auditHealth } = require('../utils/audit');
 
 /**
@@ -20,18 +13,15 @@ const { logAuditEvent, auditHealth } = require('../utils/audit');
  * counted rather than swallowed — the property whose absence hid the bug.
  */
 describe('the audit ledger records what it is given', () => {
-  let db;
+  let dbHelper;
 
-  before(() => {
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    db = getDatabase();
-    runMigrations(db);
-    db.prepare('DELETE FROM audit_events').run();
+  before(async () => {
+    dbHelper = await setupTestDatabase();
+    await dbHelper.pool.query('DELETE FROM audit_events');
   });
 
-  after(() => {
-    closeDatabase();
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
   });
 
   it('writes an event that can be read back', async () => {
@@ -45,12 +35,13 @@ describe('the audit ledger records what it is given', () => {
       metadata: { source: '100.64.0.1/32' }
     });
 
-    const row = db.prepare("SELECT * FROM audit_events WHERE target_id = 'acl-test-1'").get();
+    const res = await dbHelper.pool.query('SELECT * FROM audit_events WHERE target_id = $1', ['acl-test-1']);
+    const row = res.rows[0];
 
     assert.ok(row, 'the event reached the table');
     assert.strictEqual(row.event_type, 'ACL_RULE_CREATED');
     assert.strictEqual(row.actor_username, 'admin');
-    assert.match(row.metadata_json, /100\.64\.0\.1/);
+    assert.match(JSON.stringify(row.metadata_json), /100\.64\.0\.1/);
   });
 
   it('records an event whose severity is an alias rather than dropping it', async () => {
@@ -64,7 +55,8 @@ describe('the audit ledger records what it is given', () => {
       message: 'ACL rule acl-test-2 deleted'
     });
 
-    const row = db.prepare("SELECT * FROM audit_events WHERE target_id = 'acl-test-2'").get();
+    const res = await dbHelper.pool.query('SELECT * FROM audit_events WHERE target_id = $1', ['acl-test-2']);
+    const row = res.rows[0];
 
     assert.ok(row, 'the record survived a severity alias');
     assert.strictEqual(row.severity, 'warn');

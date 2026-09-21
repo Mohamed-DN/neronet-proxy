@@ -1,19 +1,9 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
-const path = require('node:path');
-const fs = require('node:fs');
 const crypto = require('node:crypto');
 const request = require('supertest');
 
-const testDbPath = path.resolve(__dirname, '../../data/test_declared_location.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
-const REGISTRATION_TOKEN = crypto.randomBytes(24).toString('hex');
-process.env.SOVEREIGN_REGISTRATION_TOKEN = REGISTRATION_TOKEN;
-
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
-const { seedDatabase } = require('../db/seed');
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 
 /**
@@ -28,6 +18,9 @@ const KEY_LATE = 'c3'.repeat(32);
 const KEY_BAD = 'c4'.repeat(32);
 
 const SYDNEY = { city: 'Sydney', latitude: -33.8688, longitude: 151.2093 };
+
+const REGISTRATION_TOKEN = crypto.randomBytes(24).toString('hex');
+process.env.SOVEREIGN_REGISTRATION_TOKEN = REGISTRATION_TOKEN;
 
 function registerBody(publicKeyHex, capability) {
   return {
@@ -47,6 +40,7 @@ function register(app, publicKeyHex, capability) {
 }
 
 describe('Declared node location', () => {
+  let dbHelper;
   let app;
   let token;
 
@@ -60,14 +54,12 @@ describe('Declared node location', () => {
     return res.body.node;
   }
 
-  const mismatches = () =>
-    getDatabase().prepare("SELECT * FROM audit_events WHERE event_type = 'node.reregister_mismatch' ORDER BY id").all();
+  const mismatches = async () =>
+    (await dbHelper.pool.query("SELECT * FROM audit_events WHERE event_type = 'node.reregister_mismatch' ORDER BY id"))
+      .rows;
 
   before(async () => {
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    const db = getDatabase(testDbPath);
-    runMigrations(db);
-    seedDatabase(db);
+    dbHelper = await setupTestDatabase();
     app = createApp();
 
     const login = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'admin_password' });
@@ -75,24 +67,21 @@ describe('Declared node location', () => {
     token = login.body.token;
   });
 
-  after(() => {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    }
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
   });
 
   it('stores what the node declared and reports it as declared', async () => {
     const res = await register(app, KEY_SYDNEY, SYDNEY);
     assert.strictEqual(res.status, 200, `registration failed: ${JSON.stringify(res.body)}`);
 
-    const row = getDatabase()
-      .prepare('SELECT city, latitude, longitude FROM nodes WHERE id = ?')
-      .get(nodeIdOf(KEY_SYDNEY));
+    const qRes = await dbHelper.pool.query('SELECT city, latitude, longitude FROM nodes WHERE id = $1', [
+      nodeIdOf(KEY_SYDNEY)
+    ]);
+    const row = qRes.rows[0];
     assert.strictEqual(row.city, 'Sydney');
-    assert.strictEqual(row.latitude, SYDNEY.latitude);
-    assert.strictEqual(row.longitude, SYDNEY.longitude);
+    assert.strictEqual(Number(row.latitude), SYDNEY.latitude);
+    assert.strictEqual(Number(row.longitude), SYDNEY.longitude);
 
     const node = await apiNode(KEY_SYDNEY);
     assert.strictEqual(node.city, 'Sydney');
@@ -145,12 +134,14 @@ describe('Declared node location', () => {
       assert.strictEqual(res.status, 400, `${name} was accepted: ${JSON.stringify(res.body)}`);
     }
 
-    const stored = getDatabase().prepare('SELECT id FROM nodes WHERE id = ?').get(nodeIdOf(KEY_BAD));
+    const qRes = await dbHelper.pool.query('SELECT id FROM nodes WHERE id = $1', [nodeIdOf(KEY_BAD)]);
+    const stored = qRes.rows[0];
     assert.strictEqual(stored, undefined, 'a rejected registration still created a node');
   });
 
   it('keeps the stored position when a re-registration declares another one', async () => {
-    const before = mismatches().length;
+    const beforeList = await mismatches();
+    const before = beforeList.length;
     const res = await register(app, KEY_SYDNEY, { city: 'Perth', latitude: -31.9505, longitude: 115.8605 });
     assert.strictEqual(res.status, 200);
 
@@ -159,17 +150,21 @@ describe('Declared node location', () => {
     assert.strictEqual(node.latitude, SYDNEY.latitude);
     assert.strictEqual(node.longitude, SYDNEY.longitude);
 
-    const events = mismatches().slice(before);
+    const afterList = await mismatches();
+    const events = afterList.slice(before);
     assert.strictEqual(events.length, 1, 'the attempt to move the node left no audit event');
-    const metadata = JSON.parse(events[0].metadata_json);
+    const metadata =
+      typeof events[0].metadata_json === 'string' ? JSON.parse(events[0].metadata_json) : events[0].metadata_json;
     assert.deepStrictEqual(metadata.changed, ['latitude', 'longitude']);
   });
 
   it('does not report a mismatch when the same position is declared again', async () => {
-    const before = mismatches().length;
+    const beforeList = await mismatches();
+    const before = beforeList.length;
     const res = await register(app, KEY_SYDNEY, SYDNEY);
     assert.strictEqual(res.status, 200);
-    assert.strictEqual(mismatches().length, before);
+    const afterList = await mismatches();
+    assert.strictEqual(afterList.length, before);
   });
 
   it('gives a position to a node that enrolled without one and declares it later', async () => {
@@ -190,9 +185,10 @@ describe('Declared node location', () => {
   it('keeps other metadata when it marks the position as declared', async () => {
     const key = 'c6'.repeat(32);
     await register(app, key, {});
-    getDatabase()
-      .prepare('UPDATE nodes SET metadata = ? WHERE id = ?')
-      .run(JSON.stringify({ label: 'kept' }), nodeIdOf(key));
+    await dbHelper.pool.query('UPDATE nodes SET metadata = $1::jsonb WHERE id = $2', [
+      JSON.stringify({ label: 'kept' }),
+      nodeIdOf(key)
+    ]);
 
     await register(app, key, SYDNEY);
 

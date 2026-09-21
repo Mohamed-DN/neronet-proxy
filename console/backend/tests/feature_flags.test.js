@@ -4,12 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const request = require('supertest');
 
-const testDbPath = path.resolve(__dirname, '../../data/test_feature_flags.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
-const { seedDatabase } = require('../db/seed');
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 
 /**
@@ -21,6 +16,7 @@ const { createApp } = require('../server');
 
 const FLAG = 'SOVEREIGN_FEATURE_CLOUD_PC';
 
+let dbHelper;
 let app;
 let token;
 
@@ -49,10 +45,7 @@ describe('Cloud PC feature flag', () => {
 
   before(async () => {
     previous = process.env[FLAG];
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    const db = getDatabase(testDbPath);
-    runMigrations(db);
-    seedDatabase(db);
+    dbHelper = await setupTestDatabase();
     app = createApp();
 
     const res = await request(app)
@@ -72,12 +65,8 @@ describe('Cloud PC feature flag', () => {
     else process.env[FLAG] = previous;
   });
 
-  after(() => {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    }
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
   });
 
   describe('flag unset', () => {

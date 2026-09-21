@@ -6,7 +6,7 @@ const corsMiddleware = require('./middleware/cors');
 const requestLogger = require('./middleware/logger');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
-const { getDatabase, isPostgres, getPgPool, closeDatabase } = require('./db/index');
+const { getPgPool, closeDatabase } = require('./db/index');
 const { runMigrations } = require('./db/migrator');
 const { seedDatabase, bootstrapPostgresAdmin } = require('./db/seed');
 const goBridgeRoutes = require('./routes/goBridge');
@@ -108,17 +108,9 @@ async function initDatabase() {
     HeartbeatBuffer.startFlusher();
     initTopologySync();
 
-    if (isPostgres()) {
-      const pool = getPgPool();
-      await runMigrations(pool);
-      // Without this a PostgreSQL deployment migrates cleanly and then has no
-      // account anyone can log in with: seedDatabase is SQLite-only.
-      await bootstrapPostgresAdmin(pool);
-    } else {
-      const db = getDatabase();
-      runMigrations(db);
-      seedDatabase(db);
-    }
+    const pool = getPgPool();
+    await runMigrations(pool);
+    await bootstrapPostgresAdmin(pool);
 
     // After migrations: the collector writes to system_metrics, which the
     // migrations create.

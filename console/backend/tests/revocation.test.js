@@ -5,12 +5,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const request = require('supertest');
 
-const testDbPath = path.resolve(__dirname, '../../data/test_revocation.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
-const { seedDatabase } = require('../db/seed');
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const RevocationEngine = require('../services/RevocationEngine');
 const AclEngine = require('../services/AclEngine');
@@ -34,15 +29,13 @@ function registerBody(publicKeyHex, overrides = {}) {
 
 describe('Key revocation', () => {
   let app;
+  let dbHelper;
   let alpha;
   let beta;
   let betaKey;
 
   before(async () => {
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    const db = getDatabase(testDbPath);
-    runMigrations(db);
-    seedDatabase(db);
+    dbHelper = await setupTestDatabase();
     app = createApp();
 
     betaKey = crypto.randomBytes(32).toString('hex');
@@ -54,16 +47,14 @@ describe('Key revocation', () => {
     beta = (await request(app).post('/v4/control/register').send(registerBody(betaKey))).body;
   });
 
-  after(() => {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
+  after(async () => {
+    if (dbHelper) {
+      await dbHelper.cleanup();
     }
   });
 
-  beforeEach(() => {
-    getDatabase().prepare('DELETE FROM revoked_keys').run();
+  beforeEach(async () => {
+    await dbHelper.pool.query('DELETE FROM revoked_keys');
   });
 
   it('delivers a revoked key on the next heartbeat', async () => {
@@ -107,9 +98,10 @@ describe('Key revocation', () => {
   it('stops delivering a revocation once it expires', async () => {
     await RevocationEngine.revokeNodeKeys([beta.assigned_node_id], { reason: 'test' });
 
-    getDatabase()
-      .prepare("UPDATE revoked_keys SET expires_at = datetime('now', '-1 hour') WHERE public_key_hex = ?")
-      .run(betaKey);
+    await dbHelper.pool.query(
+      "UPDATE revoked_keys SET expires_at = NOW() - INTERVAL '1 hour' WHERE public_key_hex = $1",
+      [betaKey]
+    );
 
     const active = await RevocationEngine.activeRevocations();
 
@@ -120,16 +112,18 @@ describe('Key revocation', () => {
 
   it('purges expired entries', async () => {
     await RevocationEngine.revokeNodeKeys([beta.assigned_node_id], { reason: 'test' });
-    getDatabase().prepare("UPDATE revoked_keys SET expires_at = datetime('now', '-1 hour')").run();
+    await dbHelper.pool.query("UPDATE revoked_keys SET expires_at = NOW() - INTERVAL '1 hour'");
 
     await RevocationEngine.purgeExpired();
 
-    const count = getDatabase().prepare('SELECT count(*) AS n FROM revoked_keys').get().n;
+    const res = await dbHelper.pool.query('SELECT count(*) AS n FROM revoked_keys');
+    const count = parseInt(res.rows[0].n, 10);
     assert.strictEqual(count, 0);
   });
 
   it('revokes every node a user owns', async () => {
-    const owner = getDatabase().prepare('SELECT user_id FROM nodes WHERE id = ?').get(beta.assigned_node_id).user_id;
+    const ownerRes = await dbHelper.pool.query('SELECT user_id FROM nodes WHERE id = $1', [beta.assigned_node_id]);
+    const owner = ownerRes.rows[0].user_id;
 
     const revoked = await RevocationEngine.revokeUserNodes(owner, { reason: 'user_destroyed' });
 
@@ -138,11 +132,10 @@ describe('Key revocation', () => {
   });
 
   it('skips a node whose stored key is unusable rather than failing the batch', async () => {
-    const db = getDatabase();
-    db.prepare(
+    await dbHelper.pool.query(
       `INSERT INTO nodes (id, user_id, name, public_key, overlay_ipv4, overlay_ipv6, role)
        VALUES ('broken', (SELECT user_id FROM nodes LIMIT 1), 'broken', 'not-a-key', '100.64.250.99', 'fd7a:115c:a1e0::ff99', 'RELAY')`
-    ).run();
+    );
 
     // Rows written before the bridge spoke the right contract carry placeholders. One
     // of them must not stop the rest of a revocation from being applied.
@@ -151,7 +144,7 @@ describe('Key revocation', () => {
     assert.ok(revoked.includes(betaKey));
     assert.strictEqual(revoked.length, 1);
 
-    db.prepare("DELETE FROM nodes WHERE id = 'broken'").run();
+    await dbHelper.pool.query("DELETE FROM nodes WHERE id = 'broken'");
   });
 
   it('does nothing for an empty list', async () => {

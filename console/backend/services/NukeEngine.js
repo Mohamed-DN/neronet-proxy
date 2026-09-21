@@ -196,9 +196,6 @@ async function executeInstantUserDestruction(userId, token = null, actorUsername
       // Hard delete in cascading order
       await pool.query('DELETE FROM dead_man_switch WHERE user_id = $1', [userId]);
       await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
-      await pool.query('DELETE FROM app_share_links WHERE user_id = $1', [userId]);
-      await pool.query('DELETE FROM nerodrop_sessions WHERE user_id = $1', [userId]);
-      await pool.query('DELETE FROM app_bundles WHERE user_id = $1', [userId]);
       await pool.query('DELETE FROM cloud_pcs WHERE user_id = $1', [userId]);
       await pool.query('DELETE FROM nodes WHERE user_id = $1', [userId]);
       await pool.query('DELETE FROM users WHERE id = $1', [userId]);
@@ -930,11 +927,8 @@ async function executeOwnerGlobalCascadingWipe() {
 
   // 2. Cascade wipe all database tables safely
   const tables = [
-    'nerodrop_sessions',
-    'app_share_links',
     'custom_domains',
     'cloud_pcs',
-    'app_bundles',
     'peering_agreements',
     'geofencing_policies',
     'node_telemetry_history',

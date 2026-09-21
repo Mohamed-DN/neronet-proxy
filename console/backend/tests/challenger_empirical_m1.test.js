@@ -8,6 +8,7 @@ const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp, initDatabase } = require('../server');
 const { getDatabase, closeDatabase, isPostgres, getPgPool } = require('../db/index');
 const { initTopologyWebSocket, closeTopologyWebSocket } = require('../ws/topologyServer');
@@ -21,9 +22,8 @@ const {
 } = require('../utils/crypto');
 const config = require('../config/env');
 
-const TEST_DB_PATH = path.resolve(__dirname, '../../data/test_challenger_m1.db');
-
 describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress Suite', () => {
+  let dbHelper;
   let app;
   let server;
   let serverPort;
@@ -34,9 +34,7 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
   let userBId;
 
   before(async () => {
-    process.env.SOVEREIGN_DB_PATH = TEST_DB_PATH;
-    if (fs.existsSync(TEST_DB_PATH)) fs.unlinkSync(TEST_DB_PATH);
-
+    dbHelper = await setupTestDatabase();
     await initDatabase();
     app = createApp();
 
@@ -77,13 +75,8 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
     if (server) {
       await new Promise((resolve) => server.close(resolve));
     }
-    closeDatabase();
     closeValkey();
-    if (fs.existsSync(TEST_DB_PATH)) {
-      try {
-        fs.unlinkSync(TEST_DB_PATH);
-      } catch (e) {}
-    }
+    if (dbHelper) await dbHelper.cleanup();
   });
 
   // =========================================================================

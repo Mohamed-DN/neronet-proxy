@@ -5,15 +5,10 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const request = require('supertest');
 
-const testDbPath = path.resolve(__dirname, '../../data/test_netmap.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
 const REGISTRATION_TOKEN = crypto.randomBytes(24).toString('hex');
 process.env.SOVEREIGN_REGISTRATION_TOKEN = REGISTRATION_TOKEN;
 
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
-const { seedDatabase } = require('../db/seed');
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const AclEngine = require('../services/AclEngine');
 const NetmapService = require('../services/NetmapService');
@@ -68,19 +63,14 @@ async function clearRules() {
 
 describe('Netmap delivery', () => {
   let app;
+  let dbHelper;
   let alpha;
   let beta;
   let gamma;
 
   before(async () => {
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    const db = getDatabase(testDbPath);
-    runMigrations(db);
-    seedDatabase(db);
-    // The seed writes two demo node rows. They are real rows and would be real peers,
-    // which is correct behaviour and noise here: this suite asserts on exact peer
-    // sets, so the fleet has to be exactly the nodes it registers.
-    db.prepare("DELETE FROM nodes WHERE id LIKE 'svrn-node-seed%'").run();
+    dbHelper = await setupTestDatabase();
+    await dbHelper.pool.query("DELETE FROM nodes WHERE id LIKE 'svrn-node-seed%'");
     app = createApp();
 
     alpha = await registerNode(app, 'a'.repeat(64));
@@ -88,21 +78,19 @@ describe('Netmap delivery', () => {
     gamma = await registerNode(app, 'c'.repeat(64));
   });
 
-  after(() => {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
+  after(async () => {
+    if (dbHelper) {
+      await dbHelper.cleanup();
     }
   });
 
   beforeEach(async () => {
     await clearRules();
-    const db = getDatabase();
-    db.prepare('UPDATE nodes SET is_quarantined = 0, is_healthy = 1, endpoints = ?, endpoints_bumped_at = NULL').run(
-      '[]'
+    await dbHelper.pool.query(
+      'UPDATE nodes SET is_quarantined = false, is_healthy = true, endpoints = $1, endpoints_bumped_at = NULL',
+      ['[]']
     );
-    db.prepare('DELETE FROM revoked_keys').run();
+    await dbHelper.pool.query('DELETE FROM revoked_keys');
     await AclEngine.bumpNetmap();
   });
 
@@ -308,7 +296,7 @@ describe('Netmap delivery', () => {
     it('removes the node from every peer set and advances the version', async () => {
       const before = await NetmapService.getVersion();
 
-      getDatabase().prepare('UPDATE nodes SET is_quarantined = 1, is_healthy = 0 WHERE id = ?').run(gamma.id);
+      await dbHelper.pool.query('UPDATE nodes SET is_quarantined = true, is_healthy = false WHERE id = $1', [gamma.id]);
       await AclEngine.bumpNetmap();
 
       const after = await NetmapService.getVersion();
@@ -321,7 +309,7 @@ describe('Netmap delivery', () => {
     });
 
     it('gives the quarantined node itself no peers at all', async () => {
-      getDatabase().prepare('UPDATE nodes SET is_quarantined = 1, is_healthy = 0 WHERE id = ?').run(gamma.id);
+      await dbHelper.pool.query('UPDATE nodes SET is_quarantined = true, is_healthy = false WHERE id = $1', [gamma.id]);
 
       const c = await fetchNetmap(app, gamma.id);
       assert.strictEqual(c.status, 200);
@@ -329,10 +317,10 @@ describe('Netmap delivery', () => {
     });
 
     it('restores the node when the quarantine is lifted', async () => {
-      getDatabase().prepare('UPDATE nodes SET is_quarantined = 1, is_healthy = 0 WHERE id = ?').run(gamma.id);
+      await dbHelper.pool.query('UPDATE nodes SET is_quarantined = true, is_healthy = false WHERE id = $1', [gamma.id]);
       assert.deepStrictEqual(peerIds((await fetchNetmap(app, alpha.id)).body), [beta.id]);
 
-      getDatabase().prepare('UPDATE nodes SET is_quarantined = 0, is_healthy = 1 WHERE id = ?').run(gamma.id);
+      await dbHelper.pool.query('UPDATE nodes SET is_quarantined = false, is_healthy = true WHERE id = $1', [gamma.id]);
       assert.deepStrictEqual(peerIds((await fetchNetmap(app, alpha.id)).body), [beta.id, gamma.id].sort());
     });
   });
@@ -358,7 +346,7 @@ describe('Netmap delivery', () => {
       assert.ok(peerIds((await fetchNetmap(app, alpha.id)).body).includes(delta.id));
 
       // Leave the fleet as the other tests expect it.
-      getDatabase().prepare('DELETE FROM nodes WHERE id = ?').run(delta.id);
+      await dbHelper.pool.query('DELETE FROM nodes WHERE id = $1', [delta.id]);
       await AclEngine.bumpNetmap();
     });
   });
@@ -471,12 +459,10 @@ describe('Netmap delivery', () => {
       await NetmapService.recordEndpoints(beta.id, [{ ip_address: '10.89.0.40', port: 51820 }], at);
       const version = await NetmapService.getVersion();
 
-      getDatabase()
-        .prepare('UPDATE nodes SET endpoints = ? WHERE id = ?')
-        .run(
-          JSON.stringify([{ protocol: 'udp', port: 51820, is_stun_discovered: false, ip_address: '10.89.0.40' }]),
-          beta.id
-        );
+      await dbHelper.pool.query('UPDATE nodes SET endpoints = $1 WHERE id = $2', [
+        JSON.stringify([{ protocol: 'udp', port: 51820, is_stun_discovered: false, ip_address: '10.89.0.40' }]),
+        beta.id
+      ]);
 
       const later = new Date(at.getTime() + 600_000);
       const result = await NetmapService.recordEndpoints(beta.id, [{ ip_address: '10.89.0.40', port: 51820 }], later);

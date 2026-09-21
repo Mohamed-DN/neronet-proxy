@@ -4,12 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const request = require('supertest');
 
-const testDbPath = path.resolve(__dirname, '../../data/test_acl_sync.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
-const { seedDatabase } = require('../db/seed');
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const AclEngine = require('../services/AclEngine');
 
@@ -63,16 +58,14 @@ describe('CIDR matching', () => {
 });
 
 describe('ACL policy delivery', () => {
+  let dbHelper;
   let app;
   let alpha;
   let beta;
   let gamma;
 
   before(async () => {
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    const db = getDatabase(testDbPath);
-    runMigrations(db);
-    seedDatabase(db);
+    dbHelper = await setupTestDatabase();
     app = createApp();
 
     const register = async (key) => (await request(app).post('/v4/control/register').send(registerBody(key))).body;
@@ -82,16 +75,12 @@ describe('ACL policy delivery', () => {
     gamma = await register('c'.repeat(64));
   });
 
-  after(() => {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    }
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
   });
 
-  beforeEach(() => {
-    getDatabase().prepare('DELETE FROM acl_rules').run();
+  beforeEach(async () => {
+    await dbHelper.pool.query('DELETE FROM acl_rules');
   });
 
   async function sync(nodeId, epoch = 0) {
@@ -183,14 +172,14 @@ describe('ACL policy delivery', () => {
   });
 
   it('excludes quarantined peers', async () => {
-    getDatabase().prepare('UPDATE nodes SET is_quarantined = 1 WHERE id = ?').run(gamma.assigned_node_id);
+    await dbHelper.pool.query('UPDATE nodes SET is_quarantined = TRUE WHERE id = $1', [gamma.assigned_node_id]);
 
     const res = await sync(alpha.assigned_node_id);
     const peers = res.body.policy.outbound_rules.map((r) => r.allowed_peer_vip);
 
     assert.ok(!peers.includes(gamma.overlay_ipv4), 'a quarantined peer was still reachable');
 
-    getDatabase().prepare('UPDATE nodes SET is_quarantined = 0 WHERE id = ?').run(gamma.assigned_node_id);
+    await dbHelper.pool.query('UPDATE nodes SET is_quarantined = FALSE WHERE id = $1', [gamma.assigned_node_id]);
   });
 
   it('answers an unchanged epoch without transferring a policy', async () => {

@@ -1,43 +1,30 @@
-const { describe, test, after } = require('node:test');
+const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure test database configuration
-const testDbPath = path.resolve(__dirname, '../../data/test_neronet.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-if (fs.existsSync(testDbPath)) {
-  try {
-    fs.unlinkSync(testDbPath);
-  } catch {}
-}
-
+const { setupTestDatabase } = require('./helpers/db');
 const { getDatabase, closeDatabase } = require('../db/index');
 const { runMigrations } = require('../db/migrator');
 const { seedDatabase } = require('../db/seed');
 const { createApp } = require('../server');
 
-// Initialize database
-const db = getDatabase(testDbPath);
-runMigrations(db);
-seedDatabase(db);
-
-const app = createApp();
-
+let dbHelper;
+let app;
 let adminToken = '';
 let regularUserToken = '';
 let regularUserId = '';
 let createdNodeId = '';
 
 describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
-  after(() => {
-    closeDatabase();
-    if (fs.existsSync(testDbPath)) {
-      try {
-        fs.unlinkSync(testDbPath);
-      } catch {}
-    }
+  before(async () => {
+    dbHelper = await setupTestDatabase();
+    app = createApp();
+  });
+
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
   });
 
   // 1. Health Checks
@@ -467,275 +454,22 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     assert.strictEqual(res.status, 401);
   });
 
-  // 10. Database Schema Migrations & Incremental Upgrade Verification
-  test('Incremental migration: upgrading legacy DB (001 without onion_routing_enabled) adds missing columns safely', () => {
-    const legacyPath = path.resolve(__dirname, '../../data/test_legacy_upgrade.db');
-    if (fs.existsSync(legacyPath)) {
-      try {
-        fs.unlinkSync(legacyPath);
-      } catch {}
-    }
-    const legacyDb = getDatabase(legacyPath);
-
-    // Simulate a database from Milestone 5 that had 001_initial_schema without onion_routing_enabled
-    legacyDb.exec(`
-      CREATE TABLE IF NOT EXISTS _migrations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE NOT NULL,
-        applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-      INSERT INTO _migrations (name) VALUES ('001_initial_schema');
-
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'user',
-        tier TEXT NOT NULL DEFAULT 'free_core',
-        status TEXT NOT NULL DEFAULT 'active',
-        bandwidth_quota_gb INTEGER NOT NULL DEFAULT 100,
-        bandwidth_used_bytes INTEGER NOT NULL DEFAULT 0,
-        max_nodes INTEGER NOT NULL DEFAULT 5,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS nodes (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        public_key TEXT NOT NULL UNIQUE,
-        preshared_key TEXT,
-        overlay_ipv4 TEXT NOT NULL UNIQUE,
-        overlay_ipv6 TEXT NOT NULL UNIQUE,
-        role TEXT NOT NULL DEFAULT 'CLIENT_ORIGIN',
-        ip_class TEXT NOT NULL DEFAULT 'RESIDENTIAL',
-        country_code TEXT NOT NULL DEFAULT 'US',
-        city TEXT DEFAULT '',
-        asn INTEGER DEFAULT 0,
-        endpoints TEXT DEFAULT '[]',
-        is_healthy INTEGER NOT NULL DEFAULT 1,
-        is_quarantined INTEGER NOT NULL DEFAULT 0,
-        quarantine_reason TEXT,
-        last_heartbeat DATETIME,
-        latency_ms REAL NOT NULL DEFAULT 0.0,
-        tx_bytes INTEGER NOT NULL DEFAULT 0,
-        rx_bytes INTEGER NOT NULL DEFAULT 0,
-        cpu_usage_pct REAL DEFAULT 0.0,
-        memory_usage_pct REAL DEFAULT 0.0,
-        battery_pct REAL DEFAULT 100.0,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS app_bundles (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        tier TEXT NOT NULL DEFAULT 'managed_cloud',
-        status TEXT NOT NULL DEFAULT 'stopped',
-        endpoint_url TEXT NOT NULL,
-        internal_port INTEGER NOT NULL DEFAULT 8080,
-        cpu_cores REAL NOT NULL DEFAULT 2.0,
-        memory_mb INTEGER NOT NULL DEFAULT 2048,
-        storage_gb INTEGER NOT NULL DEFAULT 50,
-        scale_to_zero INTEGER NOT NULL DEFAULT 1,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS audit_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_type TEXT NOT NULL,
-        severity TEXT NOT NULL DEFAULT 'info',
-        actor_user_id TEXT,
-        actor_username TEXT,
-        target_id TEXT,
-        target_type TEXT,
-        message TEXT NOT NULL,
-        ip_address TEXT,
-        user_agent TEXT,
-        metadata_json TEXT DEFAULT '{}',
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS system_metrics (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        active_nodes INTEGER NOT NULL DEFAULT 0,
-        active_users INTEGER NOT NULL DEFAULT 0,
-        total_bandwidth_rx INTEGER NOT NULL DEFAULT 0,
-        total_bandwidth_tx INTEGER NOT NULL DEFAULT 0,
-        cpu_usage_pct REAL NOT NULL DEFAULT 0.0,
-        memory_usage_mb REAL NOT NULL DEFAULT 0.0,
-        active_circuits INTEGER NOT NULL DEFAULT 0,
-        network_health_score INTEGER NOT NULL DEFAULT 100
-      );
-
-      INSERT INTO nodes (id, user_id, name, public_key, overlay_ipv4, overlay_ipv6)
-      VALUES ('legacy-node-1', 'usr-admin', 'Legacy-Worker-Node', 'pk-legacy-1111', '100.64.0.99', 'fd7a:115c:a1e0::99');
-    `);
-
-    // Verify onion_routing_enabled does NOT exist before migration
-    let colsBefore = legacyDb.pragma('table_info(nodes)').map((c) => c.name);
-    assert.strictEqual(colsBefore.includes('onion_routing_enabled'), false);
-
-    // Apply migrations
-    runMigrations(legacyDb);
-
-    // Verify onion_routing_enabled now exists and legacy row has default 0
-    let colsAfter = legacyDb.pragma('table_info(nodes)').map((c) => c.name);
-    assert.strictEqual(colsAfter.includes('onion_routing_enabled'), true);
-
-    const legacyRow = legacyDb.prepare('SELECT * FROM nodes WHERE id = ?').get('legacy-node-1');
-    assert.strictEqual(legacyRow.onion_routing_enabled, 0);
-
-    // Verify app_share_links table was created
-    const tables = legacyDb
-      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
-      .all()
-      .map((t) => t.name);
-    assert.strictEqual(tables.includes('app_share_links'), true);
-
-    // Verify seedDatabase runs cleanly on the migrated database
-    assert.doesNotThrow(() => {
-      seedDatabase(legacyDb);
+  // 10. Database Schema Migrations & Idempotency Verification
+  test('PostgreSQL migration idempotency: running migrations multiple times is safe', async () => {
+    const pool = dbHelper.pool;
+    await assert.doesNotReject(async () => {
+      await runMigrations(pool);
     });
-
-    legacyDb.close();
-    if (fs.existsSync(legacyPath)) {
-      try {
-        fs.unlinkSync(legacyPath);
-      } catch {}
-    }
+    const res = await pool.query('SELECT count(*) as cnt FROM _migrations');
+    assert.strictEqual(Number(res.rows[0].cnt) >= 13, true);
   });
 
-  test('Persistent database startup & schema healing verification', () => {
-    // Test schema healing on a DB where both migrations are marked applied but column was omitted
-    const healingDbPath = path.resolve(__dirname, '../../data/test_healing.db');
-    if (fs.existsSync(healingDbPath)) {
-      try {
-        fs.unlinkSync(healingDbPath);
-      } catch {}
-    }
-    const healingDb = getDatabase(healingDbPath);
-
-    healingDb.exec(`
-      CREATE TABLE IF NOT EXISTS _migrations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE NOT NULL,
-        applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-      INSERT INTO _migrations (name) VALUES ('001_initial_schema'), ('002_onion_and_share_links');
-
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'user',
-        tier TEXT NOT NULL DEFAULT 'free_core',
-        status TEXT NOT NULL DEFAULT 'active',
-        bandwidth_quota_gb INTEGER NOT NULL DEFAULT 100,
-        bandwidth_used_bytes INTEGER NOT NULL DEFAULT 0,
-        max_nodes INTEGER NOT NULL DEFAULT 5,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS nodes (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        public_key TEXT NOT NULL UNIQUE,
-        preshared_key TEXT,
-        overlay_ipv4 TEXT NOT NULL UNIQUE,
-        overlay_ipv6 TEXT NOT NULL UNIQUE,
-        role TEXT NOT NULL DEFAULT 'CLIENT_ORIGIN',
-        ip_class TEXT NOT NULL DEFAULT 'RESIDENTIAL',
-        country_code TEXT NOT NULL DEFAULT 'US',
-        city TEXT DEFAULT '',
-        asn INTEGER DEFAULT 0,
-        endpoints TEXT DEFAULT '[]',
-        is_healthy INTEGER NOT NULL DEFAULT 1,
-        is_quarantined INTEGER NOT NULL DEFAULT 0,
-        quarantine_reason TEXT,
-        last_heartbeat DATETIME,
-        latency_ms REAL NOT NULL DEFAULT 0.0,
-        tx_bytes INTEGER NOT NULL DEFAULT 0,
-        rx_bytes INTEGER NOT NULL DEFAULT 0,
-        cpu_usage_pct REAL DEFAULT 0.0,
-        memory_usage_pct REAL DEFAULT 0.0,
-        battery_pct REAL DEFAULT 100.0,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS app_bundles (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        tier TEXT NOT NULL DEFAULT 'managed_cloud',
-        status TEXT NOT NULL DEFAULT 'stopped',
-        endpoint_url TEXT NOT NULL,
-        internal_port INTEGER NOT NULL DEFAULT 8080,
-        cpu_cores REAL NOT NULL DEFAULT 2.0,
-        memory_mb INTEGER NOT NULL DEFAULT 2048,
-        storage_gb INTEGER NOT NULL DEFAULT 50,
-        scale_to_zero INTEGER NOT NULL DEFAULT 1,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS audit_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_type TEXT NOT NULL,
-        severity TEXT NOT NULL DEFAULT 'info',
-        actor_user_id TEXT,
-        actor_username TEXT,
-        target_id TEXT,
-        target_type TEXT,
-        message TEXT NOT NULL,
-        ip_address TEXT,
-        user_agent TEXT,
-        metadata_json TEXT DEFAULT '{}',
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS system_metrics (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        active_nodes INTEGER NOT NULL DEFAULT 0,
-        active_users INTEGER NOT NULL DEFAULT 0,
-        total_bandwidth_rx INTEGER NOT NULL DEFAULT 0,
-        total_bandwidth_tx INTEGER NOT NULL DEFAULT 0,
-        cpu_usage_pct REAL NOT NULL DEFAULT 0.0,
-        memory_usage_mb REAL NOT NULL DEFAULT 0.0,
-        active_circuits INTEGER NOT NULL DEFAULT 0,
-        network_health_score INTEGER NOT NULL DEFAULT 100
-      );
-    `);
-
-    // Run migrations (which executes ensureSchemaIntegrity)
-    runMigrations(healingDb);
-
-    // Verify onion_routing_enabled is restored
-    const cols = healingDb.pragma('table_info(nodes)').map((c) => c.name);
-    assert.strictEqual(cols.includes('onion_routing_enabled'), true);
-
-    // Verify seed completes without error
-    assert.doesNotThrow(() => {
-      seedDatabase(healingDb);
+  test('PostgreSQL seedDatabase idempotency and admin account verification', async () => {
+    const pool = dbHelper.pool;
+    await assert.doesNotReject(async () => {
+      await seedDatabase(pool);
     });
-
-    healingDb.close();
-    if (fs.existsSync(healingDbPath)) {
-      try {
-        fs.unlinkSync(healingDbPath);
-      } catch {}
-    }
+    const adminUser = await pool.query("SELECT * FROM users WHERE role = 'super-admin'");
+    assert.strictEqual(adminUser.rowCount >= 1, true);
   });
 });

@@ -144,6 +144,16 @@ function features() {
 }
 
 /**
+ * Enforce that DATABASE_URL is set. The backend runs solely on PostgreSQL.
+ */
+function assertDatabaseConfig() {
+  const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (!dbUrl || dbUrl.trim() === '') {
+    throw new Error('Refusing to start: DATABASE_URL is required. SQLite has been retired.');
+  }
+}
+
+/**
  * Abort startup if any security-critical setting is missing in production.
  *
  * Exported rather than run at import time so that tooling which only needs to read
@@ -151,6 +161,7 @@ function features() {
  * server.js calls this before binding a port.
  */
 function assertProductionSecrets() {
+  assertDatabaseConfig();
   const problems = [];
 
   if (missingSecrets.length > 0) {
@@ -172,6 +183,7 @@ function assertProductionSecrets() {
 
 config.features = features;
 config.assertProductionSecrets = assertProductionSecrets;
+config.assertDatabaseConfig = assertDatabaseConfig;
 config.missingSecrets = missingSecrets;
 config.compromisedSecrets = compromisedSecrets;
 config.isPublishedDefault = isPublishedDefault;

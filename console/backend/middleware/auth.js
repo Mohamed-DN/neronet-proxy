@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config/env');
 const { isTokenBlacklisted } = require('../db/valkey');
-const { getDatabase, isPostgres, getPgPool } = require('../db/index');
+const { getPgPool } = require('../db/index');
 
 function signToken(payload, expiresIn = config.JWT_EXPIRES_IN || '15m') {
   const cleanPayload = {
@@ -65,20 +65,12 @@ async function authenticateToken(req, res, next) {
 
   // 2. Database revocation check (fallback / persistent)
   try {
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const checkRes = await pool.query('SELECT id FROM refresh_tokens WHERE token_hash = $1 AND revoked = TRUE', [
-        token
-      ]);
-      if (checkRes.rows.length > 0) {
-        return res.status(401).json({ error: 'Token has been revoked' });
-      }
-    } else {
-      const db = getDatabase();
-      const revoked = db.prepare('SELECT id FROM refresh_tokens WHERE token_hash = ? AND revoked = 1').get(token);
-      if (revoked) {
-        return res.status(401).json({ error: 'Token has been revoked' });
-      }
+    const pool = getPgPool();
+    const checkRes = await pool.query('SELECT id FROM refresh_tokens WHERE token_hash = $1 AND revoked = TRUE', [
+      token
+    ]);
+    if (checkRes.rows.length > 0) {
+      return res.status(401).json({ error: 'Token has been revoked' });
     }
   } catch (e) {
     // Continue if DB check fails or table absent

@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "migrate": "node -e 'require(\"./db/migrator\").runMigrations(require(\"./db/index\").getDatabase())'",
-    "seed": "node -e 'const { getDatabase } = require(\"./db/index\"); const { runMigrations } = require(\"./db/migrator\"); const { seedDatabase } = require(\"./db/seed\"); const db = getDatabase(); runMigrations(db); seedDatabase(db);'",
+    "migrate": "node -e 'require(\"./db/migrator\").runMigrations(require(\"./db/index\").getPgPool())'",
+    "seed": "node -e 'const { getPgPool } = require(\"./db/index\"); const { runMigrations } = require(\"./db/migrator\"); const { seedDatabase } = require(\"./db/seed\"); const pool = getPgPool(); runMigrations(pool).then(() => seedDatabase(pool));'",
     "test": "SOVEREIGN_RATE_LIMIT_DISABLED=true SOVEREIGN_VALKEY_NAMESPACE=test-{pid} node --test --test-concurrency=1 tests/**/*.test.js",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -16,7 +16,6 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "bcryptjs": "^3.0.2",
-    "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

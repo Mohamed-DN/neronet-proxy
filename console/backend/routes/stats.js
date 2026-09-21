@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { isPostgres, getPgPool, getDatabase } = require('../db/index');
+const { getPgPool } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
 const { readFleetState, readPostureCounts, LIVENESS_WINDOW_SECONDS } = require('../services/MetricsCollector');
 const { COUNTRY_NAMES } = require('../utils/countries');
@@ -67,31 +67,27 @@ async function overviewHandler(req, res, next) {
  */
 async function deriveThroughput() {
   const unknown = { rxMbPerSec: null, txMbPerSec: null };
-  let rows;
+  const pool = getPgPool();
+  const q = await pool.query(
+    'SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx FROM system_metrics ORDER BY timestamp DESC LIMIT 2'
+  );
+  const rows = q.rows;
 
-  if (isPostgres()) {
-    const pool = getPgPool();
-    const q = await pool.query(
-      'SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx FROM system_metrics ORDER BY timestamp DESC LIMIT 2'
-    );
-    rows = q.rows;
-  } else {
-    rows = getDatabase()
-      .prepare(
-        'SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx FROM system_metrics ORDER BY timestamp DESC LIMIT 2'
-      )
-      .all();
+  if (rows.length < 2) {
+    return unknown;
   }
 
-  if (!rows || rows.length < 2) return unknown;
+  const [latest, prior] = rows;
+  const seconds = (new Date(latest.timestamp) - new Date(prior.timestamp)) / 1000;
+  if (!(seconds > 0)) {
+    return unknown;
+  }
 
-  const [newer, older] = rows;
-  const seconds = (new Date(newer.timestamp) - new Date(older.timestamp)) / 1000;
-  if (!(seconds > 0)) return unknown;
-
-  const rxDelta = Number(newer.total_bandwidth_rx) - Number(older.total_bandwidth_rx);
-  const txDelta = Number(newer.total_bandwidth_tx) - Number(older.total_bandwidth_tx);
-  if (rxDelta < 0 || txDelta < 0) return unknown;
+  const rxDelta = Number(latest.total_bandwidth_rx) - Number(prior.total_bandwidth_rx);
+  const txDelta = Number(latest.total_bandwidth_tx) - Number(prior.total_bandwidth_tx);
+  if (rxDelta < 0 || txDelta < 0) {
+    return unknown;
+  }
 
   const toMbPerSec = (bytes) => Number((bytes / (1024 * 1024) / seconds).toFixed(2));
   return { rxMbPerSec: toMbPerSec(rxDelta), txMbPerSec: toMbPerSec(txDelta) };
@@ -99,14 +95,9 @@ async function deriveThroughput() {
 
 async function countryDistribution() {
   const dist = {};
-  if (isPostgres()) {
-    const pool = getPgPool();
-    const q = await pool.query('SELECT country_code, count(*) AS count FROM nodes GROUP BY country_code');
-    for (const r of q.rows) dist[r.country_code] = parseInt(r.count, 10);
-    return dist;
-  }
-  const rows = getDatabase().prepare('SELECT country_code, count(*) AS count FROM nodes GROUP BY country_code').all();
-  for (const r of rows) dist[r.country_code] = r.count;
+  const pool = getPgPool();
+  const q = await pool.query('SELECT country_code, count(*) AS count FROM nodes GROUP BY country_code');
+  for (const r of q.rows) dist[r.country_code] = parseInt(r.count, 10);
   return dist;
 }
 
@@ -126,28 +117,16 @@ async function timeseriesHandler(req, res, next) {
   try {
     const hours = RANGE_HOURS[req.query.range] || 24;
 
-    let metrics;
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const q = await pool.query(
-        `SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx, active_nodes,
-                cpu_usage_pct, memory_usage_mb, network_health_score
-         FROM system_metrics
-         WHERE timestamp > now() - make_interval(hours => $1)
-         ORDER BY timestamp ASC`,
-        [hours]
-      );
-      metrics = q.rows;
-    } else {
-      const cutoff = new Date(Date.now() - hours * 3600 * 1000).toISOString();
-      metrics = getDatabase()
-        .prepare(
-          `SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx, active_nodes,
-                cpu_usage_pct, memory_usage_mb, network_health_score
-         FROM system_metrics WHERE timestamp > ? ORDER BY timestamp ASC`
-        )
-        .all(cutoff);
-    }
+    const pool = getPgPool();
+    const q = await pool.query(
+      `SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx, active_nodes,
+              cpu_usage_pct, memory_usage_mb, network_health_score
+       FROM system_metrics
+       WHERE timestamp > now() - make_interval(hours => $1)
+       ORDER BY timestamp ASC`,
+      [hours]
+    );
+    const metrics = q.rows;
 
     // The stored counters are cumulative. The chart wants a rate, so each point is
     // the difference from the point before it; the first sample has no predecessor
@@ -208,26 +187,9 @@ async function geoMatrixHandler(req, res, next) {
       GROUP BY country_code
       ORDER BY count(*) DESC, country_code ASC`;
 
-    let rows;
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const q = await pool.query(sql, [LIVENESS_WINDOW_SECONDS]);
-      rows = q.rows;
-    } else {
-      const cutoff = new Date(Date.now() - LIVENESS_WINDOW_SECONDS * 1000).toISOString();
-      rows = getDatabase()
-        .prepare(
-          `
-        SELECT country_code,
-               count(*) AS nodes,
-               sum(CASE WHEN role = 'RELAY' THEN 1 ELSE 0 END) AS relays,
-               sum(CASE WHEN role = 'EXIT_BRIDGE' THEN 1 ELSE 0 END) AS exits,
-               sum(CASE WHEN last_heartbeat > ? THEN 1 ELSE 0 END) AS live,
-               avg(CASE WHEN latency_ms > 0 THEN latency_ms END) AS avg_latency
-        FROM nodes GROUP BY country_code ORDER BY count(*) DESC, country_code ASC`
-        )
-        .all(cutoff);
-    }
+    const pool = getPgPool();
+    const q = await pool.query(sql, [LIVENESS_WINDOW_SECONDS]);
+    const rows = q.rows;
 
     const matrix = rows.map((r) => {
       const nodes = Number(r.nodes);
@@ -262,35 +224,18 @@ router.get('/geo-matrix', geoMatrixHandler);
 async function topologyHandler(req, res, next) {
   try {
     let visibleNodes = [];
-    if (isPostgres()) {
-      const pool = getPgPool();
-      if (req.user.role === 'super-admin') {
-        const qRes = await pool.query(
-          'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC'
-        );
-        visibleNodes = qRes.rows;
-      } else {
-        const qRes = await pool.query(
-          'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes WHERE user_id = $1 ORDER BY created_at ASC',
-          [req.user.id]
-        );
-        visibleNodes = qRes.rows;
-      }
+    const pool = getPgPool();
+    if (req.user.role === 'super-admin') {
+      const qRes = await pool.query(
+        'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC'
+      );
+      visibleNodes = qRes.rows;
     } else {
-      const db = getDatabase();
-      if (req.user.role === 'super-admin') {
-        visibleNodes = db
-          .prepare(
-            'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC'
-          )
-          .all();
-      } else {
-        visibleNodes = db
-          .prepare(
-            'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes WHERE user_id = ? ORDER BY created_at ASC'
-          )
-          .all(req.user.id);
-      }
+      const qRes = await pool.query(
+        'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes WHERE user_id = $1 ORDER BY created_at ASC',
+        [req.user.id]
+      );
+      visibleNodes = qRes.rows;
     }
 
     const nodes = visibleNodes.map((n) => ({
@@ -385,27 +330,16 @@ async function auditLogsHandler(req, res, next) {
     const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 1000);
 
     let rows = [];
-    if (isPostgres()) {
-      const pool = getPgPool();
-      if (req.user.role === 'super-admin') {
-        const qRes = await pool.query('SELECT * FROM audit_events ORDER BY created_at DESC LIMIT $1', [limit]);
-        rows = qRes.rows;
-      } else {
-        const qRes = await pool.query(
-          'SELECT * FROM audit_events WHERE actor_user_id = $1 ORDER BY created_at DESC LIMIT $2',
-          [req.user.id, limit]
-        );
-        rows = qRes.rows;
-      }
+    const pool = getPgPool();
+    if (req.user.role === 'super-admin') {
+      const qRes = await pool.query('SELECT * FROM audit_events ORDER BY created_at DESC LIMIT $1', [limit]);
+      rows = qRes.rows;
     } else {
-      const db = getDatabase();
-      if (req.user.role === 'super-admin') {
-        rows = db.prepare('SELECT * FROM audit_events ORDER BY created_at DESC LIMIT ?').all(limit);
-      } else {
-        rows = db
-          .prepare('SELECT * FROM audit_events WHERE actor_user_id = ? ORDER BY created_at DESC LIMIT ?')
-          .all(req.user.id, limit);
-      }
+      const qRes = await pool.query(
+        'SELECT * FROM audit_events WHERE actor_user_id = $1 ORDER BY created_at DESC LIMIT $2',
+        [req.user.id, limit]
+      );
+      rows = qRes.rows;
     }
 
     const logs = rows.map((r) => ({

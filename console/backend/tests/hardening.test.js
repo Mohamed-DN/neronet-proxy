@@ -5,33 +5,22 @@ const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const request = require('supertest');
 
-const testDbPath = path.resolve(__dirname, '../../data/test_hardening.db');
-process.env.SOVEREIGN_DB_PATH = testDbPath;
-
-const { getDatabase, closeDatabase } = require('../db/index');
-const { runMigrations } = require('../db/migrator');
-const { seedDatabase } = require('../db/seed');
+const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 
 const BACKEND_DIR = path.resolve(__dirname, '..');
 
 describe('Security headers', () => {
+  let dbHelper;
   let app;
 
-  before(() => {
-    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
-    const db = getDatabase(testDbPath);
-    runMigrations(db);
-    seedDatabase(db);
+  before(async () => {
+    dbHelper = await setupTestDatabase();
     app = createApp();
   });
 
-  after(() => {
-    closeDatabase();
-    for (const suffix of ['', '-wal', '-shm']) {
-      const f = `${testDbPath}${suffix}`;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    }
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
   });
 
   it('refuses to be framed', async () => {
@@ -161,5 +150,38 @@ describe('The rate limit disable switch cannot reach production', () => {
 
   it('ignores the switch under NODE_ENV=production', () => {
     assert.strictEqual(limitingDisabledIn({ NODE_ENV: 'production', SOVEREIGN_RATE_LIMIT_DISABLED: 'true' }), 'false');
+  });
+});
+
+describe('The backend refuses to start without DATABASE_URL', () => {
+  it('refuses to start when DATABASE_URL and POSTGRES_URL are absent', () => {
+    const res = spawnSync(process.execPath, ['-e', "require('./config/env').assertDatabaseConfig();"], {
+      cwd: BACKEND_DIR,
+      env: {
+        ...process.env,
+        DATABASE_URL: '',
+        POSTGRES_URL: ''
+      },
+      encoding: 'utf8'
+    });
+    assert.strictEqual(res.status !== 0, true);
+    assert.match(res.stderr, /Refusing to start: DATABASE_URL is required/);
+  });
+
+  it('permits startup when DATABASE_URL is present', () => {
+    const res = spawnSync(
+      process.execPath,
+      ['-e', "require('./config/env').assertDatabaseConfig(); console.log('ok');"],
+      {
+        cwd: BACKEND_DIR,
+        env: {
+          ...process.env,
+          DATABASE_URL: 'postgresql://neronet:secret@127.0.0.1:5432/neronet_test'
+        },
+        encoding: 'utf8'
+      }
+    );
+    assert.strictEqual(res.status, 0);
+    assert.strictEqual(res.stdout.trim(), 'ok');
   });
 });

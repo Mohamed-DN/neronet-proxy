@@ -121,12 +121,20 @@ function subscribeTopologyEvents(handler) {
     }
   });
 
-  if (valkeySubscriber && isConnected) {
-    valkeySubscriber.subscribe(TOPOLOGY_CHANNEL, (err) => {
-      if (err) {
-        logger.warn(`Failed to subscribe to Valkey channel ${TOPOLOGY_CHANNEL}: ${err.message}`);
-      }
-    });
+  if (valkeySubscriber) {
+    const doSubscribe = () => {
+      valkeySubscriber.subscribe(TOPOLOGY_CHANNEL, (err) => {
+        if (err) {
+          logger.warn(`Failed to subscribe to Valkey channel ${TOPOLOGY_CHANNEL}: ${err.message}`);
+        }
+      });
+    };
+
+    if (isConnected) {
+      doSubscribe();
+    } else {
+      valkeySubscriber.once('connect', doSubscribe);
+    }
 
     valkeySubscriber.on('message', (channel, message) => {
       if (channel === TOPOLOGY_CHANNEL) {
@@ -228,16 +236,17 @@ async function reportValkeyState() {
 function closeValkey() {
   if (valkeyClient) {
     try {
-      valkeyClient.disconnect();
+      valkeyClient.disconnect(false);
     } catch (e) {}
     valkeyClient = null;
   }
   if (valkeySubscriber) {
     try {
-      valkeySubscriber.disconnect();
+      valkeySubscriber.disconnect(false);
     } catch (e) {}
     valkeySubscriber = null;
   }
+  inMemoryBus.removeAllListeners();
   isConnected = false;
 }
 

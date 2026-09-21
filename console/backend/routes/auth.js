@@ -3,7 +3,7 @@ const { loginLimiter, registerLimiter } = require('../middleware/rateLimit');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const { getDatabase, isPostgres, getPgPool } = require('../db/index');
+const { getPgPool } = require('../db/index');
 const {
   signToken,
   signRefreshToken,
@@ -32,40 +32,22 @@ router.post('/register', registerLimiter, async (req, res, next) => {
     const salt = bcrypt.genSaltSync(10);
     const passwordHash = bcrypt.hashSync(password, salt);
 
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const existing = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
-      if (existing.rows.length > 0) {
-        return res.status(409).json({ error: 'Username already exists' });
-      }
-
-      await pool.query(
-        `
-        INSERT INTO users (
-          id, username, email, password_hash, role, status, bypass_apps
-        ) VALUES (
-          $1, $2, $3, $4, $5, 'active', '[]'::jsonb
-        )
-      `,
-        [userId, username, userEmail, passwordHash, userRole]
-      );
-    } else {
-      const db = getDatabase();
-      const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
-      if (existing) {
-        return res.status(409).json({ error: 'Username already exists' });
-      }
-
-      db.prepare(
-        `
-        INSERT INTO users (
-          id, username, email, password_hash, role, status
-        ) VALUES (
-          ?, ?, ?, ?, ?, 'active'
-        )
-      `
-      ).run(userId, username, userEmail, passwordHash, userRole);
+    const pool = getPgPool();
+    const existing = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'Username already exists' });
     }
+
+    await pool.query(
+      `
+      INSERT INTO users (
+        id, username, email, password_hash, role, status, bypass_apps
+      ) VALUES (
+        $1, $2, $3, $4, $5, 'active', '[]'::jsonb
+      )
+    `,
+      [userId, username, userEmail, passwordHash, userRole]
+    );
 
     logAuditEvent({
       eventType: 'USER_REGISTER',
@@ -106,16 +88,9 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       return res.status(400).json({ error: 'Missing username or password' });
     }
 
-    let user = null;
-
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const userRes = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-      user = userRes.rows[0] || null;
-    } else {
-      const db = getDatabase();
-      user = db.prepare('SELECT * FROM users WHERE username = ?').get(username) || null;
-    }
+    const pool = getPgPool();
+    const userRes = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    const user = userRes.rows[0] || null;
 
     // Timing side-channel mitigation: If user doesn't exist, perform dummy bcrypt comparison
     if (!user) {
@@ -151,19 +126,10 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     // EXECUTE DURESS PROTOCOLS IF APPLICABLE
     if (accessTier === 'stealth_wipe') {
       try {
-        if (isPostgres()) {
-          const pool = getPgPool();
-          await pool.query(
-            'DELETE FROM nodes WHERE compartment_id IN (SELECT id FROM compartments WHERE is_hidden = TRUE)'
-          );
-          await pool.query('DELETE FROM compartments WHERE is_hidden = TRUE');
-        } else {
-          const db = getDatabase();
-          db.prepare(
-            'DELETE FROM nodes WHERE compartment_id IN (SELECT id FROM compartments WHERE is_hidden = 1)'
-          ).run();
-          db.prepare('DELETE FROM compartments WHERE is_hidden = 1').run();
-        }
+        await pool.query(
+          'DELETE FROM nodes WHERE compartment_id IN (SELECT id FROM compartments WHERE is_hidden = TRUE)'
+        );
+        await pool.query('DELETE FROM compartments WHERE is_hidden = TRUE');
         console.warn(`[DURESS] Stealth wipe triggered by ${username}`);
       } catch (e) {
         console.error('Stealth wipe failed:', e);
@@ -171,14 +137,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       accessTier = 'standard'; // Drop them into the standard view so it looks normal
     } else if (accessTier === 'nuclear_wipe') {
       try {
-        if (isPostgres()) {
-          const pool = getPgPool();
-          await pool.query('TRUNCATE TABLE nodes, users CASCADE');
-        } else {
-          const db = getDatabase();
-          db.prepare('DELETE FROM nodes').run();
-          db.prepare('DELETE FROM users').run();
-        }
+        await pool.query('TRUNCATE TABLE nodes, users CASCADE');
         console.warn(`[DURESS] NUCLEAR WIPE triggered by ${username}`);
         return res.status(401).json({ error: 'Invalid username or password' }); // Act like it failed so they don't see an empty shell if it was a real attacker
       } catch (e) {
@@ -265,20 +224,12 @@ router.post('/refresh', async (req, res, next) => {
 // 4. Get Current User (Authenticated)
 router.get('/me', authenticateToken, async (req, res, next) => {
   try {
-    let user = null;
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const userRes = await pool.query(
-        'SELECT id, username, email, role, status, bypass_apps, created_at FROM users WHERE id = $1',
-        [req.user.id]
-      );
-      user = userRes.rows[0] || null;
-    } else {
-      const db = getDatabase();
-      user = db
-        .prepare('SELECT id, username, email, role, status, bypass_apps, created_at FROM users WHERE id = ?')
-        .get(req.user.id);
-    }
+    const pool = getPgPool();
+    const userRes = await pool.query(
+      'SELECT id, username, email, role, status, bypass_apps, created_at FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const user = userRes.rows[0] || null;
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -320,24 +271,14 @@ router.post('/logout', authenticateToken, async (req, res, next) => {
 
       // 2. Persist in database refresh_tokens table
       try {
-        if (isPostgres()) {
-          const pool = getPgPool();
-          await pool.query(
-            `
-            INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, revoked, ip_address)
-            VALUES ($1, $2, $3, NOW() + INTERVAL '7 days', TRUE, $4)
-          `,
-            [`tok-${uuidv4().substring(0, 8)}`, req.user.id, token, req.ip || '127.0.0.1']
-          );
-        } else {
-          const db = getDatabase();
-          db.prepare(
-            `
-            INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, revoked, ip_address)
-            VALUES (?, ?, ?, datetime('now', '+7 days'), 1, ?)
+        const pool = getPgPool();
+        await pool.query(
           `
-          ).run(`tok-${uuidv4().substring(0, 8)}`, req.user.id, token, req.ip || '127.0.0.1');
-        }
+          INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, revoked, ip_address)
+          VALUES ($1, $2, $3, NOW() + INTERVAL '7 days', TRUE, $4)
+        `,
+          [`tok-${uuidv4().substring(0, 8)}`, req.user.id, token, req.ip || '127.0.0.1']
+        );
       } catch (e) {
         // Table fallback
       }
@@ -379,29 +320,17 @@ router.post('/setup-passwords', authenticateToken, async (req, res, next) => {
       return res.status(400).json({ error: 'No passwords provided to update' });
     }
 
-    if (isPostgres()) {
-      const pool = getPgPool();
-      let queryArgs = [];
-      let setClauses = [];
-      let i = 1;
-      for (const [col, hash] of Object.entries(hashes)) {
-        setClauses.push(`${col} = $${i}`);
-        queryArgs.push(hash);
-        i++;
-      }
-      queryArgs.push(req.user.id);
-      await pool.query(`UPDATE users SET ${setClauses.join(', ')} WHERE id = $${i}`, queryArgs);
-    } else {
-      const db = getDatabase();
-      let setClauses = [];
-      let queryArgs = [];
-      for (const [col, hash] of Object.entries(hashes)) {
-        setClauses.push(`${col} = ?`);
-        queryArgs.push(hash);
-      }
-      queryArgs.push(req.user.id);
-      db.prepare(`UPDATE users SET ${setClauses.join(', ')} WHERE id = ?`).run(...queryArgs);
+    const pool = getPgPool();
+    let queryArgs = [];
+    let setClauses = [];
+    let i = 1;
+    for (const [col, hash] of Object.entries(hashes)) {
+      setClauses.push(`${col} = $${i}`);
+      queryArgs.push(hash);
+      i++;
     }
+    queryArgs.push(req.user.id);
+    await pool.query(`UPDATE users SET ${setClauses.join(', ')} WHERE id = $${i}`, queryArgs);
 
     logAuditEvent({
       eventType: 'AUTH_STEGANO_UPDATE',

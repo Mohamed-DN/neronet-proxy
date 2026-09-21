@@ -83,9 +83,23 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: neronet
+          POSTGRES_PASSWORD: neronet_dev_password
+          POSTGRES_DB: neronet_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       VALKEY_URL: redis://127.0.0.1:6379
       VALKEY_HOST: 127.0.0.1
+      DATABASE_URL: postgresql://neronet:neronet_dev_password@127.0.0.1:5432/neronet_test
     defaults:
       run:
         working-directory: console/backend

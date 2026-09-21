@@ -6,30 +6,27 @@ const { WebSocket } = require('ws');
 const path = require('path');
 const fs = require('fs');
 
-const { createApp, initDatabase } = require('../server');
-const { getDatabase, closeDatabase } = require('../db/index');
+const { createApp } = require('../server');
+const { setupTestDatabase } = require('./helpers/db');
 const { initTopologyWebSocket, closeTopologyWebSocket } = require('../ws/topologyServer');
 const { publishTopologyEvent, isTokenBlacklisted, blacklistToken, closeValkey } = require('../db/valkey');
-const { broadcastNodeEvent } = require('../services/TopologySync');
-
-const TEST_DB_PATH = path.resolve(__dirname, '../../data/test_m1.db');
+const { broadcastNodeEvent, initTopologySync } = require('../services/TopologySync');
 
 describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
   let app;
+  let dbHelper;
   let server;
   let serverPort;
   let adminToken;
   let userToken;
 
   before(async () => {
-    process.env.SOVEREIGN_DB_PATH = TEST_DB_PATH;
-    if (fs.existsSync(TEST_DB_PATH)) fs.unlinkSync(TEST_DB_PATH);
-
-    await initDatabase();
+    dbHelper = await setupTestDatabase();
     app = createApp();
 
     server = http.createServer(app);
     initTopologyWebSocket(server);
+    initTopologySync();
 
     await new Promise((resolve) => {
       server.listen(0, '127.0.0.1', () => {
@@ -54,14 +51,14 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
   after(async () => {
     closeTopologyWebSocket();
     if (server) {
+      if (typeof server.closeAllConnections === 'function') {
+        server.closeAllConnections();
+      }
       await new Promise((resolve) => server.close(resolve));
     }
-    closeDatabase();
     closeValkey();
-    if (fs.existsSync(TEST_DB_PATH)) {
-      try {
-        fs.unlinkSync(TEST_DB_PATH);
-      } catch (e) {}
+    if (dbHelper) {
+      await dbHelper.cleanup();
     }
   });
 
@@ -309,7 +306,17 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
 
     it('should broadcast Valkey topology events to connected WebSocket clients', async () => {
       await new Promise((resolve, reject) => {
-        const ws = new WebSocket(`ws://127.0.0.1:${serverPort}/ws/topology?token=${adminToken}`);
+        let ws;
+        const timer = setTimeout(() => {
+          if (ws) {
+            try {
+              ws.close();
+            } catch (e) {}
+          }
+          reject(new Error('WebSocket broadcast event timeout after 5s'));
+        }, 5000);
+
+        ws = new WebSocket(`ws://127.0.0.1:${serverPort}/ws/topology?token=${adminToken}`);
 
         ws.on('open', async () => {
           // Broadcast an event through TopologySync / Valkey PubSub
@@ -323,15 +330,21 @@ describe('Milestone 1: Database, Security Hardening & Real-Time Sync', () => {
         });
 
         ws.on('message', (data) => {
-          const msg = JSON.parse(data.toString());
-          if (msg.event === 'NODE_QUARANTINE_TEST') {
-            assert.strictEqual(msg.node.id, 'test-node-broadcast');
-            ws.close();
-            resolve();
+          try {
+            const msg = JSON.parse(data.toString());
+            if (msg.event === 'NODE_QUARANTINE_TEST') {
+              clearTimeout(timer);
+              assert.strictEqual(msg.node.id, 'test-node-broadcast');
+              ws.close();
+              resolve();
+            }
+          } catch (e) {
+            // ignore non-json frames
           }
         });
 
         ws.on('error', (err) => {
+          clearTimeout(timer);
           reject(err);
         });
       });

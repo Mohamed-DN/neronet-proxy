@@ -20,13 +20,10 @@ const statsRoutes = require('../routes/stats');
 const nukeRouter = require('../routes/nuke');
 const canaryRouter = require('../routes/canary');
 
-const { initDatabase } = require('../server');
-const { getDatabase, closeDatabase, closeSqlite } = require('../db/index');
+const { setupTestDatabase } = require('./helpers/db');
 const { initValkey, closeValkey } = require('../db/valkey');
 const NukeEngine = require('../services/NukeEngine');
 const CanaryService = require('../services/CanaryService');
-
-const TEST_DB_PATH = path.resolve(__dirname, '../../data/test_m3_nuke.db');
 
 function createNukeTestApp() {
   const app = express();
@@ -60,6 +57,7 @@ function createNukeTestApp() {
 
 describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', () => {
   let app;
+  let dbHelper;
   let server;
   let adminToken;
   let userToken;
@@ -68,15 +66,7 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
   let victimUsername;
 
   before(async () => {
-    closeDatabase();
-    process.env.SOVEREIGN_DB_PATH = TEST_DB_PATH;
-    if (fs.existsSync(TEST_DB_PATH)) {
-      try {
-        fs.unlinkSync(TEST_DB_PATH);
-      } catch (e) {}
-    }
-
-    await initDatabase();
+    dbHelper = await setupTestDatabase();
     await CanaryService.initCanaryService();
 
     app = createNukeTestApp();
@@ -118,12 +108,9 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     if (server) {
       await new Promise((resolve) => server.close(resolve));
     }
-    closeDatabase();
     closeValkey();
-    if (fs.existsSync(TEST_DB_PATH)) {
-      try {
-        fs.unlinkSync(TEST_DB_PATH);
-      } catch (e) {}
+    if (dbHelper) {
+      await dbHelper.cleanup();
     }
   });
 
@@ -594,12 +581,11 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
       assert.strictEqual(wipeRes.message, 'Global cascading wipe completed');
 
       // Verify database tables are wiped
-      const db = getDatabase();
-      const userCount = db.prepare('SELECT count(*) as count FROM users').get().count;
-      assert.strictEqual(userCount, 0, 'All users must be wiped after disaster wipe');
+      const userRes = await dbHelper.pool.query('SELECT count(*) as count FROM users');
+      assert.strictEqual(parseInt(userRes.rows[0].count, 10), 0, 'All users must be wiped after disaster wipe');
 
-      const nodeCount = db.prepare('SELECT count(*) as count FROM nodes').get().count;
-      assert.strictEqual(nodeCount, 0, 'All nodes must be wiped after disaster wipe');
+      const nodeRes = await dbHelper.pool.query('SELECT count(*) as count FROM nodes');
+      assert.strictEqual(parseInt(nodeRes.rows[0].count, 10), 0, 'All nodes must be wiped after disaster wipe');
     });
   });
 });
