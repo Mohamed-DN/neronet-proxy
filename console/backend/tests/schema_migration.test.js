@@ -30,7 +30,7 @@ describe('PostgreSQL Schema & Migration Verification', () => {
     for (const file of files) {
       assert.ok(applied.has(file), `Migration ${file} is not recorded in _migrations`);
     }
-    assert.strictEqual(applied.size >= 15, true, 'At least 15 migrations must be applied');
+    assert.strictEqual(applied.size >= 16, true, 'At least 16 migrations must be applied');
   });
 
   it('declares the expected production schema tables', async () => {
@@ -85,6 +85,9 @@ describe('PostgreSQL Schema & Migration Verification', () => {
     assert.ok(userCols.has('email'), 'users.email missing');
     assert.ok(userCols.has('password_hash'), 'users.password_hash missing');
     assert.ok(userCols.has('role'), 'users.role missing');
+    assert.ok(userCols.has('totp_secret'), 'users.totp_secret missing');
+    assert.ok(userCols.has('totp_enabled'), 'users.totp_enabled missing');
+    assert.ok(userCols.has('totp_recovery_codes'), 'users.totp_recovery_codes missing');
 
     // Migration 011 removed tier columns
     assert.ok(!userCols.has('tier'), 'users.tier must be absent');

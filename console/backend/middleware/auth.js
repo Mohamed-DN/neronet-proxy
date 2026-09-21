@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 // Pinning the algorithm keeps a token from choosing its own verification method.
@@ -47,14 +48,16 @@ function verifyRefreshToken(token) {
 }
 
 async function authenticateToken(req, res, next) {
+  let token = '';
   const authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or malformed Authorization header' });
+  if (authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
+  } else if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
   }
 
-  const token = authHeader.substring(7).trim();
   if (!token) {
-    return res.status(401).json({ error: 'Missing token' });
+    return res.status(401).json({ error: 'Missing or malformed Authorization header' });
   }
 
   // 1. Fast O(1) Valkey revocation blacklist check
@@ -66,9 +69,11 @@ async function authenticateToken(req, res, next) {
   // 2. Database revocation check (fallback / persistent)
   try {
     const pool = getPgPool();
-    const checkRes = await pool.query('SELECT id FROM refresh_tokens WHERE token_hash = $1 AND revoked = TRUE', [
-      token
-    ]);
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const checkRes = await pool.query(
+      'SELECT id FROM refresh_tokens WHERE (token_hash = $1 OR token_hash = $2) AND (revoked = TRUE OR revoked_at IS NOT NULL)',
+      [tokenHash, token]
+    );
     if (checkRes.rows.length > 0) {
       return res.status(401).json({ error: 'Token has been revoked' });
     }
@@ -79,6 +84,9 @@ async function authenticateToken(req, res, next) {
   // 3. Cryptographic JWT verification
   try {
     const decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
+    if (decoded.type === 'mfa_pending') {
+      return res.status(401).json({ error: 'MFA verification required' });
+    }
     req.user = {
       id: decoded.sub || decoded.id,
       username: decoded.username,

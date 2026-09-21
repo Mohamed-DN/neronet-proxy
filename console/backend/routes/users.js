@@ -150,6 +150,15 @@ router.put('/:id', requireSelfOrAdmin, async (req, res, next) => {
       params.push(JSON.stringify(Array.isArray(req.body.bypass_apps) ? req.body.bypass_apps : []));
     }
     if (req.body.password) {
+      if (req.user.id === req.params.id) {
+        if (!req.body.current_password) {
+          return res.status(400).json({ error: 'Current password is required to change password' });
+        }
+        const currentMatch = await bcrypt.compare(req.body.current_password, existingRes.rows[0].password_hash);
+        if (!currentMatch) {
+          return res.status(400).json({ error: 'Incorrect current password' });
+        }
+      }
       const salt = bcrypt.genSaltSync(10);
       updates.push(`password_hash = $${pIdx++}`);
       params.push(bcrypt.hashSync(req.body.password, salt));
