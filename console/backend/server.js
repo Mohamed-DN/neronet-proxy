@@ -32,6 +32,7 @@ const cloudPcRoutes = require('./routes/cloudPc');
 const nukeRoutes = require('./routes/nuke');
 const canaryRoutes = require('./routes/canary');
 const preauthKeysRoutes = require('./routes/preauthKeys');
+const organizationsRoutes = require('./routes/organizations');
 const securityHeaders = require('./middleware/securityHeaders');
 const { requireFeature } = require('./middleware/featureFlag');
 const { apiLimiter, enrolmentLimiter } = require('./middleware/rateLimit');
@@ -84,6 +85,7 @@ function createApp() {
   app.use('/api/geofencing', geofencingRoutes);
   app.use('/api/cloud-pc', requireFeature('cloud_pc'), cloudPcRoutes);
   app.use('/api/preauth-keys', preauthKeysRoutes);
+  app.use('/api/organizations', organizationsRoutes);
   app.use('/api/nuke', nukeRoutes);
   // The nuke router is mounted at /api/nuke and nowhere else. It used to be mounted
   // at the root as well, so that the warrant canary could be fetched from

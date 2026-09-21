@@ -2,7 +2,7 @@ const express = require('express');
 const { readPageParams, pageEnvelope } = require('../utils/pagination');
 const router = express.Router();
 const crypto = require('crypto');
-const { getPgPool, isPostgres } = require('../db/index');
+const { getPgPool } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
 const { logAuditEvent } = require('../utils/audit');
 const { allocateNextVip, generateCurve25519Keypair } = require('../utils/crypto');
@@ -10,8 +10,10 @@ const { broadcastNodeEvent } = require('../services/TopologySync');
 const { derivePostureStatus } = require('../utils/posture');
 const { bumpNetmap } = require('../services/AclEngine');
 const NodeCredentialService = require('../services/NodeCredentialService');
+const { resolveUserOrg } = require('../middleware/rbac');
 
 router.use(authenticateToken);
+router.use(resolveUserOrg);
 
 function parseJsonField(val, defaultVal = {}) {
   if (!val) return defaultVal;
@@ -33,16 +35,13 @@ function formatNode(row) {
   const killSwitch = Boolean(row.kill_switch_enabled);
 
   const endpoints = parseJsonField(row.endpoints, []);
-  // The fallback used to assert compliance, disk encryption and an operating system
-  // for any node whose posture column was empty or unparseable -- that is, it
-  // invented the answer precisely when there was no answer. An unreadable document
-  // is no measurement, and no measurement is {}.
   const posture = parseJsonField(row.posture_checks, {});
   const metadata = parseJsonField(row.metadata, {});
 
   return {
     id: row.id,
     user_id: row.user_id,
+    organization_id: row.organization_id || 'org-default',
     name: row.name,
     public_key: row.public_key,
     overlay_ipv4: row.overlay_ipv4,
@@ -51,8 +50,6 @@ function formatNode(row) {
     ip_class: row.ip_class,
     country_code: row.country_code,
     city: row.city || '',
-    // Null when the node never declared a position. When present, the value is what
-    // the node's operator configured, not something the control plane measured.
     latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
     longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
     location_source: metadata.location_source === 'declared' ? 'declared' : null,
@@ -75,58 +72,98 @@ function formatNode(row) {
     memory_usage_pct: Number(row.memory_usage_pct) || 0.0,
     battery_pct: row.battery_pct !== undefined ? Number(row.battery_pct) : 100.0,
     posture,
-    // Three states, not two. "Not quarantined" is a different fact and is reported
-    // separately as is_quarantined.
+    posture_checks: posture,
     posture_status: derivePostureStatus(posture),
     metadata,
     last_heartbeat: row.last_heartbeat,
+    last_seen_at: row.last_seen_at || row.last_heartbeat || row.created_at,
     created_at: row.created_at,
     updated_at: row.updated_at
   };
 }
 
-// 1. List Nodes (Scoped by Super-Admin vs Regular User)
+/**
+ * Validates whether the user can access/modify a node according to RBAC and tenant isolation.
+ * Cross-tenant access returns 404 (eliminating existence oracle leaks).
+ * Auditors receive 403 on mutating requests.
+ */
+function verifyNodeAccess(node, user, isMutating = false) {
+  if (!node) return { error: 404, message: 'Node not found' };
+
+  if (user.role === 'super-admin') {
+    return { ok: true };
+  }
+
+  const userOrgId = user.organization_id || 'org-default';
+  const nodeOrgId = node.organization_id || 'org-default';
+
+  // Cross-tenant access MUST return 404, never 403 (prevent existence oracle)
+  if (nodeOrgId !== userOrgId) {
+    return { error: 404, message: 'Node not found' };
+  }
+
+  const orgRole = user.org_role || user.role || 'member';
+
+  // Auditor / viewer is strictly read-only
+  if (isMutating && (orgRole === 'auditor' || orgRole === 'viewer')) {
+    return { error: 403, message: 'Forbidden: read-only role cannot mutate node' };
+  }
+
+  const isPrivileged = ['owner', 'admin', 'network_admin'].includes(orgRole);
+  if (isPrivileged) {
+    return { ok: true };
+  }
+
+  // Auditor can read
+  if (!isMutating && (orgRole === 'auditor' || orgRole === 'viewer')) {
+    return { ok: true };
+  }
+
+  // Regular member can only access their own node
+  if (node.user_id === user.id) {
+    return { ok: true };
+  }
+
+  return { error: 404, message: 'Node not found' };
+}
+
+// 1. List Nodes (Scoped by Super-Admin, Organization, vs Regular Member)
 router.get('/', async (req, res, next) => {
   try {
     const { limit, offset } = readPageParams(req);
-    const scoped = req.user.role !== 'super-admin';
+    const pool = getPgPool();
+    const isSuperAdmin = req.user.role === 'super-admin';
+    const orgRole = req.user.org_role || req.user.role;
+    const isOrgPrivileged = ['owner', 'admin', 'network_admin', 'auditor'].includes(orgRole);
 
-    // ORDER BY created_at alone is not a stable sort: rows sharing a timestamp can
-    // come back in any order between pages, so a client paging through the fleet
-    // would see some nodes twice and miss others. The primary key breaks the tie.
     let rows = [];
     let total = 0;
 
-    if (isPostgres()) {
-      const pool = getPgPool();
-      if (scoped) {
-        const countRes = await pool.query('SELECT count(*)::int AS n FROM nodes WHERE user_id = $1', [req.user.id]);
-        total = countRes.rows[0].n;
-        const result = await pool.query(
-          'SELECT * FROM nodes WHERE user_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3',
-          [req.user.id, limit, offset]
-        );
-        rows = result.rows;
-      } else {
-        const countRes = await pool.query('SELECT count(*)::int AS n FROM nodes');
-        total = countRes.rows[0].n;
-        const result = await pool.query('SELECT * FROM nodes ORDER BY created_at ASC, id ASC LIMIT $1 OFFSET $2', [
-          limit,
-          offset
-        ]);
-        rows = result.rows;
-      }
+    if (isSuperAdmin && !req.query.org_id) {
+      const countRes = await pool.query('SELECT count(*)::int AS n FROM nodes');
+      total = countRes.rows[0].n;
+      const result = await pool.query('SELECT * FROM nodes ORDER BY created_at ASC, id ASC LIMIT $1 OFFSET $2', [
+        limit,
+        offset
+      ]);
+      rows = result.rows;
+    } else if (isOrgPrivileged || isSuperAdmin) {
+      const orgId = isSuperAdmin ? req.query.org_id : req.user.organization_id || 'org-default';
+      const countRes = await pool.query('SELECT count(*)::int AS n FROM nodes WHERE organization_id = $1', [orgId]);
+      total = countRes.rows[0].n;
+      const result = await pool.query(
+        'SELECT * FROM nodes WHERE organization_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3',
+        [orgId, limit, offset]
+      );
+      rows = result.rows;
     } else {
-      const db = getDatabase();
-      if (scoped) {
-        total = db.prepare('SELECT count(*) AS n FROM nodes WHERE user_id = ?').get(req.user.id).n;
-        rows = db
-          .prepare('SELECT * FROM nodes WHERE user_id = ? ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?')
-          .all(req.user.id, limit, offset);
-      } else {
-        total = db.prepare('SELECT count(*) AS n FROM nodes').get().n;
-        rows = db.prepare('SELECT * FROM nodes ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?').all(limit, offset);
-      }
+      const countRes = await pool.query('SELECT count(*)::int AS n FROM nodes WHERE user_id = $1', [req.user.id]);
+      total = countRes.rows[0].n;
+      const result = await pool.query(
+        'SELECT * FROM nodes WHERE user_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3',
+        [req.user.id, limit, offset]
+      );
+      rows = result.rows;
     }
 
     const nodes = rows.map(formatNode);
@@ -139,6 +176,11 @@ router.get('/', async (req, res, next) => {
 // 2. Create Node (with VIP allocation, PostGIS point, and kill_switch_enabled)
 router.post('/', async (req, res, next) => {
   try {
+    const orgRole = req.user.org_role || req.user.role;
+    if (orgRole === 'auditor' || orgRole === 'viewer') {
+      return res.status(403).json({ error: 'Forbidden: read-only role cannot create nodes' });
+    }
+
     const {
       name,
       role,
@@ -160,14 +202,6 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Missing node name' });
     }
 
-    // Quota check for regular users
-    if (req.user.role !== 'super-admin') {
-      // Node count is no longer capped per user. NeroNet has no paid tiers, and a
-      // per-account limit was a commercial boundary rather than a technical one: the
-      // overlay pool holds 4.19 million addresses and enrolment is rate limited, so
-      // the infrastructure protections that matter are elsewhere.
-    }
-
     let finalPubKey = public_key;
     if (!finalPubKey) {
       const kp = generateCurve25519Keypair();
@@ -178,9 +212,6 @@ router.post('/', async (req, res, next) => {
     const VALID_IP_CLASSES = ['RESIDENTIAL', 'MOBILE_5G', 'DATACENTER', 'UNKNOWN'];
 
     const nodeRole = role && VALID_ROLES.includes(role) ? role : 'CLIENT_ORIGIN';
-    // UNKNOWN when the caller declares nothing, matching the column default from
-    // migration 012. Nothing determines a node's IP class, so RESIDENTIAL here was a
-    // guess recorded as a fact.
     const nodeIpClass = ip_class && VALID_IP_CLASSES.includes(ip_class) ? ip_class : 'UNKNOWN';
     const nodeCountry = country_code || 'US';
     const onionRouting = onion_routing_enabled !== undefined ? Boolean(onion_routing_enabled) : Number(onion_hops) > 0;
@@ -188,83 +219,37 @@ router.post('/', async (req, res, next) => {
     const killSwitch = Boolean(kill_switch_enabled);
     const endpointsArray = Array.isArray(endpoints) ? endpoints : [];
     const nodeId = `svrn-node-${crypto.randomBytes(4).toString('hex')}`;
+    const orgId = req.user.organization_id || 'org-default';
 
-    let createdNode = null;
+    const pool = getPgPool();
+    const existingKey = await pool.query('SELECT id FROM nodes WHERE public_key = $1', [finalPubKey]);
+    if (existingKey.rows.length > 0) {
+      return res.status(409).json({ error: 'Public key already registered' });
+    }
 
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const existingKey = await pool.query('SELECT id FROM nodes WHERE public_key = $1', [finalPubKey]);
-      if (existingKey.rows.length > 0) {
-        return res.status(409).json({ error: 'Public key already registered' });
-      }
+    const { overlayIpv4, overlayIpv6 } = await allocateNextVip(pool);
 
-      const { overlayIpv4, overlayIpv6 } = await allocateNextVip(pool);
+    const lat = latitude !== undefined ? parseFloat(latitude) : nodeCountry === 'US' ? 38.9072 : 50.1109;
+    const lon = longitude !== undefined ? parseFloat(longitude) : nodeCountry === 'US' ? -77.0369 : 8.6821;
 
-      const lat = latitude !== undefined ? parseFloat(latitude) : nodeCountry === 'US' ? 38.9072 : 50.1109;
-      const lon = longitude !== undefined ? parseFloat(longitude) : nodeCountry === 'US' ? -77.0369 : 8.6821;
-
-      await pool.query(
-        `
-        INSERT INTO nodes (
-          id, user_id, name, public_key, overlay_ipv4, overlay_ipv6,
-          role, ip_class, country_code, city, asn, endpoints,
-          onion_routing_enabled, onion_hops, kill_switch_enabled, is_healthy, is_quarantined, latency_ms,
-          longitude, latitude, metadata
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6,
-          $7, $8, $9, $10, $11, $12::jsonb,
-          $13, $14, $15, TRUE, FALSE, 15.0,
-          $16, $17, $18::jsonb
-        )
-      `,
-        [
-          nodeId,
-          req.user.id,
-          name.trim(),
-          finalPubKey,
-          overlayIpv4,
-          overlayIpv6,
-          nodeRole,
-          nodeIpClass,
-          nodeCountry,
-          city || '',
-          asn || 0,
-          JSON.stringify(endpointsArray),
-          onionRouting,
-          hops,
-          killSwitch,
-          lon,
-          lat,
-          JSON.stringify(metadata || {})
-        ]
-      );
-
-      const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [nodeId]);
-      createdNode = formatNode(nodeRes.rows[0]);
-    } else {
-      const db = getDatabase();
-      const existingKey = db.prepare('SELECT id FROM nodes WHERE public_key = ?').get(finalPubKey);
-      if (existingKey) {
-        return res.status(409).json({ error: 'Public key already registered' });
-      }
-
-      const { overlayIpv4, overlayIpv6 } = await allocateNextVip(db);
-
-      db.prepare(
-        `
-        INSERT INTO nodes (
-          id, user_id, name, public_key, overlay_ipv4, overlay_ipv6,
-          role, ip_class, country_code, city, asn, endpoints,
-          onion_routing_enabled, onion_hops, kill_switch_enabled, is_healthy, is_quarantined, latency_ms
-        ) VALUES (
-          ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, 1, 0, 15.0
-        )
+    await pool.query(
       `
-      ).run(
+      INSERT INTO nodes (
+        id, user_id, organization_id, name, public_key, overlay_ipv4, overlay_ipv6,
+        role, ip_class, country_code, city, asn, endpoints,
+        onion_routing_enabled, onion_hops, kill_switch_enabled, is_healthy, is_quarantined, latency_ms,
+        longitude, latitude, metadata
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7,
+        $8, $9, $10, $11, $12, $13::jsonb,
+        $14, $15, $16, TRUE, FALSE, 15.0,
+        $17, $18, $19::jsonb
+      )
+    `,
+      [
         nodeId,
         req.user.id,
+        orgId,
         name.trim(),
         finalPubKey,
         overlayIpv4,
@@ -275,26 +260,32 @@ router.post('/', async (req, res, next) => {
         city || '',
         asn || 0,
         JSON.stringify(endpointsArray),
-        onionRouting ? 1 : 0,
+        onionRouting,
         hops,
-        killSwitch ? 1 : 0
-      );
+        killSwitch,
+        lon,
+        lat,
+        JSON.stringify(metadata || {})
+      ]
+    );
 
-      createdNode = formatNode(db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId));
-    }
+    const createdRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [nodeId]);
+    const createdNode = formatNode(createdRes.rows[0]);
+
+    // An added node has to appear in peer maps immediately.
+    await bumpNetmap();
 
     logAuditEvent({
-      eventType: 'NODE_REGISTER',
+      eventType: 'NODE_CREATE',
       severity: 'info',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
       targetId: nodeId,
       targetType: 'node',
-      message: `Node ${name} registered`,
+      message: `Node ${createdNode.name} (${nodeId}) created by ${req.user.username} in org ${orgId}`,
       ipAddress: req.ip
     });
 
-    // Broadcast real-time topology sync event
     await broadcastNodeEvent('NODE_REGISTER', createdNode, req.user);
 
     return res.status(201).json({ node: createdNode });
@@ -306,21 +297,13 @@ router.post('/', async (req, res, next) => {
 // 3. Get Node By ID
 router.get('/:id', async (req, res, next) => {
   try {
-    let node = null;
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const resNode = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
-      node = resNode.rows[0] || null;
-    } else {
-      const db = getDatabase();
-      node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id) || null;
-    }
+    const pool = getPgPool();
+    const resNode = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
+    const node = resNode.rows[0] || null;
 
-    if (!node) {
-      return res.status(404).json({ error: 'Node not found' });
-    }
-    if (req.user.role !== 'super-admin' && node.user_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access forbidden' });
+    const access = verifyNodeAccess(node, req.user, false);
+    if (!access.ok) {
+      return res.status(access.error).json({ error: access.message });
     }
     return res.status(200).json({ node: formatNode(node) });
   } catch (err) {
@@ -335,138 +318,69 @@ router.put('/:id', async (req, res, next) => {
       return res.status(400).json({ error: 'Missing update body' });
     }
 
-    let existing = null;
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
-      existing = nodeRes.rows[0] || null;
-    } else {
-      const db = getDatabase();
-      existing = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id) || null;
+    const pool = getPgPool();
+    const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
+    const existing = nodeRes.rows[0] || null;
+
+    const access = verifyNodeAccess(existing, req.user, true);
+    if (!access.ok) {
+      return res.status(access.error).json({ error: access.message });
     }
 
-    if (!existing) {
-      return res.status(404).json({ error: 'Node not found' });
+    const updates = [];
+    const params = [];
+    let pIdx = 1;
+
+    if (req.body.name) {
+      updates.push(`name = $${pIdx++}`);
+      params.push(req.body.name);
     }
-    if (req.user.role !== 'super-admin' && existing.user_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access forbidden' });
+    if (req.body.latency_ms !== undefined) {
+      updates.push(`latency_ms = $${pIdx++}`);
+      params.push(Number(req.body.latency_ms));
     }
-
-    let updatedNode = null;
-
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const updates = [];
-      const params = [];
-      let pIdx = 1;
-
-      if (req.body.name) {
-        updates.push(`name = $${pIdx++}`);
-        params.push(req.body.name);
+    if (req.body.is_healthy !== undefined) {
+      updates.push(`is_healthy = $${pIdx++}`);
+      params.push(Boolean(req.body.is_healthy));
+    }
+    if (req.body.role) {
+      updates.push(`role = $${pIdx++}`);
+      params.push(req.body.role);
+    }
+    if (req.body.kill_switch_enabled !== undefined) {
+      updates.push(`kill_switch_enabled = $${pIdx++}`);
+      params.push(Boolean(req.body.kill_switch_enabled));
+    }
+    if (req.body.onion_routing_enabled !== undefined) {
+      const on = Boolean(req.body.onion_routing_enabled);
+      updates.push(`onion_routing_enabled = $${pIdx++}`);
+      params.push(on);
+      updates.push(`onion_hops = $${pIdx++}`);
+      params.push(on ? 3 : 0);
+    } else if (req.body.onion_hops !== undefined) {
+      const hops = Number(req.body.onion_hops);
+      updates.push(`onion_routing_enabled = $${pIdx++}`);
+      params.push(hops > 0);
+      updates.push(`onion_hops = $${pIdx++}`);
+      params.push(hops);
+    }
+    if (req.body.status) {
+      if (req.body.status === 'quarantined') {
+        updates.push('is_quarantined = TRUE, is_healthy = FALSE');
+      } else if (req.body.status === 'active') {
+        updates.push('is_quarantined = FALSE, is_healthy = TRUE');
       }
-      if (req.body.latency_ms !== undefined) {
-        updates.push(`latency_ms = $${pIdx++}`);
-        params.push(Number(req.body.latency_ms));
-      }
-      if (req.body.is_healthy !== undefined) {
-        updates.push(`is_healthy = $${pIdx++}`);
-        params.push(Boolean(req.body.is_healthy));
-      }
-      if (req.body.role) {
-        updates.push(`role = $${pIdx++}`);
-        params.push(req.body.role);
-      }
-      if (req.body.kill_switch_enabled !== undefined) {
-        updates.push(`kill_switch_enabled = $${pIdx++}`);
-        params.push(Boolean(req.body.kill_switch_enabled));
-      }
-      if (req.body.onion_routing_enabled !== undefined) {
-        const on = Boolean(req.body.onion_routing_enabled);
-        updates.push(`onion_routing_enabled = $${pIdx++}`);
-        params.push(on);
-        updates.push(`onion_hops = $${pIdx++}`);
-        params.push(on ? 3 : 0);
-      } else if (req.body.onion_hops !== undefined) {
-        const hops = Number(req.body.onion_hops);
-        updates.push(`onion_routing_enabled = $${pIdx++}`);
-        params.push(hops > 0);
-        updates.push(`onion_hops = $${pIdx++}`);
-        params.push(hops);
-      }
-      if (req.body.status) {
-        if (req.body.status === 'quarantined') {
-          updates.push('is_quarantined = TRUE, is_healthy = FALSE');
-        } else if (req.body.status === 'active') {
-          updates.push('is_quarantined = FALSE, is_healthy = TRUE');
-        }
-      }
-
-      if (updates.length > 0) {
-        updates.push('updated_at = NOW()');
-        params.push(req.params.id);
-        await pool.query(`UPDATE nodes SET ${updates.join(', ')} WHERE id = $${pIdx}`, params);
-      }
-
-      const resUp = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
-      updatedNode = formatNode(resUp.rows[0]);
-    } else {
-      const db = getDatabase();
-      const updates = [];
-      const params = [];
-
-      if (req.body.name) {
-        updates.push('name = ?');
-        params.push(req.body.name);
-      }
-      if (req.body.latency_ms !== undefined) {
-        updates.push('latency_ms = ?');
-        params.push(Number(req.body.latency_ms));
-      }
-      if (req.body.is_healthy !== undefined) {
-        updates.push('is_healthy = ?');
-        params.push(req.body.is_healthy ? 1 : 0);
-      }
-      if (req.body.role) {
-        updates.push('role = ?');
-        params.push(req.body.role);
-      }
-      if (req.body.kill_switch_enabled !== undefined) {
-        updates.push('kill_switch_enabled = ?');
-        params.push(req.body.kill_switch_enabled ? 1 : 0);
-      }
-      if (req.body.onion_routing_enabled !== undefined) {
-        const on = req.body.onion_routing_enabled ? 1 : 0;
-        updates.push('onion_routing_enabled = ?');
-        params.push(on);
-        updates.push('onion_hops = ?');
-        params.push(on ? 3 : 0);
-      } else if (req.body.onion_hops !== undefined) {
-        const hops = Number(req.body.onion_hops);
-        updates.push('onion_routing_enabled = ?');
-        params.push(hops > 0 ? 1 : 0);
-        updates.push('onion_hops = ?');
-        params.push(hops);
-      }
-      if (req.body.status) {
-        if (req.body.status === 'quarantined') {
-          updates.push('is_quarantined = 1, is_healthy = 0');
-        } else if (req.body.status === 'active') {
-          updates.push('is_quarantined = 0, is_healthy = 1');
-        }
-      }
-
-      if (updates.length > 0) {
-        updates.push("updated_at = datetime('now')");
-        params.push(req.params.id);
-        db.prepare(`UPDATE nodes SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-      }
-
-      updatedNode = formatNode(db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id));
     }
 
-    // Quarantine and health decide who appears in whose peer set, so a change here
-    // has to reach the data plane. Without the bump the fleet keeps the peer until
-    // something unrelated moves the version.
+    if (updates.length > 0) {
+      updates.push('updated_at = NOW()');
+      params.push(req.params.id);
+      await pool.query(`UPDATE nodes SET ${updates.join(', ')} WHERE id = $${pIdx}`, params);
+    }
+
+    const resUp = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
+    const updatedNode = formatNode(resUp.rows[0]);
+
     if (req.body.status !== undefined || req.body.is_healthy !== undefined) {
       await bumpNetmap();
     }
@@ -482,35 +396,18 @@ router.put('/:id', async (req, res, next) => {
 // 5. Delete / Revoke Node
 router.delete('/:id', async (req, res, next) => {
   try {
-    let node = null;
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
-      node = nodeRes.rows[0] || null;
-      if (!node) {
-        return res.status(404).json({ error: 'Node not found' });
-      }
-      if (req.user.role !== 'super-admin' && node.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Access forbidden' });
-      }
+    const pool = getPgPool();
+    const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
+    const node = nodeRes.rows[0] || null;
 
-      await pool.query('DELETE FROM nodes WHERE id = $1', [req.params.id]);
-    } else {
-      const db = getDatabase();
-      node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id);
-      if (!node) {
-        return res.status(404).json({ error: 'Node not found' });
-      }
-      if (req.user.role !== 'super-admin' && node.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Access forbidden' });
-      }
-
-      db.prepare('DELETE FROM nodes WHERE id = ?').run(req.params.id);
+    const access = verifyNodeAccess(node, req.user, true);
+    if (!access.ok) {
+      return res.status(access.error).json({ error: access.message });
     }
 
+    await pool.query('DELETE FROM nodes WHERE id = $1', [req.params.id]);
     await NodeCredentialService.revokeNodeCredentials(req.params.id);
 
-    // A removed node has to disappear from every other node's peer set.
     await bumpNetmap();
 
     logAuditEvent({
@@ -532,29 +429,23 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
-// 7. Node Actions: ping, set_exit, quarantine, lift_quarantine, toggle_onion, set_onion
+// 6. Node Actions: ping, set_exit, quarantine, lift_quarantine, toggle_onion, set_onion
 router.post('/:id/action', async (req, res, next) => {
   try {
-    let node = null;
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
-      node = nodeRes.rows[0] || null;
-    } else {
-      const db = getDatabase();
-      node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id) || null;
-    }
-
-    if (!node) {
-      return res.status(404).json({ error: 'Node not found' });
-    }
-    if (req.user.role !== 'super-admin' && node.user_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access forbidden' });
-    }
+    const pool = getPgPool();
+    const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
+    const node = nodeRes.rows[0] || null;
 
     const { action } = req.body || {};
     if (!action) {
       return res.status(400).json({ error: 'Missing action parameter' });
+    }
+
+    // Ping is read-only, other actions are mutating
+    const isMutating = action !== 'ping';
+    const access = verifyNodeAccess(node, req.user, isMutating);
+    if (!access.ok) {
+      return res.status(access.error).json({ error: access.message });
     }
 
     if (action === 'ping') {
@@ -582,13 +473,7 @@ router.post('/:id/action', async (req, res, next) => {
     }
 
     if (action === 'set_exit') {
-      if (isPostgres()) {
-        const pool = getPgPool();
-        await pool.query("UPDATE nodes SET role = 'EXIT_BRIDGE', updated_at = NOW() WHERE id = $1", [node.id]);
-      } else {
-        const db = getDatabase();
-        db.prepare("UPDATE nodes SET role = 'EXIT_BRIDGE', updated_at = datetime('now') WHERE id = ?").run(node.id);
-      }
+      await pool.query("UPDATE nodes SET role = 'EXIT_BRIDGE', updated_at = NOW() WHERE id = $1", [node.id]);
 
       logAuditEvent({
         eventType: 'NODE_SET_EXIT',
@@ -628,23 +513,12 @@ router.post('/:id/action', async (req, res, next) => {
       }
 
       const hops = newVal ? 3 : 0;
-      let updatedRow = null;
-
-      if (isPostgres()) {
-        const pool = getPgPool();
-        await pool.query(
-          'UPDATE nodes SET onion_routing_enabled = $1, onion_hops = $2, updated_at = NOW() WHERE id = $3',
-          [newVal, hops, node.id]
-        );
-        const resUp = await pool.query('SELECT * FROM nodes WHERE id = $1', [node.id]);
-        updatedRow = resUp.rows[0];
-      } else {
-        const db = getDatabase();
-        db.prepare(
-          "UPDATE nodes SET onion_routing_enabled = ?, onion_hops = ?, updated_at = datetime('now') WHERE id = ?"
-        ).run(newVal ? 1 : 0, hops, node.id);
-        updatedRow = db.prepare('SELECT * FROM nodes WHERE id = ?').get(node.id);
-      }
+      await pool.query(
+        'UPDATE nodes SET onion_routing_enabled = $1, onion_hops = $2, updated_at = NOW() WHERE id = $3',
+        [newVal, hops, node.id]
+      );
+      const resUp = await pool.query('SELECT * FROM nodes WHERE id = $1', [node.id]);
+      const updatedRow = resUp.rows[0];
 
       logAuditEvent({
         eventType: 'NODE_ONION_TOGGLE',
@@ -677,35 +551,19 @@ router.post('/:id/action', async (req, res, next) => {
     if (action === 'quarantine') {
       const reason = req.body.reason || req.body.params?.reason || 'Manual security quarantine';
 
-      if (isPostgres()) {
-        const pool = getPgPool();
-        await pool.query(
-          `
-          UPDATE nodes SET
-            is_quarantined = TRUE,
-            is_healthy = FALSE,
-            quarantine_reason = $1,
-            updated_at = NOW()
-          WHERE id = $2
-        `,
-          [reason, node.id]
-        );
-      } else {
-        const db = getDatabase();
-        db.prepare(
-          `
-          UPDATE nodes SET
-            is_quarantined = 1,
-            is_healthy = 0,
-            quarantine_reason = ?,
-            updated_at = datetime('now')
-          WHERE id = ?
+      await pool.query(
         `
-        ).run(reason, node.id);
-      }
+        UPDATE nodes SET
+          is_quarantined = TRUE,
+          is_healthy = FALSE,
+          quarantine_reason = $1,
+          updated_at = NOW()
+        WHERE id = $2
+      `,
+        [reason, node.id]
+      );
 
       await NodeCredentialService.revokeNodeCredentials(node.id);
-
       await bumpNetmap();
 
       logAuditEvent({
@@ -731,32 +589,17 @@ router.post('/:id/action', async (req, res, next) => {
     }
 
     if (action === 'lift_quarantine') {
-      if (isPostgres()) {
-        const pool = getPgPool();
-        await pool.query(
-          `
-          UPDATE nodes SET
-            is_quarantined = FALSE,
-            is_healthy = TRUE,
-            quarantine_reason = NULL,
-            updated_at = NOW()
-          WHERE id = $1
-        `,
-          [node.id]
-        );
-      } else {
-        const db = getDatabase();
-        db.prepare(
-          `
-          UPDATE nodes SET
-            is_quarantined = 0,
-            is_healthy = 1,
-            quarantine_reason = NULL,
-            updated_at = datetime('now')
-          WHERE id = ?
+      await pool.query(
         `
-        ).run(node.id);
-      }
+        UPDATE nodes SET
+          is_quarantined = FALSE,
+          is_healthy = TRUE,
+          quarantine_reason = NULL,
+          updated_at = NOW()
+        WHERE id = $1
+      `,
+        [node.id]
+      );
 
       await bumpNetmap();
 

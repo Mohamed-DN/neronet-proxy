@@ -26,6 +26,7 @@ function hashSecret(secret) {
  */
 async function createPreAuthKey({
   ownerId,
+  organizationId = null,
   allowedRole = null,
   isReusable = false,
   maxUses = null,
@@ -43,13 +44,14 @@ async function createPreAuthKey({
 
   const expiresAt = expiresInHours ? new Date(Date.now() + expiresInHours * 3600 * 1000) : null;
   const effectiveMaxUses = isReusable ? (maxUses ? Number(maxUses) : null) : 1;
+  const orgId = organizationId || 'org-default';
 
   const pool = getPgPool();
   await pool.query(
     `INSERT INTO preauth_keys
-       (id, key_hash, key_prefix, owner_id, allowed_role, is_reusable, used_count, max_uses, expires_at, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, NOW())`,
-    [keyId, keyHash, keyPrefix, ownerId, allowedRole || null, Boolean(isReusable), effectiveMaxUses, expiresAt]
+       (id, key_hash, key_prefix, owner_id, organization_id, allowed_role, is_reusable, used_count, max_uses, expires_at, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, NOW())`,
+    [keyId, keyHash, keyPrefix, ownerId, orgId, allowedRole || null, Boolean(isReusable), effectiveMaxUses, expiresAt]
   );
 
   return {
@@ -57,6 +59,7 @@ async function createPreAuthKey({
     secret,
     key_prefix: keyPrefix,
     owner_id: ownerId,
+    organization_id: orgId,
     allowed_role: allowedRole || null,
     is_reusable: Boolean(isReusable),
     max_uses: effectiveMaxUses,
@@ -135,19 +138,24 @@ async function validateAndConsumePreAuthKey(secret, requestedRole = null, target
 }
 
 /**
- * Lists pre-auth keys scoped by user / super-admin.
+ * Lists pre-auth keys scoped by user / organization / super-admin.
  */
-async function listPreAuthKeys(userId, isSuperAdmin = false) {
+async function listPreAuthKeys(userId, isSuperAdmin = false, orgId = null) {
   const pool = getPgPool();
   let queryText = `
-    SELECT id, key_prefix, owner_id, allowed_role, is_reusable, used_count, max_uses, expires_at, revoked_at, created_at
+    SELECT id, key_prefix, owner_id, organization_id, allowed_role, is_reusable, used_count, max_uses, expires_at, revoked_at, created_at
     FROM preauth_keys
   `;
   const params = [];
 
   if (!isSuperAdmin) {
-    queryText += ' WHERE owner_id = $1';
-    params.push(userId);
+    if (orgId) {
+      queryText += ' WHERE organization_id = $1';
+      params.push(orgId);
+    } else {
+      queryText += ' WHERE owner_id = $1';
+      params.push(userId);
+    }
   }
   queryText += ' ORDER BY created_at DESC';
 
@@ -158,14 +166,19 @@ async function listPreAuthKeys(userId, isSuperAdmin = false) {
 /**
  * Revokes a pre-auth key.
  */
-async function revokePreAuthKey(keyId, userId, isSuperAdmin = false) {
+async function revokePreAuthKey(keyId, userId, isSuperAdmin = false, orgId = null) {
   const pool = getPgPool();
   let queryText = 'UPDATE preauth_keys SET revoked_at = NOW() WHERE id = $1';
   const params = [keyId];
 
   if (!isSuperAdmin) {
-    queryText += ' AND owner_id = $2';
-    params.push(userId);
+    if (orgId) {
+      queryText += ' AND organization_id = $2';
+      params.push(orgId);
+    } else {
+      queryText += ' AND owner_id = $2';
+      params.push(userId);
+    }
   }
 
   const res = await pool.query(queryText, params);

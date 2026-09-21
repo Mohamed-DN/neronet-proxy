@@ -30,7 +30,7 @@ describe('PostgreSQL Schema & Migration Verification', () => {
     for (const file of files) {
       assert.ok(applied.has(file), `Migration ${file} is not recorded in _migrations`);
     }
-    assert.strictEqual(applied.size >= 16, true, 'At least 16 migrations must be applied');
+    assert.strictEqual(applied.size >= 17, true, 'At least 17 migrations must be applied');
   });
 
   it('declares the expected production schema tables', async () => {
@@ -43,6 +43,8 @@ describe('PostgreSQL Schema & Migration Verification', () => {
 
     const expectedTables = [
       '_migrations',
+      'organizations',
+      'memberships',
       'users',
       'nodes',
       'audit_events',
@@ -88,6 +90,7 @@ describe('PostgreSQL Schema & Migration Verification', () => {
     assert.ok(userCols.has('totp_secret'), 'users.totp_secret missing');
     assert.ok(userCols.has('totp_enabled'), 'users.totp_enabled missing');
     assert.ok(userCols.has('totp_recovery_codes'), 'users.totp_recovery_codes missing');
+    assert.ok(userCols.has('organization_id'), 'users.organization_id missing');
 
     // Migration 011 removed tier columns
     assert.ok(!userCols.has('tier'), 'users.tier must be absent');
@@ -101,6 +104,7 @@ describe('PostgreSQL Schema & Migration Verification', () => {
     `);
     const nodeCols = new Map(nodeColsRes.rows.map((r) => [r.column_name, r.data_type]));
 
+    assert.ok(nodeCols.has('organization_id'), 'nodes.organization_id missing');
     assert.ok(nodeCols.has('latitude'), 'nodes.latitude missing');
     assert.ok(nodeCols.has('longitude'), 'nodes.longitude missing');
     assert.strictEqual(nodeCols.get('onion_routing_enabled'), 'boolean');
