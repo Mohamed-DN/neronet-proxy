@@ -75,7 +75,7 @@ jobs:
     timeout-minutes: 30
     services:
       valkey:
-        image: valkey/valkey:7.2-alpine
+        image: valkey/valkey:9.1-alpine
         ports:
           - 6379:6379
         options: >-

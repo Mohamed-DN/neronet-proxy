@@ -48,17 +48,9 @@ x-derp: &derp
   entrypoint: ["/bin/sovereign-derp-relay"]
 
 services:
-  # 1. PostgreSQL 16 with PostGIS & pgvector
+  # 1. PostgreSQL 18
   postgres:
-    # Stays on the PostGIS image on purpose, even though migration 004 removes
-    # every use of PostGIS. An existing database still holds coordinates inside a
-    # geometry column, and reading them out requires a loadable PostGIS library.
-    # Switching this image before migration 004 has run makes ST_X/ST_Y unavailable
-    # and the migration will refuse to proceed rather than drop the column.
-    #
-    # Once 004 shows in the _migrations table, this can safely become
-    # postgres:16-alpine -- nothing in the schema references PostGIS any more.
-    image: postgis/postgis:16-3.4-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       - POSTGRES_USER=neronet
@@ -75,9 +67,9 @@ services:
     networks:
       - neronet-isolated-mesh
 
-  # 2. Valkey 7 (Redis-compatible in-memory state bus and session store)
+  # 2. Valkey 9.1 (Redis-compatible in-memory state bus and session store)
   valkey:
-    image: valkey/valkey:7.2-alpine
+    image: valkey/valkey:9.1-alpine
     restart: unless-stopped
     volumes:
       - valkey_data:/data
