@@ -1,5 +1,7 @@
 const { getPgPool } = require('../db/index');
 const logger = require('./logger');
+const { AuditChainService } = require('../services/AuditChainService');
+const { SiemExporter } = require('../services/SiemExporter');
 
 async function logAuditEvent({
   eventType,
@@ -16,39 +18,26 @@ async function logAuditEvent({
   severity = normaliseSeverity(severity);
 
   try {
-    const pool = getPgPool();
-    await pool.query(
-      `
-      INSERT INTO audit_events (
-        event_type, severity, actor_user_id, actor_username,
-        target_id, target_type, message, ip_address, user_agent, metadata_json
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
-      )
-    `,
-      [
-        eventType,
-        severity,
-        actorUserId,
-        actorUsername,
-        targetId,
-        targetType,
-        message,
-        ipAddress,
-        userAgent,
-        typeof metadata === 'object' ? JSON.stringify(metadata) : metadata
-      ]
-    );
+    const row = await AuditChainService.appendEvent({
+      eventType,
+      severity,
+      actorUserId,
+      actorUsername,
+      targetId,
+      targetType,
+      message,
+      ipAddress,
+      userAgent,
+      metadata
+    });
+
+    // Asynchronously forward to configured SIEM destinations
+    SiemExporter.forwardEvent(row).catch((err) => {
+      logger.warn('Asynchronous SIEM forward error: ' + err.message);
+    });
+
+    return row;
   } catch (err) {
-    // A failure here is not a cosmetic one. This function named the column
-    // `metadata` on PostgreSQL where the table defines `metadata_json`, so every
-    // write failed and was swallowed: the deployment ran for weeks with an audit
-    // ledger that recorded nothing, while the console showed an empty log as though
-    // nothing had happened. The SQLite branch used the right name, so the tests
-    // passed throughout.
-    //
-    // The count is what makes the next such failure visible: /api/health reports it
-    // rather than leaving it in a log nobody reads.
     failedWrites += 1;
     lastFailure = { at: new Date().toISOString(), reason: err.message };
     logger.error('Failed to write audit event:', err.message);

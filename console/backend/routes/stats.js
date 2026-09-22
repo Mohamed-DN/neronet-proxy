@@ -426,4 +426,78 @@ router.get('/audit-logs', auditLogsHandler);
 router.get('/events', auditLogsHandler);
 router.get('/logs', auditLogsHandler);
 
+// WP-301: Cryptographic Chain Verification Endpoint
+router.get('/verify', async (req, res, next) => {
+  try {
+    const { AuditChainService } = require('../services/AuditChainService');
+    const fromSeq = req.query.from ? Number(req.query.from) : 1;
+    const toSeq = req.query.to ? Number(req.query.to) : null;
+
+    const report = await AuditChainService.verifyChain({
+      fromSequence: fromSeq,
+      toSequence: toSeq
+    });
+
+    return res.status(200).json({ verification: report });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// WP-301: Checkpoints Endpoints
+router.post('/checkpoints', async (req, res, next) => {
+  try {
+    const { AuditChainService } = require('../services/AuditChainService');
+    const checkpoint = await AuditChainService.createCheckpoint();
+    return res.status(201).json({ checkpoint });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/checkpoints', async (req, res, next) => {
+  try {
+    const { AuditChainService } = require('../services/AuditChainService');
+    const pool = getPgPool();
+    const qRes = await pool.query('SELECT * FROM audit_checkpoints ORDER BY created_at DESC LIMIT 50');
+    return res.status(200).json({
+      checkpoints: qRes.rows,
+      public_key: Buffer.from(AuditChainService.getPublicKey()).toString('base64')
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// WP-301: SIEM Destinations
+router.get('/siem', async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const qRes = await pool.query('SELECT * FROM audit_siem_destinations ORDER BY created_at DESC');
+    return res.status(200).json({ destinations: qRes.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/siem', async (req, res, next) => {
+  try {
+    const { id, name, protocol, endpoint, format = 'rfc5424' } = req.body || {};
+    if (!name || !protocol || !endpoint) {
+      return res.status(400).json({ error: 'name, protocol, and endpoint are required' });
+    }
+    const destId = id || `siem-${Date.now()}`;
+    const pool = getPgPool();
+    const qRes = await pool.query(
+      `INSERT INTO audit_siem_destinations (id, name, protocol, endpoint, format, enabled)
+       VALUES ($1, $2, $3, $4, $5, TRUE)
+       RETURNING *`,
+      [destId, name, protocol, endpoint, format]
+    );
+    return res.status(201).json({ destination: qRes.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
