@@ -16,6 +16,7 @@ import (
 
 	"github.com/sovereign/proxy/v4/pkg/acl"
 	"github.com/sovereign/proxy/v4/pkg/control"
+	"github.com/sovereign/proxy/v4/pkg/crypto/rosenpass"
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
 	"github.com/sovereign/proxy/v4/pkg/derp"
 	"github.com/sovereign/proxy/v4/pkg/nat"
@@ -65,6 +66,9 @@ type netmapManager struct {
 	// fallback, when non-nil, is the DERP relay fallback manager. It is updated
 	// with fresh relay URLs every time a netmap is applied.
 	fallback *derp.FallbackManager
+
+	// pq, when non-nil, is the Rosenpass post-quantum PSK rotation manager.
+	pq *rosenpass.Manager
 
 	mu sync.Mutex
 	// version is the version of the document currently applied. Zero means none has
@@ -190,6 +194,13 @@ func newNetmapManager(
 		fallback:   fb,
 		revoked:    make(map[string]bool),
 	}
+}
+
+// SetPQManager attaches the Rosenpass post-quantum PSK manager.
+func (m *netmapManager) SetPQManager(pq *rosenpass.Manager) {
+	m.mu.Lock()
+	m.pq = pq
+	m.mu.Unlock()
 }
 
 // relayURLsFromNetmap extracts the WebSocket URL for every relay announced in
@@ -323,6 +334,19 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 		if len(urls) > 0 {
 			log.Printf("[SOVEREIGN-NODE] DERP fallback relay list updated: %d relay(s)", len(urls))
 		}
+	}
+
+	// Propagate active peers to the Rosenpass post-quantum PSK manager so
+	// rotating pre-shared keys are continuously derived and installed.
+	m.mu.Lock()
+	pq := m.pq
+	m.mu.Unlock()
+	if pq != nil {
+		keys := make([]string, 0, len(netmap.Peers))
+		for _, p := range netmap.Peers {
+			keys = append(keys, p.PublicKeyHex)
+		}
+		pq.SetPeers(keys)
 	}
 
 	if err := m.persist(netmap, fetchedAt); err != nil {

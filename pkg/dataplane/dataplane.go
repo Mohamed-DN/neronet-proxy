@@ -337,6 +337,35 @@ func (d *Device) SetPeers(peers []Peer) error {
 	return nil
 }
 
+// UpdatePeerPSK installs or rotates the WireGuard pre-shared key for a specific peer.
+// This is called by the post-quantum key exchange (Rosenpass) every rotation interval (2 minutes).
+func (d *Device) UpdatePeerPSK(peerPubHex string, pskHex string) error {
+	d.mu.Lock()
+	closed := d.closed
+	d.mu.Unlock()
+	if closed {
+		return ErrClosed
+	}
+
+	pubKey := strings.ToLower(strings.TrimSpace(peerPubHex))
+	if _, err := decodeKey(pubKey); err != nil {
+		return fmt.Errorf("dataplane: invalid peer public key: %w", err)
+	}
+
+	psk := strings.ToLower(strings.TrimSpace(pskHex))
+	if psk != "" {
+		if _, err := decodeKey(psk); err != nil {
+			return fmt.Errorf("dataplane: invalid preshared key: %w", err)
+		}
+	}
+
+	uapi := fmt.Sprintf("public_key=%s\npreshared_key=%s\n", pubKey, psk)
+	if err := d.wg.IpcSet(uapi); err != nil {
+		return fmt.Errorf("dataplane: updating peer %.8s PSK: %w", pubKey, err)
+	}
+	return nil
+}
+
 // DialContext opens a connection to an overlay address through the tunnel.
 func (d *Device) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	d.mu.Lock()
