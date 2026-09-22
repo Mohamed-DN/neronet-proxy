@@ -102,7 +102,7 @@ class OrgService {
   /**
    * Update an organization
    */
-  static async updateOrganization(orgId, { name, default_policy, max_netmap_staleness_seconds, profile }, actor) {
+  static async updateOrganization(orgId, { name, default_policy, max_netmap_staleness_seconds, profile, default_transport, default_stealth_config }, actor) {
     const pool = getPgPool();
     const updates = [];
     const params = [];
@@ -129,6 +129,17 @@ class OrgService {
       }
       updates.push(`profile = $${idx++}`);
       params.push(profile);
+    }
+    if (default_transport) {
+      if (!['wireguard', 'amneziawg', 'openvpn', 'vless'].includes(default_transport)) {
+        throw new Error('Invalid default_transport: must be wireguard, amneziawg, openvpn, or vless');
+      }
+      updates.push(`default_transport = $${idx++}`);
+      params.push(default_transport);
+    }
+    if (default_stealth_config !== undefined) {
+      updates.push(`default_stealth_config = $${idx++}`);
+      params.push(default_stealth_config ? JSON.stringify(default_stealth_config) : null);
     }
 
     if (updates.length === 0) {

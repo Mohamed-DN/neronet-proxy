@@ -33,6 +33,8 @@ import (
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
+
+	"github.com/sovereign/proxy/v4/pkg/dataplane/stealth"
 )
 
 // Mode selects how the tunnel is attached to an IP stack.
@@ -114,6 +116,12 @@ type Config struct {
 
 	// Logf receives wireguard-go log lines. Nil discards them.
 	Logf func(format string, args ...any)
+
+	// Stealth, when non-nil, enables AmneziaWG obfuscation and DPI protection.
+	Stealth *stealth.Config
+
+	// TransportMgr coordinates per-peer multi-protocol transport selection.
+	TransportMgr *stealth.TransportManager
 }
 
 func (c *Config) applyDefaults() {
@@ -146,6 +154,12 @@ type Peer struct {
 	// PresharedKey is hex encoded and optional. Rosenpass will drive this field;
 	// nothing sets it yet.
 	PresharedKey string `json:"preshared_key,omitempty"`
+
+	// Transport specifies the peer's preferred transport protocol ("wireguard", "amneziawg", "openvpn", "vless").
+	Transport string `json:"transport,omitempty"`
+
+	// Stealth carries AmneziaWG parameters when Transport is "amneziawg".
+	Stealth *stealth.Config `json:"stealth,omitempty"`
 }
 
 func (p Peer) validate() error {
@@ -198,8 +212,9 @@ type Device struct {
 	addresses []netip.Prefix
 	filter    *filteredTUN
 
-	wg      *device.Device
-	backing backend
+	wg           *device.Device
+	backing      backend
+	transportMgr *stealth.TransportManager
 
 	mu     sync.Mutex
 	closed bool
@@ -246,7 +261,15 @@ func New(cfg Config) (*Device, error) {
 	}
 	logger := newLogger(level, cfg.Logf)
 
-	wgDev := device.NewDevice(filtered, conn.NewDefaultBind(), logger)
+	bind := conn.NewDefaultBind()
+	if cfg.Stealth != nil {
+		obf, err := stealth.NewObfuscator(*cfg.Stealth)
+		if err == nil {
+			bind = newStealthBind(bind, obf, cfg.TransportMgr)
+		}
+	}
+
+	wgDev := device.NewDevice(filtered, bind, logger)
 
 	uapi := fmt.Sprintf("private_key=%s\nlisten_port=%d\n",
 		hex.EncodeToString(cfg.PrivateKey[:]), cfg.ListenPort)
@@ -263,11 +286,12 @@ func New(cfg Config) (*Device, error) {
 	}
 
 	return &Device{
-		mode:      cfg.Mode,
-		addresses: append([]netip.Prefix(nil), cfg.Addresses...),
-		filter:    filtered,
-		wg:        wgDev,
-		backing:   back,
+		mode:         cfg.Mode,
+		addresses:    append([]netip.Prefix(nil), cfg.Addresses...),
+		filter:       filtered,
+		wg:           wgDev,
+		backing:      back,
+		transportMgr: cfg.TransportMgr,
 	}, nil
 }
 
@@ -334,6 +358,17 @@ func (d *Device) SetPeers(peers []Peer) error {
 	if err := d.wg.IpcSet(b.String()); err != nil {
 		return fmt.Errorf("dataplane: applying %d peer(s): %w", len(peers), err)
 	}
+
+	if d.transportMgr != nil {
+		for _, p := range peers {
+			var st stealth.Config
+			if p.Stealth != nil {
+				st = *p.Stealth
+			}
+			d.transportMgr.SetPeerTransport(p.PublicKey, p.Transport, st)
+		}
+	}
+
 	return nil
 }
 

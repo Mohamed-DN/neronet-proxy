@@ -263,6 +263,20 @@ type NetmapRequest struct {
 	Version uint64 `json:"version,omitempty"`
 }
 
+// StealthConfig defines the AmneziaWG stealth obfuscation parameters.
+type StealthConfig struct {
+	Jc       uint32 `json:"jc,omitempty"`
+	Jmin     uint32 `json:"jmin,omitempty"`
+	Jmax     uint32 `json:"jmax,omitempty"`
+	S1       uint32 `json:"s1,omitempty"`
+	S2       uint32 `json:"s2,omitempty"`
+	H1       uint32 `json:"h1,omitempty"`
+	H2       uint32 `json:"h2,omitempty"`
+	H3       uint32 `json:"h3,omitempty"`
+	H4       uint32 `json:"h4,omitempty"`
+	Disguise string `json:"disguise,omitempty"`
+}
+
 // NetmapSelf is how this node is addressed inside the overlay.
 type NetmapSelf struct {
 	OverlayIPv4 string `json:"overlay_ipv4"`
@@ -274,6 +288,12 @@ type NetmapSelf struct {
 
 	// ListenPort is the UDP port every node in the deployment binds for WireGuard.
 	ListenPort uint16 `json:"listen_port"`
+
+	// Transport is the active transport protocol ("wireguard", "amneziawg", "openvpn", "vless").
+	Transport string `json:"transport,omitempty"`
+
+	// Stealth carries AmneziaWG obfuscation parameters when Transport is "amneziawg".
+	Stealth *StealthConfig `json:"stealth,omitempty"`
 }
 
 // NetmapPeer is one node this node may talk to.
@@ -297,6 +317,12 @@ type NetmapPeer struct {
 	DERPRegion *string `json:"derp_region" jsonschema:"nullable"`
 
 	KeepaliveSeconds uint16 `json:"keepalive_seconds"`
+
+	// Transport is the transport protocol to communicate with this peer.
+	Transport string `json:"transport,omitempty"`
+
+	// Stealth carries AmneziaWG parameters when communicating with this peer over "amneziawg".
+	Stealth *StealthConfig `json:"stealth,omitempty"`
 }
 
 // NetmapResponse is the document. When Unchanged is true the node already holds this

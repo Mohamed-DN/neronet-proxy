@@ -483,9 +483,9 @@ function sortAllowedIPs(list) {
  */
 async function buildNetmap(nodeId) {
   const selfRows = await query(
-    `SELECT id, overlay_ipv4, overlay_ipv6, is_quarantined FROM nodes WHERE id = $1`,
+    `SELECT id, overlay_ipv4, overlay_ipv6, is_quarantined, transport, stealth_config FROM nodes WHERE id = $1`,
     [nodeId],
-    `SELECT id, overlay_ipv4, overlay_ipv6, is_quarantined FROM nodes WHERE id = ?`,
+    `SELECT id, overlay_ipv4, overlay_ipv6, is_quarantined, transport, stealth_config FROM nodes WHERE id = ?`,
     [nodeId]
   );
 
@@ -510,11 +510,11 @@ async function buildNetmap(nodeId) {
   const candidates = self.is_quarantined
     ? []
     : await query(
-        `SELECT id, public_key, overlay_ipv4, overlay_ipv6, endpoints
+        `SELECT id, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config
            FROM nodes
           WHERE id <> $1 AND is_quarantined = FALSE AND is_healthy = TRUE`,
         [nodeId],
-        `SELECT id, public_key, overlay_ipv4, overlay_ipv6, endpoints
+        `SELECT id, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config
            FROM nodes
           WHERE id <> ? AND is_quarantined = 0 AND is_healthy = 1`,
         [nodeId]
@@ -553,7 +553,7 @@ async function buildNetmap(nodeId) {
       .endpoints.filter((e) => e.protocol === 'udp')
       .map((e) => e._rendered);
 
-    peers.push({
+    const peerEntry = {
       node_id: row.id,
       public_key_hex: keyHex.toLowerCase(),
       allowed_ips: sortAllowedIPs(allowed),
@@ -562,18 +562,37 @@ async function buildNetmap(nodeId) {
       // says so; an invented "eu-central" would send every node to one relay.
       derp_region: null,
       keepalive_seconds: KEEPALIVE_SECONDS
-    });
+    };
+
+    if (row.transport && row.transport !== 'wireguard') {
+      peerEntry.transport = row.transport;
+    }
+    const peerStealth = parseJsonColumn(row.stealth_config, null);
+    if (peerStealth) {
+      peerEntry.stealth = peerStealth;
+    }
+
+    peers.push(peerEntry);
+  }
+
+  const selfObj = {
+    overlay_ipv4: self.overlay_ipv4,
+    overlay_ipv6: self.overlay_ipv6,
+    mtu: OVERLAY_MTU,
+    listen_port: LISTEN_PORT
+  };
+  if (self.transport && self.transport !== 'wireguard') {
+    selfObj.transport = self.transport;
+  }
+  const selfStealth = parseJsonColumn(self.stealth_config, null);
+  if (selfStealth) {
+    selfObj.stealth = selfStealth;
   }
 
   return {
     version,
     unchanged: false,
-    self: {
-      overlay_ipv4: self.overlay_ipv4,
-      overlay_ipv6: self.overlay_ipv6,
-      mtu: OVERLAY_MTU,
-      listen_port: LISTEN_PORT
-    },
+    self: selfObj,
     peers,
     acl: policy,
     routes: routeList,

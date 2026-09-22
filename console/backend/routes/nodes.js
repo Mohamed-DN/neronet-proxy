@@ -77,6 +77,8 @@ function formatNode(row) {
     posture_checks: posture,
     posture_status: derivePostureStatus(posture),
     metadata,
+    transport: row.transport || 'wireguard',
+    stealth_config: typeof row.stealth_config === 'string' ? JSON.parse(row.stealth_config) : (row.stealth_config || null),
     last_heartbeat: row.last_heartbeat,
     last_seen_at: row.last_seen_at || row.last_heartbeat || row.created_at,
     created_at: row.created_at,
@@ -672,6 +674,47 @@ router.post('/:id/action', async (req, res, next) => {
           is_quarantined: false,
           status: 'active'
         }
+      });
+    }
+
+    if (action === 'set_transport') {
+      const allowedTransports = ['wireguard', 'amneziawg', 'openvpn', 'vless'];
+      const transport = req.body.transport || req.body.params?.transport;
+      if (!transport || !allowedTransports.includes(transport)) {
+        return res.status(400).json({ error: `Invalid transport. Allowed: ${allowedTransports.join(', ')}` });
+      }
+
+      const stealth_config = req.body.stealth_config || req.body.params?.stealth_config || null;
+
+      await pool.query(
+        `UPDATE nodes SET transport = $1, stealth_config = $2, updated_at = NOW() WHERE id = $3`,
+        [transport, stealth_config ? JSON.stringify(stealth_config) : null, node.id]
+      );
+
+      await bumpNetmap();
+
+      logAuditEvent({
+        eventType: 'NODE_SET_TRANSPORT',
+        severity: 'info',
+        actorUserId: req.user.id,
+        actorUsername: req.user.username,
+        targetId: node.id,
+        targetType: 'node',
+        message: `Node ${node.id} transport set to ${transport}`,
+        ipAddress: req.ip,
+        metadata: { transport, stealth_config }
+      });
+
+      const updatedRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [node.id]);
+      const formatted = formatNode(updatedRes.rows[0]);
+
+      await broadcastNodeEvent('NODE_ACTION_TRANSPORT', formatted, req.user);
+
+      return res.status(200).json({
+        success: true,
+        transport,
+        stealth_config,
+        node: formatted
       });
     }
 
