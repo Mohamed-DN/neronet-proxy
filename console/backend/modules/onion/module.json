@@ -1,0 +1,10 @@
+{
+  "id": "onion",
+  "version": 1,
+  "name": "Onion Routing & Circuit Construction",
+  "description": "3-hop layered spherical onion circuit path selection",
+  "requires": ["core>=1"],
+  "routes": ["routes.js"],
+  "permissions": ["onion.circuit"],
+  "auditEvents": ["CIRCUIT_*", "NODE_ONION_*"]
+}

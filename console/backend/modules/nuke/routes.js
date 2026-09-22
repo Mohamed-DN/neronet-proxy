@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken, requireRole } = require('../middleware/auth');
-const NukeEngine = require('../services/NukeEngine');
-const CanaryService = require('../services/CanaryService');
+const { authenticateToken, requireRole } = require('../../middleware/auth');
+const NukeEngine = require('./NukeEngine');
+const CanaryService = require('../../services/CanaryService');
 const bcrypt = require('bcryptjs');
-const { isPostgres, getPgPool, getDatabase } = require('../db/index');
-const { logAuditEvent } = require('../utils/audit');
-const { dmsUnlockLimiter } = require('../middleware/rateLimit');
+const { isPostgres, getPgPool, getDatabase } = require('../../db/index');
+const { logAuditEvent } = require('../../utils/audit');
+const { dmsUnlockLimiter } = require('../../middleware/rateLimit');
 
 // =============================================================================
 // TIER 3: Warrant Canary

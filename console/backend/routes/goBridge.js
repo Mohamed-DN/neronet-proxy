@@ -30,7 +30,6 @@ const { buildPostureDocument } = require('../utils/posture');
 const HeartbeatBuffer = require('../services/HeartbeatBuffer');
 const AclEngine = require('../services/AclEngine');
 const RouteEngine = require('../services/RouteEngine');
-const CircuitEngine = require('../services/CircuitEngine');
 const RevocationEngine = require('../services/RevocationEngine');
 const NetmapService = require('../services/NetmapService');
 const ControlPlaneKeyService = require('../services/ControlPlaneKeyService');
@@ -807,36 +806,7 @@ router.post('/netmap', validateRequest('NetmapRequest'), async (req, res) => {
   }
 });
 
-// POST /v4/control/circuit
-//
-// Onion circuit path selection. pkg/routing.Build3HopCircuit has always been able to
-// seal a cell for three hops; this is the control plane telling a node which three.
-// Without it the differentiating feature was unreachable from a deployment.
-router.post('/circuit', validateRequest('CircuitRequest'), async (req, res) => {
-  try {
-    const auth = await checkNodeAuth(req);
-    if (!auth.ok) {
-      return res.status(auth.status).json({ error: auth.error });
-    }
-
-    // CircuitRequest carries no node id, so the requester is identified only when a
-    // caller supplies one. Without it the requester cannot be excluded from its own
-    // path -- worth knowing, and worth adding to the protocol.
-    const circuit = await CircuitEngine.buildCircuit({
-      requesterNodeId: String(req.body.node_id || '').trim() || null,
-      targetCountry: req.body.target_country,
-      hopCount: req.body.hop_count
-    });
-
-    return res.json(circuit);
-  } catch (err) {
-    if (err instanceof CircuitEngine.CircuitError) {
-      return res.status(err.status).json({ error: err.message });
-    }
-    logger.error(`[GO-BRIDGE] Circuit build failed: ${err.message}`);
-    return res.status(500).json({ error: err.message });
-  }
-});
+// Note: /v4/control/circuit is handled by the discrete onion feature module (WP-107)
 
 /**
  * Compare what a re-registration asks for against what is stored.

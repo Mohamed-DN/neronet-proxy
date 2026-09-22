@@ -29,10 +29,10 @@ const riskRoutes = require('./routes/risk');
 const aclRoutes = require('./routes/acl');
 const geofencingRoutes = require('./routes/geofencing');
 const cloudPcRoutes = require('./routes/cloudPc');
-const nukeRoutes = require('./routes/nuke');
 const canaryRoutes = require('./routes/canary');
 const preauthKeysRoutes = require('./routes/preauthKeys');
 const organizationsRoutes = require('./routes/organizations');
+const ModuleLoader = require('./services/ModuleLoader');
 const securityHeaders = require('./middleware/securityHeaders');
 const { requireFeature } = require('./middleware/featureFlag');
 const { apiLimiter, enrolmentLimiter } = require('./middleware/rateLimit');
@@ -86,13 +86,11 @@ function createApp() {
   app.use('/api/cloud-pc', requireFeature('cloud_pc'), cloudPcRoutes);
   app.use('/api/preauth-keys', preauthKeysRoutes);
   app.use('/api/organizations', organizationsRoutes);
-  app.use('/api/nuke', nukeRoutes);
-  // The nuke router is mounted at /api/nuke and nowhere else. It used to be mounted
-  // at the root as well, so that the warrant canary could be fetched from
-  // /.well-known/canary.txt -- which also published every self-destruct and dead
-  // man's switch route outside /api, and therefore outside the API rate limiter.
-  // Only the canary needs a root address; it keeps its /api/nuke address too,
-  // because that is the one /api/nuke/state advertises and the console follows.
+
+  // Load and mount discrete feature modules (WP-107: nuke, onion, deniability)
+  ModuleLoader.loadModules(app);
+
+  // The canary router remains accessible at /api/nuke/canary.txt and /.well-known/canary.txt
   app.use('/api/nuke', canaryRoutes);
   app.use('/', canaryRoutes);
 

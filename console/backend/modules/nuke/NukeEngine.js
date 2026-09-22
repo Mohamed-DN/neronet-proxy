@@ -3,11 +3,11 @@ const bcrypt = require('bcryptjs');
 const http = require('http');
 const https = require('https');
 const { v4: uuidv4 } = require('uuid');
-const { isPostgres, getPgPool, getDatabase } = require('../db/index');
-const { blacklistToken, publishTopologyEvent } = require('../db/valkey');
-const { logAuditEvent } = require('../utils/audit');
-const { generateCanary, invalidateCanary } = require('./CanaryService');
-const logger = require('../utils/logger');
+const { isPostgres, getPgPool, getDatabase } = require('../../db/index');
+const { blacklistToken, publishTopologyEvent } = require('../../db/valkey');
+const { logAuditEvent } = require('../../utils/audit');
+const { generateCanary, invalidateCanary } = require('../../services/CanaryService');
+const logger = require('../../utils/logger');
 
 // In-memory state store for fallback and rapid O(1) checks
 const inMemoryDms = new Map(); // key: `${userId}:${switchTier}` -> dmsRecord

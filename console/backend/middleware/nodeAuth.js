@@ -60,6 +60,64 @@ function requireNodeCredential(req, res, next) {
     });
 }
 
+/**
+ * Validates request authentication for node control plane endpoints.
+ * Supports both Node Credential Bearer tokens and legacy enrolment token.
+ */
+async function checkNodeAuth(req) {
+  const header = String(req.get('authorization') || '').trim();
+  let bearer = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
+  if (!bearer && req.body && req.body.credential) {
+    bearer = String(req.body.credential).trim();
+  }
+  if (!bearer && req.body && req.body.auth_token) {
+    bearer = String(req.body.auth_token).trim();
+  }
+
+  // 1. Node Credential (nnt1_...)
+  if (bearer && bearer.startsWith('nnt1_')) {
+    const credResult = await validateCredential(bearer);
+    if (!credResult.ok) {
+      return { ok: false, status: credResult.status || 401, error: credResult.error || 'invalid node credential' };
+    }
+
+    const node = credResult.node;
+    const bodyNodeId = req.body && req.body.node_id ? String(req.body.node_id).trim() : null;
+    const queryNodeId = req.query && req.query.node_id ? String(req.query.node_id).trim() : null;
+    const declaredNodeId = bodyNodeId || queryNodeId;
+
+    if (declaredNodeId && declaredNodeId !== node.id) {
+      logger.warn(`Node identity spoofing attempted: credential for ${node.id} attempted to act as ${declaredNodeId}`);
+      return { ok: false, status: 403, error: 'forbidden: credential belongs to another node' };
+    }
+
+    req.node = node;
+    return { ok: true, node, token: bearer };
+  }
+
+  // 2. Shared Registration Token fallback
+  const expected = process.env.SOVEREIGN_REGISTRATION_TOKEN;
+  const config = require('../config/env');
+  if (!expected) {
+    if (config.IS_PRODUCTION) {
+      return { ok: false, status: 401, error: 'node credential required (Authorization: Bearer <token>)' };
+    }
+    logger.warn('SOVEREIGN_REGISTRATION_TOKEN is not set - node control request permitted in dev.');
+    return { ok: true, legacy: true };
+  }
+
+  if (!bearer) {
+    return { ok: false, status: 401, error: 'node credential or enrolment token required' };
+  }
+
+  if (bearer !== expected) {
+    return { ok: false, status: 401, error: 'invalid enrolment token' };
+  }
+
+  return { ok: true, legacy: true };
+}
+
 module.exports = {
-  requireNodeCredential
+  requireNodeCredential,
+  checkNodeAuth
 };

@@ -171,4 +171,37 @@ router.delete('/:id/members/:userId', requireOrgRole('owner', 'admin'), async (r
   }
 });
 
+// 10. List Organization Modules
+router.get('/:id/modules', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'super-admin' && req.user.organization_id !== req.params.id) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+
+    const modules = await OrgService.getOrgModules(req.params.id);
+    return res.status(200).json({ modules });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 11. Update Organization Module Status (super-admin or org owner)
+router.put('/:id/modules/:moduleId', requireOrgRole('owner'), async (req, res, next) => {
+  try {
+    if (req.user.role !== 'super-admin' && req.user.organization_id !== req.params.id) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+
+    const { enabled } = req.body || {};
+    if (enabled === undefined) {
+      return res.status(400).json({ error: 'enabled boolean is required' });
+    }
+
+    await OrgService.setOrgModule(req.params.id, req.params.moduleId, Boolean(enabled), req.user);
+    return res.status(200).json({ success: true, module_id: req.params.moduleId, enabled: Boolean(enabled) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

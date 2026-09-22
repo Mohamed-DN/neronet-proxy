@@ -1,0 +1,10 @@
+{
+  "id": "deniability",
+  "version": 1,
+  "name": "Plausible Deniability & Coercion Defense",
+  "description": "Steganographic passwords, decoy sessions, and duress wipes",
+  "requires": ["core>=1"],
+  "routes": ["routes.js"],
+  "permissions": ["auth.deniability"],
+  "auditEvents": ["AUTH_STEGANO_*", "DURESS_*"]
+}

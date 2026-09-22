@@ -1,0 +1,10 @@
+{
+  "id": "nuke",
+  "version": 1,
+  "name": "NeroNuke & Cryptographic Destruction",
+  "description": "User self-destruct, dead man switches, and cryptographic data erasure",
+  "requires": ["core>=1"],
+  "routes": ["routes.js"],
+  "permissions": ["nuke.self", "nuke.owner"],
+  "auditEvents": ["NUKE_*", "DMS_*", "USER_NUKE_*"]
+}

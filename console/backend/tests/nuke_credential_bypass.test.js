@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { closeValkey } = require('../db/valkey');
-const NukeEngine = require('../services/NukeEngine');
+const NukeEngine = require('../modules/nuke/NukeEngine');
 
 /**
  * The personal dead man's switch is unlocked with a credential the user chose. Some

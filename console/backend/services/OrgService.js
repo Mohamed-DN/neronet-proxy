@@ -37,23 +37,40 @@ class OrgService {
    * Create a new organization
    */
   static async createOrganization(
-    { name, slug, default_policy = 'deny', max_netmap_staleness_seconds = 300 },
+    { name, slug, default_policy = 'deny', max_netmap_staleness_seconds = 300, profile = 'standard' },
     creator
   ) {
+    if (!name) {
+      throw new Error('Organization name is required');
+    }
+    if (!['open', 'deny'].includes(default_policy)) {
+      throw new Error('Invalid default_policy: must be open or deny');
+    }
+    if (!['standard', 'regulated'].includes(profile)) {
+      throw new Error('Invalid profile: must be standard or regulated');
+    }
+
     const pool = getPgPool();
     const orgId = `org-${uuidv4().substring(0, 8)}`;
-    const finalSlug =
-      slug ||
-      name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)/g, '');
+    const baseSlug = (slug || name)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+
+    // Check slug collision
+    let finalSlug = baseSlug;
+    let counter = 1;
+    while (true) {
+      const slugCheck = await pool.query('SELECT id FROM organizations WHERE slug = $1', [finalSlug]);
+      if (slugCheck.rows.length === 0) break;
+      finalSlug = `${baseSlug}-${counter++}`;
+    }
 
     const res = await pool.query(
-      `INSERT INTO organizations (id, name, slug, default_policy, max_netmap_staleness_seconds)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO organizations (id, name, slug, default_policy, max_netmap_staleness_seconds, profile)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [orgId, name, finalSlug, default_policy, max_netmap_staleness_seconds]
+      [orgId, name, finalSlug, default_policy, max_netmap_staleness_seconds, profile]
     );
 
     const org = res.rows[0];
@@ -85,7 +102,7 @@ class OrgService {
   /**
    * Update an organization
    */
-  static async updateOrganization(orgId, { name, default_policy, max_netmap_staleness_seconds }, actor) {
+  static async updateOrganization(orgId, { name, default_policy, max_netmap_staleness_seconds, profile }, actor) {
     const pool = getPgPool();
     const updates = [];
     const params = [];
@@ -105,6 +122,13 @@ class OrgService {
     if (max_netmap_staleness_seconds !== undefined) {
       updates.push(`max_netmap_staleness_seconds = $${idx++}`);
       params.push(Number(max_netmap_staleness_seconds));
+    }
+    if (profile) {
+      if (!['standard', 'regulated'].includes(profile)) {
+        throw new Error('Invalid profile: must be standard or regulated');
+      }
+      updates.push(`profile = $${idx++}`);
+      params.push(profile);
     }
 
     if (updates.length === 0) {
@@ -316,6 +340,49 @@ class OrgService {
       userId
     ]);
     return res.rows[0] ? res.rows[0].role : null;
+  }
+
+  /**
+   * Get active modules for an organization
+   */
+  static async getOrgModules(orgId) {
+    const pool = getPgPool();
+    const org = await OrgService.getOrganization(orgId);
+    if (!org) return [];
+
+    const ModuleLoader = require('./ModuleLoader');
+    let moduleIds = ModuleLoader.getLoadedModuleIds();
+    if (!moduleIds || moduleIds.length === 0) {
+      moduleIds = ['nuke', 'deniability', 'onion'];
+    }
+
+    const res = await pool.query('SELECT module_id, enabled FROM organization_modules WHERE organization_id = $1', [
+      orgId
+    ]);
+
+    const explicitSettings = new Map();
+    for (const row of res.rows) {
+      explicitSettings.set(row.module_id, Boolean(row.enabled));
+    }
+
+    return moduleIds.map((modId) => {
+      if (org.profile === 'regulated' && ['nuke', 'deniability', 'onion'].includes(modId)) {
+        return { module_id: modId, enabled: false };
+      }
+      const isExplicit = explicitSettings.has(modId);
+      return {
+        module_id: modId,
+        enabled: isExplicit ? explicitSettings.get(modId) : true
+      };
+    });
+  }
+
+  /**
+   * Update module enabled status for an organization
+   */
+  static async setOrgModule(orgId, moduleId, enabled, actor) {
+    const ModuleLoader = require('./ModuleLoader');
+    return ModuleLoader.setOrgModuleStatus(orgId, moduleId, enabled, actor);
   }
 }
 

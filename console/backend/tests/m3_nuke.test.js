@@ -17,12 +17,12 @@ const usersRoutes = require('../routes/users');
 const nodesRoutes = require('../routes/nodes');
 const configsRoutes = require('../routes/configs');
 const statsRoutes = require('../routes/stats');
-const nukeRouter = require('../routes/nuke');
+const nukeRouter = require('../modules/nuke/routes');
 const canaryRouter = require('../routes/canary');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { initValkey, closeValkey } = require('../db/valkey');
-const NukeEngine = require('../services/NukeEngine');
+const NukeEngine = require('../modules/nuke/NukeEngine');
 const CanaryService = require('../services/CanaryService');
 
 function createNukeTestApp() {

@@ -6,7 +6,7 @@ const request = require('supertest');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const { normalisePublicKeyHex } = require('../utils/crypto');
-const CircuitEngine = require('../services/CircuitEngine');
+const CircuitEngine = require('../modules/onion/CircuitEngine');
 
 /**
  * Path selection is the security decision in onion routing, not the sealing. A

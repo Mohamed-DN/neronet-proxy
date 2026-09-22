@@ -24,9 +24,9 @@
 
 const crypto = require('crypto');
 
-const { getDatabase, isPostgres, getPgPool } = require('../db/index');
-const { normalisePublicKeyHex } = require('../utils/crypto');
-const logger = require('../utils/logger');
+const { getDatabase, isPostgres, getPgPool } = require('../../db/index');
+const { normalisePublicKeyHex } = require('../../utils/crypto');
+const logger = require('../../utils/logger');
 
 // Tor rotates circuits on roughly this cadence. A long-lived circuit gives a hostile
 // relay more traffic to correlate and more time to act on what it sees.
