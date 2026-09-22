@@ -127,7 +127,7 @@ func netmapFor(version uint64, self netip.Addr, policy *acl.CompiledPeerPolicy, 
 func managerFor(t *testing.T, node *overlayNode) *netmapManager {
 	t.Helper()
 	identity := filepath.Join(t.TempDir(), "node.key")
-	return newNetmapManager(nil, node.dev, node.netfilter, identity, node.port, "")
+	return newNetmapManager(nil, node.dev, node.netfilter, identity, node.port, "", node.keys.PublicKey, nil)
 }
 
 // echoOnce listens on `listener`'s node and dials it from `from`, returning the error
@@ -392,7 +392,7 @@ func TestPersistedNetmapIsWrittenPrivatelyAndReloadedWhenFresh(t *testing.T) {
 
 	dir := t.TempDir()
 	identity := filepath.Join(dir, "node.key")
-	manager := newNetmapManager(nil, a.dev, a.netfilter, identity, a.port, "")
+	manager := newNetmapManager(nil, a.dev, a.netfilter, identity, a.port, "", a.keys.PublicKey, nil)
 
 	if err := manager.Apply(netmapFor(9, a.addr, allowAllPolicy("a", a.addr, b.addr), b.peerEntry("b")), time.Now()); err != nil {
 		t.Fatalf("applying: %v", err)
@@ -412,7 +412,7 @@ func TestPersistedNetmapIsWrittenPrivatelyAndReloadedWhenFresh(t *testing.T) {
 	// A node restarting with the control plane down: a new manager over a new device,
 	// reading what the previous run left.
 	restarted := newOverlayNode(t, "100.64.0.13/10")
-	reloaded := newNetmapManager(nil, restarted.dev, restarted.netfilter, identity, restarted.port, "")
+	reloaded := newNetmapManager(nil, restarted.dev, restarted.netfilter, identity, restarted.port, "", restarted.keys.PublicKey, nil)
 
 	loaded, err := reloaded.LoadPersisted(time.Now())
 	if err != nil {
@@ -448,7 +448,7 @@ func TestPersistedNetmapPastItsBoundLeavesTheNodeAtDefaultDeny(t *testing.T) {
 		t.Fatalf("writing the stored document: %v", err)
 	}
 
-	manager := newNetmapManager(nil, a.dev, a.netfilter, identity, a.port, "")
+	manager := newNetmapManager(nil, a.dev, a.netfilter, identity, a.port, "", a.keys.PublicKey, nil)
 	loaded, err := manager.LoadPersisted(time.Now())
 	if err != nil {
 		t.Fatalf("loading: %v", err)

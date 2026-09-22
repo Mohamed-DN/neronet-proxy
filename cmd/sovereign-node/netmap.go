@@ -17,6 +17,7 @@ import (
 	"github.com/sovereign/proxy/v4/pkg/acl"
 	"github.com/sovereign/proxy/v4/pkg/control"
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
+	"github.com/sovereign/proxy/v4/pkg/derp"
 	"github.com/sovereign/proxy/v4/pkg/nat"
 )
 
@@ -60,6 +61,10 @@ type netmapManager struct {
 
 	// stunServer, when set, is asked for this node's reflexive address.
 	stunServer string
+
+	// fallback, when non-nil, is the DERP relay fallback manager. It is updated
+	// with fresh relay URLs every time a netmap is applied.
+	fallback *derp.FallbackManager
 
 	mu sync.Mutex
 	// version is the version of the document currently applied. Zero means none has
@@ -171,7 +176,10 @@ func newNetmapManager(
 	identityPath string,
 	listenPort uint16,
 	stunServer string,
+	selfPubKey [derp.PubKeySize]byte,
+	onRelayPacket derp.PacketHandler,
 ) *netmapManager {
+	fb := derp.NewFallbackManager(nil /* relay URLs come from the first netmap */, selfPubKey, onRelayPacket)
 	return &netmapManager{
 		client:     client,
 		dev:        dev,
@@ -179,8 +187,31 @@ func newNetmapManager(
 		path:       netmapPathFor(identityPath),
 		listenPort: listenPort,
 		stunServer: stunServer,
+		fallback:   fb,
 		revoked:    make(map[string]bool),
 	}
+}
+
+// relayURLsFromNetmap extracts the WebSocket URL for every relay announced in
+// the netmap. The list is used by FallbackManager to pick a relay when the
+// direct UDP path to a peer is silent.
+func relayURLsFromNetmap(netmap *control.NetmapResponse) []string {
+	// Relays are carried in the peer list as the DERPRegion field. When the
+	// control plane also returns a SyncResponse we will get a direct list; for
+	// now we derive URLs from peer annotations.
+	seen := make(map[string]bool)
+	var urls []string
+	for _, p := range netmap.Peers {
+		if p.DERPRegion != nil && *p.DERPRegion != "" {
+			region := *p.DERPRegion
+			u := "wss://" + region + "/ws/v4/relay"
+			if !seen[u] {
+				seen[u] = true
+				urls = append(urls, u)
+			}
+		}
+	}
+	return urls
 }
 
 // Confirm records that the control plane answered.
@@ -278,10 +309,21 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 	m.maxStaleness = netmap.MaxStalenessSeconds
 	m.failClosed = false
 	m.revoked = revoked
+	fallback := m.fallback
 	m.mu.Unlock()
 
 	log.Printf("[SOVEREIGN-NODE] Netmap version %d applied: %d peer(s)%s, policy %s, routes %d, staleness bound %ds",
 		netmap.Version, len(peers), droppedNote(dropped), policyNote(netmap.ACL), len(netmap.Routes), netmap.MaxStalenessSeconds)
+
+	// Propagate fresh relay URLs to the DERP fallback manager so peers that
+	// lose their UDP direct path get the latest relay selection.
+	if fallback != nil {
+		urls := relayURLsFromNetmap(netmap)
+		fallback.UpdateRelayURLs(urls)
+		if len(urls) > 0 {
+			log.Printf("[SOVEREIGN-NODE] DERP fallback relay list updated: %d relay(s)", len(urls))
+		}
+	}
 
 	if err := m.persist(netmap, fetchedAt); err != nil {
 		// Persistence is what lets the node come back without a control plane. Losing

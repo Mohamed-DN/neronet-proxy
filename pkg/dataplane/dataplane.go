@@ -491,6 +491,42 @@ func (d *Device) Close() error {
 	return d.filter.Close()
 }
 
+// InjectRelayPacket delivers a raw WireGuard UDP datagram received over a DERP
+// relay connection to the local WireGuard engine via loopback.
+//
+// The packet is an encrypted WireGuard datagram — the relay is fully opaque and
+// never sees the plaintext. WireGuard will authenticate it exactly as if it had
+// arrived from the peer's real UDP endpoint; a tampered or replayed datagram is
+// silently dropped by WireGuard's normal replay protection.
+//
+// The injection is performed by sending the datagram to 127.0.0.1:<listenPort>,
+// which is the socket the WireGuard engine is already bound to. This path uses
+// no internal wireguard-go APIs and requires no modifications to the library.
+func (d *Device) InjectRelayPacket(payload []byte) error {
+	d.mu.Lock()
+	closed := d.closed
+	d.mu.Unlock()
+	if closed {
+		return ErrClosed
+	}
+
+	port, err := d.ListenPort()
+	if err != nil {
+		return fmt.Errorf("dataplane: inject relay: %w", err)
+	}
+
+	// Send via loopback: the WireGuard engine's UDP Bind picks this up
+	// as an inbound WireGuard datagram from the loopback address.
+	conn, err := net.Dial("udp4", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return fmt.Errorf("dataplane: inject relay dial: %w", err)
+	}
+	defer conn.Close()
+
+	_, err = conn.Write(payload)
+	return err
+}
+
 func newLogger(level int, logf func(format string, args ...any)) *device.Logger {
 	if logf == nil {
 		return device.NewLogger(device.LogLevelSilent, "")

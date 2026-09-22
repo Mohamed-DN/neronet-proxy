@@ -153,7 +153,23 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 	log.Printf("[SOVEREIGN-NODE] Data plane up in %s mode on %v (wireguard public key %s, udp port %d, mtu %d, enforcement on)",
 		dev.Mode(), dev.Addresses(), hex.EncodeToString(opts.Keypair.PublicKey[:]), cfg.ListenPort, cfg.MTU)
 
-	manager := newNetmapManager(opts.Control, dev, opts.Netfilter, opts.IdentityPath, cfg.ListenPort, opts.StunServer)
+	// The relay packet handler forwards packets received over a DERP relay back
+	// into the WireGuard device. Because the payload is already a WireGuard
+	// encrypted datagram, it is passed verbatim — the relay is fully opaque.
+	onRelayPacket := func(_ [32]byte, payload []byte) {
+		// Inject the relay-delivered datagram into the device's read path.
+		// The device will authenticate it like any other WireGuard packet;
+		// a tampered or replayed datagram will be silently dropped.
+		if err := dev.InjectRelayPacket(payload); err != nil {
+			log.Printf("[DERP-FALLBACK] Failed to inject relay packet: %v", err)
+		}
+	}
+
+	manager := newNetmapManager(
+		opts.Control, dev, opts.Netfilter, opts.IdentityPath,
+		cfg.ListenPort, opts.StunServer,
+		opts.Keypair.PublicKey, onRelayPacket,
+	)
 
 	switch {
 	case fetched != nil:
@@ -216,8 +232,13 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		go probeLoop(loopCtx, dev, spike)
 	}
 
+	// Start the DERP fallback manager now that loopCtx is available. It is a
+	// no-op until the first netmap populates relay URLs.
+	manager.fallback.Start(loopCtx)
+
 	return func() {
 		stopLoops()
+		manager.fallback.Stop()
 		if echo != nil {
 			_ = echo.Close()
 		}
