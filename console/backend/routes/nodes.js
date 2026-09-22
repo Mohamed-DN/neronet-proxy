@@ -10,6 +10,7 @@ const { broadcastNodeEvent } = require('../services/TopologySync');
 const { derivePostureStatus } = require('../utils/posture');
 const { bumpNetmap } = require('../services/AclEngine');
 const NodeCredentialService = require('../services/NodeCredentialService');
+const RevocationEngine = require('../services/RevocationEngine');
 const { resolveUserOrg } = require('../middleware/rbac');
 
 router.use(authenticateToken);
@@ -429,6 +430,15 @@ router.delete('/:id', async (req, res, next) => {
       return res.status(access.error).json({ error: access.message });
     }
 
+    // 1. Write public key to revoked_keys table and bump the policy epoch.
+    //    Every peer receives the revocation on its next heartbeat (≤20 s) and
+    //    removes the key from its WireGuard peer list and compiled ACL.
+    await RevocationEngine.revokeNodeKeys([req.params.id], {
+      reason: 'node_revoked',
+      actorId: req.user.id
+    });
+
+    // 2. Remove the node record — the key is already blacklisted.
     await pool.query('DELETE FROM nodes WHERE id = $1', [req.params.id]);
     await NodeCredentialService.revokeNodeCredentials(req.params.id);
 
@@ -441,7 +451,7 @@ router.delete('/:id', async (req, res, next) => {
       actorUsername: req.user.username,
       targetId: req.params.id,
       targetType: 'node',
-      message: `Node ${node.name} (${req.params.id}) revoked`,
+      message: `Node ${node.name} (${req.params.id}) revoked — key propagated to all peers`,
       ipAddress: req.ip
     });
 
@@ -587,7 +597,14 @@ router.post('/:id/action', async (req, res, next) => {
         [reason, node.id]
       );
 
+      // Revoke the node's credential AND write its WireGuard key to revoked_keys.
+      // Every other peer receives the revocation on its next heartbeat (≤20 s)
+      // and removes the quarantined node from its WireGuard peer list and ACL.
       await NodeCredentialService.revokeNodeCredentials(node.id);
+      await RevocationEngine.revokeNodeKeys([node.id], {
+        reason: `quarantine: ${reason}`,
+        actorId: req.user.id
+      });
       await bumpNetmap();
 
       logAuditEvent({
