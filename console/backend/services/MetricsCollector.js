@@ -25,12 +25,17 @@ let timer = null;
  * are cumulative, so the value is a total transferred, not a rate; deriving a rate
  * is the caller's job and needs two samples.
  */
-async function readFleetState() {
+async function readFleetState(accessTier = 'standard') {
   // cpu_usage_pct = 0 is the node saying "not measured": nothing on a node samples
   // CPU yet, and the wire field has no null. Averaging those zeros in reported a
   // fleet-wide 0% load as if it were a measurement, so they are excluded and the
   // average is null when no node measured anything. Memory is genuinely measured
   // (runtime.MemStats) and is averaged as-is.
+  const hiddenClause =
+    accessTier === 'root'
+      ? ''
+      : ' LEFT JOIN compartments c ON nodes.compartment_id = c.id WHERE (c.is_hidden IS NULL OR c.is_hidden = FALSE)';
+
   const sql = `
     SELECT
       count(*) FILTER (WHERE last_heartbeat > now() - make_interval(secs => $1)) AS live_nodes,
@@ -42,7 +47,8 @@ async function readFleetState() {
         WHERE last_heartbeat > now() - make_interval(secs => $1) AND cpu_usage_pct > 0
       ) AS cpu_pct,
       avg(memory_usage_pct) FILTER (WHERE last_heartbeat > now() - make_interval(secs => $1)) AS mem_pct
-    FROM nodes`;
+    FROM nodes
+    ${hiddenClause}`;
 
   if (isPostgres()) {
     const pool = getPgPool();
@@ -82,11 +88,15 @@ async function readFleetState() {
  * the fleet sizes this console handles and is the first thing to turn into a stored
  * column if that stops being true.
  */
-async function readPostureCounts() {
+async function readPostureCounts(accessTier = 'standard') {
   let rows;
 
   if (isPostgres()) {
-    const result = await getPgPool().query('SELECT posture_checks FROM nodes');
+    const hiddenClause =
+      accessTier === 'root'
+        ? ''
+        : ' LEFT JOIN compartments c ON nodes.compartment_id = c.id WHERE (c.is_hidden IS NULL OR c.is_hidden = FALSE)';
+    const result = await getPgPool().query(`SELECT posture_checks FROM nodes ${hiddenClause}`);
     rows = result.rows;
   } else {
     rows = getDatabase().prepare('SELECT posture_checks FROM nodes').all();

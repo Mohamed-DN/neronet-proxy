@@ -42,6 +42,7 @@ function formatNode(row) {
     id: row.id,
     user_id: row.user_id,
     organization_id: row.organization_id || 'org-default',
+    compartment_id: row.compartment_id || null,
     name: row.name,
     public_key: row.public_key,
     overlay_ipv4: row.overlay_ipv4,
@@ -138,29 +139,39 @@ router.get('/', async (req, res, next) => {
 
     let rows = [];
     let total = 0;
+    const accessTier = req.user.compartment_access || req.user.access_tier || 'standard';
+    const hiddenClause = accessTier === 'root' ? '' : ' AND (c.is_hidden IS NULL OR c.is_hidden = FALSE)';
 
     if (isSuperAdmin && !req.query.org_id) {
-      const countRes = await pool.query('SELECT count(*)::int AS n FROM nodes');
+      const countRes = await pool.query(
+        `SELECT count(*)::int AS n FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE 1=1 ${hiddenClause}`
+      );
       total = countRes.rows[0].n;
-      const result = await pool.query('SELECT * FROM nodes ORDER BY created_at ASC, id ASC LIMIT $1 OFFSET $2', [
-        limit,
-        offset
-      ]);
+      const result = await pool.query(
+        `SELECT n.* FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE 1=1 ${hiddenClause} ORDER BY n.created_at ASC, n.id ASC LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      );
       rows = result.rows;
     } else if (isOrgPrivileged || isSuperAdmin) {
       const orgId = isSuperAdmin ? req.query.org_id : req.user.organization_id || 'org-default';
-      const countRes = await pool.query('SELECT count(*)::int AS n FROM nodes WHERE organization_id = $1', [orgId]);
+      const countRes = await pool.query(
+        `SELECT count(*)::int AS n FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE n.organization_id = $1 ${hiddenClause}`,
+        [orgId]
+      );
       total = countRes.rows[0].n;
       const result = await pool.query(
-        'SELECT * FROM nodes WHERE organization_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3',
+        `SELECT n.* FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE n.organization_id = $1 ${hiddenClause} ORDER BY n.created_at ASC, n.id ASC LIMIT $2 OFFSET $3`,
         [orgId, limit, offset]
       );
       rows = result.rows;
     } else {
-      const countRes = await pool.query('SELECT count(*)::int AS n FROM nodes WHERE user_id = $1', [req.user.id]);
+      const countRes = await pool.query(
+        `SELECT count(*)::int AS n FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE n.user_id = $1 ${hiddenClause}`,
+        [req.user.id]
+      );
       total = countRes.rows[0].n;
       const result = await pool.query(
-        'SELECT * FROM nodes WHERE user_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3',
+        `SELECT n.* FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE n.user_id = $1 ${hiddenClause} ORDER BY n.created_at ASC, n.id ASC LIMIT $2 OFFSET $3`,
         [req.user.id, limit, offset]
       );
       rows = result.rows;
@@ -298,8 +309,21 @@ router.post('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const pool = getPgPool();
-    const resNode = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
+    const resNode = await pool.query(
+      `SELECT n.*, c.is_hidden
+       FROM nodes n
+       LEFT JOIN compartments c ON n.compartment_id = c.id
+       WHERE n.id = $1`,
+      [req.params.id]
+    );
     const node = resNode.rows[0] || null;
+
+    if (node && node.is_hidden) {
+      const accessTier = req.user.compartment_access || req.user.access_tier || 'standard';
+      if (accessTier !== 'root') {
+        return res.status(404).json({ error: 'Node not found' });
+      }
+    }
 
     const access = verifyNodeAccess(node, req.user, false);
     if (!access.ok) {

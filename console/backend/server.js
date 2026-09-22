@@ -32,6 +32,7 @@ const cloudPcRoutes = require('./routes/cloudPc');
 const canaryRoutes = require('./routes/canary');
 const preauthKeysRoutes = require('./routes/preauthKeys');
 const organizationsRoutes = require('./routes/organizations');
+const compartmentsRoutes = require('./routes/compartments');
 const ModuleLoader = require('./services/ModuleLoader');
 const securityHeaders = require('./middleware/securityHeaders');
 const { requireFeature } = require('./middleware/featureFlag');
@@ -86,6 +87,7 @@ function createApp() {
   app.use('/api/cloud-pc', requireFeature('cloud_pc'), cloudPcRoutes);
   app.use('/api/preauth-keys', preauthKeysRoutes);
   app.use('/api/organizations', organizationsRoutes);
+  app.use('/api/compartments', compartmentsRoutes);
 
   // Load and mount discrete feature modules (WP-107: nuke, onion, deniability)
   ModuleLoader.loadModules(app);

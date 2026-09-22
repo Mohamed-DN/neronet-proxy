@@ -151,23 +151,23 @@ type HeartbeatRequest struct {
 }
 
 type HeartbeatResponse struct {
-	Acknowledged        bool     `json:"acknowledged"`
-	ForceRekey          bool     `json:"force_rekey"`
-	DrainAndExit        bool     `json:"drain_and_exit"`
-	RevokedKeys         []string `json:"revoked_keys"`
-	IsQuarantined       bool     `json:"is_quarantined"`
-	QuarantineReason    string   `json:"quarantine_reason,omitempty"`
-	PolicyEpoch         uint64   `json:"policy_epoch"`
-	RouteEpoch          uint64   `json:"route_epoch"`
+	Acknowledged     bool     `json:"acknowledged"`
+	ForceRekey       bool     `json:"force_rekey"`
+	DrainAndExit     bool     `json:"drain_and_exit"`
+	RevokedKeys      []string `json:"revoked_keys"`
+	IsQuarantined    bool     `json:"is_quarantined"`
+	QuarantineReason string   `json:"quarantine_reason,omitempty"`
+	PolicyEpoch      uint64   `json:"policy_epoch"`
+	RouteEpoch       uint64   `json:"route_epoch"`
 
 	// NetmapVersion is the one number a node with a data plane compares against what
 	// it holds. It advances on anything that changes who may reach whom: a rule, a
 	// route, a registration or removal, a quarantine, a revocation, a health
 	// transition, or a peer's endpoints. Zero from a control plane that does not
 	// serve netmaps, which is why the node treats zero as "nothing to fetch".
-	NetmapVersion       uint64   `json:"netmap_version"`
-	NewCredential       string   `json:"new_credential,omitempty"`
-	CredentialExpiresAt string   `json:"credential_expires_at,omitempty"`
+	NetmapVersion       uint64 `json:"netmap_version"`
+	NewCredential       string `json:"new_credential,omitempty"`
+	CredentialExpiresAt string `json:"credential_expires_at,omitempty"`
 }
 
 type DiscoverRequest struct {

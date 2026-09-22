@@ -2,11 +2,13 @@ const express = require('express');
 const router = express.Router();
 const { getPgPool } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
+const { resolveUserOrg } = require('../middleware/rbac');
 const { readFleetState, readPostureCounts, LIVENESS_WINDOW_SECONDS } = require('../services/MetricsCollector');
 const { COUNTRY_NAMES } = require('../utils/countries');
 const AclEngine = require('../services/AclEngine');
 
 router.use(authenticateToken);
+router.use(resolveUserOrg);
 
 // 1. Overview Statistics
 //
@@ -16,7 +18,8 @@ router.use(authenticateToken);
 // console reported a healthy loaded network against an empty database.
 async function overviewHandler(req, res, next) {
   try {
-    const state = await readFleetState();
+    const accessTier = req.user?.compartment_access || req.user?.access_tier || 'standard';
+    const state = await readFleetState(accessTier);
 
     // Two consecutive samples give a rate. With fewer than two the rate is unknown,
     // and unknown is reported as null rather than as a plausible-looking number:
@@ -26,7 +29,7 @@ async function overviewHandler(req, res, next) {
     // The Overview used to derive a "compliant" count as active minus quarantined,
     // which is a liveness figure wearing a compliance label. These three are counted
     // from what each node actually attested.
-    const posture = await readPostureCounts();
+    const posture = await readPostureCounts(accessTier);
 
     return res.status(200).json({
       active_nodes: state.liveNodes,
@@ -39,7 +42,7 @@ async function overviewHandler(req, res, next) {
       total_bandwidth_bytes: state.rxBytes + state.txBytes,
       total_rx_bytes: state.rxBytes,
       total_tx_bytes: state.txBytes,
-      country_distribution: await countryDistribution(),
+      country_distribution: await countryDistribution(accessTier),
       posture_verified_compliant_nodes: posture.verified_compliant,
       posture_unverified_nodes: posture.unverified,
       posture_non_compliant_nodes: posture.non_compliant,
@@ -93,10 +96,14 @@ async function deriveThroughput() {
   return { rxMbPerSec: toMbPerSec(rxDelta), txMbPerSec: toMbPerSec(txDelta) };
 }
 
-async function countryDistribution() {
+async function countryDistribution(accessTier = 'standard') {
   const dist = {};
   const pool = getPgPool();
-  const q = await pool.query('SELECT country_code, count(*) AS count FROM nodes GROUP BY country_code');
+  const hiddenClause =
+    accessTier === 'root'
+      ? ''
+      : ' LEFT JOIN compartments c ON nodes.compartment_id = c.id WHERE (c.is_hidden IS NULL OR c.is_hidden = FALSE)';
+  const q = await pool.query(`SELECT country_code, count(*) AS count FROM nodes ${hiddenClause} GROUP BY country_code`);
   for (const r of q.rows) dist[r.country_code] = parseInt(r.count, 10);
   return dist;
 }
@@ -175,6 +182,13 @@ router.get('/timeseries', timeseriesHandler);
 // in the United Kingdom and Canada on a fleet that had never had a node in either.
 async function geoMatrixHandler(req, res, next) {
   try {
+    const pool = getPgPool();
+    const accessTier = req.user?.compartment_access || req.user?.access_tier || 'standard';
+    const hiddenClause =
+      accessTier === 'root'
+        ? ''
+        : ' LEFT JOIN compartments c ON nodes.compartment_id = c.id WHERE (c.is_hidden IS NULL OR c.is_hidden = FALSE)';
+
     const sql = `
       SELECT
         country_code,
@@ -184,10 +198,10 @@ async function geoMatrixHandler(req, res, next) {
         count(*) FILTER (WHERE last_heartbeat > now() - make_interval(secs => $1)) AS live,
         avg(latency_ms) FILTER (WHERE latency_ms > 0) AS avg_latency
       FROM nodes
+      ${hiddenClause}
       GROUP BY country_code
       ORDER BY count(*) DESC, country_code ASC`;
 
-    const pool = getPgPool();
     const q = await pool.query(sql, [LIVENESS_WINDOW_SECONDS]);
     const rows = q.rows;
 
@@ -225,14 +239,40 @@ async function topologyHandler(req, res, next) {
   try {
     let visibleNodes = [];
     const pool = getPgPool();
-    if (req.user.role === 'super-admin') {
+    const accessTier = req.user.compartment_access || req.user.access_tier || 'standard';
+    const hiddenClause = accessTier === 'root' ? '' : ' AND (c.is_hidden IS NULL OR c.is_hidden = FALSE)';
+
+    const isSuperAdmin = req.user.role === 'super-admin';
+    const orgRole = req.user.org_role || req.user.role;
+    const isOrgPrivileged = ['owner', 'admin', 'network_admin', 'auditor'].includes(orgRole);
+
+    if (isSuperAdmin && !req.query.org_id) {
       const qRes = await pool.query(
-        'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes ORDER BY created_at ASC'
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.latency_ms
+         FROM nodes n
+         LEFT JOIN compartments c ON n.compartment_id = c.id
+         WHERE 1=1 ${hiddenClause}
+         ORDER BY n.created_at ASC`
+      );
+      visibleNodes = qRes.rows;
+    } else if (isOrgPrivileged || isSuperAdmin) {
+      const orgId = isSuperAdmin ? req.query.org_id : req.user.organization_id || 'org-default';
+      const qRes = await pool.query(
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.latency_ms
+         FROM nodes n
+         LEFT JOIN compartments c ON n.compartment_id = c.id
+         WHERE n.organization_id = $1 ${hiddenClause}
+         ORDER BY n.created_at ASC`,
+        [orgId]
       );
       visibleNodes = qRes.rows;
     } else {
       const qRes = await pool.query(
-        'SELECT id, name, role, country_code, overlay_ipv4, is_healthy, latency_ms FROM nodes WHERE user_id = $1 ORDER BY created_at ASC',
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.latency_ms
+         FROM nodes n
+         LEFT JOIN compartments c ON n.compartment_id = c.id
+         WHERE n.user_id = $1 ${hiddenClause}
+         ORDER BY n.created_at ASC`,
         [req.user.id]
       );
       visibleNodes = qRes.rows;

@@ -15,6 +15,8 @@ function signToken(payload, expiresIn = config.JWT_EXPIRES_IN || '15m') {
     id: payload.id || payload.sub,
     username: payload.username,
     role: payload.role,
+    organization_id: payload.organization_id,
+    compartment_access: payload.compartment_access,
     jti: uuidv4()
   };
   return jwt.sign(cleanPayload, config.JWT_SECRET, { expiresIn });
@@ -26,6 +28,8 @@ function signRefreshToken(payload, expiresIn = config.REFRESH_EXPIRES_IN || '7d'
     id: payload.id || payload.sub,
     username: payload.username,
     role: payload.role,
+    organization_id: payload.organization_id,
+    compartment_access: payload.compartment_access,
     jti: uuidv4()
   };
   return jwt.sign(cleanPayload, config.REFRESH_SECRET, { expiresIn });
@@ -90,7 +94,9 @@ async function authenticateToken(req, res, next) {
     req.user = {
       id: decoded.sub || decoded.id,
       username: decoded.username,
-      role: decoded.role
+      role: decoded.role,
+      organization_id: decoded.organization_id,
+      compartment_access: decoded.compartment_access
     };
     req.token = token;
     next();
