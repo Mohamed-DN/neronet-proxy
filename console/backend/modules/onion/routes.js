@@ -12,8 +12,26 @@ router.post('/circuit', validateRequest('CircuitRequest'), async (req, res) => {
       return res.status(auth.status).json({ error: auth.error });
     }
 
+    const requesterId = String(req.body.node_id || '').trim() || (auth.node ? auth.node.id : null);
+    let orgId = auth.node?.organization_id;
+    if (!orgId && requesterId) {
+      const { getPgPool } = require('../../db/index');
+      const pool = getPgPool();
+      const nodeRes = await pool.query('SELECT organization_id FROM nodes WHERE id = $1', [requesterId]);
+      if (nodeRes.rows.length > 0) {
+        orgId = nodeRes.rows[0].organization_id;
+      }
+    }
+    orgId = orgId || 'org-default';
+
+    const ModuleLoader = require('../../services/ModuleLoader');
+    const isEnabled = await ModuleLoader.isModuleEnabledForOrg(orgId, 'onion');
+    if (!isEnabled) {
+      return res.status(403).json({ error: 'onion routing is disabled for this organization' });
+    }
+
     const circuit = await CircuitEngine.buildCircuit({
-      requesterNodeId: String(req.body.node_id || '').trim() || null,
+      requesterNodeId: requesterId,
       targetCountry: req.body.target_country,
       hopCount: req.body.hop_count
     });

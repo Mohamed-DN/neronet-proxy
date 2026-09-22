@@ -547,6 +547,15 @@ router.post('/:id/action', async (req, res, next) => {
       }
 
       const hops = newVal ? 3 : 0;
+      if (newVal) {
+        const ModuleLoader = require('../services/ModuleLoader');
+        const orgId = node.organization_id || 'org-default';
+        const isEnabled = await ModuleLoader.isModuleEnabledForOrg(orgId, 'onion');
+        if (!isEnabled) {
+          return res.status(403).json({ error: 'onion routing is disabled for this organization' });
+        }
+      }
+
       await pool.query(
         'UPDATE nodes SET onion_routing_enabled = $1, onion_hops = $2, updated_at = NOW() WHERE id = $3',
         [newVal, hops, node.id]
