@@ -500,4 +500,53 @@ router.post('/siem', async (req, res, next) => {
   }
 });
 
+// WP-306: Disaster Recovery Backup Proof Endpoints
+router.get('/recovery-proof/latest', async (req, res, next) => {
+  try {
+    const { BackupRecoveryProofService } = require('../services/BackupRecoveryProofService');
+    const pool = getPgPool();
+    const latest = await BackupRecoveryProofService.getLatestProof(pool);
+    return res.status(200).json({ proof: latest });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/recovery-proof/verify', async (req, res, next) => {
+  try {
+    if (req.user?.role !== 'super-admin') {
+      return res.status(403).json({ error: 'Forbidden: only super-admin can trigger disaster recovery verification' });
+    }
+
+    const { targetDbUrl, targetDbName = 'ephemeral_recovery' } = req.body || {};
+    const { BackupRecoveryProofService } = require('../services/BackupRecoveryProofService');
+    const { Pool } = require('pg');
+    const pool = getPgPool();
+
+    let targetPool = pool;
+    let customTarget = false;
+    if (targetDbUrl) {
+      targetPool = new Pool({ connectionString: targetDbUrl });
+      customTarget = true;
+    }
+
+    try {
+      const proof = await BackupRecoveryProofService.verifyRestoredDatabase({
+        sourcePool: pool,
+        targetPool,
+        sourceDbName: 'primary',
+        targetDbName,
+        actorUserId: req.user.id
+      });
+      return res.status(201).json({ proof });
+    } finally {
+      if (customTarget) {
+        await targetPool.end().catch(() => {});
+      }
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

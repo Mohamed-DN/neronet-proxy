@@ -153,8 +153,8 @@ class AuditChainService {
    * Verify the cryptographic audit chain integrity.
    * Detects modified rows, deleted rows, inserted rows, and sequence gaps.
    */
-  static async verifyChain({ fromSequence = 1, toSequence = null, secret = DEFAULT_HMAC_SECRET } = {}) {
-    const pool = getPgPool();
+  static async verifyChain({ fromSequence = 1, toSequence = null, secret = DEFAULT_HMAC_SECRET, pool = null } = {}) {
+    const activePool = pool || getPgPool();
     let queryText = `SELECT * FROM audit_events WHERE sequence_num >= $1`;
     const params = [fromSequence];
 
@@ -165,7 +165,7 @@ class AuditChainService {
 
     queryText += ` ORDER BY sequence_num ASC`;
 
-    const res = await pool.query(queryText, params);
+    const res = await activePool.query(queryText, params);
     const events = res.rows;
 
     if (events.length === 0) {
