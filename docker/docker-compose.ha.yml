@@ -1,0 +1,249 @@
+# ==============================================================================
+# NeroNet Sovereign Mesh - Enterprise High Availability Compose Stack (ADR 0001, ADR 0012)
+# 3-node etcd consensus + 3-node PostgreSQL 18 Patroni (1 primary, 2 sync standbys)
+# HAProxy dynamic health-checking router + Multi-instance stateless Control Plane
+# ==============================================================================
+
+version: '3.8'
+
+networks:
+  neronet-ha-mesh:
+    driver: bridge
+
+volumes:
+  etcd1_data:
+  etcd2_data:
+  etcd3_data:
+  patroni1_data:
+  patroni2_data:
+  patroni3_data:
+  valkey_ha_data:
+
+services:
+  # --------------------------------------------------------------------------
+  # etcd Consensus Cluster (3 nodes, odd quorum)
+  # --------------------------------------------------------------------------
+  etcd-1:
+    image: quay.io/coreos/etcd:v3.5.15
+    container_name: neronet-etcd-1
+    restart: unless-stopped
+    environment:
+      - ETCD_NAME=etcd-1
+      - ETCD_DATA_DIR=/etcd-data
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd-1:2380
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd-1:2379
+      - ETCD_INITIAL_CLUSTER_TOKEN=neronet-etcd-token
+      - ETCD_INITIAL_CLUSTER=etcd-1=http://etcd-1:2380,etcd-2=http://etcd-2:2380,etcd-3=http://etcd-3:2380
+      - ETCD_INITIAL_CLUSTER_STATE=new
+    volumes:
+      - etcd1_data:/etcd-data
+    networks:
+      - neronet-ha-mesh
+
+  etcd-2:
+    image: quay.io/coreos/etcd:v3.5.15
+    container_name: neronet-etcd-2
+    restart: unless-stopped
+    environment:
+      - ETCD_NAME=etcd-2
+      - ETCD_DATA_DIR=/etcd-data
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd-2:2380
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd-2:2379
+      - ETCD_INITIAL_CLUSTER_TOKEN=neronet-etcd-token
+      - ETCD_INITIAL_CLUSTER=etcd-1=http://etcd-1:2380,etcd-2=http://etcd-2:2380,etcd-3=http://etcd-3:2380
+      - ETCD_INITIAL_CLUSTER_STATE=new
+    volumes:
+      - etcd2_data:/etcd-data
+    networks:
+      - neronet-ha-mesh
+
+  etcd-3:
+    image: quay.io/coreos/etcd:v3.5.15
+    container_name: neronet-etcd-3
+    restart: unless-stopped
+    environment:
+      - ETCD_NAME=etcd-3
+      - ETCD_DATA_DIR=/etcd-data
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd-3:2380
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd-3:2379
+      - ETCD_INITIAL_CLUSTER_TOKEN=neronet-etcd-token
+      - ETCD_INITIAL_CLUSTER=etcd-1=http://etcd-1:2380,etcd-2=http://etcd-2:2380,etcd-3=http://etcd-3:2380
+      - ETCD_INITIAL_CLUSTER_STATE=new
+    volumes:
+      - etcd3_data:/etcd-data
+    networks:
+      - neronet-ha-mesh
+
+  # --------------------------------------------------------------------------
+  # HAProxy Load Balancer / Routing Layer
+  # --------------------------------------------------------------------------
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: neronet-haproxy
+    restart: unless-stopped
+    volumes:
+      - ../configs/patroni/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "127.0.0.1:5432:5000"  # Primary read/write
+      - "127.0.0.1:5433:5001"  # Replicas read-only
+    networks:
+      - neronet-ha-mesh
+    depends_on:
+      - patroni-1
+      - patroni-2
+      - patroni-3
+
+  # --------------------------------------------------------------------------
+  # Patroni + PostgreSQL 18 Cluster (3 nodes)
+  # --------------------------------------------------------------------------
+  patroni-1:
+    image: ghcr.io/zalando/patroni:v4.0.4
+    container_name: neronet-patroni-1
+    restart: unless-stopped
+    environment:
+      - PATRONI_NAME=patroni-1
+      - PATRONI_SCOPE=neronet-ha-cluster
+      - PATRONI_ETCD3_HOSTS=etcd-1:2379,etcd-2:2379,etcd-3:2379
+      - PATRONI_RESTAPI_LISTEN=0.0.0.0:8008
+      - PATRONI_RESTAPI_CONNECT_ADDRESS=patroni-1:8008
+      - PATRONI_POSTGRESQL_LISTEN=0.0.0.0:5432
+      - PATRONI_POSTGRESQL_CONNECT_ADDRESS=patroni-1:5432
+      - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data
+      - PATRONI_REPLICATION_USERNAME=replicator
+      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD:-replicator_secret_pass}
+      - PATRONI_SUPERUSER_USERNAME=postgres
+      - PATRONI_SUPERUSER_PASSWORD=${POSTGRES_PASSWORD:-neronet_secure_pass_18}
+    volumes:
+      - patroni1_data:/var/lib/postgresql/data
+      - ../configs/patroni/patroni.yml.template:/etc/patroni/patroni.yml:ro
+    networks:
+      - neronet-ha-mesh
+    depends_on:
+      - etcd-1
+      - etcd-2
+      - etcd-3
+
+  patroni-2:
+    image: ghcr.io/zalando/patroni:v4.0.4
+    container_name: neronet-patroni-2
+    restart: unless-stopped
+    environment:
+      - PATRONI_NAME=patroni-2
+      - PATRONI_SCOPE=neronet-ha-cluster
+      - PATRONI_ETCD3_HOSTS=etcd-1:2379,etcd-2:2379,etcd-3:2379
+      - PATRONI_RESTAPI_LISTEN=0.0.0.0:8008
+      - PATRONI_RESTAPI_CONNECT_ADDRESS=patroni-2:8008
+      - PATRONI_POSTGRESQL_LISTEN=0.0.0.0:5432
+      - PATRONI_POSTGRESQL_CONNECT_ADDRESS=patroni-2:5432
+      - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data
+      - PATRONI_REPLICATION_USERNAME=replicator
+      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD:-replicator_secret_pass}
+      - PATRONI_SUPERUSER_USERNAME=postgres
+      - PATRONI_SUPERUSER_PASSWORD=${POSTGRES_PASSWORD:-neronet_secure_pass_18}
+    volumes:
+      - patroni2_data:/var/lib/postgresql/data
+      - ../configs/patroni/patroni.yml.template:/etc/patroni/patroni.yml:ro
+    networks:
+      - neronet-ha-mesh
+    depends_on:
+      - etcd-1
+      - etcd-2
+      - etcd-3
+
+  patroni-3:
+    image: ghcr.io/zalando/patroni:v4.0.4
+    container_name: neronet-patroni-3
+    restart: unless-stopped
+    environment:
+      - PATRONI_NAME=patroni-3
+      - PATRONI_SCOPE=neronet-ha-cluster
+      - PATRONI_ETCD3_HOSTS=etcd-1:2379,etcd-2:2379,etcd-3:2379
+      - PATRONI_RESTAPI_LISTEN=0.0.0.0:8008
+      - PATRONI_RESTAPI_CONNECT_ADDRESS=patroni-3:8008
+      - PATRONI_POSTGRESQL_LISTEN=0.0.0.0:5432
+      - PATRONI_POSTGRESQL_CONNECT_ADDRESS=patroni-3:5432
+      - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data
+      - PATRONI_REPLICATION_USERNAME=replicator
+      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD:-replicator_secret_pass}
+      - PATRONI_SUPERUSER_USERNAME=postgres
+      - PATRONI_SUPERUSER_PASSWORD=${POSTGRES_PASSWORD:-neronet_secure_pass_18}
+    volumes:
+      - patroni3_data:/var/lib/postgresql/data
+      - ../configs/patroni/patroni.yml.template:/etc/patroni/patroni.yml:ro
+    networks:
+      - neronet-ha-mesh
+    depends_on:
+      - etcd-1
+      - etcd-2
+      - etcd-3
+
+  # --------------------------------------------------------------------------
+  # Valkey 9.1 High Availability Bus
+  # --------------------------------------------------------------------------
+  valkey-ha:
+    image: valkey/valkey:9.1-alpine
+    container_name: neronet-valkey-ha
+    restart: unless-stopped
+    volumes:
+      - valkey_ha_data:/data
+    networks:
+      - neronet-ha-mesh
+
+  # --------------------------------------------------------------------------
+  # Control Plane Backend Instances (Stateless, Advisory Lock Leadership)
+  # --------------------------------------------------------------------------
+  backend-1:
+    build:
+      context: ../console/backend
+      dockerfile: Dockerfile
+    container_name: neronet-backend-1
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - LOG_FORMAT=json
+      - PORT=8081
+      - POSTGRES_HOST=haproxy
+      - POSTGRES_PORT=5000
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neronet_secure_pass_18}
+      - POSTGRES_DB=neronet_db
+      - VALKEY_HOST=valkey-ha
+      - VALKEY_PORT=6379
+      - DISTRIBUTED_LEADER_ENABLED=true
+      - INSTANCE_ID=backend-instance-1
+    networks:
+      - neronet-ha-mesh
+    depends_on:
+      - haproxy
+      - valkey-ha
+
+  backend-2:
+    build:
+      context: ../console/backend
+      dockerfile: Dockerfile
+    container_name: neronet-backend-2
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - LOG_FORMAT=json
+      - PORT=8081
+      - POSTGRES_HOST=haproxy
+      - POSTGRES_PORT=5000
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neronet_secure_pass_18}
+      - POSTGRES_DB=neronet_db
+      - VALKEY_HOST=valkey-ha
+      - VALKEY_PORT=6379
+      - DISTRIBUTED_LEADER_ENABLED=true
+      - INSTANCE_ID=backend-instance-2
+    networks:
+      - neronet-ha-mesh
+    depends_on:
+      - haproxy
+      - valkey-ha

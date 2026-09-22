@@ -549,4 +549,12 @@ router.post('/recovery-proof/verify', async (req, res, next) => {
   }
 });
 
+// WP-307: High Availability Distributed Leadership Status
+router.get('/ha-leader', (req, res) => {
+  const { getDistributedLeaderService } = require('../services/DistributedLeaderService');
+  const leaderService = getDistributedLeaderService();
+  return res.status(200).json({ leader: leaderService.getStatus() });
+});
+
 module.exports = router;
+
