@@ -19,6 +19,7 @@ const { blacklistToken, isTokenBlacklisted } = require('../db/valkey');
 const { logAuditEvent } = require('../utils/audit');
 const { setAuthCookies, clearAuthCookies } = require('../utils/cookies');
 const TotpService = require('../services/TotpService');
+const OidcService = require('../services/OidcService');
 
 // Pre-computed constant-time dummy bcrypt hash to prevent timing side-channel attacks on non-existent usernames
 const DUMMY_BCRYPT_HASH = '$2a$10$wN3t8gX1ZkGkR0e2M8t0y.9gZ0n4p7s2e6u1v8w5x9y2z3a4b5c6d';
@@ -392,8 +393,8 @@ router.post('/refresh', async (req, res, next) => {
       token = authHeader.substring(7).trim();
     } else if (req.cookies && req.cookies.refreshToken) {
       token = req.cookies.refreshToken;
-    } else if (req.body && req.body.refreshToken) {
-      token = req.body.refreshToken;
+    } else if (req.body && (req.body.refreshToken || req.body.refresh_token)) {
+      token = req.body.refreshToken || req.body.refresh_token;
     }
 
     if (!token) {
@@ -464,6 +465,13 @@ router.post('/refresh', async (req, res, next) => {
     if (userRes.rows.length === 0 || userRes.rows[0].status === 'suspended' || userRes.rows[0].status === 'revoked') {
       clearAuthCookies(res);
       return res.status(401).json({ error: 'Account inactive or suspended' });
+    }
+
+    // WP-303: Verify user active status on external IdP for OIDC SSO managed accounts
+    const idpStatus = await OidcService.verifyUserActiveOnIdP(rtRow.user_id);
+    if (!idpStatus.active) {
+      clearAuthCookies(res);
+      return res.status(401).json({ error: idpStatus.reason || 'Account deactivated on identity provider' });
     }
     const latestUser = userRes.rows[0];
 
@@ -588,6 +596,57 @@ router.post('/logout', authenticateToken, async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+});
+
+// WP-303: OIDC SSO Endpoints
+router.get('/oidc/authorize', async (req, res, next) => {
+  try {
+    const { organization_id, redirect_uri } = req.query;
+    if (!organization_id || !redirect_uri) {
+      return res.status(400).json({ error: 'Missing organization_id or redirect_uri' });
+    }
+    const result = await OidcService.generateAuthorizationUrl(organization_id, redirect_uri);
+    return res.status(200).json(result);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/oidc/callback', async (req, res, next) => {
+  try {
+    const { organization_id, code, state, redirect_uri } = req.body || {};
+    if (!organization_id || !code || !state) {
+      return res.status(400).json({ error: 'Missing required OIDC callback parameters' });
+    }
+
+    const { user, mappedRole } = await OidcService.exchangeCodeAndAuthenticate(
+      organization_id,
+      code,
+      state,
+      redirect_uri
+    );
+
+    const pool = getPgPool();
+    const session = await issueUserSession(req, res, user, pool);
+
+    logAuditEvent({
+      eventType: 'AUTH_SSO_LOGIN_SUCCESS',
+      severity: 'info',
+      actorUserId: user.id,
+      actorUsername: user.username,
+      targetId: user.id,
+      targetType: 'user',
+      message: `User ${user.username} authenticated via OIDC SSO with mapped role ${mappedRole}`,
+      ipAddress: req.ip
+    });
+
+    return res.status(200).json({
+      ...session,
+      mappedRole
+    });
+  } catch (err) {
+    return res.status(401).json({ error: err.message });
   }
 });
 
