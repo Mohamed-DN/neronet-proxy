@@ -294,6 +294,9 @@ type NetmapSelf struct {
 
 	// Stealth carries AmneziaWG obfuscation parameters when Transport is "amneziawg".
 	Stealth *StealthConfig `json:"stealth,omitempty"`
+
+	// DaitaMode communicates the active DAITA anti-AI traffic shaping mode ("off", "balanced", "paranoid").
+	DaitaMode string `json:"daita_mode,omitempty"`
 }
 
 // NetmapPeer is one node this node may talk to.
@@ -323,6 +326,9 @@ type NetmapPeer struct {
 
 	// Stealth carries AmneziaWG parameters when communicating with this peer over "amneziawg".
 	Stealth *StealthConfig `json:"stealth,omitempty"`
+
+	// DaitaMode communicates the peer's DAITA traffic shaping mode.
+	DaitaMode string `json:"daita_mode,omitempty"`
 }
 
 // NetmapResponse is the document. When Unchanged is true the node already holds this

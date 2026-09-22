@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 
 	"golang.zx2c4.com/wireguard/tun"
+
+	"github.com/sovereign/proxy/v4/pkg/dataplane/daita"
 )
 
 // IP protocol numbers this package understands. Anything else is carried with
@@ -48,6 +50,7 @@ func (p Packet) String() string {
 // unauthorised caller which peers and ports exist.
 type PacketFilter interface {
 	// Outbound is called on a packet leaving this node, before encryption.
+	// Returning a non-nil error drops the packet.
 	Outbound(p Packet) error
 	// Inbound is called on a decrypted packet from a peer, before the local stack
 	// sees it.
@@ -57,12 +60,10 @@ type PacketFilter interface {
 // FilterStats counts what was dropped. Every number is a count of real packets;
 // none of them is estimated.
 type FilterStats struct {
-	OutboundDropped uint64
-	InboundDropped  uint64
-	// MalformedDropped counts packets too short or too strange to parse. They are
-	// dropped only when a filter is installed: with no filter the device is a plain
-	// pipe and parsing is not its business.
+	OutboundDropped  uint64
+	InboundDropped   uint64
 	MalformedDropped uint64
+	DummyDropped     uint64
 }
 
 // filteredTUN wraps the tun.Device so every packet crossing the tunnel passes the
@@ -71,11 +72,13 @@ type FilterStats struct {
 // visible in one place.
 type filteredTUN struct {
 	tun.Device
-	filter PacketFilter
+	filter      PacketFilter
+	daitaShaper *daita.Shaper
 
 	outboundDropped  atomic.Uint64
 	inboundDropped   atomic.Uint64
 	malformedDropped atomic.Uint64
+	dummyDropped     atomic.Uint64
 
 	closeOnce sync.Once
 	closeErr  error
@@ -89,8 +92,12 @@ func (f *filteredTUN) Close() error {
 	return f.closeErr
 }
 
-func newFilteredTUN(dev tun.Device, filter PacketFilter) *filteredTUN {
-	return &filteredTUN{Device: dev, filter: filter}
+func newFilteredTUN(dev tun.Device, filter PacketFilter, shaper ...*daita.Shaper) *filteredTUN {
+	var s *daita.Shaper
+	if len(shaper) > 0 {
+		s = shaper[0]
+	}
+	return &filteredTUN{Device: dev, filter: filter, daitaShaper: s}
 }
 
 func (f *filteredTUN) stats() FilterStats {
@@ -98,6 +105,7 @@ func (f *filteredTUN) stats() FilterStats {
 		OutboundDropped:  f.outboundDropped.Load(),
 		InboundDropped:   f.inboundDropped.Load(),
 		MalformedDropped: f.malformedDropped.Load(),
+		DummyDropped:     f.dummyDropped.Load(),
 	}
 }
 
@@ -111,15 +119,23 @@ func (f *filteredTUN) stats() FilterStats {
 // element's memory.
 func (f *filteredTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 	n, err := f.Device.Read(bufs, sizes, offset)
-	if f.filter == nil || n == 0 {
+	if n == 0 {
 		return n, err
 	}
 
 	kept := 0
 	for i := 0; i < n; i++ {
 		raw := bufs[i][offset : offset+sizes[i]]
-		if !f.allow(raw, true) {
+		if f.filter != nil && !f.allow(raw, true) {
 			continue
+		}
+		if f.daitaShaper != nil {
+			padded := f.daitaShaper.NormalizePacketSize(raw)
+			if len(padded) <= len(bufs[i][offset:]) {
+				copy(bufs[i][offset:], padded)
+				sizes[i] = len(padded)
+				raw = bufs[i][offset : offset+sizes[i]]
+			}
 		}
 		if kept != i {
 			copy(bufs[kept][offset:], raw)
@@ -134,7 +150,7 @@ func (f *filteredTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) 
 // out of the slice handed downwards; the caller's slice is not modified, because it
 // owns the buffers behind it.
 func (f *filteredTUN) Write(bufs [][]byte, offset int) (int, error) {
-	if f.filter == nil || len(bufs) == 0 {
+	if len(bufs) == 0 {
 		return f.Device.Write(bufs, offset)
 	}
 
@@ -156,7 +172,13 @@ func (f *filteredTUN) Write(bufs [][]byte, offset int) (int, error) {
 			startFiltering(i)
 			continue
 		}
-		if !f.allow(b[offset:], false) {
+		raw := b[offset:]
+		if daita.IsDummyPacket(raw) {
+			f.dummyDropped.Add(1)
+			startFiltering(i)
+			continue
+		}
+		if f.filter != nil && !f.allow(raw, false) {
 			startFiltering(i)
 			continue
 		}
@@ -172,6 +194,11 @@ func (f *filteredTUN) Write(bufs [][]byte, offset int) (int, error) {
 }
 
 func (f *filteredTUN) allow(raw []byte, outbound bool) bool {
+	if !outbound && daita.IsDummyPacket(raw) {
+		f.dummyDropped.Add(1)
+		return false
+	}
+
 	pkt, ok := ParsePacket(raw)
 	if !ok {
 		f.malformedDropped.Add(1)

@@ -34,6 +34,7 @@ import (
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
 
+	"github.com/sovereign/proxy/v4/pkg/dataplane/daita"
 	"github.com/sovereign/proxy/v4/pkg/dataplane/stealth"
 )
 
@@ -122,6 +123,9 @@ type Config struct {
 
 	// TransportMgr coordinates per-peer multi-protocol transport selection.
 	TransportMgr *stealth.TransportManager
+
+	// DaitaMode selects the DAITA protection level: "off", "balanced", or "paranoid".
+	DaitaMode string
 }
 
 func (c *Config) applyDefaults() {
@@ -215,6 +219,7 @@ type Device struct {
 	wg           *device.Device
 	backing      backend
 	transportMgr *stealth.TransportManager
+	daitaShaper  *daita.Shaper
 
 	mu     sync.Mutex
 	closed bool
@@ -253,7 +258,16 @@ func New(cfg Config) (*Device, error) {
 		return nil, err
 	}
 
-	filtered := newFilteredTUN(back.tunDevice(), cfg.Filter)
+	var shaper *daita.Shaper
+	if cfg.DaitaMode != "" && cfg.DaitaMode != daita.ModeOff {
+		var localVIP netip.Addr
+		if len(cfg.Addresses) > 0 {
+			localVIP = cfg.Addresses[0].Addr()
+		}
+		shaper, _ = daita.NewShaper(cfg.DaitaMode, cfg.MTU, localVIP, netip.Addr{}, nil)
+	}
+
+	filtered := newFilteredTUN(back.tunDevice(), cfg.Filter, shaper)
 
 	level := device.LogLevelError
 	if cfg.Verbose {
@@ -292,11 +306,15 @@ func New(cfg Config) (*Device, error) {
 		wg:           wgDev,
 		backing:      back,
 		transportMgr: cfg.TransportMgr,
+		daitaShaper:  shaper,
 	}, nil
 }
 
 // Mode reports which backend is running.
 func (d *Device) Mode() Mode { return d.mode }
+
+// DaitaShaper returns the active DAITA traffic shaper, if enabled.
+func (d *Device) DaitaShaper() *daita.Shaper { return d.daitaShaper }
 
 // Addresses returns the overlay prefixes configured on the device.
 func (d *Device) Addresses() []netip.Prefix {

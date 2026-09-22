@@ -79,6 +79,7 @@ function formatNode(row) {
     metadata,
     transport: row.transport || 'wireguard',
     stealth_config: typeof row.stealth_config === 'string' ? JSON.parse(row.stealth_config) : (row.stealth_config || null),
+    daita_mode: row.daita_mode || 'off',
     last_heartbeat: row.last_heartbeat,
     last_seen_at: row.last_seen_at || row.last_heartbeat || row.created_at,
     created_at: row.created_at,
@@ -714,6 +715,44 @@ router.post('/:id/action', async (req, res, next) => {
         success: true,
         transport,
         stealth_config,
+        node: formatted
+      });
+    }
+
+    if (action === 'set_daita') {
+      const allowedModes = ['off', 'balanced', 'paranoid'];
+      const mode = req.body.daita_mode || req.body.mode || req.body.params?.daita_mode || req.body.params?.mode;
+      if (!mode || !allowedModes.includes(mode)) {
+        return res.status(400).json({ error: `Invalid daita_mode. Allowed: ${allowedModes.join(', ')}` });
+      }
+
+      await pool.query(
+        `UPDATE nodes SET daita_mode = $1, updated_at = NOW() WHERE id = $2`,
+        [mode, node.id]
+      );
+
+      await bumpNetmap();
+
+      logAuditEvent({
+        eventType: 'NODE_SET_DAITA',
+        severity: 'info',
+        actorUserId: req.user.id,
+        actorUsername: req.user.username,
+        targetId: node.id,
+        targetType: 'node',
+        message: `Node ${node.id} DAITA mode set to ${mode}`,
+        ipAddress: req.ip,
+        metadata: { daita_mode: mode }
+      });
+
+      const updatedRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [node.id]);
+      const formatted = formatNode(updatedRes.rows[0]);
+
+      await broadcastNodeEvent('NODE_ACTION_DAITA', formatted, req.user);
+
+      return res.status(200).json({
+        success: true,
+        daita_mode: mode,
         node: formatted
       });
     }

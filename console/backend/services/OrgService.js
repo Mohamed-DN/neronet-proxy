@@ -102,7 +102,7 @@ class OrgService {
   /**
    * Update an organization
    */
-  static async updateOrganization(orgId, { name, default_policy, max_netmap_staleness_seconds, profile, default_transport, default_stealth_config }, actor) {
+  static async updateOrganization(orgId, { name, default_policy, max_netmap_staleness_seconds, profile, default_transport, default_stealth_config, default_daita_mode }, actor) {
     const pool = getPgPool();
     const updates = [];
     const params = [];
@@ -140,6 +140,13 @@ class OrgService {
     if (default_stealth_config !== undefined) {
       updates.push(`default_stealth_config = $${idx++}`);
       params.push(default_stealth_config ? JSON.stringify(default_stealth_config) : null);
+    }
+    if (default_daita_mode) {
+      if (!['off', 'balanced', 'paranoid'].includes(default_daita_mode)) {
+        throw new Error('Invalid default_daita_mode: must be off, balanced, or paranoid');
+      }
+      updates.push(`default_daita_mode = $${idx++}`);
+      params.push(default_daita_mode);
     }
 
     if (updates.length === 0) {

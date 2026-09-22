@@ -127,6 +127,9 @@
         },
         "stealth": {
           "$ref": "#/$defs/StealthConfig"
+        },
+        "daita_mode": {
+          "type": "string"
         }
       },
       "additionalProperties": false,
@@ -159,6 +162,9 @@
         },
         "stealth": {
           "$ref": "#/$defs/StealthConfig"
+        },
+        "daita_mode": {
+          "type": "string"
         }
       },
       "additionalProperties": false,

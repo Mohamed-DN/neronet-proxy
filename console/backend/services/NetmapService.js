@@ -483,9 +483,9 @@ function sortAllowedIPs(list) {
  */
 async function buildNetmap(nodeId) {
   const selfRows = await query(
-    `SELECT id, overlay_ipv4, overlay_ipv6, is_quarantined, transport, stealth_config FROM nodes WHERE id = $1`,
+    `SELECT id, overlay_ipv4, overlay_ipv6, is_quarantined, transport, stealth_config, daita_mode FROM nodes WHERE id = $1`,
     [nodeId],
-    `SELECT id, overlay_ipv4, overlay_ipv6, is_quarantined, transport, stealth_config FROM nodes WHERE id = ?`,
+    `SELECT id, overlay_ipv4, overlay_ipv6, is_quarantined, transport, stealth_config, daita_mode FROM nodes WHERE id = ?`,
     [nodeId]
   );
 
@@ -510,11 +510,11 @@ async function buildNetmap(nodeId) {
   const candidates = self.is_quarantined
     ? []
     : await query(
-        `SELECT id, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config
+        `SELECT id, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode
            FROM nodes
           WHERE id <> $1 AND is_quarantined = FALSE AND is_healthy = TRUE`,
         [nodeId],
-        `SELECT id, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config
+        `SELECT id, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode
            FROM nodes
           WHERE id <> ? AND is_quarantined = 0 AND is_healthy = 1`,
         [nodeId]
@@ -571,6 +571,9 @@ async function buildNetmap(nodeId) {
     if (peerStealth) {
       peerEntry.stealth = peerStealth;
     }
+    if (row.daita_mode && row.daita_mode !== 'off') {
+      peerEntry.daita_mode = row.daita_mode;
+    }
 
     peers.push(peerEntry);
   }
@@ -587,6 +590,9 @@ async function buildNetmap(nodeId) {
   const selfStealth = parseJsonColumn(self.stealth_config, null);
   if (selfStealth) {
     selfObj.stealth = selfStealth;
+  }
+  if (self.daita_mode && self.daita_mode !== 'off') {
+    selfObj.daita_mode = self.daita_mode;
   }
 
   return {
