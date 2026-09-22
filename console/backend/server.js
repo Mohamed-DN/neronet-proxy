@@ -18,6 +18,8 @@ const { startCollector } = require('./services/MetricsCollector');
 const { initTopologyWebSocket } = require('./ws/topologyServer');
 
 // Import Route Handlers
+const metricsRoutes = require('./routes/metrics');
+const requestMetrics = require('./middleware/requestMetrics');
 const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
 const usersRoutes = require('./routes/users');
@@ -60,6 +62,11 @@ function createApp() {
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   app.use(cookieParser);
   app.use(requestLogger);
+  app.use(requestMetrics);
+
+  // Prometheus Metrics Endpoints (Root /metrics and /api/metrics)
+  app.use('/metrics', metricsRoutes);
+  app.use('/api/metrics', metricsRoutes);
 
   // Mount API Sub-Routers
 

@@ -39,6 +39,7 @@ func main() {
 	spikePeers := config.BindStringFlag(flag.CommandLine, "spike-peers", "SOVEREIGN_SPIKE_PEERS", "", "Path to the WP-201 spike peers document")
 	overlayEchoPort := config.BindIntFlag(flag.CommandLine, "overlay-echo-port", "SOVEREIGN_OVERLAY_ECHO_PORT", 0, "TCP port answering on this node's overlay address; 0 disables it")
 	stunServer := config.BindStringFlag(flag.CommandLine, "stun-server", "SOVEREIGN_STUN_SERVER", "", "STUN server (host:port) asked for this node's reflexive address; empty disables it")
+	metricsAddr := config.BindStringFlag(flag.CommandLine, "metrics-addr", "SOVEREIGN_METRICS_LISTEN_ADDR", "", "HTTP metrics listen address (e.g. 127.0.0.1:9090); empty disables metrics")
 	flag.Parse()
 
 	log.Printf("[SOVEREIGN-NODE] Initializing SovereignMesh client daemon (%s)...", ClientVersion)
@@ -82,6 +83,15 @@ func main() {
 		log.Fatalf("Failed to start HTTP proxy on %s: %v", *httpAddr, err)
 	}
 	log.Printf("[SOVEREIGN-NODE] HTTP CONNECT Inbound ready on %s", *httpAddr)
+
+	// Start Prometheus Metrics Exporter (if configured)
+	metricsSrv, err := startMetricsServer(*metricsAddr)
+	if err != nil {
+		log.Printf("[SOVEREIGN-NODE] Warning: Failed to start metrics server on %s: %v", *metricsAddr, err)
+	}
+	if metricsSrv != nil {
+		defer metricsSrv.Close()
+	}
 
 	// Register with Control Plane
 	ctrlClient := control.NewClient(*controlURL)
@@ -176,11 +186,13 @@ func main() {
 					const cpuPctUnmeasured = 0
 					const batteryPctUnmeasured = 0
 
+					hbStart := time.Now()
 					hbCtx, hbCancel := context.WithTimeout(ctx, 5*time.Second)
 					hbResp, hbErr := ctrlClient.SendHeartbeatWithPosture(
 						hbCtx, nodeID, netmaps.endpoints(), 0, cpuPctUnmeasured, memoryMB, batteryPctUnmeasured, false, att,
 					)
 					hbCancel()
+					globalNodeMetrics.RecordHeartbeat(time.Since(hbStart), hbErr == nil, hbResp != nil && hbResp.IsQuarantined)
 
 					if hbErr != nil {
 						// The control plane has no row for this node: its database was
@@ -254,6 +266,7 @@ func main() {
 						if syncErr == nil && newPol != nil {
 							netfilter.UpdatePolicy(newPol)
 							policyEpoch = newEp
+							globalNodeMetrics.UpdateEpochs(policyEpoch, routeEpoch)
 							log.Printf("[SOVEREIGN-NODE] Updated ACL policy to epoch %d", policyEpoch)
 						}
 					}
@@ -271,6 +284,7 @@ func main() {
 						rCancel()
 						if rErr == nil {
 							routeEpoch = newEp
+							globalNodeMetrics.UpdateEpochs(policyEpoch, routeEpoch)
 							log.Printf("[SOVEREIGN-NODE] Updated subnet routes to epoch %d (count: %d)", routeEpoch, len(newRoutes))
 						}
 					}
