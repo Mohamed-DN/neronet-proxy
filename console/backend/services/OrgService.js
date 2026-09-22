@@ -102,7 +102,7 @@ class OrgService {
   /**
    * Update an organization
    */
-  static async updateOrganization(orgId, { name, default_policy, max_netmap_staleness_seconds, profile, default_transport, default_stealth_config, default_daita_mode }, actor) {
+  static async updateOrganization(orgId, { name, default_policy, max_netmap_staleness_seconds, profile, default_transport, default_stealth_config, default_daita_mode, search_domain }, actor) {
     const pool = getPgPool();
     const updates = [];
     const params = [];
@@ -147,6 +147,10 @@ class OrgService {
       }
       updates.push(`default_daita_mode = $${idx++}`);
       params.push(default_daita_mode);
+    }
+    if (search_domain !== undefined) {
+      updates.push(`search_domain = $${idx++}`);
+      params.push(search_domain ? search_domain.toLowerCase().trim() : null);
     }
 
     if (updates.length === 0) {

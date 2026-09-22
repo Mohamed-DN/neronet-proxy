@@ -80,6 +80,7 @@ function formatNode(row) {
     transport: row.transport || 'wireguard',
     stealth_config: typeof row.stealth_config === 'string' ? JSON.parse(row.stealth_config) : (row.stealth_config || null),
     daita_mode: row.daita_mode || 'off',
+    dns_name: row.dns_name || null,
     last_heartbeat: row.last_heartbeat,
     last_seen_at: row.last_seen_at || row.last_heartbeat || row.created_at,
     created_at: row.created_at,
@@ -753,6 +754,43 @@ router.post('/:id/action', async (req, res, next) => {
       return res.status(200).json({
         success: true,
         daita_mode: mode,
+        node: formatted
+      });
+    }
+
+    if (action === 'set_dns_name') {
+      const dnsName = req.body.dns_name || req.body.params?.dns_name;
+      if (!dnsName || typeof dnsName !== 'string') {
+        return res.status(400).json({ error: 'dns_name string is required' });
+      }
+
+      await pool.query(
+        `UPDATE nodes SET dns_name = $1, updated_at = NOW() WHERE id = $2`,
+        [dnsName.toLowerCase().trim(), node.id]
+      );
+
+      await bumpNetmap();
+
+      logAuditEvent({
+        eventType: 'NODE_SET_DNS_NAME',
+        severity: 'info',
+        actorUserId: req.user.id,
+        actorUsername: req.user.username,
+        targetId: node.id,
+        targetType: 'node',
+        message: `Node ${node.id} DNS name set to ${dnsName}`,
+        ipAddress: req.ip,
+        metadata: { dns_name: dnsName }
+      });
+
+      const updatedRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [node.id]);
+      const formatted = formatNode(updatedRes.rows[0]);
+
+      await broadcastNodeEvent('NODE_ACTION_DNS_NAME', formatted, req.user);
+
+      return res.status(200).json({
+        success: true,
+        dns_name: dnsName,
         node: formatted
       });
     }

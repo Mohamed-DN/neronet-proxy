@@ -277,6 +277,13 @@ type StealthConfig struct {
 	Disguise string `json:"disguise,omitempty"`
 }
 
+// DNSConfig carries MagicDNS configuration in the Netmap.
+type DNSConfig struct {
+	MagicDNS      bool     `json:"magic_dns"`
+	SearchDomains []string `json:"search_domains,omitempty"`
+	Nameservers   []string `json:"nameservers,omitempty"`
+}
+
 // NetmapSelf is how this node is addressed inside the overlay.
 type NetmapSelf struct {
 	OverlayIPv4 string `json:"overlay_ipv4"`
@@ -297,6 +304,12 @@ type NetmapSelf struct {
 
 	// DaitaMode communicates the active DAITA anti-AI traffic shaping mode ("off", "balanced", "paranoid").
 	DaitaMode string `json:"daita_mode,omitempty"`
+
+	// DNSName is the primary in-mesh FQDN of this node (e.g. "laptop.corp.neronet").
+	DNSName string `json:"dns_name,omitempty"`
+
+	// Name is the short human-readable name of this node.
+	Name string `json:"name,omitempty"`
 }
 
 // NetmapPeer is one node this node may talk to.
@@ -329,6 +342,12 @@ type NetmapPeer struct {
 
 	// DaitaMode communicates the peer's DAITA traffic shaping mode.
 	DaitaMode string `json:"daita_mode,omitempty"`
+
+	// DNSName is the peer's in-mesh FQDN.
+	DNSName string `json:"dns_name,omitempty"`
+
+	// Name is the peer's short name.
+	Name string `json:"name,omitempty"`
 }
 
 // NetmapResponse is the document. When Unchanged is true the node already holds this
@@ -342,6 +361,9 @@ type NetmapResponse struct {
 	ACL         *acl.CompiledPeerPolicy `json:"acl,omitempty"`
 	Routes      []*routes.NetworkRoute  `json:"routes,omitempty"`
 	RevokedKeys []string                `json:"revoked_keys,omitempty"`
+
+	// DNS carries MagicDNS configuration and search domains.
+	DNS *DNSConfig `json:"dns,omitempty"`
 
 	// GeneratedAtUnix is the control plane's clock when the document was built. The
 	// node measures staleness against it.

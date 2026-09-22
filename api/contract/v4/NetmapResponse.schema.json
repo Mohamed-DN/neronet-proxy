@@ -68,6 +68,30 @@
         "epoch"
       ]
     },
+    "DNSConfig": {
+      "properties": {
+        "magic_dns": {
+          "type": "boolean"
+        },
+        "search_domains": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "nameservers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "magic_dns"
+      ]
+    },
     "IPMask": {
       "type": "string",
       "contentEncoding": "base64"
@@ -130,6 +154,12 @@
         },
         "daita_mode": {
           "type": "string"
+        },
+        "dns_name": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
         }
       },
       "additionalProperties": false,
@@ -164,6 +194,12 @@
           "$ref": "#/$defs/StealthConfig"
         },
         "daita_mode": {
+          "type": "string"
+        },
+        "dns_name": {
+          "type": "string"
+        },
+        "name": {
           "type": "string"
         }
       },
@@ -353,6 +389,9 @@
         "type": "string"
       },
       "type": "array"
+    },
+    "dns": {
+      "$ref": "#/$defs/DNSConfig"
     },
     "generated_at_unix": {
       "type": "integer"

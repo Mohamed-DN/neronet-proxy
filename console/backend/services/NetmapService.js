@@ -473,6 +473,14 @@ function sortAllowedIPs(list) {
   });
 }
 
+function computeDNSName(name, explicitDnsName, domain) {
+  if (explicitDnsName) return explicitDnsName;
+  if (!name) return undefined;
+  const slug = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  if (!slug) return undefined;
+  return domain ? `${slug}.${domain}` : slug;
+}
+
 /**
  * Build the netmap for one node.
  *
@@ -483,14 +491,21 @@ function sortAllowedIPs(list) {
  */
 async function buildNetmap(nodeId) {
   const selfRows = await query(
-    `SELECT id, overlay_ipv4, overlay_ipv6, is_quarantined, transport, stealth_config, daita_mode FROM nodes WHERE id = $1`,
+    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, o.search_domain, o.slug as org_slug
+       FROM nodes n
+       LEFT JOIN organizations o ON n.organization_id = o.id
+      WHERE n.id = $1`,
     [nodeId],
-    `SELECT id, overlay_ipv4, overlay_ipv6, is_quarantined, transport, stealth_config, daita_mode FROM nodes WHERE id = ?`,
+    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, o.search_domain, o.slug as org_slug
+       FROM nodes n
+       LEFT JOIN organizations o ON n.organization_id = o.id
+      WHERE n.id = ?`,
     [nodeId]
   );
 
   if (selfRows.length === 0) return null;
   const self = selfRows[0];
+  const searchDomain = self.search_domain || (self.org_slug ? `${self.org_slug}.neronet` : 'mesh');
 
   const [version, policy, revokedKeys] = await Promise.all([
     getVersion(),
@@ -510,11 +525,11 @@ async function buildNetmap(nodeId) {
   const candidates = self.is_quarantined
     ? []
     : await query(
-        `SELECT id, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode
+        `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode
            FROM nodes
           WHERE id <> $1 AND is_quarantined = FALSE AND is_healthy = TRUE`,
         [nodeId],
-        `SELECT id, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode
+        `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode
            FROM nodes
           WHERE id <> ? AND is_quarantined = 0 AND is_healthy = 1`,
         [nodeId]
@@ -575,6 +590,14 @@ async function buildNetmap(nodeId) {
       peerEntry.daita_mode = row.daita_mode;
     }
 
+    const peerDNS = computeDNSName(row.name, row.dns_name, searchDomain);
+    if (peerDNS) {
+      peerEntry.dns_name = peerDNS;
+    }
+    if (row.name) {
+      peerEntry.name = row.name;
+    }
+
     peers.push(peerEntry);
   }
 
@@ -595,6 +618,14 @@ async function buildNetmap(nodeId) {
     selfObj.daita_mode = self.daita_mode;
   }
 
+  const selfDNS = computeDNSName(self.name, self.dns_name, searchDomain);
+  if (selfDNS) {
+    selfObj.dns_name = selfDNS;
+  }
+  if (self.name) {
+    selfObj.name = self.name;
+  }
+
   return {
     version,
     unchanged: false,
@@ -603,6 +634,11 @@ async function buildNetmap(nodeId) {
     acl: policy,
     routes: routeList,
     revoked_keys: revokedKeys.slice().sort(),
+    dns: {
+      magic_dns: true,
+      search_domains: [searchDomain, 'mesh', 'neronet'],
+      nameservers: ['100.64.0.1']
+    },
     max_staleness_seconds: MAX_STALENESS_SECONDS
   };
 }
