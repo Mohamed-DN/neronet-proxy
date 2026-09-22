@@ -346,4 +346,98 @@ async function runNukeQuery(pgSql, pgParams, sqliteSql, sqliteParams) {
     .all(...sqliteParams);
 }
 
+// =============================================================================
+// WP-302: Governance & Crypto-Shredding (NeroNuke v2)
+// =============================================================================
+const {
+  CryptoShreddingService,
+  LegalHoldActiveError,
+  DualAuthorizationRequiredError,
+  KeyShreddedError
+} = require('../../services/CryptoShreddingService');
+
+// 1. Impose Legal Hold
+router.post('/legal-hold', authenticateToken, requireRole('super-admin', 'owner', 'admin'), async (req, res, next) => {
+  try {
+    const { organization_id, reason } = req.body || {};
+    if (!organization_id || !reason) {
+      return res.status(400).json({ error: 'organization_id and reason are required' });
+    }
+    const hold = await CryptoShreddingService.imposeLegalHold(organization_id, reason, req.user.id);
+    return res.status(201).json({ hold });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 2. Release Legal Hold
+router.delete('/legal-hold/:id', authenticateToken, requireRole('super-admin', 'owner'), async (req, res, next) => {
+  try {
+    const released = await CryptoShreddingService.releaseLegalHold(req.params.id, req.user.id);
+    if (!released) {
+      return res.status(404).json({ error: 'Legal hold not found or already released' });
+    }
+    return res.status(200).json({ success: true, released });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 3. List Legal Holds
+router.get('/legal-hold', authenticateToken, async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const qRes = await pool.query('SELECT * FROM organization_legal_holds ORDER BY created_at DESC');
+    return res.status(200).json({ legal_holds: qRes.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 4. Request Dual-Authorization Destruction
+router.post('/dual-auth/request', authenticateToken, requireRole('super-admin', 'owner', 'admin'), async (req, res, next) => {
+  try {
+    const { target_type, target_id, comment } = req.body || {};
+    if (!target_type || !target_id) {
+      return res.status(400).json({ error: 'target_type and target_id are required' });
+    }
+
+    const auth = await CryptoShreddingService.requestDestruction({
+      targetType: target_type,
+      targetId: target_id,
+      initiatorUserId: req.user.id,
+      comment
+    });
+
+    return res.status(201).json({ authorization: auth });
+  } catch (err) {
+    if (err instanceof LegalHoldActiveError) {
+      return res.status(403).json({ error: err.message, code: 'LEGAL_HOLD_ACTIVE' });
+    }
+    next(err);
+  }
+});
+
+// 5. Approve and Execute Dual-Authorization Destruction
+router.post('/dual-auth/approve/:id', authenticateToken, requireRole('super-admin', 'owner', 'admin'), async (req, res, next) => {
+  try {
+    const { comment } = req.body || {};
+    const result = await CryptoShreddingService.approveAndExecuteDestruction(
+      req.params.id,
+      req.user.id,
+      comment
+    );
+
+    return res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof DualAuthorizationRequiredError) {
+      return res.status(403).json({ error: err.message, code: 'DUAL_AUTHORIZATION_REQUIRED' });
+    }
+    if (err instanceof LegalHoldActiveError) {
+      return res.status(403).json({ error: err.message, code: 'LEGAL_HOLD_ACTIVE' });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+});
+
 module.exports = router;
