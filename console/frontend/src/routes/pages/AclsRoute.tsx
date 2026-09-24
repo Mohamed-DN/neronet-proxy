@@ -546,6 +546,7 @@ export default function AclsRoute() {
               value={actionFilter}
               onValueChange={(val) => setActionFilter(val as any)}
               options={actionOptions}
+              label="Filter by action"
               aria-label="Filter by action"
             />
           </div>
@@ -554,6 +555,7 @@ export default function AclsRoute() {
               value={protoFilter}
               onValueChange={setProtoFilter}
               options={protoOptions}
+              label="Filter by protocol"
               aria-label="Filter by protocol"
             />
           </div>

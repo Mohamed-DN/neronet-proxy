@@ -141,16 +141,56 @@ export interface AclDefaultPolicyResponse {
 }
 
 export interface AuditEvent {
+  id?: string | number;
   sequence_num: number;
+  prev_hash?: string;
+  entry_hash?: string;
+  chain_hash?: string;
   event_type: string;
+  severity?: 'info' | 'warn' | 'critical' | 'error' | string;
   actor_username?: string;
   actor_user_id?: string;
   target_id?: string;
   target_type?: string;
   message: string;
   ip_address?: string;
+  user_agent?: string;
+  metadata_json?: Record<string, unknown> | null;
   created_at: string;
-  chain_hash: string;
+}
+
+export interface AuditVerificationResult {
+  valid: boolean;
+  events_count?: number;
+  first_sequence?: number;
+  last_sequence?: number;
+  broken_at_sequence?: number | null;
+  reason?: string | null;
+  timestamp?: string;
+}
+
+export interface AuditCheckpoint {
+  id: string;
+  sequence_num: number;
+  event_hash: string;
+  signature: string;
+  public_key?: string;
+  created_at: string;
+}
+
+export interface SiemDestination {
+  id: string;
+  name: string;
+  protocol: 'udp' | 'tcp' | 'tls' | string;
+  endpoint: string;
+  format: 'rfc5424' | 'cef' | 'leef' | 'json' | string;
+  enabled: boolean;
+  created_at?: string;
+}
+
+export interface AuditLogsResponse {
+  audit_logs: AuditEvent[];
+  total: number;
 }
 
 export interface RecoveryProof {

@@ -368,5 +368,104 @@
       "desc": "The mesh is currently operating in permissive mode. Add your first rule to establish a Zero-Trust perimeter.",
       "noMatches": "No ACL rules match the selected filters."
     }
+  },
+  "audit": {
+    "title": "Tamper-Evident Audit Ledger & SIEM Exporter",
+    "description": "Cryptographically chained HMAC-SHA256 audit ledger, Ed25519 signed checkpoints, live integrity proof, and real-time SIEM streaming.",
+    "actions": {
+      "verifyChain": "Verify Integrity",
+      "createCheckpoint": "Create Checkpoint",
+      "siemTargets": "SIEM Forwarders",
+      "exportLog": "Export Trail",
+      "inspect": "Inspect",
+      "copyHash": "Copy Hash",
+      "close": "Close"
+    },
+    "stats": {
+      "totalEvents": "Recorded Events",
+      "chainStatus": "Chain Integrity",
+      "checkpoints": "Signed Checkpoints",
+      "siemForwarders": "SIEM Targets",
+      "validBadge": "HMAC Chain Valid",
+      "tamperedBadge": "Tampering Detected"
+    },
+    "filters": {
+      "searchPlaceholder": "Search by message, event type, actor username, IP, target...",
+      "severityAll": "All Severities",
+      "severityInfo": "Info",
+      "severityWarn": "Warning",
+      "severityCritical": "Critical",
+      "severityError": "Error"
+    },
+    "columns": {
+      "seq": "Seq #",
+      "timestamp": "Timestamp",
+      "eventType": "Event Type",
+      "severity": "Severity",
+      "actor": "Actor",
+      "target": "Target",
+      "message": "Message",
+      "chainHash": "Entry HMAC Hash",
+      "actions": "Actions"
+    },
+    "verifyModal": {
+      "title": "Cryptographic Chain Verification Report",
+      "subtitle": "Mathematical validation of SHA256-HMAC sequential links across the entire audit database.",
+      "validHeadline": "CHAIN INTEGRITY VERIFIED (PASS)",
+      "validDesc": "Every sequential event matches its cryptographic HMAC signature. No rows have been inserted, modified, or deleted out of band.",
+      "tamperedHeadline": "CHAIN INTEGRITY COMPROMISED (TAMPERED)",
+      "tamperedDesc": "Cryptographic validation failed. An anomaly or unauthorized modification was detected.",
+      "eventsCount": "Events Verified: {{count}}",
+      "range": "Sequence Range: #{{first}} to #{{last}}",
+      "brokenSeq": "Anomaly Detected at Sequence: #{{seq}}",
+      "reason": "Failure Reason: {{reason}}",
+      "close": "Dismiss Report"
+    },
+    "checkpointModal": {
+      "title": "Create Cryptographic Checkpoint",
+      "description": "Anchors the current state of the audit chain by signing the latest event hash with the control plane's Ed25519 key.",
+      "confirmAction": "Generate Signed Checkpoint",
+      "cancelAction": "Cancel",
+      "listTitle": "Recent Checkpoints",
+      "signature": "Signature (Ed25519)",
+      "publicKey": "Verification Public Key"
+    },
+    "siemModal": {
+      "title": "Real-Time SIEM Forwarders",
+      "subtitle": "Stream audit ledger events to external SIEM/SOC platforms (Splunk, Elastic, IBM QRadar, Microsoft Sentinel).",
+      "addTitle": "Configure New SIEM Forwarder",
+      "nameLabel": "Destination Name",
+      "protoLabel": "Protocol",
+      "endpointLabel": "Collector Endpoint (host:port)",
+      "formatLabel": "Syslog Format",
+      "formatRfc5424": "Syslog RFC 5424 (Standard)",
+      "formatCef": "ArcSight CEF",
+      "formatLeef": "IBM QRadar LEEF",
+      "formatJson": "Raw JSON Object",
+      "addAction": "Add SIEM Target",
+      "activeTargets": "Active Forwarders",
+      "noTargets": "No external SIEM collectors configured.",
+      "deleteAction": "Remove Forwarder"
+    },
+    "exportModal": {
+      "title": "Export Verifiable Audit Log",
+      "description": "Download immutable audit logs for regulatory compliance certification (DORA Article 12, NIS2, GDPR Article 32).",
+      "csvAction": "Download CSV Audit Log",
+      "jsonAction": "Download JSON Forensic Package",
+      "complianceSeal": "Includes SHA-256 HMAC cryptographic chain verification seal."
+    },
+    "detailModal": {
+      "title": "Audit Event Detail — Sequence #{{seq}}",
+      "prevHash": "Previous HMAC Hash",
+      "entryHash": "Entry HMAC Hash",
+      "ipAddress": "Originating IP Address",
+      "userAgent": "User Agent",
+      "metadata": "Evidence Metadata JSON"
+    },
+    "empty": {
+      "title": "No audit events recorded",
+      "desc": "Administrative actions, node lifecycle operations, and security events will be automatically logged and cryptographically signed here.",
+      "noMatches": "No audit events match your search filters."
+    }
   }
 }

@@ -459,7 +459,7 @@ router.get('/checkpoints', async (req, res, next) => {
   }
 });
 
-// WP-301: SIEM Destinations
+// WP-301 & WP-408: SIEM Destinations
 router.get('/siem', async (req, res, next) => {
   try {
     const pool = getPgPool();
@@ -485,6 +485,92 @@ router.post('/siem', async (req, res, next) => {
       [destId, name, protocol, endpoint, format]
     );
     return res.status(201).json({ destination: qRes.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/siem/:id', async (req, res, next) => {
+  try {
+    const { name, protocol, endpoint, format, enabled } = req.body || {};
+    const pool = getPgPool();
+    const existing = await pool.query('SELECT * FROM audit_siem_destinations WHERE id = $1', [req.params.id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: `SIEM destination ${req.params.id} not found` });
+    }
+    const cur = existing.rows[0];
+    const newName = name !== undefined ? name : cur.name;
+    const newProto = protocol !== undefined ? protocol : cur.protocol;
+    const newEndpoint = endpoint !== undefined ? endpoint : cur.endpoint;
+    const newFormat = format !== undefined ? format : cur.format;
+    const newEnabled = enabled !== undefined ? Boolean(enabled) : cur.enabled;
+
+    const qRes = await pool.query(
+      `UPDATE audit_siem_destinations
+       SET name = $1, protocol = $2, endpoint = $3, format = $4, enabled = $5
+       WHERE id = $6
+       RETURNING *`,
+      [newName, newProto, newEndpoint, newFormat, newEnabled, req.params.id]
+    );
+    return res.status(200).json({ destination: qRes.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/siem/:id', async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const qRes = await pool.query('DELETE FROM audit_siem_destinations WHERE id = $1 RETURNING id', [req.params.id]);
+    if (qRes.rows.length === 0) {
+      return res.status(404).json({ error: `SIEM destination ${req.params.id} not found` });
+    }
+    return res.status(200).json({ success: true, deleted: req.params.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// WP-408: Compliance Export Endpoint
+router.get('/export', async (req, res, next) => {
+  try {
+    const { AuditChainService } = require('../services/AuditChainService');
+    const pool = getPgPool();
+    const format = (req.query.format || 'json').toLowerCase();
+    const limit = req.query.limit ? Number(req.query.limit) : 1000;
+
+    const qRes = await pool.query('SELECT * FROM audit_events ORDER BY sequence_num ASC LIMIT $1', [limit]);
+    const events = qRes.rows;
+    const verification = await AuditChainService.verifyChain();
+
+    if (format === 'csv') {
+      const headers = ['sequence_num', 'created_at', 'event_type', 'severity', 'actor_username', 'target_id', 'message', 'entry_hash', 'prev_hash', 'ip_address'];
+      const lines = [headers.join(',')];
+      for (const e of events) {
+        lines.push([
+          e.sequence_num,
+          `"${e.created_at}"`,
+          `"${e.event_type}"`,
+          `"${e.severity}"`,
+          `"${e.actor_username || ''}"`,
+          `"${e.target_id || ''}"`,
+          `"${(e.message || '').replace(/"/g, '""')}"`,
+          `"${e.entry_hash}"`,
+          `"${e.prev_hash}"`,
+          `"${e.ip_address || ''}"`
+        ].join(','));
+      }
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="neronet_audit_compliance_${Date.now()}.csv"`);
+      return res.status(200).send(lines.join('\n'));
+    }
+
+    return res.status(200).json({
+      export_timestamp: new Date().toISOString(),
+      chain_verification: verification,
+      total_exported: events.length,
+      events
+    });
   } catch (err) {
     next(err);
   }

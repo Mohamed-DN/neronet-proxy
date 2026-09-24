@@ -17,5 +17,9 @@ export const queryKeys = {
   aclDefaultPolicy: ['acl', 'default-policy'] as const,
   aclCompiled: (nodeId: string) => ['acl', 'compiled', nodeId] as const,
   compartments: ['compartments'] as const,
-  compartment: (id: string) => ['compartments', id] as const
+  compartment: (id: string) => ['compartments', id] as const,
+  auditEvents: (limit?: number) => ['audit', 'events', limit ?? 100] as const,
+  auditVerify: ['audit', 'verify'] as const,
+  auditCheckpoints: ['audit', 'checkpoints'] as const,
+  auditSiem: ['audit', 'siem'] as const
 };

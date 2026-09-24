@@ -10,3 +10,5 @@ export { useLiveUpdates, invalidateForEvent } from './useLiveUpdates';
 export * from './compartments';
 
 export * from './acl';
+
+export * from './audit';

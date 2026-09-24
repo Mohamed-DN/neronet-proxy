@@ -368,5 +368,104 @@
       "desc": "La mesh sta attualmente operando in modalità permissiva. Aggiungi la tua prima regola per stabilire un perimetro Zero-Trust.",
       "noMatches": "Nessuna regola ACL corrisponde ai filtri selezionati."
     }
+  },
+  "audit": {
+    "title": "Registro Audit a Prova di Manomissione & Esportatore SIEM",
+    "description": "Registro di audit con concatenazione crittografica HMAC-SHA256, checkpoint firmati Ed25519, prova di integrità in tempo reale e streaming SIEM.",
+    "actions": {
+      "verifyChain": "Verifica Integrità",
+      "createCheckpoint": "Crea Checkpoint",
+      "siemTargets": "Inoltratori SIEM",
+      "exportLog": "Esporta Registro",
+      "inspect": "Ispeziona",
+      "copyHash": "Copia Hash",
+      "close": "Chiudi"
+    },
+    "stats": {
+      "totalEvents": "Eventi Registrati",
+      "chainStatus": "Integrità Catena",
+      "checkpoints": "Checkpoint Firmati",
+      "siemForwarders": "Destinazioni SIEM",
+      "validBadge": "Catena HMAC Valida",
+      "tamperedBadge": "Manomissione Rilevata"
+    },
+    "filters": {
+      "searchPlaceholder": "Cerca per messaggio, tipo evento, autore, IP, target...",
+      "severityAll": "Tutte le Gravità",
+      "severityInfo": "Informativo",
+      "severityWarn": "Avviso",
+      "severityCritical": "Critico",
+      "severityError": "Errore"
+    },
+    "columns": {
+      "seq": "Seq #",
+      "timestamp": "Data/Ora",
+      "eventType": "Tipo Evento",
+      "severity": "Gravità",
+      "actor": "Autore",
+      "target": "Target",
+      "message": "Messaggio",
+      "chainHash": "Hash HMAC Entrata",
+      "actions": "Azioni"
+    },
+    "verifyModal": {
+      "title": "Report di Verifica Crittografica della Catena",
+      "subtitle": "Validazione matematica dei collegamenti sequenziali SHA256-HMAC sull'intero database di audit.",
+      "validHeadline": "INTEGRITÀ CATENA VERIFICATA (PASS)",
+      "validDesc": "Ogni evento sequenziale corrisponde alla propria firma HMAC crittografica. Nessuna riga è stata inserita, modificata o cancellata fuori banda.",
+      "tamperedHeadline": "INTEGRITÀ CATENA COMPROMESSA (MANOMESSA)",
+      "tamperedDesc": "Validazione crittografica fallita. È stata rilevata un'anomalia o una modifica non autorizzata.",
+      "eventsCount": "Eventi Verificati: {{count}}",
+      "range": "Intervallo Sequenza: da #{{first}} a #{{last}}",
+      "brokenSeq": "Anomalia Rilevata alla Sequenza: #{{seq}}",
+      "reason": "Motivo del Fallimento: {{reason}}",
+      "close": "Chiudi Report"
+    },
+    "checkpointModal": {
+      "title": "Crea Checkpoint Crittografico",
+      "description": "Ancora lo stato corrente della catena di audit firmando l'ultimo hash con la chiave Ed25519 del control plane.",
+      "confirmAction": "Genera Checkpoint Firmato",
+      "cancelAction": "Annulla",
+      "listTitle": "Checkpoint Recenti",
+      "signature": "Firma (Ed25519)",
+      "publicKey": "Chiave Pubblica di Verifica"
+    },
+    "siemModal": {
+      "title": "Inoltratori SIEM in Tempo Reale",
+      "subtitle": "Invia eventi del registro di audit a piattaforme SIEM/SOC esterne (Splunk, Elastic, IBM QRadar, Microsoft Sentinel).",
+      "addTitle": "Configura Nuovo Inoltratore SIEM",
+      "nameLabel": "Nome Destinazione",
+      "protoLabel": "Protocollo",
+      "endpointLabel": "Endpoint Collettore (host:porta)",
+      "formatLabel": "Formato Syslog",
+      "formatRfc5424": "Syslog RFC 5424 (Standard)",
+      "formatCef": "ArcSight CEF",
+      "formatLeef": "IBM QRadar LEEF",
+      "formatJson": "Oggetto JSON Grezzo",
+      "addAction": "Aggiungi Destinazione SIEM",
+      "activeTargets": "Inoltratori Attivi",
+      "noTargets": "Nessun collettore SIEM esterno configurato.",
+      "deleteAction": "Rimuovi Inoltratore"
+    },
+    "exportModal": {
+      "title": "Esporta Registro Audit Verificabile",
+      "description": "Scarica registri di audit immutabili per la certificazione di conformità normativa (DORA Articolo 12, NIS2, GDPR Articolo 32).",
+      "csvAction": "Scarica File CSV",
+      "jsonAction": "Scarica Pacchetto Forense JSON",
+      "complianceSeal": "Include sigillo di verifica crittografica della catena HMAC-SHA256."
+    },
+    "detailModal": {
+      "title": "Dettaglio Evento di Audit — Sequenza #{{seq}}",
+      "prevHash": "Hash HMAC Precedente",
+      "entryHash": "Hash HMAC Entrata",
+      "ipAddress": "Indirizzo IP Origine",
+      "userAgent": "User Agent",
+      "metadata": "Metadati di Prova JSON"
+    },
+    "empty": {
+      "title": "Nessun evento di audit registrato",
+      "desc": "Le azioni amministrative, le operazioni sul ciclo di vita dei nodi e gli eventi di sicurezza verranno registrati e firmati crittograficamente qui.",
+      "noMatches": "Nessun evento di audit corrisponde ai filtri di ricerca."
+    }
   }
 }

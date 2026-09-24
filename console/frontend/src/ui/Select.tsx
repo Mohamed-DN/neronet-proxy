@@ -17,6 +17,7 @@ export interface SelectProps {
   placeholder?: string;
   /** Required when the Select is not inside a FormField. */
   label?: string;
+  'aria-label'?: string;
   disabled?: boolean;
   invalid?: boolean;
   className?: string;
@@ -36,6 +37,7 @@ export function Select({
   options,
   placeholder,
   label,
+  'aria-label': ariaLabel,
   disabled = false,
   invalid,
   className,
@@ -48,7 +50,7 @@ export function Select({
     <RadixSelect.Root value={value} onValueChange={onValueChange} disabled={disabled} name={name}>
       <RadixSelect.Trigger
         id={field?.controlId}
-        aria-label={label}
+        aria-label={label ?? ariaLabel}
         aria-describedby={field?.describedBy}
         aria-invalid={isInvalid || undefined}
         className={cn(
