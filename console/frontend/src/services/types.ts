@@ -295,3 +295,36 @@ export interface TopologyData {
   policy_is_open: boolean;
   mesh_scope: string;
 }
+
+export interface LegalHold {
+  id: string;
+  organization_id: string;
+  reason: string;
+  imposed_by_user_id: string;
+  active: boolean;
+  created_at: string;
+  released_at?: string | null;
+}
+
+export interface DualAuthRequest {
+  id: string;
+  target_type: 'organization' | 'global';
+  target_id: string;
+  initiator_user_id: string;
+  initiator_comment?: string | null;
+  approver_user_id?: string | null;
+  approver_comment?: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'executed' | 'cancelled' | 'expired';
+  expires_at: string;
+  created_at: string;
+  executed_at?: string | null;
+}
+
+export interface NukeGovernanceOverview {
+  armed: boolean;
+  legal_hold_active: boolean;
+  active_legal_holds: number;
+  pending_authorizations: number;
+  keys_status: 'active' | 'destroyed' | 'frozen';
+  owner_dms_armed?: boolean;
+}

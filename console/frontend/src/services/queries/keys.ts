@@ -21,5 +21,9 @@ export const queryKeys = {
   auditEvents: (limit?: number) => ['audit', 'events', limit ?? 100] as const,
   auditVerify: ['audit', 'verify'] as const,
   auditCheckpoints: ['audit', 'checkpoints'] as const,
-  auditSiem: ['audit', 'siem'] as const
+  auditSiem: ['audit', 'siem'] as const,
+  nukeStatus: ['nuke', 'status'] as const,
+  nukeLegalHolds: ['nuke', 'legal-holds'] as const,
+  nukeDualAuth: ['nuke', 'dual-auth'] as const,
+  nukeOwnerDms: ['nuke', 'owner-dms'] as const
 };

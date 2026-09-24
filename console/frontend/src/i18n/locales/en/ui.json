@@ -467,5 +467,135 @@
       "desc": "Administrative actions, node lifecycle operations, and security events will be automatically logged and cryptographically signed here.",
       "noMatches": "No audit events match your search filters."
     }
+  },
+  "nuke": {
+    "title": "Cryptographic Shredding & NeroNuke Governance",
+    "description": "Fail-closed cryptographic data obliteration, 4-Eyes dual authorization workflows, legal hold preservation compliance, and Dead Man's Switch controls.",
+    "tabs": {
+      "dualAuth": "Dual-Authorization Workflows",
+      "legalHolds": "Legal Holds & Preservation",
+      "deadManSwitch": "Dead Man's Switch & Canary"
+    },
+    "stats": {
+      "keysStatus": "Encryption Keys Status",
+      "activeEpoch": "Active (AES-256-GCM Envelope)",
+      "shredded": "Permanently Shredded",
+      "frozen": "Cryptographically Frozen",
+      "legalHolds": "Active Legal Holds",
+      "holdsBlocked": "Shredding Blocked by Law",
+      "noHolds": "Zero Holds Active",
+      "dualAuthGate": "Dual-Auth Requests",
+      "pendingAuth": "Awaiting Second Admin",
+      "allClear": "All Clear",
+      "deadManSwitch": "Emergency DMS",
+      "armed": "Armed & Monitored",
+      "disarmed": "Standby"
+    },
+    "dualAuth": {
+      "bannerTitle": "4-Eyes Principle Enforced",
+      "bannerText": "Destruction operations require two distinct administrators. The initiator cannot approve their own request, and active legal holds unconditionally abort any shredding action.",
+      "requestBtn": "Request Destruction",
+      "searchPlaceholder": "Filter destruction requests by target, initiator, status...",
+      "columns": {
+        "target": "Destruction Target",
+        "initiator": "Initiator (1st Admin)",
+        "comment": "Reason / Justification",
+        "status": "Workflow Status",
+        "expiresAt": "Validity Expiration",
+        "actions": "Actions"
+      },
+      "status": {
+        "pending": "Pending Second Approval",
+        "approved": "Approved",
+        "executed": "Executed (Shredded)",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled",
+        "expired": "Expired"
+      },
+      "actions": {
+        "approve": "Approve & Shred",
+        "reject": "Reject Request",
+        "details": "Inspect Request"
+      },
+      "requestModal": {
+        "title": "Request Cryptographic Destruction",
+        "description": "Propose an irreversible crypto-shredding operation. A second administrator must approve before execution.",
+        "targetType": "Target Scope",
+        "targetId": "Target Identifier (Org ID)",
+        "comment": "Administrative Justification",
+        "confirmation": "Type CONFIRM DESTRUCTION to proceed",
+        "cancel": "Cancel",
+        "submit": "Submit Destruction Request"
+      },
+      "approveModal": {
+        "title": "Approve & Execute Irreversible Destruction",
+        "warning": "CRITICAL WARNING: This action permanently overwrites organization data encryption keys with random cryptographic noise. Decryption of all tenant data and audit records will become physically impossible.",
+        "holdBlocked": "DESTRUCTION BLOCKED: An active legal hold is currently imposed on this target.",
+        "initiatorLabel": "Initiated By",
+        "targetLabel": "Destruction Target",
+        "commentLabel": "Second Approver Comment",
+        "confirmationPrompt": "I certify that I am a distinct administrator and authorize permanent cryptographic obliteration.",
+        "cancel": "Abort",
+        "execute": "Permanently Execute Shredding"
+      }
+    },
+    "legalHolds": {
+      "bannerTitle": "Legal Hold & Compliance Preservation",
+      "bannerText": "Imposing a legal hold unconditionally blocks all cryptographic shredding and dead man's switch executions across the specified organization. Holds can only be released by authorized compliance officers.",
+      "imposeBtn": "Impose Legal Hold",
+      "searchPlaceholder": "Filter legal holds by organization, reason, hold ID...",
+      "columns": {
+        "id": "Hold ID",
+        "organization": "Organization",
+        "reason": "Legal Reference / Preservation Order",
+        "imposedBy": "Imposed By",
+        "createdAt": "Imposed Date",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "status": {
+        "active": "Active Hold (Destruction Blocked)",
+        "released": "Released"
+      },
+      "actions": {
+        "release": "Release Hold"
+      },
+      "imposeModal": {
+        "title": "Impose Compliance Legal Hold",
+        "description": "Enforce a preservation order on an organization to prevent any key shredding or automated data purge.",
+        "organizationId": "Organization ID",
+        "reason": "Legal Reason / Court Order Reference",
+        "cancel": "Cancel",
+        "submit": "Enforce Legal Hold"
+      },
+      "releaseModal": {
+        "title": "Release Legal Hold",
+        "description": "Are you sure you want to release this preservation hold? The organization will no longer be protected from scheduled or authorized destruction workflows.",
+        "cancel": "Cancel",
+        "confirm": "Confirm Release"
+      }
+    },
+    "dms": {
+      "title": "Network Owner Dead Man's Switch",
+      "description": "Automated failsafe wipe triggered if the network owner heartbeat fails to refresh within the configured grace period.",
+      "heartbeatReset": "Confirm Owner Heartbeat & Reset Timer",
+      "heartbeatDesc": "Re-enter owner master passphrase to reset the server-side global wipe clock.",
+      "passphrasePlaceholder": "Owner passphrase...",
+      "resetBtn": "Reset Global Wipe Timer",
+      "canaryTitle": "Warrant Canary Signed Signal",
+      "canaryValid": "VALID ED25519 SIGNATURE",
+      "canaryUpdated": "Updated weekly",
+      "emergencyTitle": "Emergency Manual Global Purge",
+      "emergencyDesc": "Immediately shreds all tenant data, databases, and caches across the entire global mesh.",
+      "emergencyBtn": "EXECUTE IMMEDIATE GLOBAL PURGE",
+      "emergencyModal": {
+        "title": "CONFIRM GLOBAL DESTRUCTION",
+        "warning": "THIS WILL DESTROY THE ENTIRE NERONET MESH AND ALL TENANT DATA PERMANENTLY.",
+        "phrasePrompt": "Type exactly 'DESTROY EVERYTHING PERMANENTLY':",
+        "passwordPrompt": "Super-Admin Password:",
+        "cancel": "Abort",
+        "confirm": "SHRED EVERYTHING NOW"
+      }
+    }
   }
 }

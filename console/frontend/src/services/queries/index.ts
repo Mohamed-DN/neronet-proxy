@@ -12,3 +12,5 @@ export * from './compartments';
 export * from './acl';
 
 export * from './audit';
+
+export * from './nuke';

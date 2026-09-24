@@ -467,5 +467,135 @@
       "desc": "Le azioni amministrative, le operazioni sul ciclo di vita dei nodi e gli eventi di sicurezza verranno registrati e firmati crittograficamente qui.",
       "noMatches": "Nessun evento di audit corrisponde ai filtri di ricerca."
     }
+  },
+  "nuke": {
+    "title": "Distruzione Crittografica & Governance NeroNuke",
+    "description": "Cancellazione crittografica fail-closed irreversibile, flussi di doppia autorizzazione a 4 occhi, conformità ordini legali di conservazione (Legal Hold) e Dead Man's Switch.",
+    "tabs": {
+      "dualAuth": "Flussi a Doppia Autorizzazione",
+      "legalHolds": "Ordini di Conservazione Legale (Legal Hold)",
+      "deadManSwitch": "Dead Man's Switch & Canary"
+    },
+    "stats": {
+      "keysStatus": "Stato Chiavi di Cifratura",
+      "activeEpoch": "Attive (Busta AES-256-GCM)",
+      "shredded": "Distrutte Irreversibilmente",
+      "frozen": "Congelate Crittograficamente",
+      "legalHolds": "Legal Hold Attivi",
+      "holdsBlocked": "Distruzione Bloccata per Legge",
+      "noHolds": "Nessun Blocco Attivo",
+      "dualAuthGate": "Richieste Doppia Auth",
+      "pendingAuth": "In Attesa di Secondo Admin",
+      "allClear": "Tutto Regolare",
+      "deadManSwitch": "DMS di Emergenza",
+      "armed": "Armato & Monitorato",
+      "disarmed": "Standby"
+    },
+    "dualAuth": {
+      "bannerTitle": "Principio dei 4 Occhi Tassativo",
+      "bannerText": "Le operazioni di distruzione richiedono due amministratori distinti. Il proponente non può approvare la propria richiesta e la presenza di un legal hold attivo blocca incondizionatamente ogni distruzione.",
+      "requestBtn": "Richiedi Distruzione",
+      "searchPlaceholder": "Filtra richieste per bersaglio, iniziatore, stato...",
+      "columns": {
+        "target": "Bersaglio Distruzione",
+        "initiator": "Iniziatore (1° Admin)",
+        "comment": "Motivazione / Giustificazione",
+        "status": "Stato Flusso",
+        "expiresAt": "Scadenza Validità",
+        "actions": "Azioni"
+      },
+      "status": {
+        "pending": "In Attesa di 2° Approvatore",
+        "approved": "Approvata",
+        "executed": "Eseguita (Distrutta)",
+        "rejected": "Rifiutata",
+        "cancelled": "Annullata",
+        "expired": "Scaduta"
+      },
+      "actions": {
+        "approve": "Approva & Distruggi",
+        "reject": "Rifiuta Richiesta",
+        "details": "Ispeziona Richiesta"
+      },
+      "requestModal": {
+        "title": "Richiedi Distruzione Crittografica",
+        "description": "Proponi un'operazione di crypto-shredding irreversibile. Un secondo amministratore distinto dovrà approvare la richiesta.",
+        "targetType": "Ambito Bersaglio",
+        "targetId": "Identificativo Bersaglio (Org ID)",
+        "comment": "Giustificazione Amministrativa",
+        "confirmation": "Digita CONFIRM DESTRUCTION per procedere",
+        "cancel": "Annulla",
+        "submit": "Invia Richiesta di Distruzione"
+      },
+      "approveModal": {
+        "title": "Approva ed Esegui Distruzione Irreversibile",
+        "warning": "AVVISO CRITICO: Questa azione sovrascrive permanentemente le chiavi DEK dell'organizzazione con rumore crittografico casuale. La decifratura dei dati dei tenant e dei registri audit diventerà fisicamente impossibile.",
+        "holdBlocked": "DISTRUZIONE BLOCCATA: Un legal hold attivo è attualmente imposto su questo bersaglio.",
+        "initiatorLabel": "Iniziato da",
+        "targetLabel": "Bersaglio Distruzione",
+        "commentLabel": "Commento Secondo Approvatore",
+        "confirmationPrompt": "Certifico di essere un amministratore distinto e autorizzo la distruzione crittografica permanente.",
+        "cancel": "Interrompi",
+        "execute": "Esegui Distruzione Definitiva"
+      }
+    },
+    "legalHolds": {
+      "bannerTitle": "Legal Hold & Conservazione di Conformità",
+      "bannerText": "L'imposizione di un legal hold blocca incondizionatamente ogni distruzione crittografica o Dead Man's Switch sull'organizzazione indicata. Solo ufficiali di conformità autorizzati possono rilasciare il vincolo.",
+      "imposeBtn": "Imponi Legal Hold",
+      "searchPlaceholder": "Filtra ordini per organizzazione, motivo, ID vincolo...",
+      "columns": {
+        "id": "ID Vincolo",
+        "organization": "Organizzazione",
+        "reason": "Riferimento Legale / Ordine Conservazione",
+        "imposedBy": "Imposto Da",
+        "createdAt": "Data Imposizione",
+        "status": "Stato",
+        "actions": "Azioni"
+      },
+      "status": {
+        "active": "Vincolo Attivo (Distruzione Bloccata)",
+        "released": "Rilasciato"
+      },
+      "actions": {
+        "release": "Rilascia Vincolo"
+      },
+      "imposeModal": {
+        "title": "Imponi Legal Hold di Conformità",
+        "description": "Applica un vincolo legale di conservazione per impedire qualsiasi distruzione di chiavi o cancellazione programmata.",
+        "organizationId": "ID Organizzazione",
+        "reason": "Motivazione Giuridica / Riferimento Atto",
+        "cancel": "Annulla",
+        "submit": "Applica Legal Hold"
+      },
+      "releaseModal": {
+        "title": "Rilascia Legal Hold",
+        "description": "Confermi il rilascio del vincolo legale? L'organizzazione non sarà più protetta da operazioni di distruzione crittografica autorizzate o programmate.",
+        "cancel": "Annulla",
+        "confirm": "Conferma Rilascio"
+      }
+    },
+    "dms": {
+      "title": "Dead Man's Switch del Proprietario di Rete",
+      "description": "Cancellazione automatica totale in caso di mancata conferma del battito cardiaco entro il periodo di tolleranza configurato.",
+      "heartbeatReset": "Conferma Battito Cardiaco & Ripristina Timer",
+      "heartbeatDesc": "Reinserisci la passphrase master per azzerare il conto alla rovescia del wipe globale.",
+      "passphrasePlaceholder": "Passphrase del proprietario...",
+      "resetBtn": "Azzera Timer Wipe Globale",
+      "canaryTitle": "Segnale Firmato Warrant Canary",
+      "canaryValid": "FIRMA ED25519 VALIDA",
+      "canaryUpdated": "Aggiornato settimanalmente",
+      "emergencyTitle": "Purge Manuale Globale di Emergenza",
+      "emergencyDesc": "Distrugge immediatamente tutti i dati dei tenant, database e cache sull'intera rete globale.",
+      "emergencyBtn": "ESEGUI PURGE GLOBALE IMMEDIATO",
+      "emergencyModal": {
+        "title": "CONFERMA DISTRUZIONE GLOBALE",
+        "warning": "QUESTA OPERAZIONE DISTRUGGERÀ L'INTERA MESH NERONET E TUTTI I DATI DEI TENANT IN MODO IRREVERSIBILE.",
+        "phrasePrompt": "Digita esattamente 'DESTROY EVERYTHING PERMANENTLY':",
+        "passwordPrompt": "Password di Super-Admin:",
+        "cancel": "Interrompi",
+        "confirm": "DISTRUGGI TUTTO ADESSO"
+      }
+    }
   }
 }

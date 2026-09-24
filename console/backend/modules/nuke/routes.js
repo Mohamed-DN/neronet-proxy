@@ -440,4 +440,90 @@ router.post('/dual-auth/approve/:id', authenticateToken, requireRole('super-admi
   }
 });
 
+// 6. List Dual-Authorization Requests
+router.get('/dual-auth', authenticateToken, async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const qRes = await pool.query('SELECT * FROM nuke_authorizations ORDER BY created_at DESC');
+    return res.status(200).json({ authorizations: qRes.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 7. Reject / Cancel Dual-Authorization Request
+router.post('/dual-auth/reject/:id', authenticateToken, requireRole('super-admin', 'owner', 'admin'), async (req, res, next) => {
+  try {
+    const { comment } = req.body || {};
+    const pool = getPgPool();
+    const qRes = await pool.query(
+      "UPDATE nuke_authorizations SET status = 'rejected', approver_user_id = $1, approver_comment = $2, executed_at = NOW() WHERE id = $3 AND status = 'pending' RETURNING *",
+      [req.user.id, comment || 'Rejected by administrator', req.params.id]
+    );
+    if (qRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Pending authorization not found or already closed' });
+    }
+    return res.status(200).json({ success: true, authorization: qRes.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 8. Governance Overview Status (OpenAPI /nuke/status)
+router.get('/status', authenticateToken, async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const orgId = req.user?.organization_id;
+
+    // Check active legal holds
+    let holdsCount = 0;
+    if (orgId) {
+      const hRes = await pool.query('SELECT COUNT(*) FROM organization_legal_holds WHERE organization_id = $1 AND active = TRUE', [orgId]);
+      holdsCount = parseInt(hRes.rows[0].count, 10);
+    } else {
+      const hRes = await pool.query('SELECT COUNT(*) FROM organization_legal_holds WHERE active = TRUE');
+      holdsCount = parseInt(hRes.rows[0].count, 10);
+    }
+
+    // Check pending approvals
+    const aRes = await pool.query(
+      "SELECT id, target_type, target_id, initiator_user_id as proposed_by, created_at, expires_at FROM nuke_authorizations WHERE status = 'pending' AND expires_at > NOW() ORDER BY created_at DESC"
+    );
+    const pendingApprovals = aRes.rows;
+
+    // Key status
+    let keyStatus = 'active';
+    if (orgId) {
+      const kRes = await pool.query('SELECT status FROM organization_keys WHERE organization_id = $1', [orgId]);
+      if (kRes.rows.length > 0) {
+        keyStatus = kRes.rows[0].status;
+      }
+    }
+
+    // Owner DMS check
+    let ownerArmed = false;
+    try {
+      const dmsRes = await pool.query('SELECT armed FROM owner_dead_man_switch WHERE id = 1');
+      if (dmsRes.rows.length > 0) {
+        ownerArmed = Boolean(dmsRes.rows[0].armed);
+      }
+    } catch (_) {
+      // Table might not exist or empty
+    }
+
+    return res.status(200).json({
+      armed: pendingApprovals.length > 0 || ownerArmed,
+      legalHold: holdsCount > 0,
+      legal_hold_active: holdsCount > 0,
+      active_legal_holds: holdsCount,
+      pending_authorizations: pendingApprovals.length,
+      keys_status: keyStatus,
+      owner_dms_armed: ownerArmed,
+      pendingApprovals
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
