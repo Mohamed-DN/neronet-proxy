@@ -2,6 +2,7 @@ package stress
 
 import (
 	"crypto/rand"
+	"github.com/sovereign/proxy/v4/pkg/dataplane/stealth"
 	"testing"
 
 	"github.com/sovereign/proxy/v4/pkg/crypto"
@@ -93,5 +94,31 @@ func BenchmarkDERPRouterForward(b *testing.B) {
 		case <-bSess.ch:
 		default:
 		}
+	}
+}
+
+func BenchmarkAmneziaWGWrapUnwrap(b *testing.B) {
+	cfg := stealth.DefaultConfig()
+	obf, _ := stealth.NewObfuscator(cfg)
+	packet := make([]byte, 148)
+	packet[0] = stealth.TypeMessageInitiation
+
+	b.SetBytes(148)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		wrapped := obf.Wrap(packet)
+		_, _ = obf.Unwrap(wrapped)
+	}
+}
+
+func BenchmarkDAITAPadding(b *testing.B) {
+	packet := make([]byte, 750)
+	rand.Read(packet)
+	padded := make([]byte, 1420)
+
+	b.SetBytes(1420)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		copy(padded, packet)
 	}
 }
