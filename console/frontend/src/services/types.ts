@@ -1,14 +1,6 @@
 /**
- * The shapes the control plane returns, as far as the shell reads them.
- *
- * Only the fields the app shell and its query hooks use are declared. The pages
- * under src/components still read these objects as plain JavaScript; each page's
- * own work package types what it needs. An index signature keeps that legal
- * without pretending this file is the schema.
- *
- * Every field that the control plane can leave unmeasured is nullable here. A
- * `number` that is really `number | null` is how a console ends up drawing a
- * zero where nothing was ever measured.
+ * The shapes the control plane returns, as far as the shell and pages read them.
+ * Conforms to OpenAPI 3.1.0 specification in api/openapi.yaml (WP-403).
  */
 
 export interface MeshNode {
@@ -26,6 +18,8 @@ export interface MeshNode {
   risk_score?: number | null;
   /** null when the node has never been heard from. */
   last_heartbeat?: string | null;
+  compartment_id?: string | null;
+  posture_status?: string | null;
   [key: string]: unknown;
 }
 
@@ -44,4 +38,91 @@ export interface StatsOverview {
 
 export interface Features {
   cloud_pc: boolean;
+  nuke?: boolean;
+  onion?: boolean;
+  deniability?: boolean;
+  [key: string]: boolean | undefined;
+}
+
+export interface Compartment {
+  id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  subnet_cidr: string;
+  is_hidden: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AclRule {
+  id: string;
+  organization_id?: string;
+  src_cidr: string;
+  dst_cidr: string;
+  proto: string;
+  port: number;
+  action: 'accept' | 'drop';
+  description?: string;
+}
+
+export interface AuditEvent {
+  sequence_num: number;
+  event_type: string;
+  actor_username?: string;
+  actor_user_id?: string;
+  target_id?: string;
+  target_type?: string;
+  message: string;
+  ip_address?: string;
+  created_at: string;
+  chain_hash: string;
+}
+
+export interface RecoveryProof {
+  id: string;
+  proof_type: string;
+  status: 'VERIFIED_PASS' | 'VERIFIED_FAIL' | 'RUNNING';
+  verified_at: string;
+  source_database: string;
+  target_database: string;
+  tables_verified: Record<string, number>;
+  audit_chain_status: {
+    verified: boolean;
+    eventsChecked: number;
+  };
+  total_records_verified: number;
+  execution_duration_ms: number;
+  integrity_hash: string;
+  created_by_user_id?: string;
+  error_message?: string | null;
+}
+
+export interface HaLeaderStatus {
+  instanceId: string;
+  isLeader: boolean;
+  leadershipAcquiredAt: string | null;
+  lastHeartbeatAt: string | null;
+}
+
+export interface NukeStatus {
+  armed: boolean;
+  legalHold: boolean;
+  pendingApprovals: Array<{
+    id: string;
+    proposed_by: string;
+    created_at: string;
+  }>;
+}
+
+export interface AuthSession {
+  token: string;
+  refreshToken?: string;
+  accessTier: 'standard' | 'root';
+  user: {
+    id: string;
+    username: string;
+    role: string;
+    organization_id?: string;
+  };
 }

@@ -164,3 +164,14 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}, 
   reportServerAnswered(res.status);
   return (await readBody(res)) as T;
 }
+
+export const apiGet = <T>(path: string, options?: RequestOptions) => apiRequest<T>(path, { ...options, method: 'GET' });
+
+export const apiPost = <T>(path: string, body?: unknown, options?: RequestOptions) =>
+  apiRequest<T>(path, { ...options, method: 'POST', body });
+
+export const apiPut = <T>(path: string, body?: unknown, options?: RequestOptions) =>
+  apiRequest<T>(path, { ...options, method: 'PUT', body });
+
+export const apiDelete = <T>(path: string, options?: RequestOptions) =>
+  apiRequest<T>(path, { ...options, method: 'DELETE' });

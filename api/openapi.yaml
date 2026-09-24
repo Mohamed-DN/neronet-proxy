@@ -1,0 +1,506 @@
+openapi: 3.1.0
+info:
+  title: NeroNet Sovereign Mesh Enterprise Console API
+  version: 4.0.0
+  description: >
+    Production REST API for NeroNet Sovereign Mesh Management Console.
+    Provides Zero-Trust node enrollment, compartmentalization, dynamic ACL policy
+    enforcement, tamper-evident audit ledger, crypto-shredding, and high availability.
+servers:
+  - url: /api
+    description: Production & Development Local Control Plane
+
+paths:
+  # ----------------------------------------------------------------------------
+  # System Health & Features
+  # ----------------------------------------------------------------------------
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Verifies control plane connectivity, PostgreSQL 18, and Valkey 9.1 status.
+      responses:
+        '200':
+          description: Control plane operational
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+                  database: { type: string, example: "connected" }
+                  valkey: { type: string, example: "connected" }
+
+  /features:
+    get:
+      summary: Active feature modules
+      description: Returns enabled/disabled status of discrete sovereign feature modules.
+      responses:
+        '200':
+          description: Feature module list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  features:
+                    type: object
+                    additionalProperties: { type: boolean }
+
+  # ----------------------------------------------------------------------------
+  # Authentication & Sessions (WP-105, WP-303)
+  # ----------------------------------------------------------------------------
+  /auth/login:
+    post:
+      summary: Authenticate user session
+      description: Supports standard passwords, root credentials, or steganographic duress keys.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Successfully authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  refreshToken: { type: string }
+                  accessTier: { type: string, enum: [standard, root] }
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+
+  /auth/refresh:
+    post:
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+
+  /auth/logout:
+    post:
+      summary: Terminate session and blacklist tokens
+      responses:
+        '200':
+          description: Logged out successfully
+
+  /auth/oidc/login:
+    get:
+      summary: Initiate OIDC SSO Flow with PKCE
+      responses:
+        '302':
+          description: Redirect to Identity Provider
+
+  # ----------------------------------------------------------------------------
+  # Nodes Management (WP-103, WP-205, WP-405)
+  # ----------------------------------------------------------------------------
+  /nodes:
+    get:
+      summary: List registered fleet nodes
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Node list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+                  total: { type: integer }
+
+  /nodes/{id}:
+    get:
+      summary: Get node details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '404':
+          description: Node not found
+
+  /nodes/{id}/quarantine:
+    post:
+      summary: Quarantine a compromised node
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Node quarantined
+
+  /nodes/{id}/unquarantine:
+    post:
+      summary: Restore quarantined node
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Node unquarantined
+
+  /nodes/{id}/revoke:
+    post:
+      summary: Cryptographically revoke node keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Keys revoked and broadcasted to mesh
+
+  # ----------------------------------------------------------------------------
+  # Compartments & Ghost Vaults (WP-107, WP-406)
+  # ----------------------------------------------------------------------------
+  /compartments:
+    get:
+      summary: List L2 network compartments
+      description: Returns visible compartments; hidden Ghost Vaults are omitted unless root access tier is active.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  compartments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Compartment'
+
+    post:
+      summary: Create network compartment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: { type: string }
+                slug: { type: string }
+                subnet_cidr: { type: string }
+                is_hidden: { type: boolean, default: false }
+      responses:
+        '201':
+          description: Compartment created
+
+  /compartments/peerings:
+    get:
+      summary: List inter-compartment peering rules
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  peerings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        src_compartment_id: { type: string }
+                        dst_compartment_id: { type: string }
+                        policy: { type: string, enum: [allow, deny] }
+
+  # ----------------------------------------------------------------------------
+  # ACL Rules (WP-203, WP-407)
+  # ----------------------------------------------------------------------------
+  /acl/rules:
+    get:
+      summary: List network ACL rules
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AclRule'
+
+    post:
+      summary: Create or update ACL rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AclRule'
+      responses:
+        '201':
+          description: ACL rule created
+
+  # ----------------------------------------------------------------------------
+  # Tamper-Evident Audit & DR Proof (WP-301, WP-306, WP-408)
+  # ----------------------------------------------------------------------------
+  /audit/events:
+    get:
+      summary: Query cryptographic audit trail
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditEvent'
+
+  /audit/verify:
+    get:
+      summary: Verify HMAC-SHA256 audit ledger hash chain
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verified: { type: boolean }
+                  eventsChecked: { type: integer }
+
+  /audit/recovery-proof/latest:
+    get:
+      summary: Get latest mathematical disaster recovery proof
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proof:
+                    $ref: '#/components/schemas/RecoveryProof'
+
+  /audit/recovery-proof/verify:
+    post:
+      summary: Trigger on-demand disaster recovery verification
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proof:
+                    $ref: '#/components/schemas/RecoveryProof'
+
+  # ----------------------------------------------------------------------------
+  # Stats, Telemetry & HA Status (WP-305, WP-307, WP-404)
+  # ----------------------------------------------------------------------------
+  /stats/overview:
+    get:
+      summary: Aggregate mesh overview statistics
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalNodes: { type: integer }
+                  activeNodes: { type: integer }
+                  quarantinedNodes: { type: integer }
+                  totalBandwidthBytes: { type: integer }
+
+  /stats/ha-leader:
+    get:
+      summary: Distributed leadership and cluster HA state
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  leader:
+                    type: object
+                    properties:
+                      instanceId: { type: string }
+                      isLeader: { type: boolean }
+                      leadershipAcquiredAt: { type: string, nullable: true }
+                      lastHeartbeatAt: { type: string, nullable: true }
+
+  # ----------------------------------------------------------------------------
+  # NeroNuke Crypto-Shredding Governance (WP-302, WP-410)
+  # ----------------------------------------------------------------------------
+  /nuke/status:
+    get:
+      summary: Get crypto-shredding governance and legal hold status
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  armed: { type: boolean }
+                  legalHold: { type: boolean }
+                  pendingApprovals: { type: array, items: { type: object } }
+
+  /nuke/request:
+    post:
+      summary: Propose crypto-shredding destruction request (1st approver)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmationPhrase]
+              properties:
+                confirmationPhrase: { type: string }
+      responses:
+        '200':
+          description: Shredding request proposed, awaiting second approval
+
+  /nuke/approve:
+    post:
+      summary: Confirm crypto-shredding destruction (2nd approver)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId, confirmationPhrase]
+              properties:
+                requestId: { type: string }
+                confirmationPhrase: { type: string }
+      responses:
+        '200':
+          description: Cryptographic keys shredded permanently
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [super-admin, admin, operator, auditor, user] }
+        organization_id: { type: string }
+
+    Node:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        overlay_ipv4: { type: string }
+        public_key: { type: string }
+        status: { type: string, enum: [active, quarantined, revoked, offline] }
+        compartment_id: { type: string, nullable: true }
+        posture_status: { type: string }
+        last_seen: { type: string }
+
+    Compartment:
+      type: object
+      properties:
+        id: { type: string }
+        organization_id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        subnet_cidr: { type: string }
+        is_hidden: { type: boolean }
+
+    AclRule:
+      type: object
+      properties:
+        id: { type: string }
+        src_cidr: { type: string }
+        dst_cidr: { type: string }
+        proto: { type: string }
+        port: { type: integer }
+        action: { type: string, enum: [accept, drop] }
+
+    AuditEvent:
+      type: object
+      properties:
+        sequence_num: { type: integer }
+        event_type: { type: string }
+        actor_username: { type: string }
+        message: { type: string }
+        created_at: { type: string }
+        chain_hash: { type: string }
+
+    RecoveryProof:
+      type: object
+      properties:
+        id: { type: string }
+        proof_type: { type: string }
+        status: { type: string, enum: [VERIFIED_PASS, VERIFIED_FAIL, RUNNING] }
+        verified_at: { type: string }
+        source_database: { type: string }
+        target_database: { type: string }
+        tables_verified: { type: object }
+        audit_chain_status: { type: object }
+        total_records_verified: { type: integer }
+        execution_duration_ms: { type: integer }
+        integrity_hash: { type: string }
+
+security:
+  - bearerAuth: []
