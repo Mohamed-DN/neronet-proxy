@@ -13,6 +13,9 @@ export const queryKeys = {
   riskSummary: ['risk', 'summary'] as const,
   peering: ['peering'] as const,
   acl: ['acl'] as const,
+  aclRules: ['acl', 'rules'] as const,
+  aclDefaultPolicy: ['acl', 'default-policy'] as const,
+  aclCompiled: (nodeId: string) => ['acl', 'compiled', nodeId] as const,
   compartments: ['compartments'] as const,
   compartment: (id: string) => ['compartments', id] as const
 };

@@ -267,6 +267,221 @@ function allowAll(peerVip) {
   };
 }
 
+
+async function updateRule(id, updates = {}) {
+  const existingRows = await query(
+    'SELECT * FROM acl_rules WHERE id = $1',
+    [id],
+    'SELECT * FROM acl_rules WHERE id = ?',
+    [id]
+  );
+  if (!existingRows || existingRows.length === 0) return null;
+  const existing = existingRows[0];
+
+  const priority = updates.priority !== undefined ? Number(updates.priority) : Number(existing.priority);
+  const source_cidr = updates.source_cidr !== undefined ? updates.source_cidr : existing.source_cidr;
+  const destination_cidr = updates.destination_cidr !== undefined ? updates.destination_cidr : existing.destination_cidr;
+  const protocol = (updates.protocol !== undefined ? updates.protocol : existing.protocol).toUpperCase();
+  const port_start = updates.port_start !== undefined ? Number(updates.port_start) : Number(existing.port_start);
+  const port_end = updates.port_end !== undefined ? Number(updates.port_end) : Number(existing.port_end);
+  const action = (updates.action !== undefined ? updates.action : existing.action).toUpperCase();
+  const description = updates.description !== undefined ? updates.description : existing.description;
+  const enabled = updates.enabled !== undefined ? Boolean(updates.enabled) : Boolean(existing.enabled);
+
+  for (const cidr of [source_cidr, destination_cidr]) {
+    if (!parseCidr(cidr)) {
+      const err = new Error(`invalid CIDR: ${cidr}`);
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  await query(
+    `UPDATE acl_rules SET priority = $1, source_cidr = $2, destination_cidr = $3, protocol = $4,
+     port_start = $5, port_end = $6, action = $7, description = $8, enabled = $9, updated_at = NOW() WHERE id = $10`,
+    [priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, enabled, id],
+    `UPDATE acl_rules SET priority = ?, source_cidr = ?, destination_cidr = ?, protocol = ?,
+     port_start = ?, port_end = ?, action = ?, description = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    [priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, enabled ? 1 : 0, id]
+  );
+
+  await bumpEpoch('acl');
+  const updatedRows = await query(
+    'SELECT * FROM acl_rules WHERE id = $1',
+    [id],
+    'SELECT * FROM acl_rules WHERE id = ?',
+    [id]
+  );
+  return updatedRows[0] || null;
+}
+
+/**
+ * Simulate packet evaluation against current ACL rules and mesh default policy.
+ */
+async function simulatePacket({ source_ip, destination_ip, protocol = 'ALL', port = 0, defaultPolicy = 'deny' }) {
+  const rules = await listRules();
+  const proto = String(protocol).toUpperCase();
+  const portNum = Number(port) || 0;
+
+  for (const rule of rules) {
+    if (!rule.enabled) continue;
+
+    // Check CIDRs
+    const srcMatch = cidrContains(rule.source_cidr, source_ip);
+    const dstMatch = cidrContains(rule.destination_cidr, destination_ip);
+    if (!srcMatch || !dstMatch) continue;
+
+    // Check protocol
+    const ruleProto = (rule.protocol || 'ALL').toUpperCase();
+    if (ruleProto !== 'ALL' && proto !== 'ALL' && ruleProto !== proto) continue;
+
+    // Check port range
+    const pStart = Number(rule.port_start) || 0;
+    const pEnd = Number.isFinite(Number(rule.port_end)) ? Number(rule.port_end) : 65535;
+    if (portNum < pStart || portNum > pEnd) continue;
+
+    // Match!
+    return {
+      verdict: rule.action,
+      matched_rule: {
+        id: rule.id,
+        priority: rule.priority,
+        source_cidr: rule.source_cidr,
+        destination_cidr: rule.destination_cidr,
+        protocol: rule.protocol,
+        port_start: rule.port_start,
+        port_end: rule.port_end,
+        action: rule.action,
+        description: rule.description
+      },
+      reason: `Matched rule #${rule.priority} (${rule.id}): ${rule.action} ${rule.protocol} from ${rule.source_cidr} to ${rule.destination_cidr}`,
+      packet: {
+        source_ip,
+        destination_ip,
+        protocol: proto,
+        port: portNum
+      }
+    };
+  }
+
+  // No rule matched
+  const isMeshOpen = rules.length === 0 || defaultPolicy === 'open';
+  const verdict = isMeshOpen ? 'ACCEPT' : 'DROP';
+  return {
+    verdict,
+    matched_rule: null,
+    reason: rules.length === 0
+      ? 'No rules configured — mesh is currently open by default'
+      : defaultPolicy === 'open'
+        ? 'No rule matched — organization default policy is OPEN (Permit)'
+        : 'No rule matched — Zero-Trust organization default policy is DENY (Drop)',
+    packet: {
+      source_ip,
+      destination_ip,
+      protocol: proto,
+      port: portNum
+    }
+  };
+}
+
+/**
+ * Preview compiled policy for a node given an optional candidate rule.
+ */
+async function compilePreview(nodeId, candidateRule = null) {
+  const selfRows = await query(
+    'SELECT id, overlay_ipv4 FROM nodes WHERE id = $1',
+    [nodeId],
+    'SELECT id, overlay_ipv4 FROM nodes WHERE id = ?',
+    [nodeId]
+  );
+
+  if (selfRows.length === 0) return null;
+  const self = selfRows[0];
+
+  const peers = await query(
+    'SELECT id, overlay_ipv4 FROM nodes WHERE id <> $1 AND is_quarantined = FALSE ORDER BY id ASC',
+    [nodeId],
+    'SELECT id, overlay_ipv4 FROM nodes WHERE id <> ? AND is_quarantined = 0 ORDER BY id ASC',
+    [nodeId]
+  );
+
+  let rules = await listRules();
+
+  if (candidateRule) {
+    const normalized = {
+      id: candidateRule.id || 'candidate-preview',
+      priority: Number(candidateRule.priority) || 100,
+      source_cidr: candidateRule.source_cidr || '0.0.0.0/0',
+      destination_cidr: candidateRule.destination_cidr || '0.0.0.0/0',
+      protocol: (candidateRule.protocol || 'ALL').toUpperCase(),
+      port_start: Number(candidateRule.port_start) || 0,
+      port_end: Number.isFinite(Number(candidateRule.port_end)) ? Number(candidateRule.port_end) : 65535,
+      action: (candidateRule.action || 'ACCEPT').toUpperCase(),
+      enabled: candidateRule.enabled !== undefined ? Boolean(candidateRule.enabled) : true,
+      description: candidateRule.description || 'Candidate preview rule'
+    };
+
+    rules = rules.filter(r => r.id !== normalized.id);
+    if (normalized.enabled) {
+      rules.push(normalized);
+    }
+    rules.sort((a, b) => (Number(a.priority) || 100) - (Number(b.priority) || 100));
+  }
+
+  const epoch = await getEpoch('acl');
+
+  if (rules.length === 0) {
+    return {
+      node_id: self.id,
+      overlay_ipv4: self.overlay_ipv4,
+      inbound_rules: peers.map((p) => allowAll(p.overlay_ipv4)),
+      outbound_rules: peers.map((p) => allowAll(p.overlay_ipv4)),
+      epoch,
+      is_preview: true
+    };
+  }
+
+  const outbound = [];
+  const inbound = [];
+
+  for (const rule of rules) {
+    const portRanges = [{ start: Number(rule.port_start) || 0, end: Number(rule.port_end) || 65535 }];
+
+    for (const peer of peers) {
+      if (cidrContains(rule.source_cidr, self.overlay_ipv4) && cidrContains(rule.destination_cidr, peer.overlay_ipv4)) {
+        outbound.push({
+          allowed_peer_vip: peer.overlay_ipv4,
+          protocol: rule.protocol,
+          port_ranges: portRanges,
+          action: rule.action,
+          is_directional: true,
+          rule_id: rule.id
+        });
+      }
+
+      if (cidrContains(rule.source_cidr, peer.overlay_ipv4) && cidrContains(rule.destination_cidr, self.overlay_ipv4)) {
+        inbound.push({
+          allowed_peer_vip: peer.overlay_ipv4,
+          protocol: rule.protocol,
+          port_ranges: portRanges,
+          action: rule.action,
+          is_directional: true,
+          rule_id: rule.id
+        });
+      }
+    }
+  }
+
+  return {
+    node_id: self.id,
+    overlay_ipv4: self.overlay_ipv4,
+    inbound_rules: inbound,
+    outbound_rules: outbound,
+    epoch,
+    is_preview: true
+  };
+}
+
 module.exports = {
   parseCidr,
   cidrContains,
@@ -275,6 +490,9 @@ module.exports = {
   bumpNetmap,
   listRules,
   createRule,
+  updateRule,
   deleteRule,
-  compilePolicyFor
+  compilePolicyFor,
+  compilePreview,
+  simulatePacket
 };

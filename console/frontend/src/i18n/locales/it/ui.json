@@ -255,5 +255,118 @@
       "desc": "Nessun nodo corrisponde al compartimento selezionato o ai filtri di ricerca.",
       "enrollFirst": "Registra nodi sovrani per costruire la topologia della rete overlay."
     }
+  },
+  "acl": {
+    "title": "Controllo Accessi di Rete Zero-Trust (ACL) & Policy di Routing",
+    "description": "Matrice visuale delle regole, anteprima della compilazione dei VIP dei peer, simulazione dei pacchetti e policy predefinita dell'organizzazione.",
+    "addRule": "Aggiungi Regola ACL",
+    "previewSimulate": "Anteprima & Simulatore",
+    "filterActionAll": "Tutte le Azioni",
+    "filterActionAccept": "Solo Consenti",
+    "filterActionDrop": "Solo Blocca",
+    "filterProtoAll": "Tutti i Protocolli",
+    "searchPlaceholder": "Filtra regole per CIDR, descrizione o priorità...",
+    "stats": {
+      "activeRules": "Regole Attive",
+      "defaultPolicy": "Policy Predefinita",
+      "policyEpoch": "Epoca Policy",
+      "epochHint": "I nodi si risincronizzano al prossimo heartbeat",
+      "enforcingNodes": "Nodi di Applicazione"
+    },
+    "statusBanner": {
+      "openTitle": "Nessuna regola definita — la mesh è aperta",
+      "openDesc": "L'applicazione sui nodi è default-deny, quindi una policy vuota consegnata alla flotta bloccherebbe tutto il traffico. Il control plane compila un consenti-tutto finché questa tabella è vuota: ogni nodo può raggiungere gli altri. La scrittura della prima regola chiude la mesh a tutto ciò che non viene esplicitamente permesso.",
+      "enforcedTitle": "Applicazione Kernel WireGuard BPF Zero-Trust Attiva",
+      "enforcedDesc": "Le regole di controllo accessi vengono compilate in filtri per-peer VIP ed applicate direttamente nel netstack sovrano WireGuard."
+    },
+    "columns": {
+      "priority": "Priorità",
+      "sourceCidr": "CIDR Sorgente",
+      "destCidr": "CIDR Destinazione",
+      "protoPorts": "Protocollo & Porte",
+      "action": "Azione",
+      "description": "Descrizione",
+      "status": "Stato",
+      "actions": "Azioni",
+      "allPorts": "Tutte le porte (0-65535)"
+    },
+    "defaultPolicyCard": {
+      "title": "Policy Predefinita dell'Organizzazione",
+      "description": "Determina come viene gestito su tutti i nodi il traffico della mesh che non corrisponde ad alcuna regola ACL specifica.",
+      "currentBadge": "Attiva: {{policy}}",
+      "openLabel": "APERTA (Permissiva)",
+      "openExpl": "Il traffico non corrispondente tra nodi non in quarantena è consentito per impostazione predefinita.",
+      "denyLabel": "BLOCCA (Zero-Trust)",
+      "denyExpl": "Zero-Trust rigoroso: tutto il traffico non corrispondente viene silenziosamente scartato dal filtro TUN.",
+      "toggleToOpen": "Passa ad Aperta Predefinita",
+      "toggleToDeny": "Passa a Blocca Predefinita",
+      "confirmTitle": "Conferma Cambio Policy Predefinita",
+      "confirmDesc": "Il passaggio della policy predefinita a {{policy}} farà avanzare l'epoca della mesh e modificherà immediatamente il filtraggio su tutti i nodi. Sei sicuro di voler procedere?",
+      "confirmAction": "Conferma Cambio Policy"
+    },
+    "form": {
+      "createTitle": "Aggiungi Regola ACL di Rete",
+      "editTitle": "Modifica Regola ACL di Rete",
+      "subtitle": "Definisci i confini CIDR direzionali, i filtri di protocollo e gli intervalli di porte. I numeri di priorità più bassi vengono valutati per primi.",
+      "priorityLabel": "Priorità (1 - 65535)",
+      "priorityHint": "I numeri più bassi hanno precedenza maggiore (es. 10 prima di 100)",
+      "presetLabel": "Preimpostazione Rapida",
+      "presetCustom": "Definizione Personalizzata",
+      "presetAllMesh": "Tutta la Mesh Peer-to-Peer (100.64.0.0/10)",
+      "presetEgress": "Uscita Internet Egress (0.0.0.0/0)",
+      "presetHttps": "Web Sicuro HTTPS (TCP 443)",
+      "presetDns": "DNS Cifrato & Mesh (UDP 53)",
+      "presetSsh": "Shell Cifrata SSH (TCP 22)",
+      "presetWireguard": "Roaming WireGuard (UDP 51820)",
+      "sourceLabel": "CIDR Sorgente",
+      "sourcePlaceholder": "es. 100.64.0.0/10 o 100.64.1.5/32",
+      "destLabel": "CIDR Destinazione",
+      "destPlaceholder": "es. 100.64.0.0/10 o 0.0.0.0/0",
+      "protoLabel": "Protocollo",
+      "portStartLabel": "Porta Inizio",
+      "portEndLabel": "Porta Fine",
+      "actionLabel": "Policy di Azione",
+      "actionAccept": "CONSENTI (Accept)",
+      "actionDrop": "BLOCCA (Drop)",
+      "descLabel": "Descrizione Regola",
+      "descPlaceholder": "Scopo descrittivo di questa regola di sicurezza...",
+      "enabledLabel": "Regola Abilitata",
+      "saveAction": "Salva Regola",
+      "createAction": "Crea Regola ACL",
+      "cancelAction": "Annulla"
+    },
+    "delete": {
+      "title": "Elimina Regola ACL #{{priority}}",
+      "description": "Sei sicuro di voler eliminare definitivamente la regola {{id}} ({{source}} -> {{destination}})? Eliminare l'ultima regola riporterà la mesh alla modalità permissiva aperta.",
+      "confirmAction": "Elimina Regola"
+    },
+    "preview": {
+      "title": "Compilatore Policy Nodi & Simulatore Pacchetti",
+      "subtitle": "Ispeziona le tabelle di filtro WireGuard compilate per ciascun peer e verifica i verdetti di accesso prima di applicare le regole in produzione.",
+      "tabCompiled": "Policy Compilata Nodo",
+      "tabSimulator": "Simulatore Pacchetti in Tempo Reale",
+      "selectNode": "Seleziona Nodo Sovrano da Ispezionare",
+      "noNodes": "Nessun nodo registrato disponibile per l'ispezione",
+      "nodeVip": "VIP del Nodo: {{ip}}",
+      "inboundTitle": "Matrice di Filtraggio in Ingresso (Peer -> Nodo)",
+      "outboundTitle": "Matrice di Filtraggio in Uscita (Nodo -> Peer)",
+      "noRulesCompiled": "Nessuna regola direzionale compilata per questo nodo.",
+      "peerVip": "VIP del Peer",
+      "simSourceIp": "IPv4 Sorgente",
+      "simDestIp": "IPv4 Destinazione",
+      "simProto": "Protocollo",
+      "simPort": "Porta Destinazione",
+      "simButton": "Simula Verdetto Pacchetto",
+      "verdictTitle": "Verdetto Simulazione",
+      "verdictAccept": "TRAFFICO CONSENTITO (ACCEPT)",
+      "verdictDrop": "TRAFFICO BLOCCATO (DROP)",
+      "matchedRule": "Regola Corrispondente: #{{priority}} ({{id}})",
+      "close": "Chiudi Anteprima"
+    },
+    "empty": {
+      "title": "Nessuna regola ACL configurata",
+      "desc": "La mesh sta attualmente operando in modalità permissiva. Aggiungi la tua prima regola per stabilire un perimetro Zero-Trust.",
+      "noMatches": "Nessuna regola ACL corrisponde ai filtri selezionati."
+    }
   }
 }

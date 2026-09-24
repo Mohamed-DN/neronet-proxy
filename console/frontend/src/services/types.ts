@@ -79,12 +79,65 @@ export interface Compartment {
 export interface AclRule {
   id: string;
   organization_id?: string;
-  src_cidr: string;
-  dst_cidr: string;
-  proto: string;
-  port: number;
-  action: 'accept' | 'drop';
+  priority?: number;
+  source_cidr?: string;
+  destination_cidr?: string;
+  src_cidr?: string;
+  dst_cidr?: string;
+  protocol?: 'ALL' | 'TCP' | 'UDP' | 'ICMP' | string;
+  proto?: string;
+  port_start?: number;
+  port_end?: number;
+  port?: number;
+  action: 'ACCEPT' | 'DROP' | 'accept' | 'drop';
   description?: string;
+  enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AclRulesResponse {
+  rules: AclRule[];
+  epoch: number;
+  policy_is_open: boolean;
+  count: number;
+}
+
+export interface CompiledPolicyRule {
+  allowed_peer_vip: string;
+  protocol: string;
+  port_ranges: Array<{ start: number; end: number }>;
+  action: string;
+  is_directional: boolean;
+  rule_id?: string;
+}
+
+export interface CompiledPolicy {
+  node_id: string;
+  overlay_ipv4: string;
+  inbound_rules: CompiledPolicyRule[];
+  outbound_rules: CompiledPolicyRule[];
+  epoch: number;
+  is_preview?: boolean;
+}
+
+export interface AclSimulationResult {
+  verdict: 'ACCEPT' | 'DROP';
+  matched_rule: AclRule | null;
+  reason: string;
+  packet: {
+    source_ip: string;
+    destination_ip: string;
+    protocol: string;
+    port: number;
+  };
+}
+
+export interface AclDefaultPolicyResponse {
+  organization_id: string;
+  organization_name: string;
+  default_policy: 'open' | 'deny';
+  epoch?: number;
 }
 
 export interface AuditEvent {

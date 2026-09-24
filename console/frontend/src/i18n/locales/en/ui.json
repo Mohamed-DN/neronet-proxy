@@ -255,5 +255,118 @@
       "desc": "No nodes match the selected compartment or search filters.",
       "enrollFirst": "Enroll sovereign nodes to construct the overlay topology."
     }
+  },
+  "acl": {
+    "title": "Zero-Trust Network Access Control (ACL) & Policy Routing",
+    "description": "Visual rule matrix, peer VIP compilation preview, packet simulation, and organization default policy.",
+    "addRule": "Add ACL Rule",
+    "previewSimulate": "Preview & Simulator",
+    "filterActionAll": "All Actions",
+    "filterActionAccept": "Accept Only",
+    "filterActionDrop": "Drop Only",
+    "filterProtoAll": "All Protocols",
+    "searchPlaceholder": "Filter rules by CIDR, description or priority...",
+    "stats": {
+      "activeRules": "Active Rules",
+      "defaultPolicy": "Default Policy",
+      "policyEpoch": "Policy Epoch",
+      "epochHint": "Nodes re-sync on next heartbeat",
+      "enforcingNodes": "Enforcing Nodes"
+    },
+    "statusBanner": {
+      "openTitle": "No rule is defined — the mesh is open",
+      "openDesc": "Node enforcement is default-deny, so an empty policy delivered to the fleet would stop all traffic. The control plane compiles allow-all while this table is empty: every node may reach every other. Writing the first rule closes the mesh to everything it does not permit.",
+      "enforcedTitle": "Zero-Trust Kernel WireGuard BPF Enforced",
+      "enforcedDesc": "Network access control rules are compiled into per-peer VIP filters and enforced in the sovereign WireGuard netstack."
+    },
+    "columns": {
+      "priority": "Priority",
+      "sourceCidr": "Source CIDR",
+      "destCidr": "Destination CIDR",
+      "protoPorts": "Protocol & Ports",
+      "action": "Action",
+      "description": "Description",
+      "status": "Status",
+      "actions": "Actions",
+      "allPorts": "All ports (0-65535)"
+    },
+    "defaultPolicyCard": {
+      "title": "Organization Default Policy",
+      "description": "Determines how traffic that does not match any specific ACL rule is handled across all mesh nodes.",
+      "currentBadge": "Active: {{policy}}",
+      "openLabel": "OPEN (Permissive)",
+      "openExpl": "Unmatched mesh traffic between non-quarantined peers is permitted by default.",
+      "denyLabel": "DENY (Zero-Trust)",
+      "denyExpl": "Strict Zero-Trust: all unmatched traffic is silently dropped by the TUN filter.",
+      "toggleToOpen": "Switch to Default Open",
+      "toggleToDeny": "Switch to Default Deny",
+      "confirmTitle": "Confirm Default Policy Change",
+      "confirmDesc": "Switching organization default policy to {{policy}} will advance the mesh epoch and immediately alter filtering on all fleet nodes. Are you sure you wish to proceed?",
+      "confirmAction": "Confirm Policy Change"
+    },
+    "form": {
+      "createTitle": "Add Network ACL Rule",
+      "editTitle": "Edit Network ACL Rule",
+      "subtitle": "Define directional CIDR boundaries, protocol filters, and port ranges. Lower priority numbers are evaluated first.",
+      "priorityLabel": "Priority (1 - 65535)",
+      "priorityHint": "Lower numbers have higher precedence (e.g., 10 before 100)",
+      "presetLabel": "Quick Configuration Preset",
+      "presetCustom": "Custom Definition",
+      "presetAllMesh": "Full Mesh Peer-to-Peer (100.64.0.0/10)",
+      "presetEgress": "Internet Egress (0.0.0.0/0)",
+      "presetHttps": "Secure Web HTTPS (TCP 443)",
+      "presetDns": "Encrypted & Mesh DNS (UDP 53)",
+      "presetSsh": "Encrypted Shell SSH (TCP 22)",
+      "presetWireguard": "WireGuard Roaming (UDP 51820)",
+      "sourceLabel": "Source CIDR",
+      "sourcePlaceholder": "e.g. 100.64.0.0/10 or 100.64.1.5/32",
+      "destLabel": "Destination CIDR",
+      "destPlaceholder": "e.g. 100.64.0.0/10 or 0.0.0.0/0",
+      "protoLabel": "Protocol",
+      "portStartLabel": "Port Start",
+      "portEndLabel": "Port End",
+      "actionLabel": "Action Policy",
+      "actionAccept": "ACCEPT (Allow)",
+      "actionDrop": "DROP (Block)",
+      "descLabel": "Rule Description",
+      "descPlaceholder": "Human-readable intent of this security rule...",
+      "enabledLabel": "Rule Enabled",
+      "saveAction": "Save Rule",
+      "createAction": "Create ACL Rule",
+      "cancelAction": "Cancel"
+    },
+    "delete": {
+      "title": "Delete ACL Rule #{{priority}}",
+      "description": "Are you sure you want to permanently delete rule {{id}} ({{source}} -> {{destination}})? Deleting the last rule will revert the mesh to open permissive mode.",
+      "confirmAction": "Delete Rule"
+    },
+    "preview": {
+      "title": "Node Policy Compiler & Packet Simulator",
+      "subtitle": "Inspect compiled per-peer wireguard filter tables and verify access verdicts before applying rules to production.",
+      "tabCompiled": "Node Compiled Policy",
+      "tabSimulator": "Live Packet Simulator",
+      "selectNode": "Select Sovereign Node to Inspect",
+      "noNodes": "No enrolled nodes available to inspect",
+      "nodeVip": "Node VIP: {{ip}}",
+      "inboundTitle": "Inbound Filtering Matrix (Peer -> Node)",
+      "outboundTitle": "Outbound Filtering Matrix (Node -> Peer)",
+      "noRulesCompiled": "No directional rules compiled for this node.",
+      "peerVip": "Peer VIP",
+      "simSourceIp": "Source IPv4",
+      "simDestIp": "Destination IPv4",
+      "simProto": "Protocol",
+      "simPort": "Destination Port",
+      "simButton": "Simulate Packet Verdict",
+      "verdictTitle": "Simulation Verdict",
+      "verdictAccept": "TRAFFIC PERMITTED (ACCEPT)",
+      "verdictDrop": "TRAFFIC BLOCKED (DROP)",
+      "matchedRule": "Matched Rule: #{{priority}} ({{id}})",
+      "close": "Close Preview"
+    },
+    "empty": {
+      "title": "No ACL rules configured",
+      "desc": "The mesh is currently operating in permissive mode. Add your first rule to establish a Zero-Trust perimeter.",
+      "noMatches": "No ACL rules match the selected filters."
+    }
   }
 }

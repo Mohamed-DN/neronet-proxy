@@ -8,3 +8,5 @@ export { useFeatures } from './features';
 export { useLiveUpdates, invalidateForEvent } from './useLiveUpdates';
 
 export * from './compartments';
+
+export * from './acl';
