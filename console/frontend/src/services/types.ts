@@ -328,3 +328,49 @@ export interface NukeGovernanceOverview {
   keys_status: 'active' | 'destroyed' | 'frozen';
   owner_dms_armed?: boolean;
 }
+
+export interface UserAccount {
+  id: string;
+  username: string;
+  email: string;
+  role: 'super-admin' | 'admin' | 'operator' | 'auditor' | 'user';
+  status: 'active' | 'suspended' | 'pending';
+  bypass_apps: string[];
+  organization_id?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  default_policy?: 'open' | 'deny';
+  max_netmap_staleness_seconds?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface QrOnboardingData {
+  config_text: string;
+  qr_code_svg?: string;
+  qr_code_data_url?: string;
+  endpoint?: string;
+  expires_at?: string;
+}
+
+export interface CreateUserPayload {
+  username: string;
+  password?: string;
+  email?: string;
+  role: 'super-admin' | 'admin' | 'operator' | 'auditor' | 'user';
+  organization_id?: string;
+  bypass_apps?: string[];
+}
+
+export interface CreateOrgPayload {
+  name: string;
+  slug?: string;
+  default_policy?: 'open' | 'deny';
+  max_netmap_staleness_seconds?: number;
+}

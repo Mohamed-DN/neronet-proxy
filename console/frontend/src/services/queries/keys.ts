@@ -25,5 +25,9 @@ export const queryKeys = {
   nukeStatus: ['nuke', 'status'] as const,
   nukeLegalHolds: ['nuke', 'legal-holds'] as const,
   nukeDualAuth: ['nuke', 'dual-auth'] as const,
-  nukeOwnerDms: ['nuke', 'owner-dms'] as const
+  nukeOwnerDms: ['nuke', 'owner-dms'] as const,
+  users: ['users'] as const,
+  user: (id: string) => ['users', id] as const,
+  organizations: ['organizations'] as const,
+  organization: (id: string) => ['organizations', id] as const
 };

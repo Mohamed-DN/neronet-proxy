@@ -14,3 +14,5 @@ export * from './acl';
 export * from './audit';
 
 export * from './nuke';
+
+export * from './users';
