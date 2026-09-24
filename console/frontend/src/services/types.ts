@@ -172,3 +172,33 @@ export interface GeoMatrixEntry {
   avg_latency: number | null;
   status: 'Online' | 'Degraded' | 'Offline';
 }
+
+export interface TopologyNode {
+  id: string;
+  name: string;
+  role: string;
+  country: string;
+  overlay_ipv4: string | null;
+  is_healthy: boolean;
+  is_quarantined: boolean;
+  latency_ms: number | null;
+  compartment_id: string | null;
+  compartment_name: string;
+  is_ghost_vault: boolean;
+  [key: string]: unknown;
+}
+
+export interface TopologyLink {
+  source: string;
+  target: string;
+  protocol?: string;
+  [key: string]: unknown;
+}
+
+export interface TopologyData {
+  nodes: TopologyNode[];
+  links: TopologyLink[];
+  total_nodes: number;
+  policy_is_open: boolean;
+  mesh_scope: string;
+}

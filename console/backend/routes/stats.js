@@ -248,31 +248,19 @@ async function topologyHandler(req, res, next) {
 
     if (isSuperAdmin && !req.query.org_id) {
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.latency_ms
-         FROM nodes n
-         LEFT JOIN compartments c ON n.compartment_id = c.id
-         WHERE 1=1 ${hiddenClause}
-         ORDER BY n.created_at ASC`
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE 1=1 ${hiddenClause} ORDER BY n.created_at ASC`
       );
       visibleNodes = qRes.rows;
     } else if (isOrgPrivileged || isSuperAdmin) {
       const orgId = isSuperAdmin ? req.query.org_id : req.user.organization_id || 'org-default';
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.latency_ms
-         FROM nodes n
-         LEFT JOIN compartments c ON n.compartment_id = c.id
-         WHERE n.organization_id = $1 ${hiddenClause}
-         ORDER BY n.created_at ASC`,
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE n.organization_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
         [orgId]
       );
       visibleNodes = qRes.rows;
     } else {
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.latency_ms
-         FROM nodes n
-         LEFT JOIN compartments c ON n.compartment_id = c.id
-         WHERE n.user_id = $1 ${hiddenClause}
-         ORDER BY n.created_at ASC`,
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE n.user_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
         [req.user.id]
       );
       visibleNodes = qRes.rows;
@@ -285,9 +273,11 @@ async function topologyHandler(req, res, next) {
       country: n.country_code || 'US',
       overlay_ipv4: n.overlay_ipv4,
       is_healthy: Boolean(n.is_healthy),
-      // Zero means the node has not reported a round trip yet. It used to be
-      // replaced with 15.0, which read as a measurement.
-      latency_ms: Number(n.latency_ms) > 0 ? Number(n.latency_ms) : null
+      is_quarantined: Boolean(n.is_quarantined),
+      latency_ms: Number(n.latency_ms) > 0 ? Number(n.latency_ms) : null,
+      compartment_id: n.compartment_id || null,
+      compartment_name: n.compartment_name || 'Default Mesh',
+      is_ghost_vault: Boolean(n.is_ghost_vault)
     }));
 
     // Links are the paths the policy permits, compiled by the same engine that

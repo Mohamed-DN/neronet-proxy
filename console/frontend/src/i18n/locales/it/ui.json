@@ -196,5 +196,64 @@
       "close": "Chiudi",
       "quarantineConfirmAction": "Conferma Quarantena"
     }
+  },
+  "topology": {
+    "title": "Topologia Mesh",
+    "description": "Topologia interattiva della rete overlay sovrana, collegamenti peer e compartimenti logici L2.",
+    "searchPlaceholder": "Cerca nodi per nome, ID o IP overlay...",
+    "filterRoleAll": "Tutti i ruoli",
+    "filterRoleRelay": "Relay",
+    "filterRoleExit": "Nodi Uscita",
+    "filterRoleClient": "Client",
+    "filterRoleHybrid": "Ibridi",
+    "filterCompartmentAll": "Tutti i compartimenti",
+    "stats": {
+      "nodes": "Nodi Visibili",
+      "links": "Rotte Peer",
+      "compartments": "Compartimenti L2",
+      "vaultStatus": "Ghost Vaults"
+    },
+    "vault": {
+      "unlockedBadge": "Ghost Vaults Attivi",
+      "lockedBadge": "Ghost Vaults Inattivi",
+      "unlockAction": "Sblocca Ghost Vaults",
+      "lockAction": "Blocca Ghost Vaults",
+      "dialogTitle": "Sblocca Ghost Vaults",
+      "dialogDesc": "Inserisci la password di autorizzazione master crittografica per rivelare compartimenti L2 nascosti e nodi ghost sovrani. È garantita la negabilità plausibile.",
+      "passwordLabel": "Password Master Vault",
+      "passwordPlaceholder": "Inserisci password di sblocco vault",
+      "confirmUnlock": "Autorizza e Sblocca",
+      "cancel": "Annulla",
+      "unlockSuccess": "Ghost Vaults sbloccati con successo.",
+      "lockSuccess": "Ghost Vaults bloccati e occultati.",
+      "unlockFailed": "Password di autorizzazione master non valida."
+    },
+    "view": {
+      "canvasMode": "Canvas Interattivo",
+      "listMode": "Elenco Accessibile",
+      "fullScreen": "Schermo Intero",
+      "exitFullScreen": "Esci da Schermo Intero",
+      "autoRotate": "Rotazione Automatica",
+      "resetView": "Ripristina Vista"
+    },
+    "nodeDrawer": {
+      "title": "Specifiche del Nodo",
+      "role": "Ruolo Mesh",
+      "overlayIp": "IPv4 Overlay",
+      "country": "Regione",
+      "latency": "Latenza RTT",
+      "compartment": "Compartimento di Rete",
+      "quarantined": "In Quarantena",
+      "healthy": "In Salute",
+      "ghostVaultNode": "Nodo Stealth Ghost",
+      "viewDetails": "Ispeziona Specifiche Nodo",
+      "close": "Chiudi"
+    },
+    "policyOpenNotice": "La policy di routing mesh globale è attualmente permissiva (Consenti tutto).",
+    "empty": {
+      "title": "Nessun nodo trovato nella topologia",
+      "desc": "Nessun nodo corrisponde al compartimento selezionato o ai filtri di ricerca.",
+      "enrollFirst": "Registra nodi sovrani per costruire la topologia della rete overlay."
+    }
   }
 }

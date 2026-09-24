@@ -6,3 +6,5 @@ export { useNodes, useNode, fleetCounts, isReachable, LIVENESS_WINDOW_MS, type F
 export { useStatsOverview } from './stats';
 export { useFeatures } from './features';
 export { useLiveUpdates, invalidateForEvent } from './useLiveUpdates';
+
+export * from './compartments';

@@ -196,5 +196,64 @@
       "close": "Close",
       "quarantineConfirmAction": "Confirm Quarantine"
     }
+  },
+  "topology": {
+    "title": "Mesh Topology",
+    "description": "Interactive sovereign overlay network topology, peer connections, and L2 logical compartments.",
+    "searchPlaceholder": "Search nodes by name, ID or overlay IP...",
+    "filterRoleAll": "All Roles",
+    "filterRoleRelay": "Relays",
+    "filterRoleExit": "Exit Bridges",
+    "filterRoleClient": "Clients",
+    "filterRoleHybrid": "Hybrid",
+    "filterCompartmentAll": "All Compartments",
+    "stats": {
+      "nodes": "Visible Nodes",
+      "links": "Peer Routes",
+      "compartments": "L2 Compartments",
+      "vaultStatus": "Ghost Vaults"
+    },
+    "vault": {
+      "unlockedBadge": "Ghost Vaults Active",
+      "lockedBadge": "Ghost Vaults Inactive",
+      "unlockAction": "Unlock Ghost Vaults",
+      "lockAction": "Lock Ghost Vaults",
+      "dialogTitle": "Unlock Ghost Vaults",
+      "dialogDesc": "Enter cryptographic master authorization password to reveal concealed L2 compartments and sovereign ghost nodes. Plausible deniability is enforced.",
+      "passwordLabel": "Master Vault Password",
+      "passwordPlaceholder": "Enter vault unlock password",
+      "confirmUnlock": "Authorize & Unlock",
+      "cancel": "Cancel",
+      "unlockSuccess": "Ghost Vaults unlocked successfully.",
+      "lockSuccess": "Ghost Vaults locked and concealed.",
+      "unlockFailed": "Invalid master authorization password."
+    },
+    "view": {
+      "canvasMode": "Interactive Canvas",
+      "listMode": "Accessible List",
+      "fullScreen": "Fullscreen",
+      "exitFullScreen": "Exit Fullscreen",
+      "autoRotate": "Auto Rotate",
+      "resetView": "Reset View"
+    },
+    "nodeDrawer": {
+      "title": "Node Specifications",
+      "role": "Mesh Role",
+      "overlayIp": "Overlay IPv4",
+      "country": "Region",
+      "latency": "Round Trip",
+      "compartment": "Network Compartment",
+      "quarantined": "Quarantined",
+      "healthy": "Healthy",
+      "ghostVaultNode": "Stealth Ghost Node",
+      "viewDetails": "Inspect Node Specs",
+      "close": "Close"
+    },
+    "policyOpenNotice": "Global mesh routing policy is currently permissive (Default Allow).",
+    "empty": {
+      "title": "No nodes found in topology",
+      "desc": "No nodes match the selected compartment or search filters.",
+      "enrollFirst": "Enroll sovereign nodes to construct the overlay topology."
+    }
   }
 }

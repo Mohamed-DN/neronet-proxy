@@ -12,5 +12,7 @@ export const queryKeys = {
   statsGeoMatrix: ['stats', 'geo-matrix'] as const,
   riskSummary: ['risk', 'summary'] as const,
   peering: ['peering'] as const,
-  acl: ['acl'] as const
+  acl: ['acl'] as const,
+  compartments: ['compartments'] as const,
+  compartment: (id: string) => ['compartments', id] as const
 };
