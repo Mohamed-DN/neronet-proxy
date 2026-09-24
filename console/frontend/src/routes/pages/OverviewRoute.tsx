@@ -332,6 +332,7 @@ export default function OverviewRoute({ onSelectNode, onNavigateTab }: OverviewR
           {/* Timeseries Throughput Chart (2 Cols) */}
           <Card className="lg:col-span-2">
             <CardHeader
+              as="h2"
               title={
                 <span className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-accent" />
@@ -435,6 +436,7 @@ export default function OverviewRoute({ onSelectNode, onNavigateTab }: OverviewR
           <Card className="flex flex-col justify-between">
             <div>
               <CardHeader
+                as="h2"
                 title={
                   <span className="flex items-center gap-2">
                     <Globe2 className="h-4 w-4 text-info" />

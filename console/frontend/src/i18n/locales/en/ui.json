@@ -1,4 +1,4 @@
-﻿{
+{
   "state": {
     "ok": "Reported",
     "loading": "Loading",
@@ -55,7 +55,7 @@
     "confirm": "Confirm"
   },
   "confirm": {
-    "prompt": "This cannot be undone. Type \u003c1\u003e{{phrase}}\u003c/1\u003e to confirm.",
+    "prompt": "This cannot be undone. Type <1>{{phrase}}</1> to confirm.",
     "label": "Confirmation phrase",
     "mismatch": "The phrase does not match yet."
   },
@@ -122,5 +122,79 @@
     "relay": "relay",
     "exit": "exit",
     "noRtt": "no RTT"
+  },
+  "nodes": {
+    "title": "Sovereign Nodes",
+    "description": "Manage fleet nodes, cryptographic keys, zero-trust attestation, and quarantine status.",
+    "enrollNode": "Enroll Node",
+    "searchPlaceholder": "Search by hostname, IP, role or key...",
+    "filterAll": "All Nodes",
+    "filterActive": "Active",
+    "filterQuarantined": "Quarantined",
+    "filterUnverified": "Unverified Posture",
+    "filterHighRisk": "High Risk",
+    "counts": {
+      "total": "Total Enrolled",
+      "reachable": "Live & Reachable",
+      "quarantined": "Quarantined",
+      "unverified": "Unverified Posture"
+    },
+    "columns": {
+      "node": "Node / Hostname",
+      "ipv4": "Overlay IPv4",
+      "role": "Role",
+      "posture": "Posture Status",
+      "reachability": "Reachability",
+      "risk": "Risk Score",
+      "actions": "Actions"
+    },
+    "posture": {
+      "verifiedCompliant": "Verified Compliant",
+      "unverified": "Unverified",
+      "nonCompliant": "Non-Compliant"
+    },
+    "reachability": {
+      "online": "Online",
+      "offline": "Offline",
+      "quarantined": "Quarantined",
+      "lastSeen": "Last seen {{time}}",
+      "never": "Never connected"
+    },
+    "empty": {
+      "noNodes": "No sovereign nodes found",
+      "noNodesDesc": "No nodes match your search query or filter selection.",
+      "enrollFirst": "Enroll your first node to join the sovereign mesh network."
+    },
+    "detail": {
+      "title": "Node Specifications & Control",
+      "nodeId": "Node ID",
+      "publicKey": "WireGuard Public Key",
+      "compartment": "Network Compartment",
+      "noCompartment": "Default Mesh",
+      "hardwareAttestation": "Zero-Trust Hardware Attestation",
+      "diskEncryption": "Disk Encryption",
+      "firewall": "Host Firewall Active",
+      "os": "Operating System",
+      "rootless": "Rootless Container",
+      "measured": "Measured at {{time}}",
+      "notMeasured": "Not measured",
+      "quarantineAlert": "This node is currently quarantined and restricted from all mesh communications.",
+      "quarantineReason": "Quarantine Rationale",
+      "diagnostics": "Diagnostics & Live Ping",
+      "pingButton": "Ping Peer",
+      "pinging": "Pinging...",
+      "pingSuccess": "RTT: {{rtt}}ms (Jitter: {{jitter}}ms)",
+      "actions": "Node Security Actions",
+      "quarantineAction": "Quarantine Node",
+      "liftQuarantineAction": "Lift Quarantine",
+      "revokeAction": "Revoke Cryptographic Key",
+      "revokeConfirmTitle": "Revoke Node Key",
+      "revokeConfirmDesc": "Are you sure you want to permanently revoke this node's cryptographic key? This will immediately disconnect the node and propagate its blacklisted key to all mesh peers.",
+      "quarantineConfirmTitle": "Quarantine Node",
+      "quarantineConfirmDesc": "Quarantining will isolate the node and drop all mesh traffic. Enter security rationale:",
+      "quarantineDefaultReason": "Manual security quarantine",
+      "close": "Close",
+      "quarantineConfirmAction": "Confirm Quarantine"
+    }
   }
 }

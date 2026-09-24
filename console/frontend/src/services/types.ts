@@ -3,6 +3,16 @@
  * Conforms to OpenAPI 3.1.0 specification in api/openapi.yaml (WP-403).
  */
 
+export interface PostureChecks {
+  os_name?: string | null;
+  os_version?: string | null;
+  client_version?: string | null;
+  disk_encrypted?: boolean | null;
+  firewall_active?: boolean | null;
+  is_rootless?: boolean | null;
+  measured_at?: string | null;
+}
+
 export interface MeshNode {
   id: string;
   name?: string;
@@ -10,7 +20,10 @@ export interface MeshNode {
   user_id?: string;
   role?: string;
   country_code?: string;
+  city?: string;
   overlay_ipv4?: string | null;
+  overlay_ipv6?: string | null;
+  public_key?: string;
   is_quarantined?: boolean | number;
   is_healthy?: boolean | number;
   quarantine_reason?: string | null;
@@ -18,8 +31,16 @@ export interface MeshNode {
   risk_score?: number | null;
   /** null when the node has never been heard from. */
   last_heartbeat?: string | null;
+  last_seen?: string | null;
   compartment_id?: string | null;
-  posture_status?: string | null;
+  posture_status?: 'verified_compliant' | 'unverified' | 'non_compliant' | string | null;
+  posture_checks?: PostureChecks | null;
+  latency_ms?: number | null;
+  jitter_ms?: number | null;
+  tx_bytes?: number;
+  rx_bytes?: number;
+  cpu_usage_pct?: number | null;
+  endpoints?: string[];
   [key: string]: unknown;
 }
 

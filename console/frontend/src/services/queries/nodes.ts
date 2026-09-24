@@ -1,6 +1,6 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
-import { apiRequest } from '../apiClient';
+import { apiPost, apiRequest } from '../apiClient';
 import type { MeshNode } from '../types';
 import { queryKeys } from './keys';
 
@@ -73,4 +73,76 @@ export function fleetCounts(nodes: MeshNode[] | undefined, now = Date.now()): Fl
     quarantined: list.filter((n) => Boolean(n.is_quarantined)).length,
     highRisk: list.filter((n) => typeof n.risk_score === 'number' && n.risk_score > 75).length
   };
+}
+
+export interface PingResult {
+  rtt_ms: number;
+  jitter_ms: number;
+  status: string;
+}
+
+/**
+ * Quarantines a node, revoking its active WireGuard peer status across the mesh.
+ */
+export function useQuarantineNode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      return apiPost<{ success: boolean; result?: unknown }>(`/nodes/${encodeURIComponent(id)}/quarantine`, { reason });
+    },
+    onSuccess: (_, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.nodes });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.node(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.statsOverview });
+    }
+  });
+}
+
+/**
+ * Restores a quarantined node to active fleet status.
+ */
+export function useLiftQuarantineNode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      return apiPost<{ success: boolean; result?: unknown }>(`/nodes/${encodeURIComponent(id)}/unquarantine`, {});
+    },
+    onSuccess: (_, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.nodes });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.node(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.statsOverview });
+    }
+  });
+}
+
+/**
+ * Cryptographically revokes a node's key permanently, deleting the node registration
+ * and blacklisting its public key across all mesh peers.
+ */
+export function useRevokeNode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      return apiPost<{ success: boolean; message?: string }>(`/nodes/${encodeURIComponent(id)}/revoke`, { reason });
+    },
+    onSuccess: (_, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.nodes });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.node(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.statsOverview });
+    }
+  });
+}
+
+/**
+ * Performs a live latency RTT & jitter probe to a node.
+ */
+export function useNodePing() {
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiPost<{ success: boolean; result: PingResult }>(`/nodes/${encodeURIComponent(id)}/action`, {
+        action: 'ping'
+      });
+      return res.result;
+    }
+  });
 }

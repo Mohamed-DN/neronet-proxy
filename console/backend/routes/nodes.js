@@ -467,6 +467,137 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
+// 5b. Revoke Node Cryptographic Key (OpenAPI 3.1.0: POST /nodes/:id/revoke)
+router.post('/:id/revoke', async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
+    const node = nodeRes.rows[0] || null;
+
+    const access = verifyNodeAccess(node, req.user, true);
+    if (!access.ok) {
+      return res.status(access.error).json({ error: access.message });
+    }
+
+    await RevocationEngine.revokeNodeKeys([req.params.id], {
+      reason: req.body?.reason || 'node_revoked',
+      actorId: req.user.id
+    });
+
+    await pool.query('DELETE FROM nodes WHERE id = $1', [req.params.id]);
+    await NodeCredentialService.revokeNodeCredentials(req.params.id);
+    await bumpNetmap();
+
+    logAuditEvent({
+      eventType: 'NODE_REVOKE',
+      severity: 'warn',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: req.params.id,
+      targetType: 'node',
+      message: `Node ${node.name} (${req.params.id}) revoked via API - key propagated to all peers`,
+      ipAddress: req.ip
+    });
+
+    await broadcastNodeEvent('NODE_DELETE', { id: req.params.id, name: node.name, user_id: node.user_id }, req.user);
+
+    return res.status(200).json({ success: true, message: 'Node revoked successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 5c. Quarantine Node (OpenAPI 3.1.0: POST /nodes/:id/quarantine)
+router.post('/:id/quarantine', async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
+    const node = nodeRes.rows[0] || null;
+
+    const access = verifyNodeAccess(node, req.user, true);
+    if (!access.ok) {
+      return res.status(access.error).json({ error: access.message });
+    }
+
+    const reason = req.body?.reason || req.body?.params?.reason || 'Manual security quarantine';
+
+    await pool.query(
+      'UPDATE nodes SET is_quarantined = TRUE, is_healthy = FALSE, quarantine_reason = $1, updated_at = NOW() WHERE id = $2',
+      [reason, node.id]
+    );
+
+    await NodeCredentialService.revokeNodeCredentials(node.id);
+    await RevocationEngine.revokeNodeKeys([node.id], {
+      reason: `quarantine: ${reason}`,
+      actorId: req.user.id
+    });
+    await bumpNetmap();
+
+    logAuditEvent({
+      eventType: 'NODE_QUARANTINE',
+      severity: 'warn',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: node.id,
+      targetType: 'node',
+      message: `Node ${node.id} quarantined: ${reason}`,
+      ipAddress: req.ip
+    });
+
+    await broadcastNodeEvent('NODE_QUARANTINE', { id: node.id, is_quarantined: true, reason }, req.user);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Node quarantined successfully',
+      result: { is_quarantined: true, status: 'quarantined' }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 5d. Unquarantine Node (OpenAPI 3.1.0: POST /nodes/:id/unquarantine)
+router.post('/:id/unquarantine', async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const nodeRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
+    const node = nodeRes.rows[0] || null;
+
+    const access = verifyNodeAccess(node, req.user, true);
+    if (!access.ok) {
+      return res.status(access.error).json({ error: access.message });
+    }
+
+    await pool.query(
+      'UPDATE nodes SET is_quarantined = FALSE, is_healthy = TRUE, quarantine_reason = NULL, updated_at = NOW() WHERE id = $1',
+      [node.id]
+    );
+
+    await bumpNetmap();
+
+    logAuditEvent({
+      eventType: 'NODE_LIFT_QUARANTINE',
+      severity: 'info',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: node.id,
+      targetType: 'node',
+      message: `Quarantine lifted for node ${node.id}`,
+      ipAddress: req.ip
+    });
+
+    await broadcastNodeEvent('NODE_LIFT_QUARANTINE', { id: node.id, is_quarantined: false }, req.user);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Node unquarantined successfully',
+      result: { is_quarantined: false, status: 'active' }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // 6. Node Actions: ping, set_exit, quarantine, lift_quarantine, toggle_onion, set_onion
 router.post('/:id/action', async (req, res, next) => {
   try {

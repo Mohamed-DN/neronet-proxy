@@ -1,4 +1,4 @@
-﻿{
+{
   "state": {
     "ok": "Rilevato",
     "loading": "Caricamento",
@@ -55,7 +55,7 @@
     "confirm": "Conferma"
   },
   "confirm": {
-    "prompt": "L\u0027operazione non e reversibile. Digita \u003c1\u003e{{phrase}}\u003c/1\u003e per confermare.",
+    "prompt": "L'operazione non e reversibile. Digita <1>{{phrase}}</1> per confermare.",
     "label": "Frase di conferma",
     "mismatch": "La frase non corrisponde ancora."
   },
@@ -122,5 +122,79 @@
     "relay": "relay",
     "exit": "uscita",
     "noRtt": "nessun RTT"
+  },
+  "nodes": {
+    "title": "Nodi Sovrani",
+    "description": "Gestione dei nodi della flotta, chiavi crittografiche, attestazione zero-trust e stato di quarantena.",
+    "enrollNode": "Registra Nodo",
+    "searchPlaceholder": "Cerca per hostname, IP, ruolo o chiave...",
+    "filterAll": "Tutti i nodi",
+    "filterActive": "Attivi",
+    "filterQuarantined": "In quarantena",
+    "filterUnverified": "Postura non verificata",
+    "filterHighRisk": "Alto rischio",
+    "counts": {
+      "total": "Totale Registrati",
+      "reachable": "Attivi e Raggiungibili",
+      "quarantined": "In Quarantena",
+      "unverified": "Postura Non Verificata"
+    },
+    "columns": {
+      "node": "Nodo / Hostname",
+      "ipv4": "IPv4 Overlay",
+      "role": "Ruolo",
+      "posture": "Stato Postura",
+      "reachability": "Raggiungibilità",
+      "risk": "Punteggio di Rischio",
+      "actions": "Azioni"
+    },
+    "posture": {
+      "verifiedCompliant": "Conforme Verificato",
+      "unverified": "Non Verificato",
+      "nonCompliant": "Non Conforme"
+    },
+    "reachability": {
+      "online": "Online",
+      "offline": "Offline",
+      "quarantined": "In quarantena",
+      "lastSeen": "Ultimo contatto {{time}}",
+      "never": "Mai connesso"
+    },
+    "empty": {
+      "noNodes": "Nessun nodo sovrano trovato",
+      "noNodesDesc": "Nessun nodo corrisponde alla ricerca o al filtro selezionato.",
+      "enrollFirst": "Registra il tuo primo nodo per entrare nella rete mesh sovrana."
+    },
+    "detail": {
+      "title": "Specifiche del Nodo e Controlli",
+      "nodeId": "ID Nodo",
+      "publicKey": "Chiave Pubblica WireGuard",
+      "compartment": "Compartimento di Rete",
+      "noCompartment": "Mesh Principale",
+      "hardwareAttestation": "Attestazione Hardware Zero-Trust",
+      "diskEncryption": "Crittografia Disco",
+      "firewall": "Firewall Host Attivo",
+      "os": "Sistema Operativo",
+      "rootless": "Container Rootless",
+      "measured": "Misurato il {{time}}",
+      "notMeasured": "Non misurato",
+      "quarantineAlert": "Questo nodo è attualmente in quarantena e bloccato da qualsiasi comunicazione mesh.",
+      "quarantineReason": "Motivo della Quarantena",
+      "diagnostics": "Diagnostica e Ping in Tempo Reale",
+      "pingButton": "Test Ping",
+      "pinging": "Ping in corso...",
+      "pingSuccess": "RTT: {{rtt}}ms (Jitter: {{jitter}}ms)",
+      "actions": "Azioni di Sicurezza del Nodo",
+      "quarantineAction": "Metti in Quarantena",
+      "liftQuarantineAction": "Revoca Quarantena",
+      "revokeAction": "Revoca Chiave Crittografica",
+      "revokeConfirmTitle": "Revoca Chiave Nodo",
+      "revokeConfirmDesc": "Sei sicuro di voler revocare definitivamente la chiave crittografica di questo nodo? Il nodo verrà disconnesso all'istante e la sua chiave inserita nella blacklist globale.",
+      "quarantineConfirmTitle": "Quarantena Nodo",
+      "quarantineConfirmDesc": "La quarantena isolerà il nodo bloccando tutto il traffico mesh. Inserisci la motivazione:",
+      "quarantineDefaultReason": "Quarantena di sicurezza manuale",
+      "close": "Chiudi",
+      "quarantineConfirmAction": "Conferma Quarantena"
+    }
   }
 }
