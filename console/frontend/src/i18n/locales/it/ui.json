@@ -1,4 +1,4 @@
-{
+﻿{
   "state": {
     "ok": "Rilevato",
     "loading": "Caricamento",
@@ -55,7 +55,7 @@
     "confirm": "Conferma"
   },
   "confirm": {
-    "prompt": "L'operazione non e reversibile. Digita <1>{{phrase}}</1> per confermare.",
+    "prompt": "L\u0027operazione non e reversibile. Digita \u003c1\u003e{{phrase}}\u003c/1\u003e per confermare.",
     "label": "Frase di conferma",
     "mismatch": "La frase non corrisponde ancora."
   },
@@ -79,5 +79,48 @@
     "label": "Lingua",
     "en": "English",
     "it": "Italiano"
+  },
+  "overview": {
+    "title": "Panoramica Mesh",
+    "description": "Dispositivi registrati, throughput in tempo reale e distribuzione geografica della flotta.",
+    "live": "In tempo reale",
+    "unreachable": "Piano di controllo non raggiungibile",
+    "staleWarning": "I dati sottostanti potrebbero essere non aggiornati",
+    "viewTopology": "Visualizza Topologia 3D",
+    "activeNodes": "Nodi Sovrani Attivi",
+    "enrolled": "Registrati",
+    "postureVerified": "postura verificata",
+    "unverified": "non verificati",
+    "nonCompliant": "non conformi",
+    "quarantined": "in quarantena",
+    "totalUsers": "Utenti Totali",
+    "activeTenants": "Tenant Attivi",
+    "sameAccessHint": "Tutti gli account condividono lo stesso livello di accesso",
+    "throughput": "Throughput di Linea in Tempo Reale",
+    "rateHint": "Richiede due campionamenti a distanza di un minuto",
+    "postureScore": "Punteggio Postura Mesh",
+    "allReachable": "Tutti i nodi raggiungibili",
+    "degraded": "Degradato",
+    "impaired": "Compromesso",
+    "fleetOffline": "Flotta offline",
+    "reachableHint": "{{active}} su {{total}} raggiungibili entro {{seconds}}s",
+    "noNodesHint": "Nessun nodo registrato",
+    "timeseriesTitle": "Serie Temporale Throughput di Rete Aggregato",
+    "timeseriesDesc": "Velocita di trasferimento sulla flotta, campionata ogni minuto",
+    "noSamples": "Nessun dato in questo intervallo temporale",
+    "noSamplesDesc": "Il throughput e campionato una volta al minuto. Servono due punti per calcolare il tasso.",
+    "inbound": "In ingresso (RX)",
+    "outbound": "In uscita (TX)",
+    "lifetimeTransfer": "Trasferito dalla registrazione:",
+    "geoTitle": "Matrice Geografica",
+    "geoDesc": "Localizzazione dei nodi registrati",
+    "countriesCount_one": "{{count}} Paese",
+    "countriesCount_other": "{{count}} Paesi",
+    "noNodesGeo": "Nessun nodo registrato",
+    "noNodesGeoDesc": "I Paesi compaiono qui non appena un nodo si registra da tale area geografica.",
+    "up": "attivi",
+    "relay": "relay",
+    "exit": "uscita",
+    "noRtt": "nessun RTT"
   }
 }

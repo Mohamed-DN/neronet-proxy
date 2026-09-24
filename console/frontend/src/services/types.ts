@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The shapes the control plane returns, as far as the shell and pages read them.
  * Conforms to OpenAPI 3.1.0 specification in api/openapi.yaml (WP-403).
  */
@@ -125,4 +125,29 @@ export interface AuthSession {
     role: string;
     organization_id?: string;
   };
+}
+
+export interface TimeseriesPoint {
+  timestamp: string;
+  time: string;
+  rx: number;
+  tx: number;
+  rx_bytes?: number;
+  tx_bytes?: number;
+  active_nodes?: number;
+  cpu_usage_pct?: number | null;
+  memory_usage_mb?: number | null;
+  health_score?: number | null;
+  latency?: number | null;
+}
+
+export interface GeoMatrixEntry {
+  country: string;
+  code: string;
+  nodes: number;
+  live: number;
+  relays: number;
+  exits: number;
+  avg_latency: number | null;
+  status: 'Online' | 'Degraded' | 'Offline';
 }

@@ -1,4 +1,4 @@
-{
+﻿{
   "state": {
     "ok": "Reported",
     "loading": "Loading",
@@ -55,7 +55,7 @@
     "confirm": "Confirm"
   },
   "confirm": {
-    "prompt": "This cannot be undone. Type <1>{{phrase}}</1> to confirm.",
+    "prompt": "This cannot be undone. Type \u003c1\u003e{{phrase}}\u003c/1\u003e to confirm.",
     "label": "Confirmation phrase",
     "mismatch": "The phrase does not match yet."
   },
@@ -79,5 +79,48 @@
     "label": "Language",
     "en": "English",
     "it": "Italiano"
+  },
+  "overview": {
+    "title": "Mesh Overview",
+    "description": "Enrolled devices, live throughput, and geographic fleet distribution.",
+    "live": "Live",
+    "unreachable": "Control plane unreachable",
+    "staleWarning": "Figures below may be stale",
+    "viewTopology": "View 3D Topology",
+    "activeNodes": "Active Sovereign Nodes",
+    "enrolled": "Enrolled",
+    "postureVerified": "posture verified",
+    "unverified": "unverified",
+    "nonCompliant": "non-compliant",
+    "quarantined": "quarantined",
+    "totalUsers": "Total Users",
+    "activeTenants": "Active Tenants",
+    "sameAccessHint": "All accounts have the same access",
+    "throughput": "Live Line-Rate (Throughput)",
+    "rateHint": "Needs two samples a minute apart",
+    "postureScore": "Mesh Posture Score",
+    "allReachable": "All nodes reachable",
+    "degraded": "Degraded",
+    "impaired": "Impaired",
+    "fleetOffline": "Fleet offline",
+    "reachableHint": "{{active}} of {{total}} reachable within {{seconds}}s",
+    "noNodesHint": "No nodes enrolled",
+    "timeseriesTitle": "Aggregate Network Throughput Timeseries",
+    "timeseriesDesc": "Transfer rate across the fleet, sampled once a minute",
+    "noSamples": "No samples in this range yet",
+    "noSamplesDesc": "Throughput is sampled once a minute. Two samples are needed before a rate can be drawn.",
+    "inbound": "Inbound (RX)",
+    "outbound": "Outbound (TX)",
+    "lifetimeTransfer": "Transferred since enrolment:",
+    "geoTitle": "Geographic Matrix",
+    "geoDesc": "Where the enrolled nodes are",
+    "countriesCount_one": "{{count}} Country",
+    "countriesCount_other": "{{count}} Countries",
+    "noNodesGeo": "No nodes enrolled",
+    "noNodesGeoDesc": "Countries appear here once a node registers from one.",
+    "up": "up",
+    "relay": "relay",
+    "exit": "exit",
+    "noRtt": "no RTT"
   }
 }
