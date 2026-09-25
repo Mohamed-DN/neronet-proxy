@@ -21,7 +21,6 @@
       "nodes": "Matrice dei nodi",
       "onion": "Onion e offuscamento",
       "peering": "Peering fra mesh",
-      "geofencing": "Mappa di geo-fencing",
       "cloudpc": "Cloud PC sovrano",
       "risk": "Punteggio di rischio comportamentale",
       "acls": "ACL zero-trust",

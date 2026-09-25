@@ -79,7 +79,6 @@ describe('api', () => {
     expect(await api.nodes.list()).toEqual([]);
     expect(await api.users.list()).toEqual([]);
     expect(await api.peering.list()).toEqual([]);
-    expect(await api.geofencing.listPolicies()).toEqual([]);
     expect(await api.cloudPc.list()).toEqual([]);
     expect(await api.audit.list()).toEqual([]);
     expect(await api.risk.listEvents()).toEqual([]);

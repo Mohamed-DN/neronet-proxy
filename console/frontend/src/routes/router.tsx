@@ -19,7 +19,6 @@ const TopologyRoute = lazy(() => import('./pages/TopologyRoute'));
 const NodesRoute = lazy(() => import('./pages/NodesRoute'));
 const OnionRoute = lazy(() => import('./pages/OnionRoute'));
 const PeeringRoute = lazy(() => import('./pages/PeeringRoute'));
-const GeofencingRoute = lazy(() => import('./pages/GeofencingRoute'));
 const CloudPcRoute = lazy(() => import('./pages/CloudPcRoute'));
 const RiskRoute = lazy(() => import('./pages/RiskRoute'));
 const AclsRoute = lazy(() => import('./pages/AclsRoute'));
@@ -65,7 +64,6 @@ export const routes: RouteObject[] = [
           page(`${ROUTES.nodes}/:id`, <NodesRoute />, 'nav.items.nodes'),
           page(ROUTES.onion, <OnionRoute />, 'nav.items.onion'),
           page(ROUTES.peering, <PeeringRoute />, 'nav.items.peering'),
-          page(ROUTES.geofencing, <GeofencingRoute />, 'nav.items.geofencing'),
           page(ROUTES.cloudpc, <CloudPcRoute />, 'nav.items.cloudpc'),
           page(ROUTES.risk, <RiskRoute />, 'nav.items.risk'),
           page(ROUTES.acls, <AclsRoute />, 'nav.items.acls'),

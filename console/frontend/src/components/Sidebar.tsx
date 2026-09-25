@@ -9,7 +9,6 @@ import {
   FileText,
   Globe2,
   LayoutDashboard,
-  MapPin,
   Monitor,
   Network,
   PanelLeftClose,
@@ -133,8 +132,7 @@ export default function Sidebar({
         { id: 'topology', icon: Globe2, badge: '3D' },
         { id: 'nodes', icon: Server, count: nodeCount },
         { id: 'onion', icon: Shield, badge: '3-hop' },
-        { id: 'peering', icon: Network, badge: 'Ed25519' },
-        { id: 'geofencing', icon: MapPin, badge: 'Geo' }
+        { id: 'peering', icon: Network, badge: 'Ed25519' }
       ]
     },
     {

@@ -268,29 +268,6 @@ export const api = {
     }
   },
 
-  geofencing: {
-    // This returned fixtures whenever the live list was empty, so a deployment
-    // with no geo policy configured displayed six countries of policy.
-    async listPolicies() {
-      const live = await read('/geofencing/policies');
-      return Array.isArray(live?.policies) ? live.policies : [];
-    },
-
-    async updatePolicy(countryCode, action, egressAllowed = true) {
-      const live = await write(`/geofencing/policies/${encodeURIComponent(countryCode)}`, 'PUT', {
-        action,
-        egress_allowed: egressAllowed
-      });
-      if (!live?.policy) throw new Error('The control plane did not confirm the policy');
-      return live.policy;
-    },
-
-    async bulkUpdatePolicies(policies) {
-      const live = await write('/geofencing/policies/bulk', 'POST', { policies });
-      return Array.isArray(live?.policies) ? live.policies : [];
-    }
-  },
-
   cloudPc: {
     async list() {
       const live = await read('/cloud-pc');

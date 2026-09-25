@@ -21,7 +21,6 @@
       "nodes": "Node matrix",
       "onion": "Onion and obfuscation",
       "peering": "Cross-mesh peering",
-      "geofencing": "Geo-fencing map",
       "cloudpc": "Sovereign cloud PC",
       "risk": "Behavioural risk score",
       "acls": "Zero-trust ACLs",

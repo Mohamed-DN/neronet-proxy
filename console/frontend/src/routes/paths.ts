@@ -12,7 +12,6 @@ export const ROUTES = {
   nodes: '/nodes',
   onion: '/onion',
   peering: '/peering',
-  geofencing: '/geofencing',
   cloudpc: '/cloudpc',
   risk: '/risk',
   acls: '/acls',
