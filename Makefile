@@ -29,3 +29,8 @@ lint:
 clean:
 	@rm -rf $(BIN_DIR)
 	@echo "Cleaned build artifacts."
+
+build-windows:
+	@mkdir -p bin
+	@echo "Building neronet-windows.exe..."
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/neronet-windows.exe ./cmd/neronet-windows
