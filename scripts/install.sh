@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # NeroNet v4 - One-Command Installer (WP-601)
 # Usage: curl -fsSL https://get.neronet.io | bash
 #        bash install.sh [--profile standard|regulated] [--control-url URL]

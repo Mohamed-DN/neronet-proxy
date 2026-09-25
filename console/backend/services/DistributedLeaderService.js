@@ -162,10 +162,10 @@ class DistributedLeaderService extends EventEmitter {
       }
 
       // Try acquiring session-level advisory lock
-      const lockRes = await this._client.query(
-        'SELECT pg_try_advisory_lock($1, $2) AS acquired',
-        [LOCK_CLASS_ID, LOCK_OBJ_ID]
-      );
+      const lockRes = await this._client.query('SELECT pg_try_advisory_lock($1, $2) AS acquired', [
+        LOCK_CLASS_ID,
+        LOCK_OBJ_ID
+      ]);
 
       const acquired = lockRes.rows[0]?.acquired === true;
 

@@ -6,7 +6,10 @@ const { logAuditEvent } = require('../utils/audit');
 const logger = require('../utils/logger');
 
 // System Key Encryption Key (KEK) - 256-bit symmetric AES key
-const MASTER_KEK = crypto.createHash('sha256').update(config.JWT_SECRET || 'neronet-master-kek-v4-secret').digest();
+const MASTER_KEK = crypto
+  .createHash('sha256')
+  .update(config.JWT_SECRET || 'neronet-master-kek-v4-secret')
+  .digest();
 
 class LegalHoldActiveError extends Error {
   constructor(message = 'Cannot shred organization while legal hold is active') {
@@ -197,9 +200,13 @@ class CryptoShreddingService {
       }
     } else if (targetType === 'global') {
       const pool = getPgPool();
-      const anyHold = await pool.query('SELECT id, organization_id, reason FROM organization_legal_holds WHERE active = TRUE LIMIT 1');
+      const anyHold = await pool.query(
+        'SELECT id, organization_id, reason FROM organization_legal_holds WHERE active = TRUE LIMIT 1'
+      );
       if (anyHold.rows.length > 0) {
-        throw new LegalHoldActiveError(`Global destruction blocked: active legal hold on org ${anyHold.rows[0].organization_id}`);
+        throw new LegalHoldActiveError(
+          `Global destruction blocked: active legal hold on org ${anyHold.rows[0].organization_id}`
+        );
       }
     }
 
@@ -262,9 +269,13 @@ class CryptoShreddingService {
         throw new LegalHoldActiveError(`Destruction blocked: active legal hold (${hold.reason})`);
       }
     } else if (auth.target_type === 'global') {
-      const anyHold = await pool.query('SELECT id, organization_id, reason FROM organization_legal_holds WHERE active = TRUE LIMIT 1');
+      const anyHold = await pool.query(
+        'SELECT id, organization_id, reason FROM organization_legal_holds WHERE active = TRUE LIMIT 1'
+      );
       if (anyHold.rows.length > 0) {
-        throw new LegalHoldActiveError(`Global destruction blocked: active legal hold on org ${anyHold.rows[0].organization_id}`);
+        throw new LegalHoldActiveError(
+          `Global destruction blocked: active legal hold on org ${anyHold.rows[0].organization_id}`
+        );
       }
     }
 

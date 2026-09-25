@@ -1,4 +1,4 @@
-﻿# Runbook Operativo: Disaster Recovery e Ripristino Emergenze (IT)
+# Runbook Operativo: Disaster Recovery e Ripristino Emergenze (IT)
 
 ## Obiettivi di Continuità Operativa (RPO e RTO)
 - **RPO (Recovery Point Objective)**: <= 60 secondi (replica streaming WAL verso nodo secondario)

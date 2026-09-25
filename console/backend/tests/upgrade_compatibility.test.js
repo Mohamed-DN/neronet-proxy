@@ -39,7 +39,7 @@ describe('WP-505: N-1 to N Upgrade Compatibility & Mixed-Fleet Coexistence', () 
           country_code: 'IT',
           city: 'Milan',
           latitude: 45.4642,
-          longitude: 9.1900,
+          longitude: 9.19,
           asn: 12874,
           ip_class: 'RESIDENTIAL',
           max_bandwidth_kbps: 25000,
@@ -49,9 +49,7 @@ describe('WP-505: N-1 to N Upgrade Compatibility & Mixed-Fleet Coexistence', () 
         }
       };
 
-      const res = await request(app)
-        .post('/v4/control/register')
-        .send(legacyPayload);
+      const res = await request(app).post('/v4/control/register').send(legacyPayload);
 
       assert.strictEqual(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.body)}`);
       assert.ok(res.body.assigned_node_id, 'assigned_node_id must be assigned for legacy node');
@@ -85,9 +83,7 @@ describe('WP-505: N-1 to N Upgrade Compatibility & Mixed-Fleet Coexistence', () 
         active_circuits: 2
       };
 
-      const res = await request(app)
-        .post('/v4/control/heartbeat')
-        .send(legacyHeartbeat);
+      const res = await request(app).post('/v4/control/heartbeat').send(legacyHeartbeat);
 
       assert.strictEqual(res.status, 200);
       assert.strictEqual(res.body.acknowledged, true);
@@ -98,13 +94,10 @@ describe('WP-505: N-1 to N Upgrade Compatibility & Mixed-Fleet Coexistence', () 
   describe('3. N-1 Netmap Retrieval & Additive Schema Safety', () => {
     it('returns a netmap that preserves wire contract compatibility for N-1 nodes', async () => {
       assert.ok(legacyNodeId, 'legacyNodeId must be defined');
-      const res = await request(app)
-        .post('/v4/control/netmap')
-        .set(AUTH_HEADER)
-        .send({
-          node_id: legacyNodeId,
-          version: 1
-        });
+      const res = await request(app).post('/v4/control/netmap').set(AUTH_HEADER).send({
+        node_id: legacyNodeId,
+        version: 1
+      });
 
       assert.strictEqual(res.status, 200);
       assert.ok(Array.isArray(res.body.peers), 'peers array must be present');
@@ -143,37 +136,29 @@ describe('WP-505: N-1 to N Upgrade Compatibility & Mixed-Fleet Coexistence', () 
         }
       };
 
-      const modernRes = await request(app)
-        .post('/v4/control/register')
-        .send(modernPayload);
+      const modernRes = await request(app).post('/v4/control/register').send(modernPayload);
 
       assert.strictEqual(modernRes.status, 200);
       modernNodeId = modernRes.body.assigned_node_id;
 
       // Both nodes now request netmaps and verify peer visibility
-      const legacyNetmap = await request(app)
-        .post('/v4/control/netmap')
-        .set(AUTH_HEADER)
-        .send({
-          node_id: legacyNodeId,
-          version: 1
-        });
+      const legacyNetmap = await request(app).post('/v4/control/netmap').set(AUTH_HEADER).send({
+        node_id: legacyNodeId,
+        version: 1
+      });
 
       assert.strictEqual(legacyNetmap.status, 200);
-      const foundModernPeer = legacyNetmap.body.peers.find(p => p.public_key_hex === MODERN_NODE_PUBKEY);
+      const foundModernPeer = legacyNetmap.body.peers.find((p) => p.public_key_hex === MODERN_NODE_PUBKEY);
       assert.ok(foundModernPeer, 'Legacy node must receive modern node as peer');
 
       // Modern node requests netmap and verifies legacy node as peer
-      const modernNetmap = await request(app)
-        .post('/v4/control/netmap')
-        .set(AUTH_HEADER)
-        .send({
-          node_id: modernNodeId,
-          version: 1
-        });
+      const modernNetmap = await request(app).post('/v4/control/netmap').set(AUTH_HEADER).send({
+        node_id: modernNodeId,
+        version: 1
+      });
 
       assert.strictEqual(modernNetmap.status, 200);
-      const foundLegacyPeer = modernNetmap.body.peers.find(p => p.public_key_hex === LEGACY_NODE_PUBKEY);
+      const foundLegacyPeer = modernNetmap.body.peers.find((p) => p.public_key_hex === LEGACY_NODE_PUBKEY);
       assert.ok(foundLegacyPeer, 'Modern node must receive legacy node as peer');
     });
   });
@@ -184,7 +169,7 @@ describe('WP-505: N-1 to N Upgrade Compatibility & Mixed-Fleet Coexistence', () 
         "SELECT column_name, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'nodes' ORDER BY ordinal_position"
       );
 
-      const columnNames = columnsRes.rows.map(r => r.column_name);
+      const columnNames = columnsRes.rows.map((r) => r.column_name);
       assert.ok(columnNames.includes('id'), 'id required');
       assert.ok(columnNames.includes('public_key'), 'public_key required');
       assert.ok(columnNames.includes('organization_id'), 'organization_id required');

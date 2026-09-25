@@ -144,13 +144,10 @@ describe('WP-210: MagicDNS, In-Mesh Gateway & Keystore', () => {
   });
 
   it('5. validates NetmapResponse with DNS attributes over wire contract against Ajv 2020', async () => {
-    const res = await request(app)
-      .post('/v4/control/netmap')
-      .set('Authorization', `Bearer test-token`)
-      .send({
-        node_id: nodeAId,
-        version: 0
-      });
+    const res = await request(app).post('/v4/control/netmap').set('Authorization', `Bearer test-token`).send({
+      node_id: nodeAId,
+      version: 0
+    });
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.dns.magic_dns, true);

@@ -64,7 +64,9 @@ func TestRegisterWithProof(t *testing.T) {
 	rand.Read(nonceBytes)
 	nonceHex := hex.EncodeToString(nonceBytes)
 
-	preauthKeySecret := "nnk1_0123456789abcdef0123456789abcdef"
+	secretBytes := make([]byte, 24)
+	rand.Read(secretBytes)
+	preauthKeySecret := hex.EncodeToString(secretBytes)
 	enrolmentString := "nnk1:" + preauthKeySecret + ":" + cpFingerprint
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

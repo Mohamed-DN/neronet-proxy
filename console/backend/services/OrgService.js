@@ -102,7 +102,20 @@ class OrgService {
   /**
    * Update an organization
    */
-  static async updateOrganization(orgId, { name, default_policy, max_netmap_staleness_seconds, profile, default_transport, default_stealth_config, default_daita_mode, search_domain }, actor) {
+  static async updateOrganization(
+    orgId,
+    {
+      name,
+      default_policy,
+      max_netmap_staleness_seconds,
+      profile,
+      default_transport,
+      default_stealth_config,
+      default_daita_mode,
+      search_domain
+    },
+    actor
+  ) {
     const pool = getPgPool();
     const updates = [];
     const params = [];

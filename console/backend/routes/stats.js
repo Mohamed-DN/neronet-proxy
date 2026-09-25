@@ -324,7 +324,9 @@ async function compileTopologyLinks(nodes) {
   const pool = getPgPool();
   const cfgMap = new Map();
   try {
-    const cfgRes = await pool.query('SELECT source_node_id, target_node_id, mode, relay_id, is_visible FROM mesh_link_configs');
+    const cfgRes = await pool.query(
+      'SELECT source_node_id, target_node_id, mode, relay_id, is_visible FROM mesh_link_configs'
+    );
     for (const r of cfgRes.rows) {
       cfgMap.set(`${r.source_node_id}|${r.target_node_id}`, r);
       cfgMap.set(`${r.target_node_id}|${r.source_node_id}`, r);
@@ -377,7 +379,9 @@ async function compileTopologyLinks(nodes) {
   if (links.length === 0 || policyIsOpen) {
     const dropSet = new Set();
     try {
-      const dropRes = await pool.query("SELECT source_cidr, destination_cidr FROM acl_rules WHERE action = 'DROP' AND enabled = TRUE");
+      const dropRes = await pool.query(
+        "SELECT source_cidr, destination_cidr FROM acl_rules WHERE action = 'DROP' AND enabled = TRUE"
+      );
       for (const dr of dropRes.rows) {
         const sVip = (dr.source_cidr || '').split('/')[0];
         const dVip = (dr.destination_cidr || '').split('/')[0];
@@ -439,7 +443,9 @@ router.post('/topology/reconnect-all', async (req, res, next) => {
     await pool.query('UPDATE mesh_link_configs SET is_visible = TRUE, updated_at = NOW()');
     await pool.query("DELETE FROM acl_rules WHERE description = 'Node explicit isolation'");
     await pool.query("UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = NOW() WHERE name = 'acl'");
-    await publishTopologyEvent({ event: 'TOPOLOGY_ALL_RECONNECTED', timestamp: new Date().toISOString() }).catch(() => {});
+    await publishTopologyEvent({ event: 'TOPOLOGY_ALL_RECONNECTED', timestamp: new Date().toISOString() }).catch(
+      () => {}
+    );
     return res.status(200).json({ success: true, message: 'All mesh links reconnected successfully' });
   } catch (err) {
     next(err);
@@ -452,7 +458,12 @@ router.post('/topology/link', async (req, res, next) => {
     const target_node_id = req.body.target_node_id || req.body.targetNode || req.body.target;
     const mode = req.body.mode || 'direct';
     const relay_id = req.body.relay_id || req.body.relayId || req.body.derpRegion || null;
-    const is_visible = req.body.is_visible !== undefined ? Boolean(req.body.is_visible) : (req.body.visibility !== undefined ? Boolean(req.body.visibility) : true);
+    const is_visible =
+      req.body.is_visible !== undefined
+        ? Boolean(req.body.is_visible)
+        : req.body.visibility !== undefined
+          ? Boolean(req.body.visibility)
+          : true;
 
     if (!source_node_id || !target_node_id) {
       return res.status(400).json({ error: 'source_node_id and target_node_id are required' });
@@ -737,21 +748,34 @@ router.get('/export', async (req, res, next) => {
     const verification = await AuditChainService.verifyChain();
 
     if (format === 'csv') {
-      const headers = ['sequence_num', 'created_at', 'event_type', 'severity', 'actor_username', 'target_id', 'message', 'entry_hash', 'prev_hash', 'ip_address'];
+      const headers = [
+        'sequence_num',
+        'created_at',
+        'event_type',
+        'severity',
+        'actor_username',
+        'target_id',
+        'message',
+        'entry_hash',
+        'prev_hash',
+        'ip_address'
+      ];
       const lines = [headers.join(',')];
       for (const e of events) {
-        lines.push([
-          e.sequence_num,
-          `"${e.created_at}"`,
-          `"${e.event_type}"`,
-          `"${e.severity}"`,
-          `"${e.actor_username || ''}"`,
-          `"${e.target_id || ''}"`,
-          `"${(e.message || '').replace(/"/g, '""')}"`,
-          `"${e.entry_hash}"`,
-          `"${e.prev_hash}"`,
-          `"${e.ip_address || ''}"`
-        ].join(','));
+        lines.push(
+          [
+            e.sequence_num,
+            `"${e.created_at}"`,
+            `"${e.event_type}"`,
+            `"${e.severity}"`,
+            `"${e.actor_username || ''}"`,
+            `"${e.target_id || ''}"`,
+            `"${(e.message || '').replace(/"/g, '""')}"`,
+            `"${e.entry_hash}"`,
+            `"${e.prev_hash}"`,
+            `"${e.ip_address || ''}"`
+          ].join(',')
+        );
       }
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename="neronet_audit_compliance_${Date.now()}.csv"`);
@@ -826,4 +850,3 @@ router.get('/ha-leader', (req, res) => {
 });
 
 module.exports = router;
-

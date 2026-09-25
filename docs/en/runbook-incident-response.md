@@ -1,4 +1,4 @@
-﻿# Runbook: Incident Response & Threat Containment (EN)
+# Runbook: Incident Response & Threat Containment (EN)
 
 ## Severity 1: Compromised Node or Key Leak
 

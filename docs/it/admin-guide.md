@@ -1,4 +1,4 @@
-﻿# NeroNet v4 — Guida Amministratore (IT)
+# NeroNet v4 — Guida Amministratore (IT)
 
 ## Accesso al Sistema
 

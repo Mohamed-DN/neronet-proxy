@@ -272,7 +272,9 @@ class AuditChainService {
    * Verify an existing audit checkpoint signature.
    */
   static verifyCheckpoint(checkpoint) {
-    const dataToVerify = Buffer.from(`${checkpoint.last_event_id}|${checkpoint.last_sequence_num}|${checkpoint.checkpoint_hash}`);
+    const dataToVerify = Buffer.from(
+      `${checkpoint.last_event_id}|${checkpoint.last_sequence_num}|${checkpoint.checkpoint_hash}`
+    );
     const pubKeyPem = checkpoint.public_key;
     const signatureBuf = Buffer.from(checkpoint.signature, 'hex');
 

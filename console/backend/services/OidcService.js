@@ -31,11 +31,7 @@ const mockIdpUsers = new Map();
  * Base64URL encoding without padding
  */
 function base64UrlEncode(buf) {
-  return Buffer.from(buf)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+  return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 /**
@@ -43,9 +39,7 @@ function base64UrlEncode(buf) {
  */
 function generatePkcePair() {
   const codeVerifier = base64UrlEncode(crypto.randomBytes(32));
-  const codeChallenge = base64UrlEncode(
-    crypto.createHash('sha256').update(codeVerifier).digest()
-  );
+  const codeChallenge = base64UrlEncode(crypto.createHash('sha256').update(codeVerifier).digest());
   return { codeVerifier, codeChallenge };
 }
 
@@ -78,14 +72,10 @@ function mapGroupsToRole(userGroups = [], groupMappings = {}, defaultRole = 'mem
 /**
  * Save or update OIDC configuration for an organization.
  */
-async function saveOidcConfig(organizationId, {
-  issuerUrl,
-  clientId,
-  clientSecret,
-  groupMappings = {},
-  defaultRole = 'member',
-  enabled = true
-}) {
+async function saveOidcConfig(
+  organizationId,
+  { issuerUrl, clientId, clientSecret, groupMappings = {}, defaultRole = 'member', enabled = true }
+) {
   const pool = getPgPool();
   const id = `oidc-${uuidv4().substring(0, 8)}`;
 
@@ -103,16 +93,7 @@ async function saveOidcConfig(organizationId, {
        enabled = EXCLUDED.enabled,
        updated_at = NOW()
      RETURNING *`,
-    [
-      id,
-      organizationId,
-      issuerUrl,
-      clientId,
-      clientSecret,
-      JSON.stringify(groupMappings),
-      defaultRole,
-      enabled
-    ]
+    [id, organizationId, issuerUrl, clientId, clientSecret, JSON.stringify(groupMappings), defaultRole, enabled]
   );
 
   return res.rows[0];
@@ -123,10 +104,7 @@ async function saveOidcConfig(organizationId, {
  */
 async function getOidcConfig(organizationId) {
   const pool = getPgPool();
-  const res = await pool.query(
-    `SELECT * FROM organization_oidc_configs WHERE organization_id = $1`,
-    [organizationId]
-  );
+  const res = await pool.query(`SELECT * FROM organization_oidc_configs WHERE organization_id = $1`, [organizationId]);
   return res.rows[0] || null;
 }
 
@@ -184,7 +162,7 @@ function setMockIdpUser(key, userProfile = {}) {
     email: userProfile.email || existing.email || `${finalSub}@idp.test`,
     name: userProfile.name || existing.name || finalSub,
     groups: userProfile.groups || existing.groups || [],
-    active: userProfile.active !== undefined ? userProfile.active : (existing.active !== false)
+    active: userProfile.active !== undefined ? userProfile.active : existing.active !== false
   };
   mockIdpUsers.set(key, profile);
   mockIdpUsers.set(finalSub, profile);
@@ -235,10 +213,10 @@ async function exchangeCodeAndAuthenticate(organizationId, code, state, redirect
 
   // Find or provision user in PostgreSQL
   let user;
-  const existingUserRes = await pool.query(
-    'SELECT * FROM users WHERE oidc_sub = $1 OR email = $2',
-    [claims.sub, claims.email]
-  );
+  const existingUserRes = await pool.query('SELECT * FROM users WHERE oidc_sub = $1 OR email = $2', [
+    claims.sub,
+    claims.email
+  ]);
 
   if (existingUserRes.rows.length > 0) {
     user = existingUserRes.rows[0];
@@ -281,10 +259,7 @@ async function exchangeCodeAndAuthenticate(organizationId, code, state, redirect
  */
 async function verifyUserActiveOnIdP(userId) {
   const pool = getPgPool();
-  const userRes = await pool.query(
-    'SELECT id, oidc_sub, oidc_idp_id, status FROM users WHERE id = $1',
-    [userId]
-  );
+  const userRes = await pool.query('SELECT id, oidc_sub, oidc_idp_id, status FROM users WHERE id = $1', [userId]);
 
   if (userRes.rows.length === 0) {
     return { active: false, reason: 'User not found' };

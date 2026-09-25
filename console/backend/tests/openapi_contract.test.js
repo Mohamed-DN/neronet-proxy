@@ -46,10 +46,7 @@ describe('WP-403: OpenAPI Specification & API Contract', () => {
     ];
 
     for (const p of requiredPaths) {
-      assert.ok(
-        content.includes(`${p}:`),
-        `OpenAPI specification must document path '${p}'`
-      );
+      assert.ok(content.includes(`${p}:`), `OpenAPI specification must document path '${p}'`);
     }
   });
 

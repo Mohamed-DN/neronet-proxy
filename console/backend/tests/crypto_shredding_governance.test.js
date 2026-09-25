@@ -87,35 +87,25 @@ describe('WP-302: Crypto-Shredding with Governance (NeroNuke v2)', () => {
 
     // Isolated key test: DEK for org2 cannot decrypt org1 ciphertext
     await CryptoShreddingService.getOrCreateOrgDEK(testOrg2Id);
-    await assert.rejects(
-      async () => {
-        await CryptoShreddingService.decryptData(testOrg2Id, ciphertext);
-      },
-      /Unsupported state or unable to authenticate data|Invalid/
-    );
+    await assert.rejects(async () => {
+      await CryptoShreddingService.decryptData(testOrg2Id, ciphertext);
+    }, /Unsupported state or unable to authenticate data|Invalid/);
   });
 
   it('2. blocks destruction when an active legal hold is in place', async () => {
     // Impose legal hold
-    const hold = await CryptoShreddingService.imposeLegalHold(
-      testOrgId,
-      'SEC Investigation Order #2026-991',
-      admin1Id
-    );
+    const hold = await CryptoShreddingService.imposeLegalHold(testOrgId, 'SEC Investigation Order #2026-991', admin1Id);
     assert.ok(hold.id);
     assert.strictEqual(hold.active, true);
 
     // Attempting to request destruction MUST fail
-    await assert.rejects(
-      async () => {
-        await CryptoShreddingService.requestDestruction({
-          targetType: 'organization',
-          targetId: testOrgId,
-          initiatorUserId: admin1Id
-        });
-      },
-      LegalHoldActiveError
-    );
+    await assert.rejects(async () => {
+      await CryptoShreddingService.requestDestruction({
+        targetType: 'organization',
+        targetId: testOrgId,
+        initiatorUserId: admin1Id
+      });
+    }, LegalHoldActiveError);
 
     // Release legal hold
     const released = await CryptoShreddingService.releaseLegalHold(hold.id, admin1Id);
@@ -134,12 +124,9 @@ describe('WP-302: Crypto-Shredding with Governance (NeroNuke v2)', () => {
     assert.strictEqual(auth.status, 'pending');
 
     // 2. Admin 1 tries to approve their own request -> MUST BE REJECTED!
-    await assert.rejects(
-      async () => {
-        await CryptoShreddingService.approveAndExecuteDestruction(auth.id, admin1Id, 'Self approval');
-      },
-      DualAuthorizationRequiredError
-    );
+    await assert.rejects(async () => {
+      await CryptoShreddingService.approveAndExecuteDestruction(auth.id, admin1Id, 'Self approval');
+    }, DualAuthorizationRequiredError);
 
     // 3. Admin 2 approves -> SUCCEEDS!
     const result = await CryptoShreddingService.approveAndExecuteDestruction(
@@ -153,31 +140,23 @@ describe('WP-302: Crypto-Shredding with Governance (NeroNuke v2)', () => {
 
   it('4. ensures data in historical backups is permanently illegible after crypto-shredding', async () => {
     // Attempting to decrypt data created before the shredding must fail permanently with KeyShreddedError
-    await assert.rejects(
-      async () => {
-        await CryptoShreddingService.decryptData(testOrgId, 'some-ciphertext-from-backup');
-      },
-      KeyShreddedError
-    );
+    await assert.rejects(async () => {
+      await CryptoShreddingService.decryptData(testOrgId, 'some-ciphertext-from-backup');
+    }, KeyShreddedError);
   });
 
   it('5. validates Governance REST API endpoints for legal holds and dual-authorization', async () => {
     // 1. Impose legal hold via API
-    const holdRes = await request(app)
-      .post('/api/nuke/legal-hold')
-      .set('Authorization', `Bearer ${admin1Token}`)
-      .send({
-        organization_id: testOrg2Id,
-        reason: 'DOJ Subpoena preservation'
-      });
+    const holdRes = await request(app).post('/api/nuke/legal-hold').set('Authorization', `Bearer ${admin1Token}`).send({
+      organization_id: testOrg2Id,
+      reason: 'DOJ Subpoena preservation'
+    });
 
     assert.strictEqual(holdRes.status, 201);
     const holdId = holdRes.body.hold.id;
 
     // 2. List legal holds
-    const listRes = await request(app)
-      .get('/api/nuke/legal-hold')
-      .set('Authorization', `Bearer ${admin1Token}`);
+    const listRes = await request(app).get('/api/nuke/legal-hold').set('Authorization', `Bearer ${admin1Token}`);
 
     assert.strictEqual(listRes.status, 200);
     assert.ok(listRes.body.legal_holds.some((h) => h.id === holdId && h.active));

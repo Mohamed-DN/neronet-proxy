@@ -109,16 +109,13 @@ describe('WP-208: Multi-Protocol Transport & AmneziaWG Stealth', () => {
     assert.strictEqual(updated.default_transport, 'amneziawg');
 
     // Invalid update must throw
-    await assert.rejects(
-      async () => {
-        await OrgService.updateOrganization(
-          testOrgId,
-          { default_transport: 'pptp' },
-          { id: 'system', username: 'system' }
-        );
-      },
-      /Invalid default_transport/
-    );
+    await assert.rejects(async () => {
+      await OrgService.updateOrganization(
+        testOrgId,
+        { default_transport: 'pptp' },
+        { id: 'system', username: 'system' }
+      );
+    }, /Invalid default_transport/);
   });
 
   it('2. sets node transport to amneziawg with custom stealth params via action', async () => {
@@ -204,13 +201,10 @@ describe('WP-208: Multi-Protocol Transport & AmneziaWG Stealth', () => {
   });
 
   it('6. validates NetmapResponse against Ajv 2020 schema over wire contract', async () => {
-    const res = await request(app)
-      .post('/v4/control/netmap')
-      .set('Authorization', `Bearer test-token`)
-      .send({
-        node_id: nodeBId,
-        version: 0
-      });
+    const res = await request(app).post('/v4/control/netmap').set('Authorization', `Bearer test-token`).send({
+      node_id: nodeBId,
+      version: 0
+    });
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.self.transport, 'amneziawg');

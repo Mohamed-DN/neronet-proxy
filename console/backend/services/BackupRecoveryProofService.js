@@ -248,9 +248,7 @@ class BackupRecoveryProofService {
    */
   static async getLatestProof(pool = null) {
     const activePool = pool || getPgPool();
-    const res = await activePool.query(
-      `SELECT * FROM recovery_proofs ORDER BY verified_at DESC LIMIT 1`
-    );
+    const res = await activePool.query(`SELECT * FROM recovery_proofs ORDER BY verified_at DESC LIMIT 1`);
     if (res.rows.length === 0) return null;
     return res.rows[0];
   }

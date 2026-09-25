@@ -102,16 +102,13 @@ describe('WP-209: DAITA Anti-AI Traffic Fingerprinting & Shaping', () => {
     assert.strictEqual(updatedParanoid.default_daita_mode, 'paranoid');
 
     // Invalid update must throw
-    await assert.rejects(
-      async () => {
-        await OrgService.updateOrganization(
-          testOrgId,
-          { default_daita_mode: 'super_stealth' },
-          { id: 'system', username: 'system' }
-        );
-      },
-      /Invalid default_daita_mode/
-    );
+    await assert.rejects(async () => {
+      await OrgService.updateOrganization(
+        testOrgId,
+        { default_daita_mode: 'super_stealth' },
+        { id: 'system', username: 'system' }
+      );
+    }, /Invalid default_daita_mode/);
   });
 
   it('2. sets node DAITA mode to balanced and paranoid via action', async () => {
@@ -172,13 +169,10 @@ describe('WP-209: DAITA Anti-AI Traffic Fingerprinting & Shaping', () => {
   });
 
   it('5. validates NetmapResponse with DAITA attributes against Ajv 2020 schema', async () => {
-    const res = await request(app)
-      .post('/v4/control/netmap')
-      .set('Authorization', `Bearer test-token`)
-      .send({
-        node_id: nodeBId,
-        version: 0
-      });
+    const res = await request(app).post('/v4/control/netmap').set('Authorization', `Bearer test-token`).send({
+      node_id: nodeBId,
+      version: 0
+    });
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.self.daita_mode, 'balanced');

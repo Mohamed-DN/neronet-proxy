@@ -194,11 +194,7 @@ describe('WP-301: Tamper-Evident Audit Log & SIEM Export', () => {
       });
     });
 
-    await SiemExporter.sendToDestination(
-      { protocol: 'udp', endpoint: `127.0.0.1:${port}` },
-      syslog,
-      sampleEvent
-    );
+    await SiemExporter.sendToDestination({ protocol: 'udp', endpoint: `127.0.0.1:${port}` }, syslog, sampleEvent);
 
     await receivedPromise;
     server.close();
@@ -208,17 +204,13 @@ describe('WP-301: Tamper-Evident Audit Log & SIEM Export', () => {
 
   it('6. exposes audit verification and SIEM management API endpoints', async () => {
     // GET /api/audit/verify
-    const resVerify = await request(app)
-      .get('/api/audit/verify')
-      .set('Authorization', `Bearer ${superAdminToken}`);
+    const resVerify = await request(app).get('/api/audit/verify').set('Authorization', `Bearer ${superAdminToken}`);
 
     assert.strictEqual(resVerify.status, 200);
     assert.strictEqual(resVerify.body.verification.valid, true);
 
     // POST /api/audit/checkpoints
-    const resCp = await request(app)
-      .post('/api/audit/checkpoints')
-      .set('Authorization', `Bearer ${superAdminToken}`);
+    const resCp = await request(app).post('/api/audit/checkpoints').set('Authorization', `Bearer ${superAdminToken}`);
 
     assert.strictEqual(resCp.status, 201);
     assert.ok(resCp.body.checkpoint.signature);
@@ -233,23 +225,18 @@ describe('WP-301: Tamper-Evident Audit Log & SIEM Export', () => {
     assert.ok(resListCp.body.public_key);
 
     // POST /api/audit/siem
-    const resSiem = await request(app)
-      .post('/api/audit/siem')
-      .set('Authorization', `Bearer ${superAdminToken}`)
-      .send({
-        name: 'Enterprise Splunk SIEM',
-        protocol: 'udp',
-        endpoint: '10.0.0.50:514',
-        format: 'rfc5424'
-      });
+    const resSiem = await request(app).post('/api/audit/siem').set('Authorization', `Bearer ${superAdminToken}`).send({
+      name: 'Enterprise Splunk SIEM',
+      protocol: 'udp',
+      endpoint: '10.0.0.50:514',
+      format: 'rfc5424'
+    });
 
     assert.strictEqual(resSiem.status, 201);
     assert.strictEqual(resSiem.body.destination.name, 'Enterprise Splunk SIEM');
 
     // GET /api/audit/siem
-    const resListSiem = await request(app)
-      .get('/api/audit/siem')
-      .set('Authorization', `Bearer ${superAdminToken}`);
+    const resListSiem = await request(app).get('/api/audit/siem').set('Authorization', `Bearer ${superAdminToken}`);
 
     assert.strictEqual(resListSiem.status, 200);
     assert.strictEqual(resListSiem.body.destinations.length, 1);

@@ -476,7 +476,10 @@ function sortAllowedIPs(list) {
 function computeDNSName(name, explicitDnsName, domain) {
   if (explicitDnsName) return explicitDnsName;
   if (!name) return undefined;
-  const slug = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const slug = String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
   if (!slug) return undefined;
   return domain ? `${slug}.${domain}` : slug;
 }

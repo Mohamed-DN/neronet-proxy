@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Every cache key in one place, so that an invalidation from the live channel
  * and the hook that filled the cache cannot drift apart.
  */

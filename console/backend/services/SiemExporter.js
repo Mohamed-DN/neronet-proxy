@@ -105,10 +105,7 @@ class SiemExporter {
 
     // Webhook destination
     if (protocol === 'webhook') {
-      const body =
-        dest.format === 'rfc5424'
-          ? syslogMsg
-          : JSON.stringify({ syslog: syslogMsg, event });
+      const body = dest.format === 'rfc5424' ? syslogMsg : JSON.stringify({ syslog: syslogMsg, event });
 
       const res = await fetch(endpoint, {
         method: 'POST',

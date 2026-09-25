@@ -1,4 +1,4 @@
-﻿# Runbook: Disaster Recovery & High Availability Failover (EN)
+# Runbook: Disaster Recovery & High Availability Failover (EN)
 
 ## RPO & RTO Objectives
 - **Recovery Point Objective (RPO)**: <= 60 seconds (WAL streaming replication to secondary standby)

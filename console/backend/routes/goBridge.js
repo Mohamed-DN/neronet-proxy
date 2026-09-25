@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Go mesh data-plane bridge.
  *
  * Implements the wire contract the Go node speaks, defined by the typed structs in

@@ -1,4 +1,4 @@
-﻿# NeroNet v4 - Compliance Mapping Summary
+# NeroNet v4 - Compliance Mapping Summary
 
 ## DORA (Regulation EU 2022/2554)
 

@@ -1,0 +1,5 @@
+node_modules
+data
+# Generated JSON Schemas, mirrored from /api/contract/v4 so the image can load them.
+# CI checks the mirror is identical; they are not formatted by hand.
+api

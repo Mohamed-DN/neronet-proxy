@@ -1,4 +1,4 @@
-﻿# NeroNet v4.0.0-rc1 - Release Candidate Checklist (WP-605)
+# NeroNet v4.0.0-rc1 - Release Candidate Checklist (WP-605)
 
 ## Gate G6 - Go/No-Go Final Certification
 

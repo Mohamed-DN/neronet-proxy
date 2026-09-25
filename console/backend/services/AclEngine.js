@@ -267,7 +267,6 @@ function allowAll(peerVip) {
   };
 }
 
-
 async function updateRule(id, updates = {}) {
   const existingRows = await query(
     'SELECT * FROM acl_rules WHERE id = $1',
@@ -280,7 +279,8 @@ async function updateRule(id, updates = {}) {
 
   const priority = updates.priority !== undefined ? Number(updates.priority) : Number(existing.priority);
   const source_cidr = updates.source_cidr !== undefined ? updates.source_cidr : existing.source_cidr;
-  const destination_cidr = updates.destination_cidr !== undefined ? updates.destination_cidr : existing.destination_cidr;
+  const destination_cidr =
+    updates.destination_cidr !== undefined ? updates.destination_cidr : existing.destination_cidr;
   const protocol = (updates.protocol !== undefined ? updates.protocol : existing.protocol).toUpperCase();
   const port_start = updates.port_start !== undefined ? Number(updates.port_start) : Number(existing.port_start);
   const port_end = updates.port_end !== undefined ? Number(updates.port_end) : Number(existing.port_end);
@@ -370,11 +370,12 @@ async function simulatePacket({ source_ip, destination_ip, protocol = 'ALL', por
   return {
     verdict,
     matched_rule: null,
-    reason: rules.length === 0
-      ? 'No rules configured — mesh is currently open by default'
-      : defaultPolicy === 'open'
-        ? 'No rule matched — organization default policy is OPEN (Permit)'
-        : 'No rule matched — Zero-Trust organization default policy is DENY (Drop)',
+    reason:
+      rules.length === 0
+        ? 'No rules configured — mesh is currently open by default'
+        : defaultPolicy === 'open'
+          ? 'No rule matched — organization default policy is OPEN (Permit)'
+          : 'No rule matched — Zero-Trust organization default policy is DENY (Drop)',
     packet: {
       source_ip,
       destination_ip,
@@ -421,7 +422,7 @@ async function compilePreview(nodeId, candidateRule = null) {
       description: candidateRule.description || 'Candidate preview rule'
     };
 
-    rules = rules.filter(r => r.id !== normalized.id);
+    rules = rules.filter((r) => r.id !== normalized.id);
     if (normalized.enabled) {
       rules.push(normalized);
     }

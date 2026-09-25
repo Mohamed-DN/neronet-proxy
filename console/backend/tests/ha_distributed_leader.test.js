@@ -9,11 +9,7 @@ const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
-const {
-  DistributedLeaderService,
-  LOCK_CLASS_ID,
-  LOCK_OBJ_ID
-} = require('../services/DistributedLeaderService');
+const { DistributedLeaderService, LOCK_CLASS_ID, LOCK_OBJ_ID } = require('../services/DistributedLeaderService');
 const { createApp } = require('../server');
 
 describe('WP-307: High Availability & Distributed Leadership (ADR 0001)', () => {
@@ -35,11 +31,9 @@ describe('WP-307: High Availability & Distributed Leadership (ADR 0001)', () => 
        ON CONFLICT (id) DO NOTHING`
     );
 
-    adminToken = jwt.sign(
-      { id: 'ha-admin-uuid', username: 'ha_admin', role: 'super-admin' },
-      config.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
+    adminToken = jwt.sign({ id: 'ha-admin-uuid', username: 'ha_admin', role: 'super-admin' }, config.JWT_SECRET, {
+      expiresIn: '1h'
+    });
   });
 
   afterEach(async () => {
@@ -165,9 +159,7 @@ describe('WP-307: High Availability & Distributed Leadership (ADR 0001)', () => 
   });
 
   test('6. API: GET /api/stats/ha-leader reports current leadership status to authenticated user', async () => {
-    const res = await request(app)
-      .get('/api/stats/ha-leader')
-      .set('Authorization', `Bearer ${adminToken}`);
+    const res = await request(app).get('/api/stats/ha-leader').set('Authorization', `Bearer ${adminToken}`);
 
     assert.equal(res.status, 200);
     assert.ok(res.body.leader);

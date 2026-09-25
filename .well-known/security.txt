@@ -1,4 +1,4 @@
-﻿Contact: mailto:security@neronet.io
+Contact: mailto:security@neronet.io
 Contact: https://neronet.io/security/bug-bounty
 Expires: 2026-12-31T23:59:59.000Z
 Encryption: https://neronet.io/.well-known/pgp-key.txt

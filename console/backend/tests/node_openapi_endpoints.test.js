@@ -1,4 +1,4 @@
-﻿const { describe, it, before, after } = require('node:test');
+const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
 const crypto = require('crypto');
@@ -61,7 +61,9 @@ describe('WP-405: OpenAPI 3.1.0 Node Management Endpoints', () => {
     assert.strictEqual(res.body.result.is_quarantined, true);
     assert.strictEqual(res.body.result.status, 'quarantined');
 
-    const check = await dbHelper.pool.query('SELECT is_quarantined, quarantine_reason FROM nodes WHERE id = $1', [testNodeId]);
+    const check = await dbHelper.pool.query('SELECT is_quarantined, quarantine_reason FROM nodes WHERE id = $1', [
+      testNodeId
+    ]);
     assert.strictEqual(check.rows[0].is_quarantined, true);
     assert.strictEqual(check.rows[0].quarantine_reason, 'Suspicious outbound DNS beaconing');
   });
@@ -77,7 +79,9 @@ describe('WP-405: OpenAPI 3.1.0 Node Management Endpoints', () => {
     assert.strictEqual(res.body.result.is_quarantined, false);
     assert.strictEqual(res.body.result.status, 'active');
 
-    const check = await dbHelper.pool.query('SELECT is_quarantined, quarantine_reason FROM nodes WHERE id = $1', [testNodeId]);
+    const check = await dbHelper.pool.query('SELECT is_quarantined, quarantine_reason FROM nodes WHERE id = $1', [
+      testNodeId
+    ]);
     assert.strictEqual(check.rows[0].is_quarantined, false);
     assert.strictEqual(check.rows[0].quarantine_reason, null);
   });

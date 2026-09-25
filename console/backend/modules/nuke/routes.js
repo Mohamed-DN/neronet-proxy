@@ -395,50 +395,56 @@ router.get('/legal-hold', authenticateToken, async (req, res, next) => {
 });
 
 // 4. Request Dual-Authorization Destruction
-router.post('/dual-auth/request', authenticateToken, requireRole('super-admin', 'owner', 'admin'), async (req, res, next) => {
-  try {
-    const { target_type, target_id, comment } = req.body || {};
-    if (!target_type || !target_id) {
-      return res.status(400).json({ error: 'target_type and target_id are required' });
-    }
+router.post(
+  '/dual-auth/request',
+  authenticateToken,
+  requireRole('super-admin', 'owner', 'admin'),
+  async (req, res, next) => {
+    try {
+      const { target_type, target_id, comment } = req.body || {};
+      if (!target_type || !target_id) {
+        return res.status(400).json({ error: 'target_type and target_id are required' });
+      }
 
-    const auth = await CryptoShreddingService.requestDestruction({
-      targetType: target_type,
-      targetId: target_id,
-      initiatorUserId: req.user.id,
-      comment
-    });
+      const auth = await CryptoShreddingService.requestDestruction({
+        targetType: target_type,
+        targetId: target_id,
+        initiatorUserId: req.user.id,
+        comment
+      });
 
-    return res.status(201).json({ authorization: auth });
-  } catch (err) {
-    if (err instanceof LegalHoldActiveError) {
-      return res.status(403).json({ error: err.message, code: 'LEGAL_HOLD_ACTIVE' });
+      return res.status(201).json({ authorization: auth });
+    } catch (err) {
+      if (err instanceof LegalHoldActiveError) {
+        return res.status(403).json({ error: err.message, code: 'LEGAL_HOLD_ACTIVE' });
+      }
+      next(err);
     }
-    next(err);
   }
-});
+);
 
 // 5. Approve and Execute Dual-Authorization Destruction
-router.post('/dual-auth/approve/:id', authenticateToken, requireRole('super-admin', 'owner', 'admin'), async (req, res, next) => {
-  try {
-    const { comment } = req.body || {};
-    const result = await CryptoShreddingService.approveAndExecuteDestruction(
-      req.params.id,
-      req.user.id,
-      comment
-    );
+router.post(
+  '/dual-auth/approve/:id',
+  authenticateToken,
+  requireRole('super-admin', 'owner', 'admin'),
+  async (req, res, next) => {
+    try {
+      const { comment } = req.body || {};
+      const result = await CryptoShreddingService.approveAndExecuteDestruction(req.params.id, req.user.id, comment);
 
-    return res.status(200).json(result);
-  } catch (err) {
-    if (err instanceof DualAuthorizationRequiredError) {
-      return res.status(403).json({ error: err.message, code: 'DUAL_AUTHORIZATION_REQUIRED' });
+      return res.status(200).json(result);
+    } catch (err) {
+      if (err instanceof DualAuthorizationRequiredError) {
+        return res.status(403).json({ error: err.message, code: 'DUAL_AUTHORIZATION_REQUIRED' });
+      }
+      if (err instanceof LegalHoldActiveError) {
+        return res.status(403).json({ error: err.message, code: 'LEGAL_HOLD_ACTIVE' });
+      }
+      return res.status(400).json({ error: err.message });
     }
-    if (err instanceof LegalHoldActiveError) {
-      return res.status(403).json({ error: err.message, code: 'LEGAL_HOLD_ACTIVE' });
-    }
-    return res.status(400).json({ error: err.message });
   }
-});
+);
 
 // 6. List Dual-Authorization Requests
 router.get('/dual-auth', authenticateToken, async (req, res, next) => {
@@ -452,22 +458,27 @@ router.get('/dual-auth', authenticateToken, async (req, res, next) => {
 });
 
 // 7. Reject / Cancel Dual-Authorization Request
-router.post('/dual-auth/reject/:id', authenticateToken, requireRole('super-admin', 'owner', 'admin'), async (req, res, next) => {
-  try {
-    const { comment } = req.body || {};
-    const pool = getPgPool();
-    const qRes = await pool.query(
-      "UPDATE nuke_authorizations SET status = 'rejected', approver_user_id = $1, approver_comment = $2, executed_at = NOW() WHERE id = $3 AND status = 'pending' RETURNING *",
-      [req.user.id, comment || 'Rejected by administrator', req.params.id]
-    );
-    if (qRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Pending authorization not found or already closed' });
+router.post(
+  '/dual-auth/reject/:id',
+  authenticateToken,
+  requireRole('super-admin', 'owner', 'admin'),
+  async (req, res, next) => {
+    try {
+      const { comment } = req.body || {};
+      const pool = getPgPool();
+      const qRes = await pool.query(
+        "UPDATE nuke_authorizations SET status = 'rejected', approver_user_id = $1, approver_comment = $2, executed_at = NOW() WHERE id = $3 AND status = 'pending' RETURNING *",
+        [req.user.id, comment || 'Rejected by administrator', req.params.id]
+      );
+      if (qRes.rows.length === 0) {
+        return res.status(404).json({ error: 'Pending authorization not found or already closed' });
+      }
+      return res.status(200).json({ success: true, authorization: qRes.rows[0] });
+    } catch (err) {
+      next(err);
     }
-    return res.status(200).json({ success: true, authorization: qRes.rows[0] });
-  } catch (err) {
-    next(err);
   }
-});
+);
 
 // 8. Governance Overview Status (OpenAPI /nuke/status)
 router.get('/status', authenticateToken, async (req, res, next) => {
@@ -478,7 +489,10 @@ router.get('/status', authenticateToken, async (req, res, next) => {
     // Check active legal holds
     let holdsCount = 0;
     if (orgId) {
-      const hRes = await pool.query('SELECT COUNT(*) FROM organization_legal_holds WHERE organization_id = $1 AND active = TRUE', [orgId]);
+      const hRes = await pool.query(
+        'SELECT COUNT(*) FROM organization_legal_holds WHERE organization_id = $1 AND active = TRUE',
+        [orgId]
+      );
       holdsCount = parseInt(hRes.rows[0].count, 10);
     } else {
       const hRes = await pool.query('SELECT COUNT(*) FROM organization_legal_holds WHERE active = TRUE');

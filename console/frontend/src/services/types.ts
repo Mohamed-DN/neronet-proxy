@@ -1,4 +1,4 @@
-﻿/**
+/**
  * The shapes the control plane returns, as far as the shell and pages read them.
  * Conforms to OpenAPI 3.1.0 specification in api/openapi.yaml (WP-403).
  */

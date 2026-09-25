@@ -1,4 +1,4 @@
-﻿# NeroNet v4 Helm Values (enterprise defaults)
+# NeroNet v4 Helm Values (enterprise defaults)
 replicaCount: 1
 
 image:

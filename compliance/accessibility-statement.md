@@ -1,4 +1,4 @@
-﻿# Dichiarazione di Accessibilità - NeroNet v4 Console
+# Dichiarazione di Accessibilità - NeroNet v4 Console
 
 **Versione**: 4.0.0-rc1  
 **Data aggiornamento**: 2026-09-25  

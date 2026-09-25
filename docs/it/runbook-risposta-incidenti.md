@@ -1,4 +1,4 @@
-﻿# Runbook Operativo: Risposta agli Incidenti di Sicurezza (IT)
+# Runbook Operativo: Risposta agli Incidenti di Sicurezza (IT)
 
 ## Severità 1: Compromissione Chiave o Nodo Violato
 

@@ -68,16 +68,10 @@ describe('WP-303: SSO OIDC with Group-to-Role Mapping', () => {
       OidcService.mapGroupsToRole(['group-audit', 'group-super', 'group-net'], mappings),
       'super-admin'
     );
-    assert.strictEqual(
-      OidcService.mapGroupsToRole(['group-net', 'group-admin'], mappings),
-      'admin'
-    );
+    assert.strictEqual(OidcService.mapGroupsToRole(['group-net', 'group-admin'], mappings), 'admin');
 
     // Unmapped group falls back to defaultRole
-    assert.strictEqual(
-      OidcService.mapGroupsToRole(['unknown-contractor-group'], mappings, 'member'),
-      'member'
-    );
+    assert.strictEqual(OidcService.mapGroupsToRole(['unknown-contractor-group'], mappings, 'member'), 'member');
   });
 
   it('2. generateAuthorizationUrl produces valid PKCE parameters and endpoint', async () => {
@@ -130,9 +124,7 @@ describe('WP-303: SSO OIDC with Group-to-Role Mapping', () => {
     assert.strictEqual(res.body.user.role, 'super-admin');
 
     // Verify user in PostgreSQL database
-    const userRow = (
-      await pool.query('SELECT * FROM users WHERE oidc_sub = $1', ['keycloak-sub-alice-001'])
-    ).rows[0];
+    const userRow = (await pool.query('SELECT * FROM users WHERE oidc_sub = $1', ['keycloak-sub-alice-001'])).rows[0];
 
     assert.ok(userRow, 'User must be created in PostgreSQL');
     assert.strictEqual(userRow.role, 'super-admin');
@@ -168,9 +160,8 @@ describe('WP-303: SSO OIDC with Group-to-Role Mapping', () => {
     assert.strictEqual(res.body.mappedRole, 'auditor');
 
     // Verify database was updated
-    const userRow = (
-      await pool.query('SELECT role FROM users WHERE oidc_sub = $1', ['keycloak-sub-alice-001'])
-    ).rows[0];
+    const userRow = (await pool.query('SELECT role FROM users WHERE oidc_sub = $1', ['keycloak-sub-alice-001']))
+      .rows[0];
     assert.strictEqual(userRow.role, 'auditor');
   });
 
@@ -220,8 +211,8 @@ describe('WP-303: SSO OIDC with Group-to-Role Mapping', () => {
 
     assert.ok(
       refreshRes.body.error.toLowerCase().includes('deactivated') ||
-      refreshRes.body.error.toLowerCase().includes('suspended') ||
-      refreshRes.body.error.toLowerCase().includes('inactive'),
+        refreshRes.body.error.toLowerCase().includes('suspended') ||
+        refreshRes.body.error.toLowerCase().includes('inactive'),
       'Must refuse refresh for deactivated IdP user'
     );
 
@@ -241,5 +232,4 @@ describe('WP-303: SSO OIDC with Group-to-Role Mapping', () => {
       })
       .expect(401);
   });
-
 });

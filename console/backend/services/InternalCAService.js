@@ -123,7 +123,11 @@ function derName(cn, org) {
 /**
  * Generates an ECDSA P-256 self-signed root CA certificate.
  */
-function createSelfSignedRootCA({ commonName = 'NeroNet Internal CA', organization = 'NeroNet', validityYears = CA_VALIDITY_YEARS } = {}) {
+function createSelfSignedRootCA({
+  commonName = 'NeroNet Internal CA',
+  organization = 'NeroNet',
+  validityYears = CA_VALIDITY_YEARS
+} = {}) {
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const spkiDer = publicKey.export({ type: 'spki', format: 'der' });
 
@@ -156,7 +160,10 @@ function createSelfSignedRootCA({ commonName = 'NeroNet Internal CA', organizati
 
   const sig = crypto.sign('SHA256', tbs, privateKey);
   const certDer = derSequence([tbs, algId, derBitString(sig)]);
-  const certPem = `-----BEGIN CERTIFICATE-----\n${certDer.toString('base64').match(/.{1,64}/g).join('\n')}\n-----END CERTIFICATE-----\n`;
+  const certPem = `-----BEGIN CERTIFICATE-----\n${certDer
+    .toString('base64')
+    .match(/.{1,64}/g)
+    .join('\n')}\n-----END CERTIFICATE-----\n`;
   const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' });
   const fingerprintSha256 = crypto.createHash('sha256').update(certDer).digest('hex');
 
@@ -166,7 +173,12 @@ function createSelfSignedRootCA({ commonName = 'NeroNet Internal CA', organizati
 /**
  * Issues an ECDSA P-256 leaf certificate signed by the Root CA.
  */
-function createNodeLeafCertificate({ caCertPem, caPrivateKeyPem, commonName, validityDays = NODE_CERT_VALIDITY_DAYS } = {}) {
+function createNodeLeafCertificate({
+  caCertPem,
+  caPrivateKeyPem,
+  commonName,
+  validityDays = NODE_CERT_VALIDITY_DAYS
+} = {}) {
   const caCert = new crypto.X509Certificate(caCertPem);
   const caKey = crypto.createPrivateKey(caPrivateKeyPem);
 
@@ -193,20 +205,14 @@ function createNodeLeafCertificate({ caCertPem, caPrivateKeyPem, commonName, val
   const extensionsSeq = derSequence([bcExt]);
   const extensionsTag = Buffer.concat([Buffer.from([0xa3]), derLength(extensionsSeq.length), extensionsSeq]);
 
-  const tbs = derSequence([
-    v3Tag,
-    derInteger(serial),
-    algId,
-    issuerDer,
-    validity,
-    subjectDer,
-    spkiDer,
-    extensionsTag
-  ]);
+  const tbs = derSequence([v3Tag, derInteger(serial), algId, issuerDer, validity, subjectDer, spkiDer, extensionsTag]);
 
   const sig = crypto.sign('SHA256', tbs, caKey);
   const certDer = derSequence([tbs, algId, derBitString(sig)]);
-  const certPem = `-----BEGIN CERTIFICATE-----\n${certDer.toString('base64').match(/.{1,64}/g).join('\n')}\n-----END CERTIFICATE-----\n`;
+  const certPem = `-----BEGIN CERTIFICATE-----\n${certDer
+    .toString('base64')
+    .match(/.{1,64}/g)
+    .join('\n')}\n-----END CERTIFICATE-----\n`;
   const privateKeyPem = leafPriv.export({ type: 'pkcs8', format: 'pem' });
   const fingerprintSha256 = crypto.createHash('sha256').update(certDer).digest('hex');
 
@@ -234,15 +240,7 @@ async function provisionRootCA({ commonName = 'NeroNet Internal CA', organizatio
        ('root', $1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (id) DO UPDATE SET updated_at = now()
      RETURNING *`,
-    [
-      commonName,
-      organization,
-      ca.certPem,
-      ca.privateKeyPem,
-      ca.fingerprintSha256,
-      ca.notBefore,
-      ca.notAfter
-    ]
+    [commonName, organization, ca.certPem, ca.privateKeyPem, ca.fingerprintSha256, ca.notBefore, ca.notAfter]
   );
 
   logger.info(`[InternalCA] Root CA provisioned with fingerprint: ${ca.fingerprintSha256}`);
@@ -280,7 +278,10 @@ async function getCAFingerprint() {
 /**
  * Issues a leaf certificate for a specific node and saves it in node_certificates.
  */
-async function issueNodeCertificate(nodeId, { commonName = `node-${nodeId}`, validityDays = NODE_CERT_VALIDITY_DAYS } = {}) {
+async function issueNodeCertificate(
+  nodeId,
+  { commonName = `node-${nodeId}`, validityDays = NODE_CERT_VALIDITY_DAYS } = {}
+) {
   const pool = getPgPool();
   const ca = await getRootCA();
 
@@ -313,10 +314,7 @@ async function pinCAFingerprintToNode(nodeId, fingerprint) {
   const pool = getPgPool();
   const fp = fingerprint || (await getCAFingerprint());
 
-  await pool.query(
-    'UPDATE nodes SET pinned_ca_fingerprint = $1 WHERE id = $2',
-    [fp, nodeId]
-  );
+  await pool.query('UPDATE nodes SET pinned_ca_fingerprint = $1 WHERE id = $2', [fp, nodeId]);
 
   logger.info(`[InternalCA] Node ${nodeId} pinned to CA fingerprint: ${fp}`);
   return fp;
@@ -331,10 +329,7 @@ async function verifyNodePin(nodeId) {
   const pool = getPgPool();
   const currentFp = await getCAFingerprint();
 
-  const res = await pool.query(
-    'SELECT pinned_ca_fingerprint FROM nodes WHERE id = $1',
-    [nodeId]
-  );
+  const res = await pool.query('SELECT pinned_ca_fingerprint FROM nodes WHERE id = $1', [nodeId]);
 
   if (res.rows.length === 0) {
     return false;

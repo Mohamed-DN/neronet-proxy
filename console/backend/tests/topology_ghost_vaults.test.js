@@ -91,9 +91,7 @@ describe('WP-406: Topology & Ghost Vaults Dynamic Unlock / Plausible Deniability
   let elevatedToken;
 
   it('1. Standard tier: GET /api/stats/topology strictly omits ghost vault nodes (plausible deniability)', async () => {
-    const res = await request(app)
-      .get('/api/stats/topology')
-      .set('Authorization', `Bearer ${standardToken}`);
+    const res = await request(app).get('/api/stats/topology').set('Authorization', `Bearer ${standardToken}`);
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.total_nodes, 1);
@@ -131,9 +129,7 @@ describe('WP-406: Topology & Ghost Vaults Dynamic Unlock / Plausible Deniability
   });
 
   it('4. Elevated tier: GET /api/stats/topology returns both standard and ghost vault nodes', async () => {
-    const res = await request(app)
-      .get('/api/stats/topology')
-      .set('Authorization', `Bearer ${elevatedToken}`);
+    const res = await request(app).get('/api/stats/topology').set('Authorization', `Bearer ${elevatedToken}`);
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.total_nodes, 2);
@@ -150,9 +146,7 @@ describe('WP-406: Topology & Ghost Vaults Dynamic Unlock / Plausible Deniability
   });
 
   it('5. POST /api/compartments/lock reverts session back to standard tier', async () => {
-    const res = await request(app)
-      .post('/api/compartments/lock')
-      .set('Authorization', `Bearer ${elevatedToken}`);
+    const res = await request(app).post('/api/compartments/lock').set('Authorization', `Bearer ${elevatedToken}`);
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.success, true);
@@ -164,9 +158,7 @@ describe('WP-406: Topology & Ghost Vaults Dynamic Unlock / Plausible Deniability
     assert.strictEqual(decoded.compartment_access, 'standard');
 
     // Verify topology with locked token omits ghost vault
-    const topoRes = await request(app)
-      .get('/api/stats/topology')
-      .set('Authorization', `Bearer ${lockedToken}`);
+    const topoRes = await request(app).get('/api/stats/topology').set('Authorization', `Bearer ${lockedToken}`);
 
     assert.strictEqual(topoRes.status, 200);
     assert.strictEqual(topoRes.body.total_nodes, 1);

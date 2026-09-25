@@ -121,17 +121,14 @@ describe('WP-306: Automated Disaster Recovery Backup & Recovery Proof Verificati
       }
     };
 
-    await assert.rejects(
-      async () => {
-        await BackupRecoveryProofService.verifyRestoredDatabase({
-          sourcePool: pool,
-          targetPool: mockTargetPool,
-          sourceDbName: 'primary',
-          targetDbName: 'tampered_target'
-        });
-      },
-      /row count mismatch/
-    );
+    await assert.rejects(async () => {
+      await BackupRecoveryProofService.verifyRestoredDatabase({
+        sourcePool: pool,
+        targetPool: mockTargetPool,
+        sourceDbName: 'primary',
+        targetDbName: 'tampered_target'
+      });
+    }, /row count mismatch/);
 
     // Verify failure was recorded in recovery_proofs
     const latest = await BackupRecoveryProofService.getLatestProof(pool);
@@ -156,17 +153,14 @@ describe('WP-306: Automated Disaster Recovery Backup & Recovery Proof Verificati
       }
     };
 
-    await assert.rejects(
-      async () => {
-        await BackupRecoveryProofService.verifyRestoredDatabase({
-          sourcePool: pool,
-          targetPool: mockTargetPool,
-          sourceDbName: 'primary',
-          targetDbName: 'tampered_audit_target'
-        });
-      },
-      /audit chain validation error.*HASH_TAMPERED/
-    );
+    await assert.rejects(async () => {
+      await BackupRecoveryProofService.verifyRestoredDatabase({
+        sourcePool: pool,
+        targetPool: mockTargetPool,
+        sourceDbName: 'primary',
+        targetDbName: 'tampered_audit_target'
+      });
+    }, /audit chain validation error.*HASH_TAMPERED/);
   });
 
   it('6. API: GET /api/audit/recovery-proof/latest returns proof to authenticated users', async () => {

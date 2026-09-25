@@ -1,4 +1,4 @@
-﻿# NeroNet v4 - Administrator Guide (EN)
+# NeroNet v4 - Administrator Guide (EN)
 
 ## System Access
 

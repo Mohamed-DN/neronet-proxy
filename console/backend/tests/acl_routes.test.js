@@ -66,9 +66,7 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
   });
 
   it('1. GET /api/acl/rules returns empty rules list and reports mesh is open', async () => {
-    const res = await request(app)
-      .get('/api/acl/rules')
-      .set('Authorization', `Bearer ${standardToken}`);
+    const res = await request(app).get('/api/acl/rules').set('Authorization', `Bearer ${standardToken}`);
 
     assert.strictEqual(res.status, 200);
     assert.ok(Array.isArray(res.body.rules));
@@ -77,36 +75,30 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
   });
 
   it('2. POST /api/acl/rules rejects invalid CIDRs with 400', async () => {
-    const res = await request(app)
-      .post('/api/acl/rules')
-      .set('Authorization', `Bearer ${superAdminToken}`)
-      .send({
-        source_cidr: 'not-a-valid-cidr',
-        destination_cidr: '100.64.0.0/16',
-        protocol: 'TCP',
-        port_start: 80,
-        port_end: 443,
-        action: 'ACCEPT'
-      });
+    const res = await request(app).post('/api/acl/rules').set('Authorization', `Bearer ${superAdminToken}`).send({
+      source_cidr: 'not-a-valid-cidr',
+      destination_cidr: '100.64.0.0/16',
+      protocol: 'TCP',
+      port_start: 80,
+      port_end: 443,
+      action: 'ACCEPT'
+    });
 
     assert.strictEqual(res.status, 400);
     assert.ok(res.body.error);
   });
 
   it('3. POST /api/acl/rules successfully creates a zero-trust rule and advances epoch', async () => {
-    const res = await request(app)
-      .post('/api/acl/rules')
-      .set('Authorization', `Bearer ${superAdminToken}`)
-      .send({
-        priority: 50,
-        source_cidr: '100.64.10.0/24',
-        destination_cidr: '100.64.0.0/16',
-        protocol: 'TCP',
-        port_start: 443,
-        port_end: 443,
-        action: 'ACCEPT',
-        description: 'Allow HTTPS traffic between branches'
-      });
+    const res = await request(app).post('/api/acl/rules').set('Authorization', `Bearer ${superAdminToken}`).send({
+      priority: 50,
+      source_cidr: '100.64.10.0/24',
+      destination_cidr: '100.64.0.0/16',
+      protocol: 'TCP',
+      port_start: 443,
+      port_end: 443,
+      action: 'ACCEPT',
+      description: 'Allow HTTPS traffic between branches'
+    });
 
     assert.strictEqual(res.status, 201);
     assert.ok(res.body.rule);
@@ -135,9 +127,7 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
   });
 
   it('5. GET /api/acl/default-policy retrieves organization default policy', async () => {
-    const res = await request(app)
-      .get('/api/acl/default-policy')
-      .set('Authorization', `Bearer ${standardToken}`);
+    const res = await request(app).get('/api/acl/default-policy').set('Authorization', `Bearer ${standardToken}`);
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.organization_id, orgId);
@@ -153,22 +143,17 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.default_policy, 'deny');
 
-    const verify = await request(app)
-      .get('/api/acl/default-policy')
-      .set('Authorization', `Bearer ${standardToken}`);
+    const verify = await request(app).get('/api/acl/default-policy').set('Authorization', `Bearer ${standardToken}`);
     assert.strictEqual(verify.body.default_policy, 'deny');
   });
 
   it('7. POST /api/acl/simulate evaluates packet against active rule and returns DROP verdict', async () => {
-    const res = await request(app)
-      .post('/api/acl/simulate')
-      .set('Authorization', `Bearer ${standardToken}`)
-      .send({
-        source_ip: '100.64.10.1',
-        destination_ip: '100.64.10.2',
-        protocol: 'TCP',
-        port: 443
-      });
+    const res = await request(app).post('/api/acl/simulate').set('Authorization', `Bearer ${standardToken}`).send({
+      source_ip: '100.64.10.1',
+      destination_ip: '100.64.10.2',
+      protocol: 'TCP',
+      port: 443
+    });
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.verdict, 'DROP');
@@ -177,15 +162,12 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
   });
 
   it('8. POST /api/acl/simulate evaluates unmatched packet against default deny policy', async () => {
-    const res = await request(app)
-      .post('/api/acl/simulate')
-      .set('Authorization', `Bearer ${standardToken}`)
-      .send({
-        source_ip: '10.0.0.1',
-        destination_ip: '10.0.0.2',
-        protocol: 'UDP',
-        port: 53
-      });
+    const res = await request(app).post('/api/acl/simulate').set('Authorization', `Bearer ${standardToken}`).send({
+      source_ip: '10.0.0.1',
+      destination_ip: '10.0.0.2',
+      protocol: 'UDP',
+      port: 53
+    });
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.verdict, 'DROP');
@@ -226,9 +208,7 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
     assert.strictEqual(res.body.deleted, createdRuleId);
     assert.strictEqual(res.body.policy_is_open, true);
 
-    const listRes = await request(app)
-      .get('/api/acl/rules')
-      .set('Authorization', `Bearer ${standardToken}`);
+    const listRes = await request(app).get('/api/acl/rules').set('Authorization', `Bearer ${standardToken}`);
     assert.strictEqual(listRes.body.rules.length, 0);
   });
 });

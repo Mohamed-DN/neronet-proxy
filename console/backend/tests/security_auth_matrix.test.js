@@ -186,26 +186,21 @@ describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', ()
 
   describe('2. Role "member" (Least Privileged Authenticated User)', () => {
     it('GET /api/nodes allows member to read nodes in their organization', async () => {
-      const res = await request(app)
-        .get('/api/nodes')
-        .set('Authorization', `Bearer ${memberTokenOrgA}`);
+      const res = await request(app).get('/api/nodes').set('Authorization', `Bearer ${memberTokenOrgA}`);
       assert.strictEqual(res.status, 200);
       assert.ok(Array.isArray(res.body.nodes || res.body));
     });
 
     it('POST /api/acl/rules denies member with 403 Forbidden', async () => {
-      const res = await request(app)
-        .post('/api/acl/rules')
-        .set('Authorization', `Bearer ${memberTokenOrgA}`)
-        .send({
-          name: 'Forbidden Rule',
-          action: 'ACCEPT',
-          source_type: 'TAG',
-          source_value: 'dev',
-          destination_type: 'TAG',
-          destination_value: 'prod',
-          destination_port: '80'
-        });
+      const res = await request(app).post('/api/acl/rules').set('Authorization', `Bearer ${memberTokenOrgA}`).send({
+        name: 'Forbidden Rule',
+        action: 'ACCEPT',
+        source_type: 'TAG',
+        source_value: 'dev',
+        destination_type: 'TAG',
+        destination_value: 'prod',
+        destination_port: '80'
+      });
       assert.strictEqual(res.status, 403);
     });
 
@@ -218,9 +213,7 @@ describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', ()
     });
 
     it('POST /api/audit/checkpoints denies member with 403 Forbidden', async () => {
-      const res = await request(app)
-        .post('/api/audit/checkpoints')
-        .set('Authorization', `Bearer ${memberTokenOrgA}`);
+      const res = await request(app).post('/api/audit/checkpoints').set('Authorization', `Bearer ${memberTokenOrgA}`);
       // Non-auditors/admins cannot create audit checkpoints
       assert.ok([403, 404].includes(res.status), `Expected 403 or 404, got ${res.status}`);
     });
@@ -236,9 +229,7 @@ describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', ()
 
   describe('3. Role "auditor" (Read-Only Posture & Security Verification)', () => {
     it('GET /api/audit/logs allows auditor to inspect audit ledger', async () => {
-      const res = await request(app)
-        .get('/api/audit/logs')
-        .set('Authorization', `Bearer ${auditorTokenOrgA}`);
+      const res = await request(app).get('/api/audit/logs').set('Authorization', `Bearer ${auditorTokenOrgA}`);
       assert.strictEqual(res.status, 200);
     });
 
@@ -251,27 +242,22 @@ describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', ()
     });
 
     it('POST /api/acl/rules denies auditor with 403 Forbidden', async () => {
-      const res = await request(app)
-        .post('/api/acl/rules')
-        .set('Authorization', `Bearer ${auditorTokenOrgA}`)
-        .send({
-          name: 'Auditor Rule',
-          action: 'ACCEPT',
-          source_type: 'TAG',
-          source_value: 'audit',
-          destination_type: 'TAG',
-          destination_value: 'audit',
-          destination_port: '443'
-        });
+      const res = await request(app).post('/api/acl/rules').set('Authorization', `Bearer ${auditorTokenOrgA}`).send({
+        name: 'Auditor Rule',
+        action: 'ACCEPT',
+        source_type: 'TAG',
+        source_value: 'audit',
+        destination_type: 'TAG',
+        destination_value: 'audit',
+        destination_port: '443'
+      });
       assert.strictEqual(res.status, 403);
     });
   });
 
   describe('4. Cross-Tenant IDOR (Insecure Direct Object Reference) Prevention', () => {
     it('User in Org B cannot read details of Node in Org A', async () => {
-      const res = await request(app)
-        .get(`/api/nodes/${nodeAId}`)
-        .set('Authorization', `Bearer ${memberTokenOrgB}`);
+      const res = await request(app).get(`/api/nodes/${nodeAId}`).set('Authorization', `Bearer ${memberTokenOrgB}`);
       assert.ok([403, 404].includes(res.status), `Expected 403 or 404 but got ${res.status}`);
     });
 
@@ -286,9 +272,7 @@ describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', ()
 
   describe('5. Super Admin Platform Oversight', () => {
     it('Super Admin can access global platform organizations', async () => {
-      const res = await request(app)
-        .get('/api/organizations')
-        .set('Authorization', `Bearer ${superAdminToken}`);
+      const res = await request(app).get('/api/organizations').set('Authorization', `Bearer ${superAdminToken}`);
       assert.strictEqual(res.status, 200);
       assert.ok(Array.isArray(res.body.organizations || res.body));
     });

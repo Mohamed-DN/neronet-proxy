@@ -78,7 +78,8 @@ function formatNode(row) {
     posture_status: derivePostureStatus(posture),
     metadata,
     transport: row.transport || 'wireguard',
-    stealth_config: typeof row.stealth_config === 'string' ? JSON.parse(row.stealth_config) : (row.stealth_config || null),
+    stealth_config:
+      typeof row.stealth_config === 'string' ? JSON.parse(row.stealth_config) : row.stealth_config || null,
     daita_mode: row.daita_mode || 'off',
     dns_name: row.dns_name || null,
     last_heartbeat: row.last_heartbeat,
@@ -819,10 +820,11 @@ router.post('/:id/action', async (req, res, next) => {
 
       const stealth_config = req.body.stealth_config || req.body.params?.stealth_config || null;
 
-      await pool.query(
-        `UPDATE nodes SET transport = $1, stealth_config = $2, updated_at = NOW() WHERE id = $3`,
-        [transport, stealth_config ? JSON.stringify(stealth_config) : null, node.id]
-      );
+      await pool.query(`UPDATE nodes SET transport = $1, stealth_config = $2, updated_at = NOW() WHERE id = $3`, [
+        transport,
+        stealth_config ? JSON.stringify(stealth_config) : null,
+        node.id
+      ]);
 
       await bumpNetmap();
 
@@ -858,10 +860,7 @@ router.post('/:id/action', async (req, res, next) => {
         return res.status(400).json({ error: `Invalid daita_mode. Allowed: ${allowedModes.join(', ')}` });
       }
 
-      await pool.query(
-        `UPDATE nodes SET daita_mode = $1, updated_at = NOW() WHERE id = $2`,
-        [mode, node.id]
-      );
+      await pool.query(`UPDATE nodes SET daita_mode = $1, updated_at = NOW() WHERE id = $2`, [mode, node.id]);
 
       await bumpNetmap();
 
@@ -895,10 +894,10 @@ router.post('/:id/action', async (req, res, next) => {
         return res.status(400).json({ error: 'dns_name string is required' });
       }
 
-      await pool.query(
-        `UPDATE nodes SET dns_name = $1, updated_at = NOW() WHERE id = $2`,
-        [dnsName.toLowerCase().trim(), node.id]
-      );
+      await pool.query(`UPDATE nodes SET dns_name = $1, updated_at = NOW() WHERE id = $2`, [
+        dnsName.toLowerCase().trim(),
+        node.id
+      ]);
 
       await bumpNetmap();
 

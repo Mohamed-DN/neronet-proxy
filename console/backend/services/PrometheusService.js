@@ -119,7 +119,9 @@ class PrometheusService {
     lines.push(`sovereign_derp_fallback_total ${this.derpFallbackTotal}`);
     lines.push('');
 
-    lines.push('# HELP sovereign_valkey_connected Valkey cache connectivity status (1 for connected, 0 for disconnected)');
+    lines.push(
+      '# HELP sovereign_valkey_connected Valkey cache connectivity status (1 for connected, 0 for disconnected)'
+    );
     lines.push('# TYPE sovereign_valkey_connected gauge');
     lines.push(`sovereign_valkey_connected ${valkeyConnected}`);
     lines.push('');

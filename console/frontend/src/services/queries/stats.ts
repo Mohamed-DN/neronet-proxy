@@ -1,4 +1,4 @@
-﻿import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { apiRequest } from '../apiClient';
 import type { GeoMatrixEntry, StatsOverview, TimeseriesPoint } from '../types';

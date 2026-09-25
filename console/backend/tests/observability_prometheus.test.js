@@ -113,10 +113,7 @@ describe('WP-305: Observability — Prometheus Metrics & Structured Logging', ()
         body.includes('sovereign_acl_dropped_packets_total 14'),
         'ACL dropped counter must match recorded count'
       );
-      assert.ok(
-        body.includes('sovereign_derp_fallback_total 3'),
-        'DERP fallback counter must match recorded count'
-      );
+      assert.ok(body.includes('sovereign_derp_fallback_total 3'), 'DERP fallback counter must match recorded count');
     });
   });
 

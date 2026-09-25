@@ -294,7 +294,8 @@ PersistentKeepalive = 25
 `;
     return res.status(200).json({
       config_text: configText,
-      qr_code_data_url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect width="100%" height="100%" fill="white"/><text x="10" y="80" fill="black" font-size="12">NeroNet QR Profile</text></svg>',
+      qr_code_data_url:
+        'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect width="100%" height="100%" fill="white"/><text x="10" y="80" fill="black" font-size="12">NeroNet QR Profile</text></svg>',
       endpoint: 'vpn.sovereign.mesh:51820',
       expires_at: new Date(Date.now() + 86400000).toISOString()
     });
@@ -304,4 +305,3 @@ PersistentKeepalive = 25
 });
 
 module.exports = router;
-

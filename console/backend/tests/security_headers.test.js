@@ -59,24 +59,20 @@ describe('WP-503: Security Headers & Defense-in-Depth Tests', () => {
       name: '<script>alert("xss")</script>',
       description: '"><img src=x onerror=alert(1)>'
     };
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({
-        username: maliciousPayload.name,
-        password: maliciousPayload.description
-      });
+    const res = await request(app).post('/api/auth/login').send({
+      username: maliciousPayload.name,
+      password: maliciousPayload.description
+    });
     assert.ok([400, 401].includes(res.status), 'Must return 400 or 401 for invalid credentials');
     assert.strictEqual(res.headers['content-type'].includes('application/json'), true);
     assert.ok(!res.text.includes('<script>alert("xss")</script>'));
   });
 
   it('Rejects classic SQL Injection payloads in login without unhandled crash', async () => {
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({
-        username: "' OR 1=1 --",
-        password: "' OR 'a'='a"
-      });
+    const res = await request(app).post('/api/auth/login').send({
+      username: "' OR 1=1 --",
+      password: "' OR 'a'='a"
+    });
     assert.strictEqual(res.status, 401);
     assert.ok(res.body.error);
   });

@@ -1,4 +1,4 @@
-﻿//go:build windows
+//go:build windows
 // +build windows
 
 // cmd/neronet-windows/main.go
@@ -107,23 +107,35 @@ func uninstallService() {
 
 func startService() {
 	m, err := mgr.Connect()
-	if err != nil { log.Fatalf("SCM error: %v", err) }
+	if err != nil {
+		log.Fatalf("SCM error: %v", err)
+	}
 	defer m.Disconnect()
 	s, err := m.OpenService(serviceName)
-	if err != nil { log.Fatalf("service not found: %v", err) }
+	if err != nil {
+		log.Fatalf("service not found: %v", err)
+	}
 	defer s.Close()
-	if err := s.Start(); err != nil { log.Fatalf("start failed: %v", err) }
+	if err := s.Start(); err != nil {
+		log.Fatalf("start failed: %v", err)
+	}
 	fmt.Println("Service started")
 }
 
 func stopService() {
 	m, err := mgr.Connect()
-	if err != nil { log.Fatalf("SCM error: %v", err) }
+	if err != nil {
+		log.Fatalf("SCM error: %v", err)
+	}
 	defer m.Disconnect()
 	s, err := m.OpenService(serviceName)
-	if err != nil { log.Fatalf("service not found: %v", err) }
+	if err != nil {
+		log.Fatalf("service not found: %v", err)
+	}
 	defer s.Close()
 	_, err = s.Control(svc.Stop)
-	if err != nil { log.Fatalf("stop failed: %v", err) }
+	if err != nil {
+		log.Fatalf("stop failed: %v", err)
+	}
 	fmt.Println("Service stopped")
 }

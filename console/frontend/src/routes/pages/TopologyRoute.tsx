@@ -229,48 +229,58 @@ export function TopologyRoute() {
   const openLinkEditor = useCallback((sourceNode: TopologyNode, targetNode: TopologyNode, link?: TopologyLink) => {
     setEditSourceNode(sourceNode);
     setEditTargetNode(targetNode);
-    setSelectedLink({ source: sourceNode, target: targetNode, link: link || {
-      source: sourceNode.id,
-      target: targetNode.id,
-      protocol: 'WG',
-      mode: 'direct',
-      is_visible: true
-    }});
+    setSelectedLink({
+      source: sourceNode,
+      target: targetNode,
+      link: link || {
+        source: sourceNode.id,
+        target: targetNode.id,
+        protocol: 'WG',
+        mode: 'direct',
+        is_visible: true
+      }
+    });
     setEditMode(link?.mode || 'direct');
     setEditRelay(link?.relay_id || 'derp-eu');
-    setEditVisible(link ? (link.is_visible !== false) : true);
+    setEditVisible(link ? link.is_visible !== false : true);
     setLinkModalOpen(true);
   }, []);
 
   // Quick Cut Link action (sets is_visible = false)
-  const handleQuickCutLink = useCallback(async (link: TopologyLink) => {
-    try {
-      await updateLinkMutation.mutateAsync({
-        source_node_id: link.source,
-        target_node_id: link.target,
-        mode: link.mode || 'direct',
-        relay_id: link.relay_id || null,
-        is_visible: false
-      });
-    } catch (err) {
-      console.error('Failed to cut link:', err);
-    }
-  }, [updateLinkMutation]);
+  const handleQuickCutLink = useCallback(
+    async (link: TopologyLink) => {
+      try {
+        await updateLinkMutation.mutateAsync({
+          source_node_id: link.source,
+          target_node_id: link.target,
+          mode: link.mode || 'direct',
+          relay_id: link.relay_id || null,
+          is_visible: false
+        });
+      } catch (err) {
+        console.error('Failed to cut link:', err);
+      }
+    },
+    [updateLinkMutation]
+  );
 
   // Quick Reconnect Link action (sets is_visible = true)
-  const handleQuickReconnectLink = useCallback(async (link: TopologyLink) => {
-    try {
-      await updateLinkMutation.mutateAsync({
-        source_node_id: link.source,
-        target_node_id: link.target,
-        mode: link.mode || 'direct',
-        relay_id: link.relay_id || null,
-        is_visible: true
-      });
-    } catch (err) {
-      console.error('Failed to reconnect link:', err);
-    }
-  }, [updateLinkMutation]);
+  const handleQuickReconnectLink = useCallback(
+    async (link: TopologyLink) => {
+      try {
+        await updateLinkMutation.mutateAsync({
+          source_node_id: link.source,
+          target_node_id: link.target,
+          mode: link.mode || 'direct',
+          relay_id: link.relay_id || null,
+          is_visible: true
+        });
+      } catch (err) {
+        console.error('Failed to reconnect link:', err);
+      }
+    },
+    [updateLinkMutation]
+  );
 
   // Save Link Configuration from modal
   const handleSaveLink = async () => {
@@ -339,8 +349,14 @@ export function TopologyRoute() {
               const repForce = 1400 / distSq;
               const fx = (dx / dist) * repForce;
               const fy = (dy / dist) * repForce;
-              if (!u.isDragging) { u.vx -= fx; u.vy -= fy; }
-              if (!v.isDragging) { v.vx += fx; v.vy += fy; }
+              if (!u.isDragging) {
+                u.vx -= fx;
+                u.vy -= fy;
+              }
+              if (!v.isDragging) {
+                v.vx += fx;
+                v.vy += fy;
+              }
             }
           }
         }
@@ -358,8 +374,14 @@ export function TopologyRoute() {
             const spring = (dist - idealDist) * 0.003;
             const fx = (dx / dist) * spring;
             const fy = (dy / dist) * spring;
-            if (!u.isDragging) { u.vx += fx; u.vy += fy; }
-            if (!v.isDragging) { v.vx -= fx; v.vy += fy; }
+            if (!u.isDragging) {
+              u.vx += fx;
+              u.vy += fy;
+            }
+            if (!v.isDragging) {
+              v.vx -= fx;
+              v.vy += fy;
+            }
           }
         });
 
@@ -412,12 +434,14 @@ export function TopologyRoute() {
         const v = simNodes.get(link.target);
         if (!u || !v) return;
 
-        const isLinkHovered = hoveredLink &&
+        const isLinkHovered =
+          hoveredLink &&
           ((hoveredLink.source === link.source && hoveredLink.target === link.target) ||
-           (hoveredLink.source === link.target && hoveredLink.target === link.source));
-        const isLinkSelected = selectedLink &&
+            (hoveredLink.source === link.target && hoveredLink.target === link.source));
+        const isLinkSelected =
+          selectedLink &&
           ((selectedLink.source.id === link.source && selectedLink.target.id === link.target) ||
-           (selectedLink.source.id === link.target && selectedLink.target.id === link.source));
+            (selectedLink.source.id === link.target && selectedLink.target.id === link.source));
 
         const isCut = link.is_visible === false;
 
@@ -774,7 +798,9 @@ export function TopologyRoute() {
         <div className="flex items-center gap-2">
           <span className="font-mono text-sm font-semibold text-slate-100">{row.name || row.id}</span>
           {row.is_ghost_vault && (
-            <Badge variant="warning" className="text-[10px]">Ghost Vault</Badge>
+            <Badge variant="warning" className="text-[10px]">
+              Ghost Vault
+            </Badge>
           )}
         </div>
       )
@@ -794,17 +820,13 @@ export function TopologyRoute() {
     {
       header: 'Latenza',
       cell: (row) => (
-        <span className="font-mono text-xs text-slate-300">
-          {row.latency_ms ? `${row.latency_ms} ms` : '—'}
-        </span>
+        <span className="font-mono text-xs text-slate-300">{row.latency_ms ? `${row.latency_ms} ms` : '—'}</span>
       )
     },
     {
       header: 'Stato',
       cell: (row) => (
-        <StatusBadge
-          status={row.is_quarantined ? 'quarantined' : row.is_healthy ? 'healthy' : 'degraded'}
-        />
+        <StatusBadge status={row.is_quarantined ? 'quarantined' : row.is_healthy ? 'healthy' : 'degraded'} />
       )
     }
   ];
@@ -831,20 +853,11 @@ export function TopologyRoute() {
               <List className="mr-1.5 h-4 w-4" /> Elenco Nodi
             </Button>
             {isUnlocked ? (
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => lockMutation.mutate()}
-                loading={lockMutation.isPending}
-              >
+              <Button variant="danger" size="sm" onClick={() => lockMutation.mutate()} loading={lockMutation.isPending}>
                 <Lock className="mr-1.5 h-4 w-4" /> Blocca Ghost Vault
               </Button>
             ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setUnlockDialogOpen(true)}
-              >
+              <Button variant="secondary" size="sm" onClick={() => setUnlockDialogOpen(true)}>
                 <KeyRound className="mr-1.5 h-4 w-4" /> Sblocca Ghost Vault
               </Button>
             )}
@@ -855,13 +868,9 @@ export function TopologyRoute() {
       {/* Top Controls & Metrics */}
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Nodi nel Grafo" value={filteredNodes.length} />
-        <Stat label="Collegamenti Ragnatela" value={filteredLinks.filter(l => l.is_visible !== false).length} />
-        <Stat label="Collegamenti Tagliati" value={filteredLinks.filter(l => l.is_visible === false).length} />
-        <Stat
-          label="Topologia Mesh"
-          value="Attiva (100%)"
-          description="Crittografia WireGuard P2P"
-        />
+        <Stat label="Collegamenti Ragnatela" value={filteredLinks.filter((l) => l.is_visible !== false).length} />
+        <Stat label="Collegamenti Tagliati" value={filteredLinks.filter((l) => l.is_visible === false).length} />
+        <Stat label="Topologia Mesh" value="Attiva (100%)" description="Crittografia WireGuard P2P" />
       </div>
 
       {viewMode === 'CANVAS' ? (
@@ -872,7 +881,10 @@ export function TopologyRoute() {
             <div className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 p-1">
               <button
                 type="button"
-                onClick={() => { setActiveTool('EXPLORE'); setConnectSourceNode(null); }}
+                onClick={() => {
+                  setActiveTool('EXPLORE');
+                  setConnectSourceNode(null);
+                }}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
                   activeTool === 'EXPLORE'
                     ? 'bg-sky-500 text-white shadow'
@@ -884,7 +896,10 @@ export function TopologyRoute() {
 
               <button
                 type="button"
-                onClick={() => { setActiveTool('CUT'); setConnectSourceNode(null); }}
+                onClick={() => {
+                  setActiveTool('CUT');
+                  setConnectSourceNode(null);
+                }}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
                   activeTool === 'CUT'
                     ? 'bg-rose-600 text-white shadow'
@@ -896,7 +911,9 @@ export function TopologyRoute() {
 
               <button
                 type="button"
-                onClick={() => { setActiveTool('CONNECT'); }}
+                onClick={() => {
+                  setActiveTool('CONNECT');
+                }}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
                   activeTool === 'CONNECT'
                     ? 'bg-indigo-600 text-white shadow'
@@ -919,11 +936,7 @@ export function TopologyRoute() {
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Riconnetti Tutto
               </Button>
 
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setPhysicsActive(!physicsActive)}
-              >
+              <Button variant="secondary" size="sm" onClick={() => setPhysicsActive(!physicsActive)}>
                 {physicsActive ? (
                   <>
                     <Pause className="mr-1.5 h-3.5 w-3.5 text-amber-400" /> Ferma Fisica
@@ -940,17 +953,33 @@ export function TopologyRoute() {
           {/* Active Tool Notification Banner */}
           {activeTool === 'CUT' && (
             <div className="bg-rose-950/70 border-b border-rose-800/50 px-4 py-2 text-xs font-mono text-rose-300 flex items-center justify-between">
-              <span>✂️ <strong>MODALITÀ FORBICI ATTIVA:</strong> Clicca su qualsiasi linea per tagliarla all'istante e isolare il traffico tra i due nodi.</span>
-              <button onClick={() => setActiveTool('EXPLORE')} className="underline hover:text-white">Esci</button>
+              <span>
+                ✂️ <strong>MODALITÀ FORBICI ATTIVA:</strong> Clicca su qualsiasi linea per tagliarla all'istante e
+                isolare il traffico tra i due nodi.
+              </span>
+              <button onClick={() => setActiveTool('EXPLORE')} className="underline hover:text-white">
+                Esci
+              </button>
             </div>
           )}
 
           {activeTool === 'CONNECT' && (
             <div className="bg-indigo-950/70 border-b border-indigo-800/50 px-4 py-2 text-xs font-mono text-indigo-300 flex items-center justify-between">
               <span>
-                🔗 <strong>MODALITÀ COLLEGAMENTO:</strong> {connectSourceNode ? `Nodo sorgente selezionato (${connectSourceNode.name || connectSourceNode.id}). Ora clicca sul nodo destinazione.` : 'Clicca sul primo nodo da collegare.'}
+                🔗 <strong>MODALITÀ COLLEGAMENTO:</strong>{' '}
+                {connectSourceNode
+                  ? `Nodo sorgente selezionato (${connectSourceNode.name || connectSourceNode.id}). Ora clicca sul nodo destinazione.`
+                  : 'Clicca sul primo nodo da collegare.'}
               </span>
-              <button onClick={() => { setActiveTool('EXPLORE'); setConnectSourceNode(null); }} className="underline hover:text-white">Annulla</button>
+              <button
+                onClick={() => {
+                  setActiveTool('EXPLORE');
+                  setConnectSourceNode(null);
+                }}
+                className="underline hover:text-white"
+              >
+                Annulla
+              </button>
             </div>
           )}
 
@@ -960,7 +989,11 @@ export function TopologyRoute() {
             width={1100}
             height={620}
             className={`w-full touch-none select-none ${
-              activeTool === 'CUT' ? 'cursor-crosshair' : activeTool === 'CONNECT' ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'
+              activeTool === 'CUT'
+                ? 'cursor-crosshair'
+                : activeTool === 'CONNECT'
+                  ? 'cursor-pointer'
+                  : 'cursor-grab active:cursor-grabbing'
             }`}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
@@ -1017,15 +1050,18 @@ export function TopologyRoute() {
               {/* Connections list */}
               <div className="mt-3">
                 <div className="flex items-center justify-between text-xs text-slate-300 font-medium mb-1.5">
-                  <span>Collegamenti Attivi ({selectedNodeLinks.filter(l => l.is_visible !== false).length})</span>
+                  <span>Collegamenti Attivi ({selectedNodeLinks.filter((l) => l.is_visible !== false).length})</span>
                 </div>
                 <div className="max-h-32 overflow-y-auto space-y-1 text-xs font-mono">
                   {selectedNodeLinks.map((l) => {
                     const peerId = l.source === selectedNode.id ? l.target : l.source;
-                    const peerNode = nodes.find(n => n.id === peerId);
+                    const peerNode = nodes.find((n) => n.id === peerId);
                     const isCut = l.is_visible === false;
                     return (
-                      <div key={`${l.source}-${l.target}`} className="flex items-center justify-between rounded bg-slate-800/50 px-2 py-1">
+                      <div
+                        key={`${l.source}-${l.target}`}
+                        className="flex items-center justify-between rounded bg-slate-800/50 px-2 py-1"
+                      >
                         <span className={isCut ? 'text-rose-400 line-through' : 'text-slate-200'}>
                           {peerNode?.name || peerId.slice(0, 10)}
                         </span>
@@ -1067,11 +1103,7 @@ export function TopologyRoute() {
                 >
                   <Link2 className="mr-1.5 h-3.5 w-3.5" /> Collega ad un altro nodo
                 </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => navigate(nodePath(selectedNode.id))}
-                >
+                <Button variant="secondary" size="sm" onClick={() => navigate(nodePath(selectedNode.id))}>
                   <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Scheda Dispositivo
                 </Button>
               </div>
@@ -1085,11 +1117,7 @@ export function TopologyRoute() {
       )}
 
       {/* LINK CONFIGURATION & MODE CHANGER MODAL */}
-      <Dialog
-        isOpen={linkModalOpen}
-        onClose={() => setLinkModalOpen(false)}
-        title="Configura Canale Mesh P2P"
-      >
+      <Dialog isOpen={linkModalOpen} onClose={() => setLinkModalOpen(false)} title="Configura Canale Mesh P2P">
         {editSourceNode && editTargetNode && (
           <div className="space-y-4">
             <div className="rounded-lg border border-border bg-slate-900/60 p-3">
@@ -1105,10 +1133,7 @@ export function TopologyRoute() {
             </div>
 
             <FormField label="Modalità di Trasporto Overlay">
-              <Select
-                value={editMode}
-                onChange={(e) => setEditMode(e.target.value as RoutingMode)}
-              >
+              <Select value={editMode} onChange={(e) => setEditMode(e.target.value as RoutingMode)}>
                 <option value="direct">⚡ Direct WireGuard (P2P kernel/userspace)</option>
                 <option value="derp">🌐 DERP Relay di passaggio (Bypass NAT simmetrico)</option>
                 <option value="openvpn">🔒 OpenVPN Stealth Tunnel (TLS 443 mimicry)</option>
@@ -1118,10 +1143,7 @@ export function TopologyRoute() {
 
             {editMode === 'derp' && (
               <FormField label="Relay DERP di Passaggio">
-                <Select
-                  value={editRelay}
-                  onChange={(e) => setEditRelay(e.target.value)}
-                >
+                <Select value={editRelay} onChange={(e) => setEditRelay(e.target.value)}>
                   <option value="derp-eu">derp-eu (Francoforte, Germania - 8444/3478)</option>
                   <option value="derp-us">derp-us (New York, USA - 8445/3479)</option>
                 </Select>
@@ -1132,7 +1154,9 @@ export function TopologyRoute() {
               <div>
                 <span className="text-sm font-medium text-slate-200 block">Stato Connessione nel Mesh</span>
                 <span className="text-xs text-slate-400">
-                  {editVisible ? 'I due nodi comunicano normalmente.' : 'Connessione tagliata: regola DROP attiva nel firewall.'}
+                  {editVisible
+                    ? 'I due nodi comunicano normalmente.'
+                    : 'Connessione tagliata: regola DROP attiva nel firewall.'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -1141,7 +1165,15 @@ export function TopologyRoute() {
                   size="sm"
                   onClick={() => setEditVisible(!editVisible)}
                 >
-                  {editVisible ? <><Scissors className="mr-1 h-3.5 w-3.5" /> Taglia Filo</> : <><Link2 className="mr-1 h-3.5 w-3.5" /> Riconnetti</>}
+                  {editVisible ? (
+                    <>
+                      <Scissors className="mr-1 h-3.5 w-3.5" /> Taglia Filo
+                    </>
+                  ) : (
+                    <>
+                      <Link2 className="mr-1 h-3.5 w-3.5" /> Riconnetti
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -1150,11 +1182,7 @@ export function TopologyRoute() {
               <Button variant="secondary" onClick={() => setLinkModalOpen(false)}>
                 Annulla
               </Button>
-              <Button
-                variant="primary"
-                onClick={handleSaveLink}
-                loading={updateLinkMutation.isPending}
-              >
+              <Button variant="primary" onClick={handleSaveLink} loading={updateLinkMutation.isPending}>
                 <CheckCircle2 className="mr-1.5 h-4 w-4" /> Salva Modifiche
               </Button>
             </div>
@@ -1163,11 +1191,7 @@ export function TopologyRoute() {
       </Dialog>
 
       {/* Ghost Vault Unlock Modal */}
-      <Dialog
-        isOpen={unlockDialogOpen}
-        onClose={() => setUnlockDialogOpen(false)}
-        title="Sblocca Ghost Vault"
-      >
+      <Dialog isOpen={unlockDialogOpen} onClose={() => setUnlockDialogOpen(false)} title="Sblocca Ghost Vault">
         <div className="space-y-4">
           <FormField label="Password Master Ghost Vault" error={unlockError || undefined}>
             <Input
@@ -1201,3 +1225,5 @@ export function TopologyRoute() {
     </PageFrame>
   );
 }
+
+export default TopologyRoute;

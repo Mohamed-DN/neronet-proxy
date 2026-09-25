@@ -28,7 +28,6 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-
 // 1a. POST /api/compartments/unlock
 // Unlocks Ghost Vaults dynamically using root password or duress password
 router.post('/unlock', async (req, res, next) => {
