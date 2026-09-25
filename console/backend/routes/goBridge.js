@@ -432,7 +432,7 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
 });
 
 // POST /v4/control/heartbeat
-router.post('/heartbeat', validateRequest('HeartbeatRequest'), async (req, res) => {
+router.post('/heartbeat', normalizeRegisterBody, validateRequest('HeartbeatRequest'), async (req, res) => {
   try {
     const auth = await checkNodeAuth(req);
     if (!auth.ok) {
