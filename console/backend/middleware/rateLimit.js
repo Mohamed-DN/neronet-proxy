@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 /**
  * Request rate limiting, backed by Valkey with an in-process fallback.
  *
@@ -189,12 +190,57 @@ const registerLimiter = rateLimit({
 });
 
 // Node enrolment allocates an overlay address from a finite pool.
+// Enrolment: the caller holds no node credential yet, so the only thing to meter is
+// the address. This covers /challenge and /register only. Authenticated node traffic
+// has its own limiters below; metering heartbeats by address put every node behind
+// one proxy or NAT into a single bucket, and a fleet of a dozen nodes exhausted it.
 const enrolmentLimiter = rateLimit({
   name: 'enrolment',
   limit: 60,
   windowMs: 60_000,
   failClosed: true,
   message: 'too many node enrolment attempts',
+  keyFn: clientIp
+});
+
+/**
+ * The identity a node presents on authenticated control traffic: a digest of its
+ * bearer credential together with the node id it claims. Hashing keeps the credential
+ * itself out of the cache keys. A caller with no bearer falls back to its address.
+ */
+function nodeIdentity(req) {
+  const header = String(req.get('authorization') || '');
+  const bearer = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  const nodeId = String((req.body && req.body.node_id) || '').slice(0, 64);
+  if (!bearer) {
+    const ip = clientIp(req);
+    return ip ? `ip:${ip}` : null;
+  }
+  const digest = crypto.createHash('sha256').update(bearer).digest('hex').slice(0, 32);
+  return `cred:${digest}:${nodeId}`;
+}
+
+// One node's control traffic: a heartbeat every 15 s, a netmap fetch when the version
+// moves, and the occasional sync. 120 a minute is several times that, and still stops
+// a single credential from hammering the control plane.
+const nodeTrafficLimiter = rateLimit({
+  name: 'node-traffic',
+  limit: Number(process.env.SOVEREIGN_NODE_TRAFFIC_PER_MIN || 120),
+  windowMs: 60_000,
+  failClosed: true,
+  message: 'too many control requests from this node',
+  keyFn: nodeIdentity
+});
+
+// A coarse ceiling per address across all node traffic, so a flood of forged
+// credentials from one host is still bounded. It is deliberately generous: many real
+// nodes can sit behind one NAT, each beating four times a minute.
+const nodeAddressCeiling = rateLimit({
+  name: 'node-address',
+  limit: Number(process.env.SOVEREIGN_NODE_ADDRESS_CEILING_PER_MIN || 6000),
+  windowMs: 60_000,
+  failClosed: true,
+  message: 'too many control requests from this address',
   keyFn: clientIp
 });
 
@@ -265,7 +311,26 @@ const writeLimiter = rateLimit({
   keyFn: (req) => (req.user?.id ? `user:${req.user.id}` : clientIp(req))
 });
 
+/**
+ * Mounts the limiters for the node control API on an Express app.
+ *
+ * Enrolment (/challenge, /register) is metered by address. Everything else under
+ * /v4/control is metered by the node's credential, with a per-address ceiling on top.
+ * Kept here, rather than inline in server.js, so the tests exercise the same mounting.
+ */
+function mountNodeControlLimits(app, prefix = '/v4/control') {
+  app.use([`${prefix}/challenge`, `${prefix}/register`], enrolmentLimiter);
+  app.use(prefix, nodeAddressCeiling, (req, res, next) => {
+    if (req.path === '/challenge' || req.path === '/register') return next();
+    return nodeTrafficLimiter(req, res, next);
+  });
+}
+
 module.exports = {
+  mountNodeControlLimits,
+  nodeTrafficLimiter,
+  nodeAddressCeiling,
+  nodeIdentity,
   rateLimit,
   LIMITING_DISABLED,
   loginLimiter,

@@ -38,7 +38,7 @@ const compartmentsRoutes = require('./routes/compartments');
 const ModuleLoader = require('./services/ModuleLoader');
 const securityHeaders = require('./middleware/securityHeaders');
 const { requireFeature } = require('./middleware/featureFlag');
-const { apiLimiter, enrolmentLimiter } = require('./middleware/rateLimit');
+const { apiLimiter, mountNodeControlLimits } = require('./middleware/rateLimit');
 
 function createApp() {
   const app = express();
@@ -73,7 +73,10 @@ function createApp() {
   // Go mesh data-plane bridge. See routes/goBridge.js for the wire contract.
   // Enrolment allocates an overlay address from a finite pool, so it is metered
   // separately and more tightly than ordinary API traffic.
-  app.use('/v4/control', enrolmentLimiter, goBridgeRoutes);
+  // Enrolment is metered by address; everything a registered node does after that is
+  // metered by its credential, with a generous per-address ceiling on top.
+  mountNodeControlLimits(app);
+  app.use('/v4/control', goBridgeRoutes);
 
   // Baseline budget for every API caller. Endpoint-specific limiters (sign-in,
   // registration) are mounted inside their routers and apply on top of this.
