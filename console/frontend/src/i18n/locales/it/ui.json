@@ -207,6 +207,18 @@
     "filterRoleClient": "Client",
     "filterRoleHybrid": "Ibridi",
     "filterCompartmentAll": "Tutti i compartimenti",
+    "columns": {
+      "node": "Nodo",
+      "role": "Ruolo",
+      "status": "Stato"
+    },
+    "legend": {
+      "direct": "WireGuard diretto",
+      "derp": "Relay DERP",
+      "onion": "Onion (3 salti)",
+      "openvpn": "OpenVPN stealth",
+      "isolated": "Isolato"
+    },
     "stats": {
       "nodes": "Nodi Visibili",
       "links": "Rotte Peer",
@@ -271,7 +283,12 @@
       "defaultPolicy": "Policy Predefinita",
       "policyEpoch": "Epoca Policy",
       "epochHint": "I nodi si risincronizzano al prossimo heartbeat",
-      "enforcingNodes": "Nodi di Applicazione"
+      "enforcingNodes": "Nodi di Applicazione",
+      "hintPermissive": "Mesh permissiva",
+      "hintZeroTrust": "Matrice zero-trust",
+      "hintStrict": "Zero-trust rigorosa",
+      "hintPermissiveAllow": "Consenti permissivo",
+      "hintEnforcing": "Applica la policy compilata"
     },
     "statusBanner": {
       "openTitle": "Nessuna regola definita — la mesh è aperta",
