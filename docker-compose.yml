@@ -231,6 +231,49 @@ services:
     volumes:
       - identity-client-es:/var/lib/neronet
 
+  client-uk:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "GB"]
+    volumes:
+      - identity-client-uk:/var/lib/neronet
+
+  client-us:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "US"]
+    volumes:
+      - identity-client-us:/var/lib/neronet
+
+  client-de:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "DE"]
+    volumes:
+      - identity-client-de:/var/lib/neronet
+
+  client-fr:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "FR"]
+    volumes:
+      - identity-client-fr:/var/lib/neronet
+
+  client-jp:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "JP"]
+    volumes:
+      - identity-client-jp:/var/lib/neronet
+
+  client-ch:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "CH"]
+    volumes:
+      - identity-client-ch:/var/lib/neronet
+
+  relay-se:
+    <<: *node
+    command: ["-control-url", "http://frontend:8443", "-country", "SE", "-enable-exit=true"]
+    volumes:
+      - identity-relay-se:/var/lib/neronet
+
+
   # ---------------------------------------------------------------------------
   # Profile "debug-ports": PostgreSQL and Valkey are not published by default. A
   # service cannot gain a port mapping from a profile, so each of these forwards a
@@ -283,3 +326,10 @@ volumes:
   identity-relay-nl:
   identity-client-it:
   identity-client-es:
+  identity-client-uk:
+  identity-client-us:
+  identity-client-de:
+  identity-client-fr:
+  identity-client-jp:
+  identity-client-ch:
+  identity-relay-se:
