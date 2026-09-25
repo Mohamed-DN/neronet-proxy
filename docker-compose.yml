@@ -57,7 +57,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       - POSTGRES_DB=neronet_db
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U neronet -d neronet_db"]
       interval: 5s
@@ -124,6 +124,7 @@ services:
       # transition can be observed in one test run.
       - SOVEREIGN_MAX_NETMAP_STALENESS_SECONDS=${NERONET_MAX_NETMAP_STALENESS_SECONDS:-86400}
       - SOVEREIGN_DATA_DIR=/app/data
+      - SOVEREIGN_CONTRACT_SCHEMA_DIR=/app/api/contract/v4
       - SOVEREIGN_FEATURE_CLOUD_PC=${SOVEREIGN_FEATURE_CLOUD_PC:-false}
       # The browser origins that reach the console and the API on the host.
       - CORS_ORIGIN=http://127.0.0.1:${NERONET_CONSOLE_PORT:-8443},http://localhost:${NERONET_CONSOLE_PORT:-8443},http://127.0.0.1:${NERONET_API_PORT:-8081},http://localhost:${NERONET_API_PORT:-8081}
