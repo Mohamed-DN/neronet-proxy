@@ -21,7 +21,7 @@ import { StatusBadge, type Status } from '../../ui/StatusBadge';
 import { Table, type TableColumn } from '../../ui/Table';
 
 import { useCompartments, useLockGhostVaults, useTopology, useUnlockGhostVaults } from '../../services/queries';
-import type { Compartment, TopologyNode } from '../../services/types';
+import type { Compartment, TopologyLink, TopologyNode } from '../../services/types';
 
 export type RoleFilter = 'ALL' | 'RELAY' | 'EXIT_BRIDGE' | 'CLIENT_ORIGIN' | 'HYBRID';
 export type ViewMode = 'CANVAS' | 'LIST';
@@ -74,6 +74,12 @@ function nodeStatus(node: TopologyNode): Status {
   return 'warning';
 }
 
+// Stable references so a query still loading its first page does not hand
+// every dependent useMemo a fresh empty array on every render.
+const EMPTY_NODES: TopologyNode[] = [];
+const EMPTY_LINKS: TopologyLink[] = [];
+const EMPTY_COMPARTMENTS: Compartment[] = [];
+
 export function TopologyRoute() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -94,9 +100,9 @@ export function TopologyRoute() {
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const topology = topologyQuery.data;
-  const nodes = topology?.nodes ?? [];
-  const links = topology?.links ?? [];
-  const compartments = compartmentsQuery.data ?? [];
+  const nodes = topology?.nodes ?? EMPTY_NODES;
+  const links = topology?.links ?? EMPTY_LINKS;
+  const compartments = compartmentsQuery.data ?? EMPTY_COMPARTMENTS;
 
   const isUnlocked = useMemo(
     () => nodes.some((n) => n.is_ghost_vault) || compartments.some((c) => c.is_hidden),
