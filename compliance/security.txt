@@ -1,0 +1,9 @@
+﻿Contact: mailto:security@neronet.io
+Contact: https://neronet.io/security/bug-bounty
+Expires: 2026-12-31T23:59:59.000Z
+Encryption: https://neronet.io/.well-known/pgp-key.txt
+Policy: https://github.com/neronet/sovereign/blob/main/SECURITY.md
+Preferred-Languages: en, it
+Canonical: https://neronet.io/.well-known/security.txt
+Acknowledgments: https://neronet.io/security/hall-of-fame
+CSAF: https://neronet.io/.well-known/csaf/provider-metadata.json
