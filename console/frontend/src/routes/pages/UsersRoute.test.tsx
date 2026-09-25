@@ -72,6 +72,13 @@ function jsonResponse(data: unknown, status = 200) {
   );
 }
 
+/** Indexes into a query result, failing loudly instead of clicking `undefined`. */
+function nth<T>(items: T[], index: number): T {
+  const item = items[index];
+  if (!item) throw new Error(`expected an element at index ${index}, found ${items.length}`);
+  return item;
+}
+
 function renderUsers(initialEntries = ['/users']) {
   const queryClient = createQueryClient();
   queryClient.setDefaultOptions({
@@ -99,7 +106,9 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
     usersState = JSON.parse(JSON.stringify(initialMockUsers));
     orgsState = JSON.parse(JSON.stringify(initialMockOrgs));
 
-    global.fetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
       const method = init?.method?.toUpperCase() || 'GET';
 
@@ -189,7 +198,8 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
       }
 
       return jsonResponse({ ok: true });
-    });
+      })
+    );
   });
 
   afterEach(() => {
@@ -259,7 +269,7 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
 
     // Find and click the QR onboarding button for secops_admin
     const qrButtons = screen.getAllByRole('button', { name: /onboarding qr|qr onboarding/i });
-    await user.click(qrButtons[0]);
+    await user.click(nth(qrButtons, 0));
 
     // Dialog should open with WireGuard profile
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
@@ -282,7 +292,7 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
 
     // Click split tunnel button
     const splitButtons = screen.getAllByRole('button', { name: /split tunnel/i });
-    await user.click(splitButtons[0]);
+    await user.click(nth(splitButtons, 0));
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/Split Tunneling App Bypass/i)).toBeInTheDocument();
@@ -310,7 +320,7 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
 
     // Click revoke button
     const revokeButtons = screen.getAllByRole('button', { name: /revoke sessions|revoca sessioni/i });
-    await user.click(revokeButtons[1]);
+    await user.click(nth(revokeButtons, 1));
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/Revoke All User Sessions/i)).toBeInTheDocument();
@@ -334,7 +344,7 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
 
     // Click delete button
     const deleteButtons = screen.getAllByRole('button', { name: /delete user|elimina utente/i });
-    await user.click(deleteButtons[2]);
+    await user.click(nth(deleteButtons, 2));
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/Delete User Account/i)).toBeInTheDocument();

@@ -115,7 +115,7 @@ export function useUpdateTopologyLink() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.statsTopology });
-      queryClient.invalidateQueries({ queryKey: queryKeys.acls });
+      queryClient.invalidateQueries({ queryKey: queryKeys.acl });
     }
   });
 }
@@ -134,7 +134,7 @@ export function useReconnectAllTopologyLinks() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.statsTopology });
-      queryClient.invalidateQueries({ queryKey: queryKeys.acls });
+      queryClient.invalidateQueries({ queryKey: queryKeys.acl });
     }
   });
 }

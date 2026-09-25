@@ -1,6 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -21,7 +20,7 @@ function jsonResponse(data: unknown, status = 200) {
   );
 }
 
-function mockFetchRouter(url: string, options?: RequestInit) {
+function mockFetchRouter(url: string, _options?: RequestInit) {
   // Auth & Session
   if (url.includes('/api/auth/me')) {
     return jsonResponse({
@@ -173,7 +172,7 @@ describe('WP-411: Gate G4 End-to-End Console Navigation and a11y Certification',
     vi.restoreAllMocks();
   });
 
-  function renderConsole(initialPath = ROUTES.overview) {
+  function renderConsole(initialPath: string = ROUTES.overview) {
     const router = createMemoryRouter(routes, { initialEntries: [initialPath] });
     const queryClient = createQueryClient();
     queryClient.setDefaultOptions({

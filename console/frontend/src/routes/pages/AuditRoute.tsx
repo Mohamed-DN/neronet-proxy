@@ -1,19 +1,5 @@
 import { useMemo, useState } from 'react';
-import {
-  Check,
-  CheckCircle2,
-  Copy,
-  Download,
-  FileText,
-  Lock,
-  Plus,
-  RefreshCw,
-  Search,
-  Share2,
-  ShieldAlert,
-  ShieldCheck,
-  Trash2
-} from 'lucide-react';
+import { Check, Copy, Download, Lock, Plus, Search, Share2, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -25,11 +11,10 @@ import {
   useSiemDestinations,
   useVerifyAuditChain
 } from '../../services/queries';
-import type { AuditCheckpoint, AuditEvent, SiemDestination } from '../../services/types';
+import type { AuditEvent } from '../../services/types';
 import {
   Badge,
   Button,
-  Card,
   CodeText,
   Dialog,
   EmptyState,
@@ -261,11 +246,7 @@ export default function AuditRoute() {
         cell: (e) => {
           const hash = e.entry_hash || e.chain_hash || '';
           if (!hash) return <span className="text-muted text-xs">—</span>;
-          return (
-            <CodeText>
-              {hash.slice(0, 8)}...{hash.slice(-4)}
-            </CodeText>
-          );
+          return <CodeText>{`${hash.slice(0, 8)}...${hash.slice(-4)}`}</CodeText>;
         },
         width: '140px'
       },
@@ -295,7 +276,7 @@ export default function AuditRoute() {
   }
 
   if (error && events.length === 0) {
-    return <ErrorState message={error.message} onRetry={() => refetch()} />;
+    return <ErrorState detail={error.message} onRetry={() => refetch()} />;
   }
 
   const severityOptions: SelectOption[] = [
@@ -343,24 +324,17 @@ export default function AuditRoute() {
 
       {/* Stats Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label={t('audit.stats.totalEvents')} value={events.length} hint="Immutable HMAC ledger" tone="accent" />
+        <Stat label={t('audit.stats.totalEvents')} value={events.length} hint="Immutable HMAC ledger" />
         <Stat
           label={t('audit.stats.chainStatus')}
           value={verifyResult?.valid ? 'VALID' : 'VERIFIED'}
           hint={verifyResult?.valid ? t('audit.stats.validBadge') : 'Checking hash link...'}
-          tone={verifyResult?.valid ? 'success' : 'neutral'}
         />
-        <Stat
-          label={t('audit.stats.checkpoints')}
-          value={checkpoints.length}
-          hint="Signed Ed25519 anchors"
-          tone="info"
-        />
+        <Stat label={t('audit.stats.checkpoints')} value={checkpoints.length} hint="Signed Ed25519 anchors" />
         <Stat
           label={t('audit.stats.siemForwarders')}
           value={siemDestinations.length}
           hint="Active streaming collectors"
-          tone="neutral"
         />
       </div>
 
@@ -398,7 +372,7 @@ export default function AuditRoute() {
         empty={
           <EmptyState
             title={events.length === 0 ? t('audit.empty.title') : t('audit.empty.noMatches')}
-            description={events.length === 0 ? t('audit.empty.desc') : undefined}
+            body={events.length === 0 ? t('audit.empty.desc') : undefined}
           />
         }
       />
@@ -596,9 +570,7 @@ export default function AuditRoute() {
                     <div>
                       <div className="font-bold text-content">{dest.name}</div>
                       <div className="text-muted text-[11px]">
-                        <CodeText>
-                          {dest.protocol.toUpperCase()}://{dest.endpoint}
-                        </CodeText>{' '}
+                        <CodeText>{`${dest.protocol.toUpperCase()}://${dest.endpoint}`}</CodeText>{' '}
                         • {dest.format.toUpperCase()}
                       </div>
                     </div>

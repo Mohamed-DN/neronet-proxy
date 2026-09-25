@@ -1,19 +1,5 @@
 import { useMemo, useState } from 'react';
-import {
-  ArrowRight,
-  CheckCircle2,
-  Filter,
-  Network,
-  Play,
-  Plus,
-  RefreshCw,
-  Search,
-  ShieldAlert,
-  ShieldCheck,
-  Sliders,
-  Trash2,
-  Edit2
-} from 'lucide-react';
+import { Play, Plus, Search, ShieldAlert, ShieldCheck, Sliders, Trash2, Edit2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -32,6 +18,7 @@ import {
   Badge,
   Button,
   Card,
+  CardHeader,
   CodeText,
   ConfirmDialog,
   Dialog,
@@ -79,7 +66,7 @@ export default function AclsRoute() {
 
   // Queries
   const { data: aclData, isLoading, error, refetch } = useAclRules();
-  const { data: defaultPolicyData, isLoading: isPolicyLoading } = useAclDefaultPolicy();
+  const { data: defaultPolicyData } = useAclDefaultPolicy();
   const { data: nodes = [] } = useNodes();
 
   // Mutations
@@ -416,7 +403,7 @@ export default function AclsRoute() {
   }
 
   if (error && !aclData) {
-    return <ErrorState message={error.message} onRetry={() => refetch()} />;
+    return <ErrorState detail={error.message} onRetry={() => refetch()} />;
   }
 
   const actionOptions: SelectOption[] = [
@@ -467,17 +454,15 @@ export default function AclsRoute() {
         <Stat
           label={t('acl.stats.activeRules')}
           value={rules.length}
-          hint={rules.length === 0 ? 'Permissive mesh' : 'Zero-trust matrix'}
-          tone={rules.length > 0 ? 'accent' : 'warning'}
+          hint={rules.length === 0 ? t('acl.stats.hintPermissive') : t('acl.stats.hintZeroTrust')}
         />
         <Stat
           label={t('acl.stats.defaultPolicy')}
           value={defaultPolicy.toUpperCase()}
-          hint={defaultPolicy === 'deny' ? 'Strict Zero-Trust' : 'Permissive allow'}
-          tone={defaultPolicy === 'deny' ? 'success' : 'warning'}
+          hint={defaultPolicy === 'deny' ? t('acl.stats.hintStrict') : t('acl.stats.hintPermissiveAllow')}
         />
-        <Stat label={t('acl.stats.policyEpoch')} value={`#${epoch}`} hint={t('acl.stats.epochHint')} tone="neutral" />
-        <Stat label={t('acl.stats.enforcingNodes')} value={nodes.length} hint="Enforcing BPF TUN matrix" tone="info" />
+        <Stat label={t('acl.stats.policyEpoch')} value={`#${epoch}`} hint={t('acl.stats.epochHint')} />
+        <Stat label={t('acl.stats.enforcingNodes')} value={nodes.length} hint={t('acl.stats.hintEnforcing')} />
       </div>
 
       {/* Mesh Policy Open vs Zero-Trust Status Banner */}
@@ -500,7 +485,8 @@ export default function AclsRoute() {
       )}
 
       {/* Organization Default Policy Card */}
-      <Card title={t('acl.defaultPolicyCard.title')} description={t('acl.defaultPolicyCard.description')}>
+      <Card>
+        <CardHeader title={t('acl.defaultPolicyCard.title')} description={t('acl.defaultPolicyCard.description')} />
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
           <div className="space-y-1">
             <div className="flex items-center space-x-2">
@@ -571,7 +557,7 @@ export default function AclsRoute() {
         empty={
           <EmptyState
             title={rules.length === 0 ? t('acl.empty.title') : t('acl.empty.noMatches')}
-            description={rules.length === 0 ? t('acl.empty.desc') : undefined}
+            body={rules.length === 0 ? t('acl.empty.desc') : undefined}
             action={
               rules.length === 0 ? (
                 <Button variant="primary" onClick={handleOpenCreate}>
@@ -865,7 +851,7 @@ export default function AclsRoute() {
                   </div>
                 </div>
               ) : (
-                <EmptyState title="No compiled policy" description="Select a registered node to inspect its policy." />
+                <EmptyState title="No compiled policy" body="Select a registered node to inspect its policy." />
               )}
             </div>
           ) : (

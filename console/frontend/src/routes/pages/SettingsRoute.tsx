@@ -1,21 +1,8 @@
-import React, { useId, useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Activity,
-  Check,
-  Cpu,
-  Lock,
-  Radio,
-  RefreshCw,
-  Save,
-  Server,
-  Shield,
-  Sliders,
-  SlidersHorizontal,
-  Zap
-} from 'lucide-react';
+import { Check, Cpu, Lock, Save, Shield } from 'lucide-react';
 
-import { Badge, Button, Card, CodeText, FormField, Input, PageHeader, Select, StatusBadge, Switch } from '../../ui';
+import { Badge, Button, Card, FormField, Input, PageHeader, Select, StatusBadge, Switch } from '../../ui';
 
 export default function SettingsRoute() {
   const { t } = useTranslation();
@@ -40,14 +27,6 @@ export default function SettingsRoute() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
-  // Accessible IDs
-  const obfuscationSelectId = useId();
-  const hopIntervalInputId = useId();
-  const listenPortInputId = useId();
-  const mtuInputId = useId();
-  const keepaliveInputId = useId();
-  const cipherSelectId = useId();
-
   const handleApplySettings = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -63,7 +42,7 @@ export default function SettingsRoute() {
       {/* Header */}
       <PageHeader
         title={t('settings.title', 'Sovereign Mesh Global Configuration')}
-        subtitle={t(
+        description={t(
           'settings.subtitle',
           'Core cryptographic primitives, WireGuard engine tuning, traffic obfuscation, and telemetry parameters.'
         )}
@@ -112,10 +91,7 @@ export default function SettingsRoute() {
                 onCheckedChange={setOnionRouting}
               />
 
-              <FormField
-                label={t('settings.fieldObfuscation', 'Stealth Obfuscation Protocol')}
-                id={obfuscationSelectId}
-              >
+              <FormField label={t('settings.fieldObfuscation', 'Stealth Obfuscation Protocol')}>
                 <Select
                   value={obfuscationProtocol}
                   onValueChange={(val) => setObfuscationProtocol(val as any)}

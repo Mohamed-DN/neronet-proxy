@@ -1,24 +1,5 @@
 import { useMemo, useState } from 'react';
-import {
-  AlertCircle,
-  AlertTriangle,
-  Check,
-  CheckCircle2,
-  Clock,
-  Eye,
-  FileCheck,
-  Flame,
-  Key,
-  Lock,
-  RefreshCw,
-  Search,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  Skull,
-  Trash2,
-  XCircle
-} from 'lucide-react';
+import { AlertTriangle, Clock, Flame, Lock, RefreshCw, Shield, ShieldAlert, Skull } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -46,7 +27,6 @@ import {
   Input,
   PageHeader,
   Select,
-  type SelectOption,
   Stat,
   StatusBadge,
   Table,
@@ -59,10 +39,10 @@ export default function NukeRoute() {
   const { t } = useTranslation('ui');
 
   // Queries
-  const { data: overview, isLoading: overviewLoading, refetch: refetchOverview } = useNukeOverview();
+  const { data: overview, refetch: refetchOverview } = useNukeOverview();
   const { data: legalHolds = [], isLoading: holdsLoading, refetch: refetchHolds } = useLegalHolds();
   const { data: dualAuthRequests = [], isLoading: authLoading, refetch: refetchAuth } = useDualAuthRequests();
-  const { data: ownerDms, refetch: refetchDms } = useOwnerDmsStatus();
+  const { refetch: refetchDms } = useOwnerDmsStatus();
 
   // Mutations
   const imposeHoldMutation = useImposeLegalHold();
@@ -299,7 +279,7 @@ export default function NukeRoute() {
       header: t('nuke.legalHolds.columns.actions'),
       cell: (h) =>
         h.active ? (
-          <Button variant="outline" size="sm" onClick={() => setReleaseTarget(h)}>
+          <Button variant="secondary" size="sm" onClick={() => setReleaseTarget(h)}>
             {t('nuke.legalHolds.actions.release')}
           </Button>
         ) : (

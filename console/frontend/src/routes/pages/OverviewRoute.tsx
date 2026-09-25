@@ -24,20 +24,19 @@ import {
 } from 'recharts';
 
 import { PageFrame } from '../PageFrame';
-import { ROUTES, nodePath, type RouteId } from '../paths';
+import { ROUTES, type RouteId } from '../paths';
 import { useStatsGeoMatrix, useStatsOverview, useStatsTimeseries } from '../../services/queries/stats';
 import { Button } from '../../ui/Button';
 import { Card, CardHeader } from '../../ui/Card';
 import { EmptyState, Skeleton } from '../../ui/States';
 import { Stat } from '../../ui/Stat';
 import { StatusBadge } from '../../ui/StatusBadge';
-import { isNotMeasured } from '../../ui/dataState';
 
 /**
  * Formats byte count with binary prefixes, or an em-dash when unmeasured.
  */
 export function formatBytes(bytes: number | string | null | undefined): string {
-  if (bytes === null || bytes === undefined) return '�';
+  if (bytes === null || bytes === undefined) return '—';
   const n = Number(bytes);
   if (!Number.isFinite(n) || n <= 0) return '0 B';
 
@@ -48,11 +47,10 @@ export function formatBytes(bytes: number | string | null | undefined): string {
 }
 
 export interface OverviewRouteProps {
-  onSelectNode?: (node: { id: string }) => void;
   onNavigateTab?: (tab: RouteId) => void;
 }
 
-export default function OverviewRoute({ onSelectNode, onNavigateTab }: OverviewRouteProps) {
+export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
   const { t } = useTranslation('ui');
   const navigate = useNavigate();
   const [timeRange, setTimeRange] = useState<string>('24h');
@@ -102,7 +100,7 @@ export default function OverviewRoute({ onSelectNode, onNavigateTab }: OverviewR
             ? t('overview.impaired')
             : t('overview.fleetOffline');
 
-  const dash = (v: number | string | null | undefined) => (v === null || v === undefined ? '�' : v);
+  const dash = (v: number | string | null | undefined) => (v === null || v === undefined ? '—' : v);
 
   const handleNavigateTopology = () => {
     if (onNavigateTab) {
@@ -472,13 +470,13 @@ export default function OverviewRoute({ onSelectNode, onNavigateTab }: OverviewR
                           {g.relays > 0 && (
                             <>
                               {' '}
-                              � {g.relays} {t('overview.relay')}
+                              • {g.relays} {t('overview.relay')}
                             </>
                           )}
                           {g.exits > 0 && (
                             <>
                               {' '}
-                              � {g.exits} {t('overview.exit')}
+                              • {g.exits} {t('overview.exit')}
                             </>
                           )}
                         </div>

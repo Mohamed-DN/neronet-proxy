@@ -49,9 +49,17 @@ export interface StatsOverview {
   total_nodes: number;
   quarantined_nodes: number;
   connected_users: number;
+  active_users?: number;
   /** null until two samples exist: a rate cannot be derived from one. */
   total_bandwidth_rx_mb_s: number | null;
   total_bandwidth_tx_mb_s: number | null;
+  total_bandwidth_bytes?: number | null;
+  total_rx_bytes?: number | null;
+  total_tx_bytes?: number | null;
+  /** Counted from what each node attested, not derived from liveness. */
+  posture_verified_compliant_nodes?: number | null;
+  posture_unverified_nodes?: number | null;
+  posture_non_compliant_nodes?: number | null;
   network_health_score: number | null;
   liveness_window_seconds: number;
   [key: string]: unknown;

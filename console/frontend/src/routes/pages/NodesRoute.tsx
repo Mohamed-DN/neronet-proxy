@@ -1,19 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  Activity,
-  AlertTriangle,
-  HardDrive,
-  Radio,
-  Search,
-  Server,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  Terminal,
-  Zap
-} from 'lucide-react';
+import { Search, ShieldAlert, ShieldCheck, Zap } from 'lucide-react';
 
 import { PageFrame } from '../PageFrame';
 import { ROUTES, nodePath } from '../paths';
@@ -173,7 +161,7 @@ export default function NodesRoute() {
     {
       id: 'role',
       header: t('nodes.columns.role'),
-      cell: (n) => <Badge tone={n.role === 'EXIT_BRIDGE' ? 'primary' : 'neutral'}>{n.role || 'CLIENT_ORIGIN'}</Badge>
+      cell: (n) => <Badge tone={n.role === 'EXIT_BRIDGE' ? 'accent' : 'neutral'}>{n.role || 'CLIENT_ORIGIN'}</Badge>
     },
     {
       id: 'posture',
@@ -246,7 +234,7 @@ export default function NodesRoute() {
         <PageHeader
           title={t('nodes.title')}
           description={t('nodes.description')}
-          action={
+          actions={
             <Button variant="primary" onClick={shell.openEnroll}>
               {t('nodes.enrollNode')}
             </Button>
@@ -255,26 +243,10 @@ export default function NodesRoute() {
 
         {/* Fleet KPI Counts */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Stat
-            title={t('nodes.counts.total')}
-            value={counts.total}
-            icon={<Server className="w-5 h-5 text-accent" />}
-          />
-          <Stat
-            title={t('nodes.counts.reachable')}
-            value={counts.reachable}
-            icon={<Activity className="w-5 h-5 text-success" />}
-          />
-          <Stat
-            title={t('nodes.counts.quarantined')}
-            value={counts.quarantined}
-            icon={<ShieldAlert className="w-5 h-5 text-danger" />}
-          />
-          <Stat
-            title={t('nodes.counts.unverified')}
-            value={unverifiedCount}
-            icon={<Shield className="w-5 h-5 text-warning" />}
-          />
+          <Stat label={t('nodes.counts.total')} value={counts.total} />
+          <Stat label={t('nodes.counts.reachable')} value={counts.reachable} />
+          <Stat label={t('nodes.counts.quarantined')} value={counts.quarantined} />
+          <Stat label={t('nodes.counts.unverified')} value={unverifiedCount} />
         </div>
 
         {/* Filter and Search Bar */}
@@ -331,13 +303,7 @@ export default function NodesRoute() {
           </Card>
         ) : (
           <Card className="p-0 overflow-hidden">
-            <Table
-              columns={columns}
-              rows={filteredNodes}
-              rowKey={(n) => n.id}
-              caption={t('nodes.title')}
-              onRowClick={(n) => handleOpenDetail(n.id)}
-            />
+            <Table columns={columns} rows={filteredNodes} rowKey={(n) => n.id} caption={t('nodes.title')} />
           </Card>
         )}
       </div>
@@ -377,7 +343,7 @@ export default function NodesRoute() {
               <CardHeader
                 as="h2"
                 title={t('nodes.detail.hardwareAttestation')}
-                action={
+                actions={
                   selectedNode.posture_status === 'verified_compliant' ? (
                     <StatusBadge status="ok" label={t('nodes.posture.verifiedCompliant')} />
                   ) : selectedNode.posture_status === 'non_compliant' ? (

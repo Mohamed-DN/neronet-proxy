@@ -2,10 +2,8 @@ import React, { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Building2,
-  Check,
   Copy,
   Download,
-  Key,
   Lock,
   Plus,
   QrCode,
@@ -14,7 +12,6 @@ import {
   Shield,
   Sliders,
   Trash2,
-  UserCheck,
   UserPlus,
   Users
 } from 'lucide-react';
@@ -116,15 +113,7 @@ export default function UsersRoute() {
 
   // IDs for accessibility
   const searchInputId = useId();
-  const usernameInputId = useId();
-  const emailInputId = useId();
-  const passwordInputId = useId();
-  const roleSelectId = useId();
-  const orgSelectId = useId();
   const newAppInputId = useId();
-  const orgNameInputId = useId();
-  const orgSlugInputId = useId();
-  const orgPolicySelectId = useId();
 
   // Filtered Users
   const filteredUsers = useMemo(() => {
@@ -547,7 +536,7 @@ export default function UsersRoute() {
       {/* Header */}
       <PageHeader
         title={t('users.title', 'User Directory & Access Control')}
-        subtitle={t(
+        description={t(
           'users.subtitle',
           'Role-based access control, tenant accounts, OIDC federation, and client profiles.'
         )}
@@ -573,23 +562,19 @@ export default function UsersRoute() {
         <Stat
           label={t('users.statTotalUsers', 'Total Users')}
           value={isLoadingUsers ? '...' : String(users.length)}
-          description="Registered sovereign mesh tenants"
+          hint="Registered sovereign mesh tenants"
         />
         <Stat
           label={t('users.statPrivileged', 'Privileged Roles')}
           value={isLoadingUsers ? '...' : String(privilegedCount)}
-          description="Super-admin & Admin operators"
+          hint="Super-admin & Admin operators"
         />
         <Stat
           label={t('users.statOrgs', 'Organizations')}
           value={isLoadingOrgs ? '...' : String(Math.max(orgs.length, 1))}
-          description="Multi-tenant governance units"
+          hint="Multi-tenant governance units"
         />
-        <Stat
-          label={t('users.statSecurity', 'MFA Security Posture')}
-          value="RFC 6238"
-          description="Hardware TOTP & recovery codes"
-        />
+        <Stat label={t('users.statSecurity', 'MFA Security Posture')} value="RFC 6238" hint="Hardware TOTP & recovery codes" />
       </div>
 
       {/* Tabs */}
@@ -860,7 +845,7 @@ export default function UsersRoute() {
       >
         <div className="space-y-4 pt-2">
           <div className="p-4 rounded-xl bg-surface border border-border text-sm text-content">
-            User: <CodeText>{selectedUserForRevoke?.username}</CodeText> ({selectedUserForRevoke?.id})
+            User: <CodeText>{selectedUserForRevoke?.username ?? ''}</CodeText> ({selectedUserForRevoke?.id})
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <Button type="button" variant="secondary" onClick={() => setSelectedUserForRevoke(null)}>
@@ -894,7 +879,7 @@ export default function UsersRoute() {
       >
         <div className="space-y-4 pt-2">
           <div className="p-4 rounded-xl bg-surface border border-border text-sm text-content">
-            User: <CodeText>{selectedUserForDelete?.username}</CodeText> ({selectedUserForDelete?.id})
+            User: <CodeText>{selectedUserForDelete?.username ?? ''}</CodeText> ({selectedUserForDelete?.id})
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <Button type="button" variant="secondary" onClick={() => setSelectedUserForDelete(null)}>

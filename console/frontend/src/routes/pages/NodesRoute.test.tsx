@@ -208,7 +208,7 @@ describe('WP-405: NodesRoute (Sovereign Nodes Fleet Management)', () => {
   });
 
   it('3. Node Detail & Diagnostics: deep-links to /nodes/:id, renders hardware attestation and tests ping', async () => {
-    const fetchSpy = vi.fn(async (url: string, init?: RequestInit) => {
+    const fetchSpy = vi.fn(async (url: string, _init?: RequestInit) => {
       if (url === '/api/nodes') {
         return jsonResponse({ nodes: mockNodes });
       }
@@ -250,7 +250,7 @@ describe('WP-405: NodesRoute (Sovereign Nodes Fleet Management)', () => {
 
   it('4. Quarantine and Lift Quarantine actions trigger control plane mutations', async () => {
     let quarantinedState = false;
-    const fetchSpy = vi.fn(async (url: string, init?: RequestInit) => {
+    const fetchSpy = vi.fn(async (url: string, _init?: RequestInit) => {
       if (url === '/api/nodes') {
         return jsonResponse({
           nodes: [
@@ -310,7 +310,7 @@ describe('WP-405: NodesRoute (Sovereign Nodes Fleet Management)', () => {
   });
 
   it('5. Revoke Cryptographic Key triggers confirmation and API deletion', async () => {
-    const fetchSpy = vi.fn(async (url: string, init?: RequestInit) => {
+    const fetchSpy = vi.fn(async (url: string, _init?: RequestInit) => {
       if (url === '/api/nodes') {
         return jsonResponse({ nodes: [mockNodes[0]] });
       }

@@ -355,6 +355,7 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
 
     // Release existing hold hold-201
     const releaseBtn = screen.getAllByRole('button', { name: /Release Hold/i })[0];
+    if (!releaseBtn) throw new Error('expected at least one Release Hold button');
     await user.click(releaseBtn);
 
     // Confirm release modal
