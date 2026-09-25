@@ -486,7 +486,11 @@ export default function AclsRoute() {
 
       {/* Organization Default Policy Card */}
       <Card>
-        <CardHeader title={t('acl.defaultPolicyCard.title')} description={t('acl.defaultPolicyCard.description')} />
+        <CardHeader
+          as="h2"
+          title={t('acl.defaultPolicyCard.title')}
+          description={t('acl.defaultPolicyCard.description')}
+        />
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
           <div className="space-y-1">
             <div className="flex items-center space-x-2">
