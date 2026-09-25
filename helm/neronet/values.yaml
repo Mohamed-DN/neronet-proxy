@@ -1,0 +1,80 @@
+﻿# NeroNet v4 Helm Values (enterprise defaults)
+replicaCount: 1
+
+image:
+  repository: ghcr.io/neronet/sovereign
+  pullPolicy: IfNotPresent
+  tag: "4.0.0-rc1"
+
+backend:
+  port: 8081
+  resources:
+    requests: { cpu: "250m", memory: "256Mi" }
+    limits:   { cpu: "1000m", memory: "512Mi" }
+  securityContext:
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 10001
+    allowPrivilegeEscalation: false
+    capabilities: { drop: [ALL] }
+
+frontend:
+  port: 8443
+  resources:
+    requests: { cpu: "50m",  memory: "64Mi" }
+    limits:   { cpu: "200m", memory: "128Mi" }
+
+postgres:
+  enabled: true
+  image: postgres:18-bookworm
+  storage: 10Gi
+  storageClass: ""
+
+valkey:
+  enabled: true
+  image: valkey/valkey:9.1-alpine
+  storage: 1Gi
+
+secrets:
+  # Use existing secret (recommended for production)
+  existingSecret: ""
+  # Or provide inline (dev only)
+  jwtSecret: ""
+  refreshSecret: ""
+  adminPassword: ""
+  registrationToken: ""
+  postgresPassword: ""
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: neronet.example.com
+      paths: [{ path: /, pathType: Prefix }]
+  tls:
+    - secretName: neronet-tls
+      hosts: [neronet.example.com]
+
+networkPolicy:
+  enabled: true
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+    namespace: monitoring
+
+persistence:
+  backendData:
+    enabled: true
+    size: 1Gi

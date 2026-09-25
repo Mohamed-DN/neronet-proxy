@@ -1,0 +1,12 @@
+﻿apiVersion: v2
+name: neronet
+description: NeroNet v4 - Sovereign Encrypted Mesh Network
+type: application
+version: 4.0.0
+appVersion: "4.0.0-rc1"
+keywords: [wireguard, mesh, vpn, zero-trust, enterprise]
+home: https://neronet.io
+sources: [https://github.com/neronet/sovereign]
+maintainers:
+  - name: Mohamed Abou El Seod
+    email: 63897548+Mohamed-DN@users.noreply.github.com
