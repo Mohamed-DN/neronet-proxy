@@ -436,6 +436,10 @@ router.get('/verify', async (req, res, next) => {
 
 // WP-301: Checkpoints Endpoints
 router.post('/checkpoints', async (req, res, next) => {
+  const orgRole = req.user?.org_role || req.user?.role || 'member';
+  if (!['super-admin', 'owner', 'admin', 'auditor'].includes(orgRole)) {
+    return res.status(403).json({ error: 'Forbidden: only administrators and auditors can trigger audit checkpoints' });
+  }
   try {
     const { AuditChainService } = require('../services/AuditChainService');
     const checkpoint = await AuditChainService.createCheckpoint();
