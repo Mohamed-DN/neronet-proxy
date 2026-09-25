@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Go mesh data-plane bridge.
  *
  * Implements the wire contract the Go node speaks, defined by the typed structs in
@@ -206,7 +206,15 @@ router.post('/challenge', validateRequest('ChallengeRequest'), async (req, res) 
 });
 
 // POST /v4/control/register
-router.post('/register', validateRequest('RegisterRequest'), async (req, res) => {
+// Normalize endpoints field: Go sends {} when empty (omitempty quirk), schema requires array
+const normalizeRegisterBody = (req, _res, next) => {
+  if (req.body && req.body.endpoints !== undefined && !Array.isArray(req.body.endpoints)) {
+    req.body.endpoints = [];
+  }
+  next();
+};
+
+router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest'), async (req, res) => {
   try {
     const publicKeyHex = String(req.body.public_key_hex || '').trim();
     if (!PUBLIC_KEY_RE.test(publicKeyHex)) {
