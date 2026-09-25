@@ -119,3 +119,22 @@ export function useUpdateTopologyLink() {
     }
   });
 }
+
+/**
+ * Reconnect all severed mesh links and remove explicit isolation rules.
+ */
+export function useReconnectAllTopologyLinks() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      return apiRequest<{ success: boolean; message: string }>('/stats/topology/reconnect-all', {
+        method: 'POST'
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.statsTopology });
+      queryClient.invalidateQueries({ queryKey: queryKeys.acls });
+    }
+  });
+}

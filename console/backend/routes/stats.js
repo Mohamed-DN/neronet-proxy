@@ -371,6 +371,51 @@ async function compileTopologyLinks(nodes) {
     }
   }
 
+  // In NeroNet Sovereign Mesh, all registered peers communicate in a WireGuard mesh.
+  // When policy is open (default mesh) or no custom explicit ACCEPT rules are defined,
+  // we synthesize the full mesh spiderweb connections between all active nodes.
+  if (links.length === 0 || policyIsOpen) {
+    const dropSet = new Set();
+    try {
+      const dropRes = await pool.query("SELECT source_cidr, destination_cidr FROM acl_rules WHERE action = 'DROP' AND enabled = TRUE");
+      for (const dr of dropRes.rows) {
+        const sVip = (dr.source_cidr || '').split('/')[0];
+        const dVip = (dr.destination_cidr || '').split('/')[0];
+        const sId = byVip.get(sVip);
+        const dId = byVip.get(dVip);
+        if (sId && dId) {
+          dropSet.add(`${sId}|${dId}`);
+          dropSet.add(`${dId}|${sId}`);
+        }
+      }
+    } catch {}
+
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const u = nodes[i];
+        const v = nodes[j];
+        const key = u.id < v.id ? `${u.id}|${v.id}` : `${v.id}|${u.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const isDropped = dropSet.has(`${u.id}|${v.id}`) || dropSet.has(`${v.id}|${u.id}`);
+        const cfg = cfgMap.get(`${u.id}|${v.id}`);
+        const mode = cfg ? cfg.mode : 'direct';
+        const relayId = cfg ? cfg.relay_id : null;
+        const isVisible = cfg ? Boolean(cfg.is_visible) : !isDropped;
+
+        links.push({
+          source: u.id,
+          target: v.id,
+          protocol: 'WG',
+          mode,
+          relay_id: relayId,
+          is_visible: isVisible
+        });
+      }
+    }
+  }
+
   return { links, policyIsOpen };
 }
 
@@ -388,9 +433,27 @@ router.get('/topology/links', async (req, res, next) => {
 });
 
 // POST /api/stats/topology/link
+router.post('/topology/reconnect-all', async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    await pool.query('UPDATE mesh_link_configs SET is_visible = TRUE, updated_at = NOW()');
+    await pool.query("DELETE FROM acl_rules WHERE description = 'Node explicit isolation'");
+    await pool.query("UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = NOW() WHERE name = 'acl'");
+    await publishTopologyEvent({ event: 'TOPOLOGY_ALL_RECONNECTED', timestamp: new Date().toISOString() }).catch(() => {});
+    return res.status(200).json({ success: true, message: 'All mesh links reconnected successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/topology/link', async (req, res, next) => {
   try {
-    const { source_node_id, target_node_id, mode = 'direct', relay_id = null, is_visible = true } = req.body;
+    const source_node_id = req.body.source_node_id || req.body.sourceNode || req.body.source;
+    const target_node_id = req.body.target_node_id || req.body.targetNode || req.body.target;
+    const mode = req.body.mode || 'direct';
+    const relay_id = req.body.relay_id || req.body.relayId || req.body.derpRegion || null;
+    const is_visible = req.body.is_visible !== undefined ? Boolean(req.body.is_visible) : (req.body.visibility !== undefined ? Boolean(req.body.visibility) : true);
+
     if (!source_node_id || !target_node_id) {
       return res.status(400).json({ error: 'source_node_id and target_node_id are required' });
     }

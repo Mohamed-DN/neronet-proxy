@@ -25,7 +25,12 @@ import {
   ArrowRightLeft,
   Workflow,
   CheckCircle2,
-  Network
+  Network,
+  Scissors,
+  Link2,
+  Unlink,
+  RefreshCw,
+  Hand
 } from 'lucide-react';
 
 import { PageFrame } from '../PageFrame';
@@ -50,13 +55,15 @@ import {
   useCompartments,
   useUnlockGhostVaults,
   useLockGhostVaults,
-  useUpdateTopologyLink
+  useUpdateTopologyLink,
+  useReconnectAllTopologyLinks
 } from '../../services/queries';
 import type { TopologyNode, TopologyLink } from '../../services/types';
 
 export type RoleFilter = 'ALL' | 'RELAY' | 'EXIT_BRIDGE' | 'CLIENT_ORIGIN' | 'HYBRID';
 export type ViewMode = 'CANVAS' | 'LIST';
 export type RoutingMode = 'direct' | 'derp' | 'openvpn' | 'onion';
+export type CanvasTool = 'EXPLORE' | 'CUT' | 'CONNECT';
 
 interface SimulationNode {
   id: string;
@@ -65,12 +72,12 @@ interface SimulationNode {
   vx: number;
   vy: number;
   radius: number;
-  isDragging: boolean;
   data: TopologyNode;
+  isDragging?: boolean;
 }
 
-export default function TopologyRoute() {
-  const { t } = useTranslation('ui');
+export function TopologyRoute() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   // Queries & Mutations
@@ -79,6 +86,7 @@ export default function TopologyRoute() {
   const unlockMutation = useUnlockGhostVaults();
   const lockMutation = useLockGhostVaults();
   const updateLinkMutation = useUpdateTopologyLink();
+  const reconnectAllMutation = useReconnectAllTopologyLinks();
 
   // Local filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -88,10 +96,11 @@ export default function TopologyRoute() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [physicsActive, setPhysicsActive] = useState(true);
 
-  // Dialogs & selection
-  const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
-  const [vaultPassword, setVaultPassword] = useState('');
-  const [unlockError, setUnlockError] = useState<string | null>(null);
+  // Active Interactive Tool: EXPLORE (hand), CUT (scissors), CONNECT (wire)
+  const [activeTool, setActiveTool] = useState<CanvasTool>('EXPLORE');
+
+  // Connecting wire state (in CONNECT tool)
+  const [connectSourceNode, setConnectSourceNode] = useState<TopologyNode | null>(null);
 
   // Selected entities
   const [selectedNode, setSelectedNode] = useState<TopologyNode | null>(null);
@@ -109,11 +118,18 @@ export default function TopologyRoute() {
     link: TopologyLink;
   } | null>(null);
 
-  // Link editor state
+  // Link editor modal state
   const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [editSourceNode, setEditSourceNode] = useState<TopologyNode | null>(null);
+  const [editTargetNode, setEditTargetNode] = useState<TopologyNode | null>(null);
   const [editMode, setEditMode] = useState<RoutingMode>('direct');
   const [editRelay, setEditRelay] = useState('derp-eu');
   const [editVisible, setEditVisible] = useState(true);
+
+  // Ghost Vault Unlock Dialog
+  const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
+  const [vaultPassword, setVaultPassword] = useState('');
+  const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -160,31 +176,35 @@ export default function TopologyRoute() {
   // Sync simulation nodes with filteredNodes
   useEffect(() => {
     const canvas = canvasRef.current;
-    const width = canvas ? canvas.width : 1000;
-    const height = canvas ? canvas.height : 600;
+    const width = canvas ? canvas.width : 1100;
+    const height = canvas ? canvas.height : 620;
     const cx = width / 2;
     const cy = height / 2;
 
     const currentMap = simNodesRef.current;
     const newMap = new Map<string, SimulationNode>();
 
-    filteredNodes.forEach((node, idx) => {
+    const count = filteredNodes.length;
+    const radius = Math.min(width, height) * 0.35;
+
+    filteredNodes.forEach((node, i) => {
       const existing = currentMap.get(node.id);
       if (existing) {
         existing.data = node;
         newMap.set(node.id, existing);
       } else {
-        const angle = (idx / Math.max(1, filteredNodes.length)) * Math.PI * 2;
-        const radius = Math.min(width, height) * 0.35 + (Math.random() * 40 - 20);
+        const angle = (i / Math.max(1, count)) * 2 * Math.PI - Math.PI / 2;
+        const x = cx + radius * Math.cos(angle) + (Math.random() - 0.5) * 40;
+        const y = cy + radius * Math.sin(angle) + (Math.random() - 0.5) * 40;
         newMap.set(node.id, {
           id: node.id,
-          x: cx + Math.cos(angle) * radius,
-          y: cy + Math.sin(angle) * radius,
-          vx: (Math.random() - 0.5) * 2,
-          vy: (Math.random() - 0.5) * 2,
-          radius: 14,
-          isDragging: false,
-          data: node
+          x,
+          y,
+          vx: 0,
+          vy: 0,
+          radius: 19,
+          data: node,
+          isDragging: false
         });
       }
     });
@@ -192,174 +212,177 @@ export default function TopologyRoute() {
     simNodesRef.current = newMap;
   }, [filteredNodes]);
 
-  // Reset physics layout
-  const resetLayout = useCallback(() => {
+  // Accurate coordinate converter that handles canvas CSS scaling
+  const getCanvasCoords = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    const width = canvas ? canvas.width : 1000;
-    const height = canvas ? canvas.height : 600;
-    const cx = width / 2;
-    const cy = height / 2;
-
-    const map = simNodesRef.current;
-    const total = map.size;
-    let idx = 0;
-    map.forEach((n) => {
-      const angle = (idx / Math.max(1, total)) * Math.PI * 2;
-      const radius = Math.min(width, height) * 0.32;
-      n.x = cx + Math.cos(angle) * radius;
-      n.y = cy + Math.sin(angle) * radius;
-      n.vx = (Math.random() - 0.5) * 3;
-      n.vy = (Math.random() - 0.5) * 3;
-      idx++;
-    });
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    };
   }, []);
 
-  // Handle Vault Unlock
-  const handleUnlockSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!vaultPassword) return;
-    setUnlockError(null);
-    try {
-      await unlockMutation.mutateAsync(vaultPassword);
-      setUnlockDialogOpen(false);
-      setVaultPassword('');
-    } catch (err: unknown) {
-      setUnlockError(err instanceof Error ? err.message : t('topology.vault.unlockFailed'));
-    }
-  };
-
-  // Handle Vault Lock
-  const handleLockVaults = async () => {
-    try {
-      await lockMutation.mutateAsync();
-      setSelectedNode(null);
-      setSelectedLink(null);
-    } catch {
-      // Locking failed
-    }
-  };
-
-  // Open Link Editor
-  const openLinkEditor = (sourceNode: TopologyNode, targetNode: TopologyNode, link: TopologyLink) => {
-    setSelectedLink({ source: sourceNode, target: targetNode, link });
-    setEditMode((link.mode as RoutingMode) || 'direct');
-    setEditRelay((link.relay_id as string) || 'derp-eu');
-    setEditVisible(link.is_visible !== false);
+  // Helper to open link editor modal
+  const openLinkEditor = useCallback((sourceNode: TopologyNode, targetNode: TopologyNode, link?: TopologyLink) => {
+    setEditSourceNode(sourceNode);
+    setEditTargetNode(targetNode);
+    setSelectedLink({ source: sourceNode, target: targetNode, link: link || {
+      source: sourceNode.id,
+      target: targetNode.id,
+      protocol: 'WG',
+      mode: 'direct',
+      is_visible: true
+    }});
+    setEditMode(link?.mode || 'direct');
+    setEditRelay(link?.relay_id || 'derp-eu');
+    setEditVisible(link ? (link.is_visible !== false) : true);
     setLinkModalOpen(true);
-  };
+  }, []);
 
-  // Save Link Configuration
-  const handleSaveLink = async () => {
-    if (!selectedLink) return;
+  // Quick Cut Link action (sets is_visible = false)
+  const handleQuickCutLink = useCallback(async (link: TopologyLink) => {
     try {
       await updateLinkMutation.mutateAsync({
-        source_node_id: selectedLink.source.id,
-        target_node_id: selectedLink.target.id,
+        source_node_id: link.source,
+        target_node_id: link.target,
+        mode: link.mode || 'direct',
+        relay_id: link.relay_id || null,
+        is_visible: false
+      });
+    } catch (err) {
+      console.error('Failed to cut link:', err);
+    }
+  }, [updateLinkMutation]);
+
+  // Quick Reconnect Link action (sets is_visible = true)
+  const handleQuickReconnectLink = useCallback(async (link: TopologyLink) => {
+    try {
+      await updateLinkMutation.mutateAsync({
+        source_node_id: link.source,
+        target_node_id: link.target,
+        mode: link.mode || 'direct',
+        relay_id: link.relay_id || null,
+        is_visible: true
+      });
+    } catch (err) {
+      console.error('Failed to reconnect link:', err);
+    }
+  }, [updateLinkMutation]);
+
+  // Save Link Configuration from modal
+  const handleSaveLink = async () => {
+    if (!editSourceNode || !editTargetNode) return;
+    try {
+      await updateLinkMutation.mutateAsync({
+        source_node_id: editSourceNode.id,
+        target_node_id: editTargetNode.id,
         mode: editMode,
         relay_id: editMode === 'derp' ? editRelay : null,
         is_visible: editVisible
       });
       setLinkModalOpen(false);
     } catch (err) {
-      console.error('Failed to update topology link:', err);
+      console.error('Failed to save link configuration:', err);
     }
   };
 
-  // Physics & Canvas Animation Loop
+  // Reconnect All links
+  const handleReconnectAll = async () => {
+    try {
+      await reconnectAllMutation.mutateAsync();
+    } catch (err) {
+      console.error('Failed to reconnect all links:', err);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // 2D FORCE-DIRECTED PHYSICS ENGINE & RENDERING LOOP
+  // -------------------------------------------------------------
   useEffect(() => {
     if (viewMode !== 'CANVAS') return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    let ctx: CanvasRenderingContext2D | null = null;
-    try {
-      ctx = canvas.getContext('2d');
-    } catch {
-      return;
-    }
-    if (!ctx) return;
 
     let running = true;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    const render = (time: number) => {
+    const width = canvas.width;
+    const height = canvas.height;
+    const cx = width / 2;
+    const cy = height / 2;
+
+    const render = () => {
       if (!running) return;
-      const width = canvas.width;
-      const height = canvas.height;
-      const cx = width / 2;
-      const cy = height / 2;
-      const simNodes = simNodesRef.current;
-      const mouse = mousePosRef.current;
 
-      pulseOffsetRef.current = (pulseOffsetRef.current + 0.02) % 1;
+      pulseOffsetRef.current = (pulseOffsetRef.current + 0.4) % 100;
+      const simNodes = simNodesRef.current;
+      const nodeList = Array.from(simNodes.values());
+      const mouse = mousePosRef.current;
 
       // 1. PHYSICS STEP
       if (physicsActive) {
-        const nodeList = Array.from(simNodes.values());
-        const nLen = nodeList.length;
+        // A. Repulsion between all nodes (Coulomb force)
+        for (let i = 0; i < nodeList.length; i++) {
+          const u = nodeList[i];
+          for (let j = i + 1; j < nodeList.length; j++) {
+            const v = nodeList[j];
+            const dx = v.x - u.x;
+            const dy = v.y - u.y;
+            const distSq = dx * dx + dy * dy || 1;
+            const dist = Math.sqrt(distSq);
 
-        // A. Repulsion between all node pairs (Coulomb force)
-        for (let i = 0; i < nLen; i++) {
-          const a = nodeList[i];
-          for (let j = i + 1; j < nLen; j++) {
-            const b = nodeList[j];
-            const dx = b.x - a.x;
-            const dy = b.y - a.y;
-            const distSq = dx * dx + dy * dy;
-            const dist = Math.sqrt(distSq) || 1;
-            if (dist < 380) {
-              const force = 3200 / (distSq + 150);
-              const fx = (dx / dist) * force;
-              const fy = (dy / dist) * force;
-              if (!a.isDragging) { a.vx -= fx; a.vy -= fy; }
-              if (!b.isDragging) { b.vx += fx; b.vy += fy; }
+            if (dist < 320) {
+              const repForce = 1400 / distSq;
+              const fx = (dx / dist) * repForce;
+              const fy = (dy / dist) * repForce;
+              if (!u.isDragging) { u.vx -= fx; u.vy -= fy; }
+              if (!v.isDragging) { v.vx += fx; v.vy += fy; }
             }
           }
         }
 
         // B. Spring attraction along links (Hooke force)
         filteredLinks.forEach((link) => {
+          if (link.is_visible === false) return; // Cut links don't pull
           const u = simNodes.get(link.source);
           const v = simNodes.get(link.target);
           if (u && v) {
             const dx = v.x - u.x;
             const dy = v.y - u.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            const targetDist = 180;
-            const delta = dist - targetDist;
-            const spring = delta * 0.035;
+            const idealDist = 170;
+            const spring = (dist - idealDist) * 0.003;
             const fx = (dx / dist) * spring;
             const fy = (dy / dist) * spring;
             if (!u.isDragging) { u.vx += fx; u.vy += fy; }
-            if (!v.isDragging) { v.vx -= fx; v.vy -= fy; }
+            if (!v.isDragging) { v.vx -= fx; v.vy += fy; }
           }
         });
 
-        // C. Center Gravity & Ambient Wave
-        nodeList.forEach((n, idx) => {
+        // C. Center Gravity (gently keeps entire spiderweb centered)
+        nodeList.forEach((n) => {
           if (!n.isDragging) {
-            const gx = (cx - n.x) * 0.012;
-            const gy = (cy - n.y) * 0.012;
+            const gx = (cx - n.x) * 0.008;
+            const gy = (cy - n.y) * 0.008;
             n.vx += gx;
             n.vy += gy;
-
-            // Ambient gentle oscillation
-            const ambient = Math.sin(time * 0.0015 + idx) * 0.25;
-            n.vx += ambient;
-            n.vy += ambient;
           }
         });
 
-        // D. Interactive Mouse Repulsion Wave
+        // D. Gentle mouse interaction (smooth micro-ripple, NO violent fleeing)
         if (mouse) {
           nodeList.forEach((n) => {
             if (!n.isDragging) {
               const mdx = n.x - mouse.x;
               const mdy = n.y - mouse.y;
               const mDist = Math.sqrt(mdx * mdx + mdy * mdy);
-              const waveRadius = 160;
-              if (mDist < waveRadius && mDist > 0) {
-                const intensity = (1 - mDist / waveRadius);
-                const push = intensity * intensity * 12.0;
+              // Only apply when between 35px and 120px to avoid running away under the cursor!
+              if (mDist > 40 && mDist < 120) {
+                const push = (1 - mDist / 120) * 0.45;
                 n.vx += (mdx / mDist) * push;
                 n.vy += (mdy / mDist) * push;
               }
@@ -367,11 +390,11 @@ export default function TopologyRoute() {
           });
         }
 
-        // E. Damping, Position Integration & Boundary
+        // E. Damping & Position Integration
         nodeList.forEach((n) => {
           if (!n.isDragging) {
-            n.vx *= 0.88;
-            n.vy *= 0.88;
+            n.vx *= 0.85;
+            n.vy *= 0.85;
             n.x += n.vx;
             n.y += n.vy;
             n.x = Math.max(35, Math.min(width - 35, n.x));
@@ -396,104 +419,167 @@ export default function TopologyRoute() {
           ((selectedLink.source.id === link.source && selectedLink.target.id === link.target) ||
            (selectedLink.source.id === link.target && selectedLink.target.id === link.source));
 
+        const isCut = link.is_visible === false;
+
         ctx.beginPath();
         ctx.moveTo(u.x, u.y);
         ctx.lineTo(v.x, v.y);
 
-        // Styling based on mode and state
-        if (link.is_visible === false) {
-          ctx.setLineDash([4, 4]);
-          ctx.strokeStyle = isLinkHovered ? '#f87171' : 'rgba(239, 68, 68, 0.45)';
-          ctx.lineWidth = isLinkHovered ? 2.5 : 1.5;
+        if (isCut) {
+          // Severed / Cut line (dashed crimson with scissor marker)
+          ctx.setLineDash([5, 5]);
+          ctx.strokeStyle = isLinkHovered || isLinkSelected ? '#ef4444' : 'rgba(239, 68, 68, 0.4)';
+          ctx.lineWidth = isLinkHovered || isLinkSelected ? 3 : 1.5;
         } else {
           ctx.setLineDash([]);
           if (link.mode === 'derp') {
-            ctx.strokeStyle = isLinkHovered || isLinkSelected ? '#34d399' : 'rgba(16, 185, 129, 0.45)';
-            ctx.lineWidth = isLinkHovered || isLinkSelected ? 3 : 2;
+            ctx.strokeStyle = isLinkHovered || isLinkSelected ? '#34d399' : 'rgba(16, 185, 129, 0.5)';
+            ctx.lineWidth = isLinkHovered || isLinkSelected ? 3.5 : 2;
           } else if (link.mode === 'openvpn') {
-            ctx.strokeStyle = isLinkHovered || isLinkSelected ? '#c084fc' : 'rgba(168, 85, 247, 0.45)';
-            ctx.lineWidth = isLinkHovered || isLinkSelected ? 3 : 2;
+            ctx.strokeStyle = isLinkHovered || isLinkSelected ? '#c084fc' : 'rgba(168, 85, 247, 0.5)';
+            ctx.lineWidth = isLinkHovered || isLinkSelected ? 3.5 : 2;
           } else if (link.mode === 'onion') {
-            ctx.strokeStyle = isLinkHovered || isLinkSelected ? '#fbbf24' : 'rgba(245, 158, 11, 0.45)';
-            ctx.lineWidth = isLinkHovered || isLinkSelected ? 3 : 2;
+            ctx.strokeStyle = isLinkHovered || isLinkSelected ? '#fbbf24' : 'rgba(245, 158, 11, 0.5)';
+            ctx.lineWidth = isLinkHovered || isLinkSelected ? 3.5 : 2;
           } else {
             // Direct WireGuard
-            ctx.strokeStyle = isLinkHovered || isLinkSelected ? '#38bdf8' : 'rgba(56, 189, 248, 0.35)';
-            ctx.lineWidth = isLinkHovered || isLinkSelected ? 3 : 1.5;
+            ctx.strokeStyle = isLinkHovered || isLinkSelected ? '#38bdf8' : 'rgba(56, 189, 248, 0.38)';
+            ctx.lineWidth = isLinkHovered || isLinkSelected ? 3.5 : 1.5;
           }
         }
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Animated Packet Particle flow
-        if (link.is_visible !== false) {
-          const tP = (pulseOffsetRef.current + (u.x % 10) * 0.1) % 1;
+        // Draw midpoint badges for specialized or cut links
+        const mx = (u.x + v.x) / 2;
+        const my = (u.y + v.y) / 2;
+
+        if (isCut) {
+          // Scissor indicator on cut link
+          ctx.save();
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.arc(mx, my, 8, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('✂', mx, my);
+          ctx.restore();
+        } else if (link.mode === 'derp' || link.mode === 'openvpn' || link.mode === 'onion') {
+          ctx.save();
+          const badgeColor = link.mode === 'derp' ? '#10b981' : link.mode === 'openvpn' ? '#a855f7' : '#f59e0b';
+          const label = link.mode === 'derp' ? 'DERP' : link.mode === 'openvpn' ? 'TLS' : '3-HOP';
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+          ctx.strokeStyle = badgeColor;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(mx - 18, my - 7, 36, 14, 4);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = badgeColor;
+          ctx.font = '8px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, mx, my);
+          ctx.restore();
+        }
+
+        // Draw flowing pulse dot on hovered or selected active links
+        if (!isCut && (isLinkHovered || isLinkSelected)) {
+          const tP = (pulseOffsetRef.current % 100) / 100;
           const px = u.x + (v.x - u.x) * tP;
           const py = u.y + (v.y - u.y) * tP;
           ctx.beginPath();
-          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
-          ctx.fillStyle = link.mode === 'derp' ? '#34d399' : link.mode === 'openvpn' ? '#c084fc' : '#38bdf8';
+          ctx.arc(px, py, 4, 0, 2 * Math.PI);
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = 10;
           ctx.fill();
+          ctx.shadowBlur = 0;
         }
       });
 
-      // B. Draw Nodes
-      simNodes.forEach((n) => {
-        const isHovered = hoveredNode?.id === n.id;
-        const isSelected = selectedNode?.id === n.id;
-        const baseRadius = isHovered || isSelected ? 17 : 13;
+      // B. Draw interactive connecting wire if user is currently connecting nodes
+      if (activeTool === 'CONNECT' && connectSourceNode && mouse) {
+        const srcSim = simNodes.get(connectSourceNode.id);
+        if (srcSim) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([6, 4]);
+          ctx.moveTo(srcSim.x, srcSim.y);
+          ctx.lineTo(mouse.x, mouse.y);
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+          ctx.setLineDash([]);
 
-        // Outer Aura
-        if (n.data.is_ghost_vault) {
           ctx.beginPath();
-          ctx.arc(n.x, n.y, baseRadius + 6, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(168, 85, 247, 0.25)';
+          ctx.arc(mouse.x, mouse.y, 6, 0, 2 * Math.PI);
+          ctx.fillStyle = '#38bdf8';
           ctx.fill();
-        } else if (isSelected || isHovered) {
+          ctx.restore();
+        }
+      }
+
+      // C. Draw Nodes
+      nodeList.forEach((n) => {
+        const isNodeHovered = hoveredNode?.id === n.id;
+        const isNodeSelected = selectedNode?.id === n.id;
+        const isConnectSource = connectSourceNode?.id === n.id;
+
+        // Outer Aura for selected or hovered nodes
+        if (isNodeSelected || isConnectSource) {
           ctx.beginPath();
-          ctx.arc(n.x, n.y, baseRadius + 5, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+          ctx.arc(n.x, n.y, n.radius + 10, 0, 2 * Math.PI);
+          ctx.fillStyle = isConnectSource ? 'rgba(56, 189, 248, 0.35)' : 'rgba(168, 85, 247, 0.35)';
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.radius + 6, 0, 2 * Math.PI);
+          ctx.strokeStyle = isConnectSource ? '#38bdf8' : '#a855f7';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        } else if (isNodeHovered) {
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.radius + 6, 0, 2 * Math.PI);
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
           ctx.fill();
         }
 
-        // Main Node Fill
+        // Node Circle Body
         ctx.beginPath();
-        ctx.arc(n.x, n.y, baseRadius, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.radius, 0, 2 * Math.PI);
 
-        if (n.data.is_quarantined) {
-          ctx.fillStyle = '#ef4444';
-        } else if (n.data.is_ghost_vault) {
-          ctx.fillStyle = '#a855f7';
-        } else if (n.data.role === 'RELAY') {
-          ctx.fillStyle = '#10b981';
+        if (n.data.role === 'RELAY') {
+          ctx.fillStyle = '#818cf8';
         } else if (n.data.role === 'EXIT_BRIDGE') {
-          ctx.fillStyle = '#6366f1';
-        } else if (n.data.role === 'HYBRID') {
-          ctx.fillStyle = '#06b6d4';
+          ctx.fillStyle = '#a78bfa';
         } else {
           ctx.fillStyle = '#38bdf8';
         }
         ctx.fill();
 
         // Node Border Ring
-        ctx.strokeStyle = isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.7)';
-        ctx.lineWidth = isSelected ? 2.5 : 1.5;
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = isNodeSelected ? '#ffffff' : '#0f172a';
         ctx.stroke();
 
-        // Country code / short label inside
+        // Node Label (Country Code or Initials)
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 9px JetBrains Mono, monospace';
+        ctx.font = 'bold 9px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        const label = n.data.country || 'N';
+        const label = n.data.country || n.data.name?.slice(0, 2).toUpperCase() || 'ND';
         ctx.fillText(label, n.x, n.y);
 
-        // Hostname / Label below node
-        ctx.font = '10px JetBrains Mono, monospace';
-        ctx.fillStyle = isHovered || isSelected ? '#38bdf8' : '#94a3b8';
-        ctx.textBaseline = 'top';
-        const displayName = n.data.name || `Node-${n.id.slice(-6)}`;
-        ctx.fillText(displayName, n.x, n.y + baseRadius + 4);
+        // Hostname / ID Text below node
+        ctx.fillStyle = isNodeHovered || isNodeSelected ? '#f8fafc' : '#94a3b8';
+        ctx.font = isNodeSelected ? 'bold 11px monospace' : '10px monospace';
+        const displayName = n.data.name || n.data.id.slice(0, 10);
+        ctx.fillText(displayName, n.x, n.y + n.radius + 12);
       });
 
       animFrameRef.current = requestAnimationFrame(render);
@@ -505,44 +591,42 @@ export default function TopologyRoute() {
       running = false;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [viewMode, physicsActive, filteredLinks, hoveredNode, selectedNode, hoveredLink, selectedLink]);
+  }, [
+    viewMode,
+    physicsActive,
+    filteredLinks,
+    hoveredNode,
+    selectedNode,
+    hoveredLink,
+    selectedLink,
+    activeTool,
+    connectSourceNode
+  ]);
 
-  // Pointer Interaction Handlers
+  // -------------------------------------------------------------
+  // POINTER INTERACTION HANDLERS (Precise Scaling & Tool Actions)
+  // -------------------------------------------------------------
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
+    const { x, y } = getCanvasCoords(e);
     const simNodes = simNodesRef.current;
-    let clickedNode: SimulationNode | null = null;
 
-    // Check node hit
+    // Check Node Hit
+    let clickedNode: SimulationNode | null = null;
     simNodes.forEach((n) => {
       const dx = n.x - x;
       const dy = n.y - y;
-      if (Math.sqrt(dx * dx + dy * dy) <= n.radius + 6) {
+      if (Math.sqrt(dx * dx + dy * dy) <= n.radius + 14) {
         clickedNode = n;
       }
     });
 
-    if (clickedNode) {
-      clickedNode.isDragging = true;
-      isDraggingAnyRef.current = true;
-      setSelectedNode(clickedNode.data);
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      return;
-    }
-
-    // Check link hit
+    // Check Link Hit
     let clickedLinkObj: { source: TopologyNode; target: TopologyNode; link: TopologyLink } | null = null;
     filteredLinks.forEach((link) => {
       const u = simNodes.get(link.source);
       const v = simNodes.get(link.target);
       if (!u || !v) return;
 
-      // Distance from point (x, y) to segment (u, v)
       const l2 = (v.x - u.x) * (v.x - u.x) + (v.y - u.y) * (v.y - u.y);
       if (l2 === 0) return;
       const tP = Math.max(0, Math.min(1, ((x - u.x) * (v.x - u.x) + (y - u.y) * (v.y - u.y)) / l2));
@@ -550,30 +634,65 @@ export default function TopologyRoute() {
       const projY = u.y + tP * (v.y - u.y);
       const dist = Math.sqrt((x - projX) * (x - projX) + (y - projY) * (y - projY));
 
-      if (dist < 12) {
+      if (dist < 14) {
         clickedLinkObj = { source: u.data, target: v.data, link };
       }
     });
 
-    if (clickedLinkObj) {
-      openLinkEditor(clickedLinkObj.source, clickedLinkObj.target, clickedLinkObj.link);
-    } else {
-      setSelectedNode(null);
-      setSelectedLink(null);
+    // Handle CONNECT Tool
+    if (activeTool === 'CONNECT') {
+      if (clickedNode) {
+        if (!connectSourceNode) {
+          setConnectSourceNode(clickedNode.data);
+        } else if (connectSourceNode.id !== clickedNode.data.id) {
+          // Connected source to target! Open dialog to select transport mode
+          openLinkEditor(connectSourceNode, clickedNode.data);
+          setConnectSourceNode(null);
+          setActiveTool('EXPLORE');
+        }
+      } else {
+        setConnectSourceNode(null);
+      }
+      return;
     }
+
+    // Handle CUT Tool (Immediate Cut on Click)
+    if (activeTool === 'CUT') {
+      if (clickedLinkObj) {
+        handleQuickCutLink(clickedLinkObj.link);
+      }
+      return;
+    }
+
+    // Handle EXPLORE Tool
+    if (clickedNode) {
+      clickedNode.isDragging = true;
+      isDraggingAnyRef.current = true;
+      setSelectedNode(clickedNode.data);
+      setSelectedLink(null);
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
+
+    if (clickedLinkObj) {
+      setSelectedLink(clickedLinkObj);
+      setSelectedNode(null);
+      openLinkEditor(clickedLinkObj.source, clickedLinkObj.target, clickedLinkObj.link);
+      return;
+    }
+
+    // Clicked empty space
+    setSelectedNode(null);
+    setSelectedLink(null);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const { x, y } = getCanvasCoords(e);
     mousePosRef.current = { x, y };
 
     const simNodes = simNodesRef.current;
 
-    // If dragging a node
+    // Handle dragging node
     simNodes.forEach((n) => {
       if (n.isDragging) {
         n.x = x;
@@ -590,7 +709,7 @@ export default function TopologyRoute() {
     simNodes.forEach((n) => {
       const dx = n.x - x;
       const dy = n.y - y;
-      if (Math.sqrt(dx * dx + dy * dy) <= n.radius + 6) {
+      if (Math.sqrt(dx * dx + dy * dy) <= n.radius + 14) {
         foundNode = n.data;
       }
     });
@@ -611,8 +730,8 @@ export default function TopologyRoute() {
         const projY = u.y + tP * (v.y - u.y);
         const dist = Math.sqrt((x - projX) * (x - projX) + (y - projY) * (y - projY));
 
-        if (dist < 10) {
-          foundLink = { source: link.source, target: link.target, x, y, link };
+        if (dist < 14) {
+          foundLink = { source: link.source, target: link.target, x: projX, y: projY, link };
         }
       });
       setHoveredLink(foundLink);
@@ -621,55 +740,70 @@ export default function TopologyRoute() {
     }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    isDraggingAnyRef.current = false;
     simNodesRef.current.forEach((n) => {
       n.isDragging = false;
     });
-    isDraggingAnyRef.current = false;
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
   };
 
   const handlePointerLeave = () => {
     mousePosRef.current = null;
     setHoveredNode(null);
     setHoveredLink(null);
-    handlePointerUp();
+    isDraggingAnyRef.current = false;
+    simNodesRef.current.forEach((n) => {
+      n.isDragging = false;
+    });
   };
 
-  // Table columns for LIST view
-  const columns: TableColumn<TopologyNode>[] = [
+  // Find links connected to selected node
+  const selectedNodeLinks = useMemo(() => {
+    if (!selectedNode) return [];
+    return filteredLinks.filter((l) => l.source === selectedNode.id || l.target === selectedNode.id);
+  }, [selectedNode, filteredLinks]);
+
+  // List View Columns
+  const listColumns: TableColumn<TopologyNode>[] = [
     {
-      id: 'name',
-      header: 'Nome Nodo',
+      header: 'Dispositivo',
       cell: (row) => (
         <div className="flex items-center gap-2">
-          <Server className="h-4 w-4 text-accent" />
-          <span className="font-mono font-medium">{row.name || `Node-${row.id.slice(-6)}`}</span>
-          {row.is_ghost_vault && <Badge variant="warning">Ghost Vault</Badge>}
+          <span className="font-mono text-sm font-semibold text-slate-100">{row.name || row.id}</span>
+          {row.is_ghost_vault && (
+            <Badge variant="warning" className="text-[10px]">Ghost Vault</Badge>
+          )}
         </div>
       )
     },
     {
-      id: 'role',
-      header: 'Ruolo Mesh',
-      cell: (row) => <Badge variant={row.role === 'RELAY' ? 'success' : 'neutral'}>{row.role}</Badge>
+      header: 'Ruolo',
+      cell: (row) => <Badge variant={row.role === 'RELAY' ? 'info' : 'neutral'}>{row.role}</Badge>
     },
     {
-      id: 'country',
-      header: 'Nazione',
-      cell: (row) => <CodeText>{row.country || 'N/A'}</CodeText>
+      header: 'Overlay IP',
+      cell: (row) => <CodeText>{row.overlay_ipv4 || '—'}</CodeText>
     },
     {
-      id: 'ip',
-      header: 'VIP Overlay',
-      cell: (row) => <CodeText>{row.overlay_ipv4 || '-'}</CodeText>
+      header: 'Paese',
+      cell: (row) => <span className="font-mono text-xs">{row.country || 'Global'}</span>
     },
     {
-      id: 'status',
+      header: 'Latenza',
+      cell: (row) => (
+        <span className="font-mono text-xs text-slate-300">
+          {row.latency_ms ? `${row.latency_ms} ms` : '—'}
+        </span>
+      )
+    },
+    {
       header: 'Stato',
       cell: (row) => (
         <StatusBadge
-          status={row.is_quarantined ? 'quarantined' : row.is_healthy ? 'online' : 'offline'}
-          label={row.is_quarantined ? 'In Quarantena' : row.is_healthy ? 'Attivo' : 'Disconnesso'}
+          status={row.is_quarantined ? 'quarantined' : row.is_healthy ? 'healthy' : 'degraded'}
         />
       )
     }
@@ -678,294 +812,341 @@ export default function TopologyRoute() {
   return (
     <PageFrame>
       <PageHeader
-        title="Topologia Mesh Sovrana"
-        subtitle="Ragnatela 2D dinamica a fisica attiva, routing P2P, relay DERP e isolamento Zero-Trust"
-        badge={
-          <Badge variant={isUnlocked ? 'warning' : 'neutral'}>
-            {isUnlocked ? 'Ghost Vaults Sbloccati' : 'Mesh Standard'}
-          </Badge>
-        }
+        title="Topologia di Rete Sovrana"
+        description="Mappa interattiva della mesh a ragnatela con fisica vettoriale. Seleziona nodi, taglia fili, traccia collegamenti e configura la modalità di trasporto."
         actions={
           <div className="flex items-center gap-2">
-            {isUnlocked ? (
-              <Button variant="secondary" onClick={handleLockVaults}>
-                <Lock className="mr-1.5 h-4 w-4" />
-                Blocca Vault
-              </Button>
-            ) : (
-              <Button variant="secondary" onClick={() => setUnlockDialogOpen(true)}>
-                <KeyRound className="mr-1.5 h-4 w-4" />
-                Sblocca Ghost Vault
-              </Button>
-            )}
             <Button
               variant={viewMode === 'CANVAS' ? 'primary' : 'secondary'}
-              onClick={() => setViewMode(viewMode === 'CANVAS' ? 'LIST' : 'CANVAS')}
+              size="sm"
+              onClick={() => setViewMode('CANVAS')}
             >
-              {viewMode === 'CANVAS' ? <List className="mr-1.5 h-4 w-4" /> : <Network className="mr-1.5 h-4 w-4" />}
-              {viewMode === 'CANVAS' ? 'Vista Lista' : 'Vista Ragnatela'}
+              <Network className="mr-1.5 h-4 w-4" /> Canvas Ragnatela
             </Button>
+            <Button
+              variant={viewMode === 'LIST' ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => setViewMode('LIST')}
+            >
+              <List className="mr-1.5 h-4 w-4" /> Elenco Nodi
+            </Button>
+            {isUnlocked ? (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => lockMutation.mutate()}
+                loading={lockMutation.isPending}
+              >
+                <Lock className="mr-1.5 h-4 w-4" /> Blocca Ghost Vault
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setUnlockDialogOpen(true)}
+              >
+                <KeyRound className="mr-1.5 h-4 w-4" /> Sblocca Ghost Vault
+              </Button>
+            )}
           </div>
         }
       />
 
-      {/* Top Filter Bar */}
-      <Card className="mb-6 p-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted" />
-            <Input
-              className="pl-9"
-              placeholder="Cerca per nome, IP o ID..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <Select
-            value={selectedRole}
-            onChange={(val) => setSelectedRole(val as RoleFilter)}
-            options={[
-              { value: 'ALL', label: 'Tutti i Ruoli' },
-              { value: 'CLIENT_ORIGIN', label: 'Client Origin' },
-              { value: 'EXIT_BRIDGE', label: 'Exit Bridge' },
-              { value: 'RELAY', label: 'Relay Nodes' }
-            ]}
-          />
-          <Select
-            value={selectedCompartment}
-            onChange={(val) => setSelectedCompartment(val)}
-            options={[
-              { value: 'ALL', label: 'Tutti i Compartimenti' },
-              ...compartments.map((c) => ({ value: c.id, label: c.name }))
-            ]}
-          />
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setPhysicsActive(!physicsActive)}
-              title={physicsActive ? 'Pausa Fisica' : 'Avvia Fisica'}
-            >
-              {physicsActive ? <Pause className="h-4 w-4 text-accent" /> : <Play className="h-4 w-4" />}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={resetLayout} title="Ripristina Layout">
-              <RotateCcw className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              title={isFullscreen ? 'Riduci' : 'Schermo Intero'}
-            >
-              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            </Button>
-          </div>
-        </div>
-      </Card>
+      {/* Top Controls & Metrics */}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Nodi nel Grafo" value={filteredNodes.length} />
+        <Stat label="Collegamenti Ragnatela" value={filteredLinks.filter(l => l.is_visible !== false).length} />
+        <Stat label="Collegamenti Tagliati" value={filteredLinks.filter(l => l.is_visible === false).length} />
+        <Stat
+          label="Topologia Mesh"
+          value="Attiva (100%)"
+          description="Crittografia WireGuard P2P"
+        />
+      </div>
 
-      {/* Main View Area */}
       {viewMode === 'CANVAS' ? (
-        <div className="relative">
-          <Card className="relative overflow-hidden border border-border bg-slate-950/70 p-0 shadow-2xl">
-            {/* Canvas Element with cursor dynamics */}
-            <canvas
-              ref={canvasRef}
-              width={1100}
-              height={620}
-              className="w-full cursor-crosshair touch-none select-none"
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerLeave={handlePointerLeave}
-            />
+        <Card className="relative overflow-hidden border border-border bg-slate-950/80 p-0 shadow-2xl">
+          {/* Top Interactive Toolset Header */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-slate-900/90 px-4 py-2.5 backdrop-blur-md">
+            {/* Tool Selection Segmented Pill */}
+            <div className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 p-1">
+              <button
+                type="button"
+                onClick={() => { setActiveTool('EXPLORE'); setConnectSourceNode(null); }}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                  activeTool === 'EXPLORE'
+                    ? 'bg-sky-500 text-white shadow'
+                    : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+                }`}
+              >
+                <Hand className="h-3.5 w-3.5" /> Esplora / Sposta
+              </button>
 
-            {/* Quick interactive hint */}
-            <div className="pointer-events-none absolute bottom-3 left-4 flex items-center gap-3 text-xs font-mono text-slate-400">
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" /> Trascina i nodi per muovere la ragnatela
-              </span>
-              <span>•</span>
-              <span>Muovi il mouse per respingere e far vibrare i fili</span>
-              <span>•</span>
-              <span>Clicca su una linea per configurare routing e visibilità</span>
+              <button
+                type="button"
+                onClick={() => { setActiveTool('CUT'); setConnectSourceNode(null); }}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                  activeTool === 'CUT'
+                    ? 'bg-rose-600 text-white shadow'
+                    : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+                }`}
+              >
+                <Scissors className="h-3.5 w-3.5" /> ✂️ Taglia Fili
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setActiveTool('CONNECT'); }}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                  activeTool === 'CONNECT'
+                    ? 'bg-indigo-600 text-white shadow'
+                    : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+                }`}
+              >
+                <Link2 className="h-3.5 w-3.5" /> 🔗 Collega Nodi
+              </button>
             </div>
 
-            {/* Link Hover Tooltip */}
-            {hoveredLink && (
-              <div
-                className="pointer-events-none absolute z-20 rounded-md bg-slate-900/90 px-3 py-1.5 font-mono text-xs text-sky-300 shadow-xl border border-sky-500/30 backdrop-blur-md"
-                style={{ left: Math.min(hoveredLink.x + 15, 950), top: Math.max(hoveredLink.y - 30, 20) }}
+            {/* Quick Actions & Physics Toggle */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleReconnectAll}
+                loading={reconnectAllMutation.isPending}
+                title="Ripristina tutti i collegamenti tagliati nel mesh"
               >
-                🔗 Clicca per configurare collegamento [{hoveredLink.source.slice(-6)} ↔ {hoveredLink.target.slice(-6)}]
-              </div>
-            )}
-          </Card>
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Riconnetti Tutto
+              </Button>
 
-          {/* Selected Node Drawer / Info Card */}
-          {selectedNode && (
-            <Card className="mt-4 p-4 border-l-4 border-l-sky-500">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-full bg-sky-500/20 p-2 text-sky-400">
-                    <Server className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-mono text-base font-bold text-content">
-                      {selectedNode.name || `Node-${selectedNode.id.slice(-6)}`}
-                    </h4>
-                    <p className="font-mono text-xs text-muted">ID: {selectedNode.id} | VIP: {selectedNode.overlay_ipv4 || '-'}</p>
-                  </div>
-                </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPhysicsActive(!physicsActive)}
+              >
+                {physicsActive ? (
+                  <>
+                    <Pause className="mr-1.5 h-3.5 w-3.5 text-amber-400" /> Ferma Fisica
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-1.5 h-3.5 w-3.5 text-emerald-400" /> Avvia Fisica
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
 
-                <div className="flex items-center gap-3">
-                  <Badge variant={selectedNode.role === 'RELAY' ? 'success' : 'neutral'}>
-                    {selectedNode.role}
-                  </Badge>
-                  <CodeText>{selectedNode.country || 'N/A'}</CodeText>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => navigate(nodePath(selectedNode.id))}
-                  >
-                    Dettagli Nodo <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            </Card>
+          {/* Active Tool Notification Banner */}
+          {activeTool === 'CUT' && (
+            <div className="bg-rose-950/70 border-b border-rose-800/50 px-4 py-2 text-xs font-mono text-rose-300 flex items-center justify-between">
+              <span>✂️ <strong>MODALITÀ FORBICI ATTIVA:</strong> Clicca su qualsiasi linea per tagliarla all'istante e isolare il traffico tra i due nodi.</span>
+              <button onClick={() => setActiveTool('EXPLORE')} className="underline hover:text-white">Esci</button>
+            </div>
           )}
-        </div>
+
+          {activeTool === 'CONNECT' && (
+            <div className="bg-indigo-950/70 border-b border-indigo-800/50 px-4 py-2 text-xs font-mono text-indigo-300 flex items-center justify-between">
+              <span>
+                🔗 <strong>MODALITÀ COLLEGAMENTO:</strong> {connectSourceNode ? `Nodo sorgente selezionato (${connectSourceNode.name || connectSourceNode.id}). Ora clicca sul nodo destinazione.` : 'Clicca sul primo nodo da collegare.'}
+              </span>
+              <button onClick={() => { setActiveTool('EXPLORE'); setConnectSourceNode(null); }} className="underline hover:text-white">Annulla</button>
+            </div>
+          )}
+
+          {/* Canvas Element with cursor dynamics */}
+          <canvas
+            ref={canvasRef}
+            width={1100}
+            height={620}
+            className={`w-full touch-none select-none ${
+              activeTool === 'CUT' ? 'cursor-crosshair' : activeTool === 'CONNECT' ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'
+            }`}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerLeave}
+          />
+
+          {/* Legend and Hints Bar */}
+          <div className="pointer-events-none absolute bottom-3 left-4 flex flex-wrap items-center gap-4 text-xs font-mono text-slate-400">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-sky-400" /> Direct WireGuard
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" /> DERP Relay
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-purple-400" /> OpenVPN Stealth
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-rose-500" /> Reciso / Tagliato
+            </span>
+          </div>
+
+          {/* Floating Selected Node Card (Side Drawer Overlay) */}
+          {selectedNode && (
+            <div className="absolute top-16 right-4 w-80 rounded-xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-md z-20">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                    <h4 className="font-mono text-sm font-bold text-white">{selectedNode.name || selectedNode.id}</h4>
+                  </div>
+                  <p className="mt-0.5 font-mono text-xs text-slate-400">{selectedNode.overlay_ipv4}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedNode(null)}
+                  className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded bg-slate-800/80 p-2">
+                  <span className="text-slate-400 block text-[10px]">Ruolo</span>
+                  <span className="font-semibold text-sky-400">{selectedNode.role}</span>
+                </div>
+                <div className="rounded bg-slate-800/80 p-2">
+                  <span className="text-slate-400 block text-[10px]">Paese</span>
+                  <span className="font-semibold text-white">{selectedNode.country || 'Global'}</span>
+                </div>
+              </div>
+
+              {/* Connections list */}
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-xs text-slate-300 font-medium mb-1.5">
+                  <span>Collegamenti Attivi ({selectedNodeLinks.filter(l => l.is_visible !== false).length})</span>
+                </div>
+                <div className="max-h-32 overflow-y-auto space-y-1 text-xs font-mono">
+                  {selectedNodeLinks.map((l) => {
+                    const peerId = l.source === selectedNode.id ? l.target : l.source;
+                    const peerNode = nodes.find(n => n.id === peerId);
+                    const isCut = l.is_visible === false;
+                    return (
+                      <div key={`${l.source}-${l.target}`} className="flex items-center justify-between rounded bg-slate-800/50 px-2 py-1">
+                        <span className={isCut ? 'text-rose-400 line-through' : 'text-slate-200'}>
+                          {peerNode?.name || peerId.slice(0, 10)}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-sky-400 uppercase">{l.mode || 'direct'}</span>
+                          {isCut ? (
+                            <button
+                              onClick={() => handleQuickReconnectLink(l)}
+                              className="text-xs text-emerald-400 hover:text-emerald-300 font-bold"
+                              title="Riconnetti"
+                            >
+                              🔗
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleQuickCutLink(l)}
+                              className="text-xs text-rose-400 hover:text-rose-300 font-bold"
+                              title="Taglia"
+                            >
+                              ✂️
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="mt-4 flex flex-col gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    setConnectSourceNode(selectedNode);
+                    setActiveTool('CONNECT');
+                  }}
+                >
+                  <Link2 className="mr-1.5 h-3.5 w-3.5" /> Collega ad un altro nodo
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => navigate(nodePath(selectedNode.id))}
+                >
+                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Scheda Dispositivo
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
       ) : (
-        <Card className="p-4">
-          <Table columns={columns} data={filteredNodes} keyField="id" />
+        <Card>
+          <Table columns={listColumns} data={filteredNodes} keyExtractor={(row) => row.id} />
         </Card>
       )}
 
-      {/* Link Configuration Dialog (Modalità Routing & Visibilità) */}
+      {/* LINK CONFIGURATION & MODE CHANGER MODAL */}
       <Dialog
         isOpen={linkModalOpen}
         onClose={() => setLinkModalOpen(false)}
-        title="Configurazione Connessione Mesh Tra Dispositivi"
+        title="Configura Canale Mesh P2P"
       >
-        {selectedLink && (
-          <div className="space-y-5">
-            {/* Device Pair Summary */}
-            <div className="flex items-center justify-between rounded-lg bg-surface-raised p-3 border border-border">
-              <div className="text-left">
-                <span className="text-xs text-muted font-mono block">Dispositivo A</span>
-                <span className="font-mono font-bold text-content">{selectedLink.source.name || selectedLink.source.id.slice(-8)}</span>
-                <span className="text-xs text-sky-400 block font-mono">{selectedLink.source.overlay_ipv4}</span>
+        {editSourceNode && editTargetNode && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-slate-900/60 p-3">
+              <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+                <span>Dispositivo A</span>
+                <span>Dispositivo B</span>
               </div>
-              <ArrowRightLeft className="h-5 w-5 text-accent animate-pulse" />
-              <div className="text-right">
-                <span className="text-xs text-muted font-mono block">Dispositivo B</span>
-                <span className="font-mono font-bold text-content">{selectedLink.target.name || selectedLink.target.id.slice(-8)}</span>
-                <span className="text-xs text-sky-400 block font-mono">{selectedLink.target.overlay_ipv4}</span>
+              <div className="flex items-center justify-between font-mono font-bold text-white text-sm">
+                <span>{editSourceNode.name || editSourceNode.id.slice(0, 12)}</span>
+                <ArrowRightLeft className="h-4 w-4 text-sky-400" />
+                <span>{editTargetNode.name || editTargetNode.id.slice(0, 12)}</span>
               </div>
             </div>
 
-            {/* Routing Mode Selector */}
-            <FormField label="Modalità di Trasporto & Instradamento" htmlFor="routing-mode">
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditMode('direct')}
-                  className={`rounded-lg p-3 text-left border transition-all ${
-                    editMode === 'direct'
-                      ? 'border-sky-500 bg-sky-500/10 text-sky-300'
-                      : 'border-border bg-surface hover:border-slate-600'
-                  }`}
-                >
-                  <div className="font-mono font-bold text-sm flex items-center gap-1.5">
-                    <Zap className="h-4 w-4" /> Direct WireGuard
-                  </div>
-                  <p className="text-xs text-muted mt-1">Connessione P2P netstack diretta, minima latenza.</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setEditMode('derp')}
-                  className={`rounded-lg p-3 text-left border transition-all ${
-                    editMode === 'derp'
-                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
-                      : 'border-border bg-surface hover:border-slate-600'
-                  }`}
-                >
-                  <div className="font-mono font-bold text-sm flex items-center gap-1.5">
-                    <Radio className="h-4 w-4" /> DERP Relay Proxy
-                  </div>
-                  <p className="text-xs text-muted mt-1">Transito via server DERP cifrato per bypass NAT.</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setEditMode('openvpn')}
-                  className={`rounded-lg p-3 text-left border transition-all ${
-                    editMode === 'openvpn'
-                      ? 'border-purple-500 bg-purple-500/10 text-purple-300'
-                      : 'border-border bg-surface hover:border-slate-600'
-                  }`}
-                >
-                  <div className="font-mono font-bold text-sm flex items-center gap-1.5">
-                    <Shield className="h-4 w-4" /> OpenVPN / Stealth TLS
-                  </div>
-                  <p className="text-xs text-muted mt-1">Camouflage porta 443 TLS contro Deep Packet Inspection.</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setEditMode('onion')}
-                  className={`rounded-lg p-3 text-left border transition-all ${
-                    editMode === 'onion'
-                      ? 'border-amber-500 bg-amber-500/10 text-amber-300'
-                      : 'border-border bg-surface hover:border-slate-600'
-                  }`}
-                >
-                  <div className="font-mono font-bold text-sm flex items-center gap-1.5">
-                    <Workflow className="h-4 w-4" /> Onion Multi-Hop
-                  </div>
-                  <p className="text-xs text-muted mt-1">Circuito anonimo a 3 salti con routing a cipolla.</p>
-                </button>
-              </div>
+            <FormField label="Modalità di Trasporto Overlay">
+              <Select
+                value={editMode}
+                onChange={(e) => setEditMode(e.target.value as RoutingMode)}
+              >
+                <option value="direct">⚡ Direct WireGuard (P2P kernel/userspace)</option>
+                <option value="derp">🌐 DERP Relay di passaggio (Bypass NAT simmetrico)</option>
+                <option value="openvpn">🔒 OpenVPN Stealth Tunnel (TLS 443 mimicry)</option>
+                <option value="onion">🧅 Onion Multi-Hop Circuit (3-hop routing)</option>
+              </Select>
             </FormField>
 
-            {/* DERP Relay Choice if in DERP mode */}
             {editMode === 'derp' && (
-              <FormField label="Seleziona DERP Relay di Passaggio" htmlFor="select-derp">
+              <FormField label="Relay DERP di Passaggio">
                 <Select
                   value={editRelay}
-                  onChange={(val) => setEditRelay(val)}
-                  options={[
-                    { value: 'derp-eu', label: 'derp-eu (Francoforte, Germania - 8444/TCP 3478/UDP)' },
-                    { value: 'derp-us', label: 'derp-us (New York, USA - 8445/TCP 3479/UDP)' }
-                  ]}
-                />
+                  onChange={(e) => setEditRelay(e.target.value)}
+                >
+                  <option value="derp-eu">derp-eu (Francoforte, Germania - 8444/3478)</option>
+                  <option value="derp-us">derp-us (New York, USA - 8445/3479)</option>
+                </Select>
               </FormField>
             )}
 
-            {/* Visibility / Zero-Trust Isolation Toggle */}
-            <div className="rounded-lg bg-surface-raised p-4 border border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h5 className="font-mono font-bold text-sm text-content flex items-center gap-2">
-                    {editVisible ? <Eye className="h-4 w-4 text-emerald-400" /> : <EyeOff className="h-4 w-4 text-red-400" />}
-                    Visibilità Reciproca nel Mesh
-                  </h5>
-                  <p className="text-xs text-muted mt-1">
-                    {editVisible
-                      ? 'I dispositivi sono visibili nella Netmap e autorizzati a scambiare traffico crittografato.'
-                      : 'Isola i due dispositivi: le route vengono rimosse e la regola ACL DROP blocca ogni pacchetto.'}
-                  </p>
-                </div>
-                <Switch
-                  checked={editVisible}
-                  onChange={(checked) => setEditVisible(checked)}
-                  label="Visibilità"
-                />
+            <div className="flex items-center justify-between rounded-lg border border-border bg-slate-900/40 p-3">
+              <div>
+                <span className="text-sm font-medium text-slate-200 block">Stato Connessione nel Mesh</span>
+                <span className="text-xs text-slate-400">
+                  {editVisible ? 'I due nodi comunicano normalmente.' : 'Connessione tagliata: regola DROP attiva nel firewall.'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={editVisible ? 'danger' : 'primary'}
+                  size="sm"
+                  onClick={() => setEditVisible(!editVisible)}
+                >
+                  {editVisible ? <><Scissors className="mr-1 h-3.5 w-3.5" /> Taglia Filo</> : <><Link2 className="mr-1 h-3.5 w-3.5" /> Riconnetti</>}
+                </Button>
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex justify-end gap-3 pt-3 border-t border-border">
+            <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" onClick={() => setLinkModalOpen(false)}>
                 Annulla
               </Button>
@@ -974,46 +1155,48 @@ export default function TopologyRoute() {
                 onClick={handleSaveLink}
                 loading={updateLinkMutation.isPending}
               >
-                <CheckCircle2 className="mr-1.5 h-4 w-4" />
-                Salva Modifiche
+                <CheckCircle2 className="mr-1.5 h-4 w-4" /> Salva Modifiche
               </Button>
             </div>
           </div>
         )}
       </Dialog>
 
-      {/* Ghost Vault Unlock Dialog */}
+      {/* Ghost Vault Unlock Modal */}
       <Dialog
         isOpen={unlockDialogOpen}
         onClose={() => setUnlockDialogOpen(false)}
-        title="Sblocca Ghost Vault Crittografici"
+        title="Sblocca Ghost Vault"
       >
-        <form onSubmit={handleUnlockSubmit} className="space-y-4">
-          <p className="text-sm text-muted">
-            Inserisci la passphrase del compartimento per elevare la sessione a livello root e renderizzare i nodi invisibili.
-          </p>
-          <FormField label="Passphrase Compartimento Segreto" htmlFor="vault-password">
+        <div className="space-y-4">
+          <FormField label="Password Master Ghost Vault" error={unlockError || undefined}>
             <Input
-              id="vault-password"
               type="password"
               value={vaultPassword}
               onChange={(e) => setVaultPassword(e.target.value)}
-              placeholder="••••••••••••••••"
-              autoFocus
+              placeholder="Inserisci password crittografica"
             />
           </FormField>
-          {unlockError && (
-            <p className="text-xs text-danger font-mono">{unlockError}</p>
-          )}
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setUnlockDialogOpen(false)}>
               Annulla
             </Button>
-            <Button variant="primary" type="submit" loading={unlockMutation.isPending}>
+            <Button
+              variant="primary"
+              onClick={async () => {
+                try {
+                  await unlockMutation.mutateAsync(vaultPassword);
+                  setUnlockDialogOpen(false);
+                } catch {
+                  setUnlockError('Password non valida o mancata autorizzazione');
+                }
+              }}
+              loading={unlockMutation.isPending}
+            >
               Sblocca
             </Button>
           </div>
-        </form>
+        </div>
       </Dialog>
     </PageFrame>
   );
