@@ -285,6 +285,9 @@ export interface TopologyLink {
   source: string;
   target: string;
   protocol?: string;
+  mode?: 'direct' | 'derp' | 'openvpn' | 'onion';
+  relay_id?: string | null;
+  is_visible?: boolean;
   [key: string]: unknown;
 }
 

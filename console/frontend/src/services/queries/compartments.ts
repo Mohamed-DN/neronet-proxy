@@ -91,3 +91,31 @@ export function useLockGhostVaults() {
     }
   });
 }
+
+export interface UpdateTopologyLinkPayload {
+  source_node_id: string;
+  target_node_id: string;
+  mode: 'direct' | 'derp' | 'openvpn' | 'onion';
+  relay_id?: string | null;
+  is_visible?: boolean;
+}
+
+/**
+ * Configure peer-to-peer routing mode or toggle mesh visibility between two nodes.
+ */
+export function useUpdateTopologyLink() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: UpdateTopologyLinkPayload) => {
+      return apiRequest<{ success: boolean; link: unknown }>('/stats/topology/link', {
+        method: 'POST',
+        body: payload
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.statsTopology });
+      queryClient.invalidateQueries({ queryKey: queryKeys.acls });
+    }
+  });
+}

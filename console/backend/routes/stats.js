@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+const { publishTopologyEvent } = require('../services/TopologySync');
 const express = require('express');
 const router = express.Router();
 const { getPgPool } = require('../db/index');
@@ -319,6 +321,18 @@ async function compileTopologyLinks(nodes) {
     if (n.overlay_ipv4) byVip.set(n.overlay_ipv4, n.id);
   }
 
+  const pool = getPgPool();
+  const cfgMap = new Map();
+  try {
+    const cfgRes = await pool.query('SELECT source_node_id, target_node_id, mode, relay_id, is_visible FROM mesh_link_configs');
+    for (const r of cfgRes.rows) {
+      cfgMap.set(`${r.source_node_id}|${r.target_node_id}`, r);
+      cfgMap.set(`${r.target_node_id}|${r.source_node_id}`, r);
+    }
+  } catch {
+    // Ignore in environments without table
+  }
+
   const seen = new Set();
   const links = [];
   let policyIsOpen = false;
@@ -327,8 +341,6 @@ async function compileTopologyLinks(nodes) {
     const policy = await AclEngine.compilePolicyFor(node.id);
     if (!policy) continue;
 
-    // An allow-all compilation is marked by non-directional rules, which is what
-    // AclEngine emits when the rule table is empty.
     if (policy.outbound_rules.some((r) => r.is_directional === false)) {
       policyIsOpen = true;
     }
@@ -343,7 +355,19 @@ async function compileTopologyLinks(nodes) {
       if (seen.has(key)) continue;
       seen.add(key);
 
-      links.push({ source: node.id, target: peerId, protocol: rule.protocol });
+      const cfg = cfgMap.get(`${node.id}|${peerId}`);
+      const mode = cfg ? cfg.mode : 'direct';
+      const relayId = cfg ? cfg.relay_id : null;
+      const isVisible = cfg ? Boolean(cfg.is_visible) : true;
+
+      links.push({
+        source: node.id,
+        target: peerId,
+        protocol: rule.protocol,
+        mode,
+        relay_id: relayId,
+        is_visible: isVisible
+      });
     }
   }
 
@@ -351,6 +375,108 @@ async function compileTopologyLinks(nodes) {
 }
 
 router.get('/topology', topologyHandler);
+
+// GET /api/stats/topology/links
+router.get('/topology/links', async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const q = await pool.query('SELECT * FROM mesh_link_configs ORDER BY updated_at DESC');
+    return res.status(200).json({ links: q.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/stats/topology/link
+router.post('/topology/link', async (req, res, next) => {
+  try {
+    const { source_node_id, target_node_id, mode = 'direct', relay_id = null, is_visible = true } = req.body;
+    if (!source_node_id || !target_node_id) {
+      return res.status(400).json({ error: 'source_node_id and target_node_id are required' });
+    }
+    const pool = getPgPool();
+    const validModes = ['direct', 'derp', 'openvpn', 'onion'];
+    const chosenMode = validModes.includes(mode) ? mode : 'direct';
+    const visible = Boolean(is_visible);
+
+    const id1 = `lnk-${crypto.randomBytes(8).toString('hex')}`;
+    const id2 = `lnk-${crypto.randomBytes(8).toString('hex')}`;
+
+    await pool.query(
+      `INSERT INTO mesh_link_configs (id, source_node_id, target_node_id, mode, relay_id, is_visible, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       ON CONFLICT (source_node_id, target_node_id)
+       DO UPDATE SET mode = $4, relay_id = $5, is_visible = $6, updated_at = NOW()`,
+      [id1, source_node_id, target_node_id, chosenMode, relay_id || null, visible]
+    );
+
+    await pool.query(
+      `INSERT INTO mesh_link_configs (id, source_node_id, target_node_id, mode, relay_id, is_visible, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       ON CONFLICT (source_node_id, target_node_id)
+       DO UPDATE SET mode = $4, relay_id = $5, is_visible = $6, updated_at = NOW()`,
+      [id2, target_node_id, source_node_id, chosenMode, relay_id || null, visible]
+    );
+
+    if (!visible) {
+      const sNode = (await pool.query('SELECT overlay_ipv4 FROM nodes WHERE id = $1', [source_node_id])).rows[0];
+      const tNode = (await pool.query('SELECT overlay_ipv4 FROM nodes WHERE id = $1', [target_node_id])).rows[0];
+      if (sNode?.overlay_ipv4 && tNode?.overlay_ipv4) {
+        const dropId1 = `acl-iso-${crypto.randomBytes(6).toString('hex')}`;
+        const dropId2 = `acl-iso-${crypto.randomBytes(6).toString('hex')}`;
+        await pool.query(
+          `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, enabled)
+           VALUES ($1, 5, $2, $3, 'ALL', 0, 65535, 'DROP', 'Node explicit isolation', TRUE)
+           ON CONFLICT DO NOTHING`,
+          [dropId1, `${sNode.overlay_ipv4}/32`, `${tNode.overlay_ipv4}/32`]
+        );
+        await pool.query(
+          `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, enabled)
+           VALUES ($1, 5, $2, $3, 'ALL', 0, 65535, 'DROP', 'Node explicit isolation', TRUE)
+           ON CONFLICT DO NOTHING`,
+          [dropId2, `${tNode.overlay_ipv4}/32`, `${sNode.overlay_ipv4}/32`]
+        );
+      }
+    } else {
+      const sNode = (await pool.query('SELECT overlay_ipv4 FROM nodes WHERE id = $1', [source_node_id])).rows[0];
+      const tNode = (await pool.query('SELECT overlay_ipv4 FROM nodes WHERE id = $1', [target_node_id])).rows[0];
+      if (sNode?.overlay_ipv4 && tNode?.overlay_ipv4) {
+        await pool.query(
+          `DELETE FROM acl_rules WHERE description = 'Node explicit isolation' AND (
+            (source_cidr = $1 AND destination_cidr = $2) OR
+            (source_cidr = $2 AND destination_cidr = $1)
+          )`,
+          [`${sNode.overlay_ipv4}/32`, `${tNode.overlay_ipv4}/32`]
+        );
+      }
+    }
+
+    await pool.query("UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = NOW() WHERE name = 'acl'");
+
+    await publishTopologyEvent({
+      event: 'TOPOLOGY_LINK_CONFIG_UPDATED',
+      source_node_id,
+      target_node_id,
+      mode: chosenMode,
+      relay_id: relay_id || null,
+      is_visible: visible,
+      timestamp: new Date().toISOString()
+    }).catch(() => {});
+
+    return res.status(200).json({
+      success: true,
+      link: {
+        source_node_id,
+        target_node_id,
+        mode: chosenMode,
+        relay_id: relay_id || null,
+        is_visible: visible
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // 5. Audit Logs / Events
 async function auditLogsHandler(req, res, next) {
