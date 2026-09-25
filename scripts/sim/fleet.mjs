@@ -17,7 +17,7 @@ import { link, modelFromCatalogue } from './latency.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 // The fleet enrols against the backend directly, not through the console's nginx. The
-// /v4 location in console/frontend/nginx.conf forwards no X-Forwarded-For, so behind it
+// /v4 location in console/frontend/nginx.conf.template forwards no X-Forwarded-For, so behind it
 // every node shares one source address and one budget of the 60-requests-a-minute
 // limiter on /v4/control: about 15 nodes heartbeating every 15 s saturate it. Direct,
 // each node is metered under its own container address, as separate devices would be.
