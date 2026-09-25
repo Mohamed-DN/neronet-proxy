@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Check, Cpu, Lock, Save, Shield } from 'lucide-react';
 
 import { Badge, Button, Card, FormField, Input, PageHeader, Select, StatusBadge, Switch } from '../../ui';
+import { GlossaryHint } from '../GlossaryHint';
 
 export default function SettingsRoute() {
   const { t } = useTranslation();
@@ -76,6 +77,12 @@ export default function SettingsRoute() {
               <div className="flex items-center gap-2 font-bold text-content text-sm">
                 <Shield className="h-4 w-4 text-accent" />
                 <span>{t('settings.sectionTraffic', 'Advanced Traffic & Stealth Routing')}</span>
+                <GlossaryHint
+                  text={t('glossary.onion.body')}
+                  label={t('glossary.ariaLabel', {
+                    term: t('glossary.onion.term')
+                  })}
+                />
               </div>
               <StatusBadge status="ok" label="Active" />
             </div>
@@ -104,7 +111,10 @@ export default function SettingsRoute() {
                       value: 'vless-reality',
                       label: t('settings.optVless', 'VLESS Reality (Zero-RTT Server Name Indication)')
                     },
-                    { value: 'quic-masque', label: t('settings.optMasque', 'QUIC MASQUE (HTTP/3 Datagram Tunneling)') },
+                    {
+                      value: 'quic-masque',
+                      label: t('settings.optMasque', 'QUIC MASQUE (HTTP/3 Datagram Tunneling)')
+                    },
                     {
                       value: 'amnezia-wg',
                       label: t('settings.optAmnezia', 'AmneziaWG (Junk Packet Prefix & Custom Header Magic)')
@@ -176,8 +186,14 @@ export default function SettingsRoute() {
                   value={cipherSuite}
                   onValueChange={setCipherSuite}
                   options={[
-                    { value: 'chacha20-poly1305', label: 'ChaCha20-Poly1305 (RFC 8439)' },
-                    { value: 'aes-256-gcm', label: 'AES-256-GCM (Hardware Accel)' }
+                    {
+                      value: 'chacha20-poly1305',
+                      label: 'ChaCha20-Poly1305 (RFC 8439)'
+                    },
+                    {
+                      value: 'aes-256-gcm',
+                      label: 'AES-256-GCM (Hardware Accel)'
+                    }
                   ]}
                 />
               </FormField>

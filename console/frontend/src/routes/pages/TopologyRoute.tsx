@@ -5,6 +5,7 @@ import { ExternalLink, KeyRound, List, Lock, Network, Search, ShieldAlert } from
 
 import { PageFrame } from '../PageFrame';
 import { PageHeader } from '../../ui/PageHeader';
+import { GlossaryHint } from '../GlossaryHint';
 import { nodePath } from '../paths';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
@@ -51,7 +52,11 @@ function layoutNodes(nodes: TopologyNode[]): PlacedNode[] {
   }
   return nodes.map((node, i) => {
     const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
-    return { node, x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
+    return {
+      node,
+      x: cx + radius * Math.cos(angle),
+      y: cy + radius * Math.sin(angle)
+    };
   });
 }
 
@@ -178,7 +183,8 @@ export function TopologyRoute() {
     {
       id: 'overlayIp',
       header: t('topology.nodeDrawer.overlayIp'),
-      cell: (row) => (row.overlay_ipv4 ? <CodeText>{row.overlay_ipv4}</CodeText> : <span className="text-muted">—</span>)
+      cell: (row) =>
+        row.overlay_ipv4 ? <CodeText>{row.overlay_ipv4}</CodeText> : <span className="text-muted">—</span>
     },
     {
       id: 'country',
@@ -337,7 +343,9 @@ export function TopologyRoute() {
                     const v = positionById.get(link.target);
                     if (!u || !v) return null;
                     const isCut = link.is_visible === false;
-                    const modeClass = isCut ? 'stroke-border-strong' : (LINK_MODE_STROKE[link.mode ?? 'direct'] ?? 'stroke-border-strong');
+                    const modeClass = isCut
+                      ? 'stroke-border-strong'
+                      : (LINK_MODE_STROKE[link.mode ?? 'direct'] ?? 'stroke-border-strong');
                     return (
                       <line
                         key={`${link.source}-${link.target}`}
@@ -421,15 +429,33 @@ export function TopologyRoute() {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-chart-2" /> {t('topology.legend.derp')}
+                    <GlossaryHint
+                      text={t('glossary.derp.body')}
+                      label={t('glossary.ariaLabel', {
+                        term: t('glossary.derp.term')
+                      })}
+                    />
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-chart-3" /> {t('topology.legend.onion')}
+                    <GlossaryHint
+                      text={t('glossary.onion.body')}
+                      label={t('glossary.ariaLabel', {
+                        term: t('glossary.onion.term')
+                      })}
+                    />
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-chart-4" /> {t('topology.legend.openvpn')}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-danger" /> {t('topology.nodeDrawer.quarantined')}
+                    <GlossaryHint
+                      text={t('glossary.quarantine.body')}
+                      label={t('glossary.ariaLabel', {
+                        term: t('glossary.quarantine.term')
+                      })}
+                    />
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full border border-dashed border-info" />{' '}
@@ -447,7 +473,15 @@ export function TopologyRoute() {
                           {selectedNode.name || selectedNode.id}
                         </h2>
                         {selectedNode.overlay_ipv4 && (
-                          <CodeText className="mt-0.5">{selectedNode.overlay_ipv4}</CodeText>
+                          <span className="mt-0.5 flex items-center gap-1">
+                            <CodeText>{selectedNode.overlay_ipv4}</CodeText>
+                            <GlossaryHint
+                              text={t('glossary.overlayAddress.body')}
+                              label={t('glossary.ariaLabel', {
+                                term: t('glossary.overlayAddress.term')
+                              })}
+                            />
+                          </span>
                         )}
                       </div>
                       <StatusBadge

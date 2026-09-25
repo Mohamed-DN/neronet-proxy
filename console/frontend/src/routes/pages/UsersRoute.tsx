@@ -574,7 +574,11 @@ export default function UsersRoute() {
           value={isLoadingOrgs ? '...' : String(Math.max(orgs.length, 1))}
           hint="Multi-tenant governance units"
         />
-        <Stat label={t('users.statSecurity', 'MFA Security Posture')} value="RFC 6238" hint="Hardware TOTP & recovery codes" />
+        <Stat
+          label={t('users.statSecurity', 'MFA Security Posture')}
+          value="RFC 6238"
+          hint="Hardware TOTP & recovery codes"
+        />
       </div>
 
       {/* Tabs */}

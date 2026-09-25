@@ -570,8 +570,8 @@ export default function AuditRoute() {
                     <div>
                       <div className="font-bold text-content">{dest.name}</div>
                       <div className="text-muted text-[11px]">
-                        <CodeText>{`${dest.protocol.toUpperCase()}://${dest.endpoint}`}</CodeText>{' '}
-                        • {dest.format.toUpperCase()}
+                        <CodeText>{`${dest.protocol.toUpperCase()}://${dest.endpoint}`}</CodeText> •{' '}
+                        {dest.format.toUpperCase()}
                       </div>
                     </div>
                     <Button

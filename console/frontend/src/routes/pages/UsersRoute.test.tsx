@@ -109,95 +109,95 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      const method = init?.method?.toUpperCase() || 'GET';
+        const url = typeof input === 'string' ? input : input.toString();
+        const method = init?.method?.toUpperCase() || 'GET';
 
-      // 1. GET /api/users
-      if (
-        url.includes('/api/users') &&
-        !url.includes('/onboard-qr') &&
-        !url.includes('/split-tunneling') &&
-        !url.includes('/revoke-sessions') &&
-        method === 'GET'
-      ) {
-        return jsonResponse({ users: usersState });
-      }
-
-      // 2. POST /api/users
-      if (url.includes('/api/users') && method === 'POST') {
-        const body = JSON.parse((init?.body as string) || '{}');
-        const newUser: UserAccount = {
-          id: `usr-test-${Date.now()}`,
-          username: body.username,
-          email: body.email || `${body.username}@sovereign.local`,
-          role: body.role || 'user',
-          status: 'active',
-          bypass_apps: body.bypass_apps || [],
-          organization_id: body.organization_id || 'org-default',
-          created_at: new Date().toISOString()
-        };
-        usersState.push(newUser);
-        return jsonResponse({ user: newUser }, 201);
-      }
-
-      // 3. DELETE /api/users/:id
-      if (url.match(/\/api\/users\/usr-[^/]+$/) && method === 'DELETE') {
-        const idMatch = url.match(/\/api\/users\/(usr-[^/]+)$/);
-        if (idMatch) {
-          usersState = usersState.filter((u) => u.id !== idMatch[1]);
+        // 1. GET /api/users
+        if (
+          url.includes('/api/users') &&
+          !url.includes('/onboard-qr') &&
+          !url.includes('/split-tunneling') &&
+          !url.includes('/revoke-sessions') &&
+          method === 'GET'
+        ) {
+          return jsonResponse({ users: usersState });
         }
+
+        // 2. POST /api/users
+        if (url.includes('/api/users') && method === 'POST') {
+          const body = JSON.parse((init?.body as string) || '{}');
+          const newUser: UserAccount = {
+            id: `usr-test-${Date.now()}`,
+            username: body.username,
+            email: body.email || `${body.username}@sovereign.local`,
+            role: body.role || 'user',
+            status: 'active',
+            bypass_apps: body.bypass_apps || [],
+            organization_id: body.organization_id || 'org-default',
+            created_at: new Date().toISOString()
+          };
+          usersState.push(newUser);
+          return jsonResponse({ user: newUser }, 201);
+        }
+
+        // 3. DELETE /api/users/:id
+        if (url.match(/\/api\/users\/usr-[^/]+$/) && method === 'DELETE') {
+          const idMatch = url.match(/\/api\/users\/(usr-[^/]+)$/);
+          if (idMatch) {
+            usersState = usersState.filter((u) => u.id !== idMatch[1]);
+          }
+          return jsonResponse({ ok: true });
+        }
+
+        // 4. POST /api/users/:id/revoke-sessions
+        if (url.includes('/revoke-sessions') && method === 'POST') {
+          return jsonResponse({ ok: true, revoked_count: 3 });
+        }
+
+        // 5. GET /api/users/:id/onboard-qr
+        if (url.includes('/onboard-qr') && method === 'GET') {
+          const qrResponse: QrOnboardingData = {
+            config_text:
+              '[Interface]\nPrivateKey = test-key\nAddress = 10.42.100.50/32\nDNS = 100.100.100.100\n\n[Peer]\nPublicKey = 4gC5z7y2M3oN9rPt8xV1wK0jL5qS6uI3dF2hB1eA4gA=\nEndpoint = vpn.sovereign.mesh:51820\nAllowedIPs = 10.42.0.0/16\n',
+            qr_code_data_url: 'data:image/svg+xml;utf8,<svg><rect width="100" height="100"/></svg>',
+            endpoint: 'vpn.sovereign.mesh:51820',
+            expires_at: new Date(Date.now() + 86400000).toISOString()
+          };
+          return jsonResponse(qrResponse);
+        }
+
+        // 6. PUT /api/users/:id/split-tunneling
+        if (url.includes('/split-tunneling') && method === 'PUT') {
+          const body = JSON.parse((init?.body as string) || '{}');
+          const idMatch = url.match(/\/api\/users\/([^/]+)\/split-tunneling/);
+          const targetUser = usersState.find((u) => u.id === idMatch?.[1]);
+          if (targetUser) {
+            targetUser.bypass_apps = body.bypass_apps || [];
+          }
+          return jsonResponse({ user: targetUser });
+        }
+
+        // 7. GET /api/organizations
+        if (url.includes('/api/organizations') && method === 'GET') {
+          return jsonResponse({ organizations: orgsState });
+        }
+
+        // 8. POST /api/organizations
+        if (url.includes('/api/organizations') && method === 'POST') {
+          const body = JSON.parse((init?.body as string) || '{}');
+          const newOrg: Organization = {
+            id: `org-test-${Date.now()}`,
+            name: body.name,
+            slug: body.slug,
+            default_policy: body.default_policy || 'open',
+            max_netmap_staleness_seconds: body.max_netmap_staleness_seconds || 60,
+            created_at: new Date().toISOString()
+          };
+          orgsState.push(newOrg);
+          return jsonResponse({ organization: newOrg }, 201);
+        }
+
         return jsonResponse({ ok: true });
-      }
-
-      // 4. POST /api/users/:id/revoke-sessions
-      if (url.includes('/revoke-sessions') && method === 'POST') {
-        return jsonResponse({ ok: true, revoked_count: 3 });
-      }
-
-      // 5. GET /api/users/:id/onboard-qr
-      if (url.includes('/onboard-qr') && method === 'GET') {
-        const qrResponse: QrOnboardingData = {
-          config_text:
-            '[Interface]\nPrivateKey = test-key\nAddress = 10.42.100.50/32\nDNS = 100.100.100.100\n\n[Peer]\nPublicKey = 4gC5z7y2M3oN9rPt8xV1wK0jL5qS6uI3dF2hB1eA4gA=\nEndpoint = vpn.sovereign.mesh:51820\nAllowedIPs = 10.42.0.0/16\n',
-          qr_code_data_url: 'data:image/svg+xml;utf8,<svg><rect width="100" height="100"/></svg>',
-          endpoint: 'vpn.sovereign.mesh:51820',
-          expires_at: new Date(Date.now() + 86400000).toISOString()
-        };
-        return jsonResponse(qrResponse);
-      }
-
-      // 6. PUT /api/users/:id/split-tunneling
-      if (url.includes('/split-tunneling') && method === 'PUT') {
-        const body = JSON.parse((init?.body as string) || '{}');
-        const idMatch = url.match(/\/api\/users\/([^/]+)\/split-tunneling/);
-        const targetUser = usersState.find((u) => u.id === idMatch?.[1]);
-        if (targetUser) {
-          targetUser.bypass_apps = body.bypass_apps || [];
-        }
-        return jsonResponse({ user: targetUser });
-      }
-
-      // 7. GET /api/organizations
-      if (url.includes('/api/organizations') && method === 'GET') {
-        return jsonResponse({ organizations: orgsState });
-      }
-
-      // 8. POST /api/organizations
-      if (url.includes('/api/organizations') && method === 'POST') {
-        const body = JSON.parse((init?.body as string) || '{}');
-        const newOrg: Organization = {
-          id: `org-test-${Date.now()}`,
-          name: body.name,
-          slug: body.slug,
-          default_policy: body.default_policy || 'open',
-          max_netmap_staleness_seconds: body.max_netmap_staleness_seconds || 60,
-          created_at: new Date().toISOString()
-        };
-        orgsState.push(newOrg);
-        return jsonResponse({ organization: newOrg }, 201);
-      }
-
-      return jsonResponse({ ok: true });
       })
     );
   });

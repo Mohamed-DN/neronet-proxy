@@ -1,4 +1,31 @@
 {
+  "glossary": {
+    "ariaLabel": "More about {{term}}",
+    "overlayAddress": {
+      "term": "Overlay address",
+      "body": "The private address this device uses inside the mesh (100.64.x.x). It only works between enrolled devices, never on the public internet."
+    },
+    "posture": {
+      "term": "Posture",
+      "body": "Whether this device's security checks (disk encryption, firewall, OS version) have been reported and confirmed. \"Unverified\" means no report has arrived yet, not that the device failed a check."
+    },
+    "onion": {
+      "term": "Onion routing",
+      "body": "Traffic is relayed through several hops, each one encrypted in its own layer, so no single relay knows both who is asking and what they are asking for."
+    },
+    "acl": {
+      "term": "Zero-trust ACL",
+      "body": "A list of rules that decides which devices may talk to which, by address and port. Zero-trust means nothing is allowed unless a rule says so."
+    },
+    "derp": {
+      "term": "DERP relay",
+      "body": "A relay server that forwards encrypted traffic between two devices that cannot reach each other directly, for example because both sit behind restrictive firewalls."
+    },
+    "quarantine": {
+      "term": "Quarantine",
+      "body": "The device is isolated from the rest of the mesh: its traffic is blocked until an operator lifts the quarantine. It stays enrolled; nothing is deleted."
+    }
+  },
   "state": {
     "ok": "Reported",
     "loading": "Loading",

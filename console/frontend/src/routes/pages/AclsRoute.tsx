@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Play, Plus, Search, ShieldAlert, ShieldCheck, Sliders, Trash2, Edit2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+import { GlossaryHint } from '../GlossaryHint';
+
 import {
   useAclDefaultPolicy,
   useAclRules,
@@ -435,6 +437,12 @@ export default function AclsRoute() {
       <PageHeader
         title={t('acl.title')}
         description={t('acl.description')}
+        meta={
+          <GlossaryHint
+            text={t('glossary.acl.body')}
+            label={t('glossary.ariaLabel', { term: t('glossary.acl.term') })}
+          />
+        }
         actions={
           <div className="flex items-center space-x-3">
             <Button variant="secondary" onClick={() => setPreviewOpen(true)} data-testid="preview-simulator-button">
@@ -620,7 +628,12 @@ export default function AclsRoute() {
                 min={1}
                 max={65535}
                 value={formData.priority}
-                onChange={(e) => setFormData((p) => ({ ...p, priority: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setFormData((p) => ({
+                    ...p,
+                    priority: Number(e.target.value)
+                  }))
+                }
                 required
               />
             </FormField>
@@ -650,7 +663,12 @@ export default function AclsRoute() {
             <FormField label={t('acl.form.destLabel')} hint={t('acl.form.destPlaceholder')} required>
               <Input
                 value={formData.destination_cidr}
-                onChange={(e) => setFormData((p) => ({ ...p, destination_cidr: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((p) => ({
+                    ...p,
+                    destination_cidr: e.target.value
+                  }))
+                }
                 placeholder="100.64.0.0/10"
                 required
               />
@@ -677,7 +695,12 @@ export default function AclsRoute() {
                 min={0}
                 max={65535}
                 value={formData.port_start}
-                onChange={(e) => setFormData((p) => ({ ...p, port_start: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setFormData((p) => ({
+                    ...p,
+                    port_start: Number(e.target.value)
+                  }))
+                }
                 required
               />
             </FormField>
@@ -688,7 +711,12 @@ export default function AclsRoute() {
                 min={0}
                 max={65535}
                 value={formData.port_end}
-                onChange={(e) => setFormData((p) => ({ ...p, port_end: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setFormData((p) => ({
+                    ...p,
+                    port_end: Number(e.target.value)
+                  }))
+                }
                 required
               />
             </FormField>
@@ -716,7 +744,9 @@ export default function AclsRoute() {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={t('acl.delete.title', { priority: deleteTarget?.priority || 100 })}
+        title={t('acl.delete.title', {
+          priority: deleteTarget?.priority || 100
+        })}
         description={t('acl.delete.description', {
           id: deleteTarget?.id || '',
           source: deleteTarget?.source_cidr || deleteTarget?.src_cidr || '',
@@ -801,7 +831,11 @@ export default function AclsRoute() {
               ) : compiledPolicy ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between text-xs font-mono p-2 rounded bg-surface border border-border">
-                    <span className="text-muted">{t('acl.preview.nodeVip', { ip: compiledPolicy.overlay_ipv4 })}</span>
+                    <span className="text-muted">
+                      {t('acl.preview.nodeVip', {
+                        ip: compiledPolicy.overlay_ipv4
+                      })}
+                    </span>
                     <Badge tone="neutral">Epoch #{compiledPolicy.epoch}</Badge>
                   </div>
 

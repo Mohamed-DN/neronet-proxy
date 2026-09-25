@@ -1,4 +1,31 @@
 {
+  "glossary": {
+    "ariaLabel": "Maggiori informazioni su {{term}}",
+    "overlayAddress": {
+      "term": "Indirizzo overlay",
+      "body": "L'indirizzo privato che questo dispositivo usa dentro la mesh (100.64.x.x). Funziona solo tra dispositivi registrati, mai su Internet pubblica."
+    },
+    "posture": {
+      "term": "Postura",
+      "body": "Se i controlli di sicurezza del dispositivo (cifratura del disco, firewall, versione del sistema operativo) sono stati segnalati e confermati. \"Non verificato\" significa che non è ancora arrivata alcuna segnalazione, non che il dispositivo abbia fallito un controllo."
+    },
+    "onion": {
+      "term": "Instradamento onion",
+      "body": "Il traffico passa attraverso più salti, ciascuno cifrato con il proprio livello, così nessun singolo relay conosce sia chi fa la richiesta sia cosa sta richiedendo."
+    },
+    "acl": {
+      "term": "ACL zero-trust",
+      "body": "Un elenco di regole che decide quali dispositivi possono comunicare con quali altri, per indirizzo e porta. Zero-trust significa che nulla è permesso a meno che una regola non lo consenta."
+    },
+    "derp": {
+      "term": "Relay DERP",
+      "body": "Un server di relay che inoltra il traffico cifrato tra due dispositivi che non riescono a raggiungersi direttamente, per esempio perché entrambi si trovano dietro firewall restrittivi."
+    },
+    "quarantine": {
+      "term": "Quarantena",
+      "body": "Il dispositivo è isolato dal resto della mesh: il suo traffico è bloccato finché un operatore non rimuove la quarantena. Resta registrato; non viene eliminato nulla."
+    }
+  },
   "state": {
     "ok": "Rilevato",
     "loading": "Caricamento",

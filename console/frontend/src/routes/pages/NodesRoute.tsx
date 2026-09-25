@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Search, ShieldAlert, ShieldCheck, Zap } from 'lucide-react';
 
 import { PageFrame } from '../PageFrame';
+import { GlossaryHint } from '../GlossaryHint';
 import { ROUTES, nodePath } from '../paths';
 import { useShell } from '../shell';
 import {
@@ -46,7 +47,10 @@ export default function NodesRoute() {
   const [quarantineDialogOpen, setQuarantineDialogOpen] = useState(false);
   const [quarantineReason, setQuarantineReason] = useState('');
   const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
-  const [pingResult, setPingResult] = useState<{ rtt_ms: number; jitter_ms: number } | null>(null);
+  const [pingResult, setPingResult] = useState<{
+    rtt_ms: number;
+    jitter_ms: number;
+  } | null>(null);
 
   // Queries & Mutations
   const nodesQuery = useNodes();
@@ -127,7 +131,10 @@ export default function NodesRoute() {
 
   const handleConfirmRevoke = async () => {
     if (!id) return;
-    await revokeMutation.mutateAsync({ id, reason: 'Administrative key revocation' });
+    await revokeMutation.mutateAsync({
+      id,
+      reason: 'Administrative key revocation'
+    });
     setRevokeConfirmOpen(false);
     handleCloseDetail();
   };
@@ -148,7 +155,17 @@ export default function NodesRoute() {
     },
     {
       id: 'ipv4',
-      header: t('nodes.columns.ipv4'),
+      header: (
+        <span className="inline-flex items-center gap-1">
+          {t('nodes.columns.ipv4')}
+          <GlossaryHint
+            text={t('glossary.overlayAddress.body')}
+            label={t('glossary.ariaLabel', {
+              term: t('glossary.overlayAddress.term')
+            })}
+          />
+        </span>
+      ),
       cell: (n) =>
         n.overlay_ipv4 ? (
           <CodeText copyable>{n.overlay_ipv4}</CodeText>
@@ -165,7 +182,17 @@ export default function NodesRoute() {
     },
     {
       id: 'posture',
-      header: t('nodes.columns.posture'),
+      header: (
+        <span className="inline-flex items-center gap-1">
+          {t('nodes.columns.posture')}
+          <GlossaryHint
+            text={t('glossary.posture.body')}
+            label={t('glossary.ariaLabel', {
+              term: t('glossary.posture.term')
+            })}
+          />
+        </span>
+      ),
       cell: (n) => {
         if (n.posture_status === 'verified_compliant') {
           return <StatusBadge status="ok" label={t('nodes.posture.verifiedCompliant')} />;
@@ -245,8 +272,26 @@ export default function NodesRoute() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Stat label={t('nodes.counts.total')} value={counts.total} />
           <Stat label={t('nodes.counts.reachable')} value={counts.reachable} />
-          <Stat label={t('nodes.counts.quarantined')} value={counts.quarantined} />
-          <Stat label={t('nodes.counts.unverified')} value={unverifiedCount} />
+          <div className="relative">
+            <Stat label={t('nodes.counts.quarantined')} value={counts.quarantined} />
+            <GlossaryHint
+              className="absolute right-0 top-0"
+              text={t('glossary.quarantine.body')}
+              label={t('glossary.ariaLabel', {
+                term: t('glossary.quarantine.term')
+              })}
+            />
+          </div>
+          <div className="relative">
+            <Stat label={t('nodes.counts.unverified')} value={unverifiedCount} />
+            <GlossaryHint
+              className="absolute right-0 top-0"
+              text={t('glossary.posture.body')}
+              label={t('glossary.ariaLabel', {
+                term: t('glossary.posture.term')
+              })}
+            />
+          </div>
         </div>
 
         {/* Filter and Search Bar */}
@@ -473,7 +518,11 @@ export default function NodesRoute() {
                 {selectedNode.is_quarantined ? (
                   <Button
                     variant="secondary"
-                    onClick={() => liftQuarantineMutation.mutateAsync({ id: selectedNode.id })}
+                    onClick={() =>
+                      liftQuarantineMutation.mutateAsync({
+                        id: selectedNode.id
+                      })
+                    }
                     loading={liftQuarantineMutation.isPending}
                   >
                     <ShieldCheck className="w-4 h-4 mr-2 text-success" />
