@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net/netip"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -82,13 +83,26 @@ type filteredTUN struct {
 
 	closeOnce sync.Once
 	closeErr  error
+
+	// writeMu orders writes against Close. A write holds it for reading while it
+	// hands packets to the backend; Close takes it for writing, so it waits for any
+	// write in flight and every later write sees closed. Without it wireguard-go's
+	// receive path could write into a backend Close was tearing down, which the
+	// race detector reports and which can end in a send on a closed channel.
+	writeMu sync.RWMutex
+	closed  bool
 }
 
 // Close is idempotent. The underlying gVisor device closes channels without
 // guarding against a second call, and both wireguard-go's shutdown and the owner of
 // the device reach it, so an unguarded Close panics at every teardown.
 func (f *filteredTUN) Close() error {
-	f.closeOnce.Do(func() { f.closeErr = f.Device.Close() })
+	f.closeOnce.Do(func() {
+		f.writeMu.Lock()
+		f.closed = true
+		f.writeMu.Unlock()
+		f.closeErr = f.Device.Close()
+	})
 	return f.closeErr
 }
 
@@ -150,6 +164,12 @@ func (f *filteredTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) 
 // out of the slice handed downwards; the caller's slice is not modified, because it
 // owns the buffers behind it.
 func (f *filteredTUN) Write(bufs [][]byte, offset int) (int, error) {
+	f.writeMu.RLock()
+	defer f.writeMu.RUnlock()
+	if f.closed {
+		return 0, os.ErrClosed
+	}
+
 	if len(bufs) == 0 {
 		return f.Device.Write(bufs, offset)
 	}
