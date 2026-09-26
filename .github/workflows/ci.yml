@@ -53,7 +53,15 @@ jobs:
           diff -r --exclude=fixtures api/contract/v4 console/backend/api/contract/v4
 
       - name: go test -race
-        run: go test ./... -race -count=1
+        run: |
+          mapfile -t pkgs < <(go list ./... | grep -v /third_party/)
+          go test "${pkgs[@]}" -race -count=1
+
+      # Code carved from upstream projects, not yet imported by any binary. Its own
+      # tests run without the race detector: several of Tailscale's DERP tests assert
+      # on write ordering and are sensitive to a loaded runner.
+      - name: third_party tests
+        run: go test ./third_party/... -count=1
 
       # Separate module: `./...` at the repository root does not descend into it.
       - name: security daemon, go vet

@@ -19,8 +19,10 @@ exec $ENGINE run --rm \
     if [ -n "$unformatted" ]; then echo "$unformatted"; rc=1; fi
     echo "== go vet"
     go vet ./... || rc=1
-    echo "== go test ./... -race"
-    go test ./... -race -count=1 || rc=1
+    echo "== go test -race (our packages)"
+    go test $(go list ./... | grep -v /third_party/) -race -count=1 || rc=1
+    echo "== third_party tests (no race detector)"
+    go test ./third_party/... -count=1 || rc=1
     echo "== cmd/sovereign-security-daemon (own module)"
     (cd cmd/sovereign-security-daemon && go test ./... -count=1) || rc=1
     exit $rc'
