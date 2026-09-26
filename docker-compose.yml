@@ -29,11 +29,11 @@ x-node: &node
   profiles: ["nodes"]
   environment:
     - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
-    # The WireGuard data plane. Off by default, so the ordinary stack is the stack it
-    # was: no device, no UDP socket, no overlay dialer on the bridge. Set
-    # NERONET_DATAPLANE=netstack to run the fleet on the overlay, which is what
-    # scripts/dev/scenarios/overlay.sh measures.
-    - SOVEREIGN_DATAPLANE=${NERONET_DATAPLANE:-off}
+    # The WireGuard data plane, in userspace (netstack) so the nodes need no extra
+    # privileges. On by default: a fleet that only registers proves the control plane,
+    # not the mesh, and that is how a broken overlay went unnoticed. Set
+    # NERONET_DATAPLANE=off for a control-plane-only stack.
+    - SOVEREIGN_DATAPLANE=${NERONET_DATAPLANE:-netstack}
     # The TCP echo the scenarios dial. It only exists when the data plane is on, and
     # it is behind the same filter as everything else, so it answers only what the
     # policy permits.

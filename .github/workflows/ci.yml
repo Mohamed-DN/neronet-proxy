@@ -195,6 +195,14 @@ jobs:
       - name: Console security headers
         run: sh scripts/dev/check-console-headers.sh http://127.0.0.1:8443
 
+      # The mesh itself: every node must reach every other node over the encrypted
+      # overlay, and a deny rule must actually block traffic on the data plane.
+      - name: Overlay traffic matrix
+        run: sh scripts/dev/scenarios/overlay.sh matrix
+
+      - name: Overlay deny rule
+        run: sh scripts/dev/scenarios/overlay.sh rule-deny
+
       - name: Service logs
         if: failure()
         run: sh scripts/dev/stack.sh logs
