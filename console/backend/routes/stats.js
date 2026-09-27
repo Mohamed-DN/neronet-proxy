@@ -567,6 +567,9 @@ router.post('/topology/link', async (req, res, next) => {
 
     await publishTopologyEvent({
       event: 'TOPOLOGY_LINK_CONFIG_UPDATED',
+      // Without it the event reached only the platform super-admin: the socket sends
+      // an event with no organisation to nobody else.
+      organization_id: linkOrgId,
       source_node_id,
       target_node_id,
       mode: chosenMode,

@@ -5,6 +5,8 @@ const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
+const { subscribeTopologyEvents, closeValkey } = require('../db/valkey');
+const { isVisibleTo } = require('../ws/topologyServer');
 
 // The audit ledger is platform wide, and these routes checked nothing beyond a
 // valid session: any user could export every tenant's audit trail, add a SIEM sink
@@ -72,6 +74,8 @@ describe('Audit and topology routes check the caller', () => {
   });
 
   after(async () => {
+    // The link-event test subscribes; an open subscriber keeps the process alive.
+    closeValkey();
     if (dbHelper) await dbHelper.cleanup();
   });
 
@@ -144,6 +148,33 @@ describe('Audit and topology routes check the caller', () => {
       ),
       2
     );
+  });
+
+  // The socket sends an event with no organisation to the platform super-admin only,
+  // so a link change never reached the organisation whose nodes it was about.
+  it("sends a link change to the organisation's network admins", async () => {
+    const received = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('no TOPOLOGY_LINK_CONFIG_UPDATED event')), 5000);
+      subscribeTopologyEvents((event) => {
+        if (event && event.event === 'TOPOLOGY_LINK_CONFIG_UPDATED' && event.source_node_id === 'node-roles-a2') {
+          clearTimeout(timer);
+          resolve(event);
+        }
+      });
+    });
+
+    const res = await request(app)
+      .post('/api/stats/topology/link')
+      .set('Authorization', `Bearer ${netAdminA}`)
+      .send({ source_node_id: 'node-roles-a2', target_node_id: 'node-roles-a1', is_visible: true });
+    assert.strictEqual(res.status, 200);
+
+    const event = await received;
+    assert.strictEqual(event.organization_id, 'org-roles-a');
+    const admin = { id: 'usr-roles-net', role: 'user', organization_id: 'org-roles-a', org_role: 'network_admin' };
+    const outsider = { id: 'usr-roles-x', role: 'user', organization_id: 'org-roles-b', org_role: 'owner' };
+    assert.strictEqual(isVisibleTo(admin, event), true);
+    assert.strictEqual(isVisibleTo(outsider, event), false);
   });
 
   it("lists only the caller's own organisation's links", async () => {

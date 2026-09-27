@@ -3,6 +3,7 @@ const assert = require('node:assert');
 const http = require('node:http');
 const crypto = require('node:crypto');
 const request = require('supertest');
+const { refreshCookie } = require('./helpers/refreshCookie');
 const jwt = require('jsonwebtoken');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -345,12 +346,16 @@ describe('OIDC sign-in', () => {
     const login = await signIn({ sub: 'idp-sub-bob', email: 'bob@enterprise.test', groups: ['idp-general'] });
     assert.strictEqual(login.status, 200);
 
-    const ok = await request(app).post('/api/auth/refresh').send({ refreshToken: login.body.refreshToken });
+    const ok = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: refreshCookie(login) });
     assert.strictEqual(ok.status, 200, 'refresh works while the provider still knows the user');
 
     idp.disable('idp-sub-bob');
 
-    const refused = await request(app).post('/api/auth/refresh').send({ refreshToken: ok.body.refreshToken });
+    const refused = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: refreshCookie(ok) });
     assert.strictEqual(refused.status, 401);
     assert.match(refused.body.error, /deactivated/i);
 

@@ -3,10 +3,14 @@ const { requireNodeOwnership } = require('../middleware/ownership');
 const router = express.Router();
 const RiskEngine = require('../services/RiskEngine');
 const { authenticateToken } = require('../middleware/auth');
+const { resolveUserOrg } = require('../middleware/rbac');
 const { isPostgres, getPgPool, getDatabase } = require('../db/index');
 const { readPostureCounts } = require('../services/MetricsCollector');
 
 router.use(authenticateToken);
+// A token issued without an organisation claim must not fall back to the default
+// organisation: the organisation comes from the user's record.
+router.use(resolveUserOrg);
 
 // Node names, owners and scores are tenant data. These overviews listed every node on
 // the platform to any signed-in user; they now cover the caller's organisation, and
@@ -50,7 +54,8 @@ router.get('/summary', async (req, res, next) => {
     // Risk and posture are separate facts. A low risk score says nothing was seen
     // going wrong; it is not evidence that the host is hardened, and the dashboard
     // labelled its low-risk count "Fully compliant posture" on that basis.
-    const posture = await readPostureCounts();
+    const accessTier = req.user.compartment_access || 'standard';
+    const posture = await readPostureCounts(accessTier, scopeOf(req));
 
     return res.status(200).json({
       distribution: {
@@ -120,7 +125,7 @@ const RISK_EVENT_TYPES = [
 async function recentRiskEvents(limit, organizationId) {
   // Audit events carry no organisation; a risk event names its node as target, so an
   // organisation's view is the events about its nodes.
-  const scoped = organizationId !== undefined && isPostgres();
+  const scoped = organizationId !== undefined;
   const rows = await runRiskQuery(
     `SELECT id, event_type, actor_username, target_id, severity, message, created_at
        FROM audit_events

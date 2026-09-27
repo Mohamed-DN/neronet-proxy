@@ -63,5 +63,21 @@ describe('Risk overviews are scoped to the caller’s organisation', () => {
     const res = await request(app).get('/api/risk/summary').set('Authorization', `Bearer ${memberA}`);
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.total_nodes, 1);
+    const posture = res.body.posture;
+    const counted = Object.values(posture).reduce((sum, n) => sum + n, 0);
+    assert.strictEqual(counted, 1, `posture counted other organisations' nodes: ${JSON.stringify(posture)}`);
+  });
+
+  // A token without an organisation claim used to be scoped to the default
+  // organisation. The organisation now comes from the user's record.
+  it('takes the organisation from the user record when the token carries none', async () => {
+    const noClaim = jwt.sign(
+      { sub: 'usr-risk-a', id: 'usr-risk-a', username: 'riska', role: 'user' },
+      config.JWT_SECRET
+    );
+    const res = await request(app).get('/api/risk/scores').set('Authorization', `Bearer ${noClaim}`);
+    assert.strictEqual(res.status, 200);
+    assert.ok(JSON.stringify(res.body).includes('alpha-host'));
+    assert.ok(!JSON.stringify(res.body).includes('bravo-secret-host'));
   });
 });

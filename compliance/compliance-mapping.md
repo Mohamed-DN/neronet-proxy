@@ -22,7 +22,7 @@ limits given), **missing**.
 | Erasure of a user's data | partial | Account self-destruct deletes the account and devices and revokes device keys. Backups and the audit trail keep what they recorded |
 | Crypto-shredding | partial | Organisation secrets (identity-provider secrets, TOTP seeds, identity-provider refresh tokens) are sealed with a per-organisation key that a shred destroys; other data is deleted, not encrypted. Pre-shred backups stay readable until the key-encryption key is rotated. The key-encryption key is an environment secret, not a KMS or HSM |
 | Backup and restore | partial | A restore verification service and `scripts/dr_backup_recovery_proof.sh` exist. No scheduled backups, no documented procedure |
-| High availability | missing | Designed (ADR 0001), not built. Periodic jobs are not yet coordinated across instances |
+| High availability | partial | Several backend instances can run: a PostgreSQL advisory lock elects one leader, and scheduled module jobs and metrics sampling run on it only, one run at a time. Database failover (Patroni, `docker/docker-compose.ha.yml`) is untested, and a job that outlives a leadership change is not fenced |
 | Vulnerability management | partial | `govulncheck`, gitleaks and CodeQL in CI. No dependency update automation, no external audit, no penetration test |
 | Software bill of materials | partial | Direct dependencies only, not generated from lockfiles |
 | Build provenance and signed artefacts | missing | Releases carry SHA-256 checksums only |

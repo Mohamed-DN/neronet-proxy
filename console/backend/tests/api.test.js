@@ -1,6 +1,7 @@
 const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
+const { refreshCookie } = require('./helpers/refreshCookie');
 const path = require('path');
 const fs = require('fs');
 
@@ -126,9 +127,12 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
       .post('/api/auth/login')
       .send({ username: 'alice_homelab', password: 'Password123!' });
 
-    assert.ok(login.body.refreshToken, 'login must issue a refresh token');
+    assert.ok(refreshCookie(login), 'login must issue a refresh token');
+    assert.strictEqual(login.body.refreshToken, undefined, 'the refresh token must not be readable by page scripts');
 
-    const res = await request(app).post('/api/auth/refresh').send({ refreshToken: login.body.refreshToken });
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: refreshCookie(login) });
 
     assert.strictEqual(res.status, 200);
     assert(res.body.token);

@@ -1,6 +1,7 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
+const { refreshCookie } = require('./helpers/refreshCookie');
 const { createApp } = require('../server');
 const { setupTestDatabase } = require('./helpers/db');
 const TotpService = require('../services/TotpService');
@@ -32,17 +33,20 @@ describe('WP-105: Console Session Hardening and Mandatory TOTP MFA', () => {
     assert.strictEqual(cookies.length >= 2, true, 'Must set at least 2 cookies (token & refreshToken)');
 
     const tokenCookie = cookies.find((c) => c.startsWith('token='));
-    const refreshCookie = cookies.find((c) => c.startsWith('refreshToken='));
+    const refreshSetCookie = cookies.find((c) => c.startsWith('refreshToken='));
 
     assert.ok(tokenCookie, 'token cookie must be present');
     assert.ok(tokenCookie.includes('HttpOnly'), 'token cookie must be HttpOnly');
     assert.ok(tokenCookie.includes('SameSite=Strict'), 'token cookie must be SameSite=Strict');
     assert.ok(tokenCookie.includes('Path=/api'), 'token cookie must have Path=/api');
 
-    assert.ok(refreshCookie, 'refreshToken cookie must be present');
-    assert.ok(refreshCookie.includes('HttpOnly'), 'refreshToken cookie must be HttpOnly');
-    assert.ok(refreshCookie.includes('SameSite=Strict'), 'refreshToken cookie must be SameSite=Strict');
-    assert.ok(refreshCookie.includes('Path=/api/auth/refresh'), 'refreshToken cookie must have Path=/api/auth/refresh');
+    assert.ok(refreshSetCookie, 'refreshToken cookie must be present');
+    assert.ok(refreshSetCookie.includes('HttpOnly'), 'refreshToken cookie must be HttpOnly');
+    assert.ok(refreshSetCookie.includes('SameSite=Strict'), 'refreshToken cookie must be SameSite=Strict');
+    assert.ok(
+      refreshSetCookie.includes('Path=/api/auth/refresh'),
+      'refreshToken cookie must have Path=/api/auth/refresh'
+    );
   });
 
   it('authenticates successfully via HttpOnly cookie without Authorization header', async () => {
@@ -112,14 +116,14 @@ describe('WP-105: Console Session Hardening and Mandatory TOTP MFA', () => {
       email: 'rotation_user@test.local'
     });
 
-    const initialRefreshToken = regRes.body.refreshToken;
+    const initialRefreshToken = refreshCookie(regRes);
     assert.ok(initialRefreshToken);
 
     // 1. First refresh exchange succeeds (single use)
     const refresh1 = await request(app).post('/api/auth/refresh').send({ refreshToken: initialRefreshToken });
 
     assert.strictEqual(refresh1.status, 200);
-    const rotatedRefreshToken = refresh1.body.refreshToken;
+    const rotatedRefreshToken = refreshCookie(refresh1);
     assert.ok(rotatedRefreshToken);
     assert.notStrictEqual(rotatedRefreshToken, initialRefreshToken, 'Refresh token must rotate to a new value');
 
@@ -143,7 +147,7 @@ describe('WP-105: Console Session Hardening and Mandatory TOTP MFA', () => {
     });
 
     const userId = regRes.body.user.id;
-    let refreshToken = regRes.body.refreshToken;
+    let refreshToken = refreshCookie(regRes);
     assert.strictEqual(regRes.body.user.role, 'user');
 
     // Directly demote/promote in database to super-admin
@@ -277,7 +281,7 @@ describe('WP-105: Console Session Hardening and Mandatory TOTP MFA', () => {
     });
 
     const token = regRes.body.token;
-    const refreshToken = regRes.body.refreshToken;
+    const refreshToken = refreshCookie(regRes);
 
     const logoutRes = await request(app)
       .post('/api/auth/logout')

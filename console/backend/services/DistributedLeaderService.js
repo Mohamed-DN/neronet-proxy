@@ -26,6 +26,9 @@ class DistributedLeaderService extends EventEmitter {
     this._lastHeartbeatAt = null;
     this._heartbeatIntervalMs = 5000;
     this._pauseUntil = 0;
+    // Jobs running on this instance. A timer fires on schedule whether or not the
+    // previous run has finished; a slow job must not start a second copy of itself.
+    this._inFlight = new Set();
   }
 
   get isLeader() {
@@ -124,12 +127,20 @@ class DistributedLeaderService extends EventEmitter {
       return { executed: false, reason: 'NOT_LEADER' };
     }
 
+    if (this._inFlight.has(jobName)) {
+      logger.warn(`[HA-LEADER] Skipping '${jobName}': the previous run has not finished`);
+      return { executed: false, reason: 'IN_FLIGHT' };
+    }
+
+    this._inFlight.add(jobName);
     try {
       const result = await fn();
       return { executed: true, result };
     } catch (err) {
       logger.error(`[HA-LEADER] Job '${jobName}' failed on leader '${this.instanceId}': ${err.message}`);
       throw err;
+    } finally {
+      this._inFlight.delete(jobName);
     }
   }
 

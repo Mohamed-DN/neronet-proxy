@@ -1,6 +1,7 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
+const { refreshCookie } = require('./helpers/refreshCookie');
 const bcrypt = require('bcryptjs');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -42,7 +43,7 @@ describe('Feature module guard across token refresh', () => {
   async function signIn() {
     const res = await request(app).post('/api/auth/login').send({ username: 'guardreg', password: 'Guard-Pass-1!' });
     assert.strictEqual(res.status, 200);
-    return res.body;
+    return { ...res.body, refreshToken: refreshCookie(res) };
   }
 
   it('keeps a disabled module hidden after the access token is refreshed', async () => {

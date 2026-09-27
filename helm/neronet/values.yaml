@@ -45,6 +45,9 @@ secrets:
   # Key-encryption key of the per-organisation data keys. Losing it makes every
   # sealed organisation secret unreadable: back it up outside the cluster.
   shredKekSecret: ""
+  # Only while rotating shredKekSecret: the old value, so data keys sealed under it
+  # can be rewrapped. Remove it once the backend has restarted with the new key.
+  shredKekPrevious: ""
   adminPassword: ""
   registrationToken: ""
   postgresPassword: ""

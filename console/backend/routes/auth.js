@@ -55,9 +55,10 @@ async function issueUserSession(req, res, user, pool) {
 
   setAuthCookies(req, res, { token, refreshToken });
 
+  // The refresh token goes out only as the HttpOnly cookie. In the body, any script
+  // running on the console origin could read it and keep the session alive.
   return {
     token,
-    refreshToken,
     user: userPayload
   };
 }
@@ -576,7 +577,6 @@ router.post('/refresh', async (req, res, next) => {
 
     return res.status(200).json({
       token: newToken,
-      refreshToken: newRefreshToken,
       user: userPayload
     });
   } catch (err) {
