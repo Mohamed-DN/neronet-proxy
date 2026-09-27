@@ -148,28 +148,16 @@ describe('WP-208: Multi-Protocol Transport & AmneziaWG Stealth', () => {
     assert.strictEqual(res.body.node.transport, 'amneziawg');
   });
 
-  it('3. sets node transport to openvpn and vless', async () => {
-    const resOvpn = await request(app)
-      .post(`/api/nodes/${nodeCId}/action`)
-      .set('Authorization', `Bearer ${userToken}`)
-      .send({
-        action: 'set_transport',
-        transport: 'openvpn'
-      });
+  it('3. refuses openvpn and vless, which no node implements', async () => {
+    for (const transport of ['openvpn', 'vless']) {
+      const res = await request(app)
+        .post(`/api/nodes/${nodeCId}/action`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ action: 'set_transport', transport });
 
-    assert.strictEqual(resOvpn.status, 200);
-    assert.strictEqual(resOvpn.body.transport, 'openvpn');
-
-    const resVless = await request(app)
-      .post(`/api/nodes/${nodeCId}/action`)
-      .set('Authorization', `Bearer ${userToken}`)
-      .send({
-        action: 'set_transport',
-        transport: 'vless'
-      });
-
-    assert.strictEqual(resVless.status, 200);
-    assert.strictEqual(resVless.body.transport, 'vless');
+      assert.strictEqual(res.status, 400, `${transport} was accepted`);
+      assert.match(res.body.error, /Invalid transport/);
+    }
   });
 
   it('4. rejects unsupported transport with 400 Bad Request', async () => {
@@ -193,10 +181,11 @@ describe('WP-208: Multi-Protocol Transport & AmneziaWG Stealth', () => {
     assert.strictEqual(netmap.self.stealth.disguise, 'dns');
     assert.strictEqual(netmap.self.stealth.h1, 305419896);
 
-    // Node C should be present in peers with vless transport
+    // Node C kept the transport it had: the refused changes were not stored.
     const peerC = netmap.peers.find((p) => p.node_id === nodeCId);
     if (peerC) {
-      assert.strictEqual(peerC.transport, 'vless');
+      assert.notStrictEqual(peerC.transport, 'vless');
+      assert.notStrictEqual(peerC.transport, 'openvpn');
     }
   });
 

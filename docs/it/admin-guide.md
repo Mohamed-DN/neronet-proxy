@@ -1,90 +1,71 @@
-# NeroNet v4 — Guida Amministratore (IT)
+# NeroNet v4: guida amministratore
 
-## Accesso al Sistema
+Le operazioni di tutti i giorni, con gli endpoint come esistono. Il manuale
+([`docs/HANDBOOK.md`](../HANDBOOK.md), in inglese) spiega come funziona ogni parte;
+questa pagina è la versione breve.
 
-### Console Web
-- **URL**: http://127.0.0.1:8443  (prod: https://your-domain:8443)
-- **Utente admin**: `admin`
-- **Password**: definita in `.env` → `SOVEREIGN_ADMIN_PASS`
+## Accesso
 
-### API REST
-- **URL**: http://127.0.0.1:8081
-- **Docs**: http://127.0.0.1:8081/api/docs
-- **Auth**: POST `/api/auth/login` → Bearer token (JWT, 15min)
+| Cosa | Dove |
+|---|---|
+| Console | `http://127.0.0.1:8443` nello stack compose. Per qualunque uso oltre la singola macchina mettete TLS davanti: i container servono HTTP in chiaro |
+| API | `http://127.0.0.1:8081`, anche sotto `/api` attraverso la console. Il contratto è [`api/openapi.yaml`](../../api/openapi.yaml); il server non pubblica documentazione interattiva |
+| Primo account | `admin`, password da `SOVEREIGN_ADMIN_PASS` nel `.env` |
+| Accesso | `POST /api/auth/login`. Il token di accesso dura 15 minuti; il refresh token è un cookie HttpOnly |
 
-### Credenziali di Default (dopo install.sh)
-Il file `.env` generato contiene le credenziali. Consultarlo con:
-```bash
-grep -E 'ADMIN|TOKEN' /opt/neronet/.env
-```
+Con `SOVEREIGN_MFA_MANDATORY=admins` (il default in produzione) il super-admin di
+piattaforma e ogni owner e admin di organizzazione accedono con un codice TOTP. Un
+account senza app di autenticazione viene guidato all'attivazione al primo accesso, e
+vede i codici di recupero una volta sola.
 
----
+## Nodi
 
-## Gestione Nodi
+### Iscrivere un nodo
 
-### Registrazione automatica
-I nodi Go si registrano automaticamente al control plane usando `SOVEREIGN_REGISTRATION_TOKEN`.
-Ogni nodo riceve un IP overlay dalla CIDR `100.64.0.0/10` (CGNAT).
+Il nodo dimostra di possedere la propria chiave privata a ogni registrazione (ADR 0017).
+Una chiave nuova è autorizzata da:
 
-### Revoca nodo
-```http
-DELETE /api/nodes/{node_id}
-Authorization: Bearer <token>
-```
-Oppure dalla Console → Nodi → ⋮ → Revoca
+- una pre-auth key creata dalla console (`POST /api/preauth-keys`), data al nodo come
+  `SOVEREIGN_ENROLMENT_KEY` (`nnk1:<chiave>:<impronta>`, che fissa anche la chiave del
+  control plane); quelle monouso si consumano alla prima iscrizione;
+- il token di flotta `SOVEREIGN_REGISTRATION_TOKEN`, per le flotte automatiche.
 
-### Quarantena
-```http
-PATCH /api/nodes/{node_id}
-{ "status": "quarantined" }
-```
+Un nodo già iscritto si registra di nuovo con la sola chiave. Ogni nodo riceve un
+indirizzo overlay da `100.64.0.0/10` e una propria credenziale per tutto il resto.
 
----
+### Quarantena e revoca
 
-## Operazioni Database
+| Azione | Richiesta | Effetto |
+|---|---|---|
+| Quarantena | `POST /api/nodes/{id}/action` `{"action":"quarantine","reason":"..."}` | Il nodo esce dai peer di tutti entro un heartbeat, e la sua credenziale smette di funzionare |
+| Fine quarantena | `POST /api/nodes/{id}/action` `{"action":"lift_quarantine"}` | Rientra |
+| Revoca | `DELETE /api/nodes/{id}` | La chiave è revocata e comunicata a tutti i nodi; il nodo non può registrarsi di nuovo con essa |
 
-### Backup manuale
-```bash
-podman exec sovereign_proxy_v4_release-postgres-1 \
-  pg_dump -U neronet neronet_db | gzip > backup_$(date +%Y%m%d).sql.gz
-```
+`scripts/dev/scenarios/overlay.sh quarantine` e `revoke` le mostrano su uno stack
+avviato, con traffico vero.
 
-### Restore
-```bash
-gunzip -c backup_20260925.sql.gz | \
-  podman exec -i sovereign_proxy_v4_release-postgres-1 \
-  psql -U neronet neronet_db
-```
+## Policy di accesso
 
----
+I nodi di un'organizzazione si collegano solo fra loro. Dentro l'organizzazione decidono
+le regole ACL (`/api/acl/rules`), vince la prima che corrisponde; senza regole decide la
+`default_policy` dell'organizzazione (`open` o `deny`). Una modifica arriva ai nodi entro
+un heartbeat, 15 secondi di default.
 
-## NeroNuke (Crypto-Shredding)
+## Trasporti
 
-**ATTENZIONE**: operazione irreversibile. Richiede dual-auth (4 occhi).
+L'overlay è WireGuard (wireguard-go, in userspace di default). La chiave pre-condivisa di
+ogni coppia ruota ogni due minuti; è crittografia classica, non post-quantum. I nodi
+usano i relay DERP solo in ingresso: non c'è ancora il ripiego via relay per una coppia
+che non si raggiunge direttamente. L'offuscamento stile AmneziaWG esiste nel codice e il
+nodo non lo attiva. Non esistono trasporti OpenVPN o VLESS.
 
-1. Operatore A: Console → NeroNuke → Seleziona target → Inizia
-2. Operatore B: riceve notifica → Approva
-3. Il sistema esegue crypto-shredding: le chiavi crittografiche vengono distrutte, i dati diventano irrecuperabili
+## Disponibilità e backup
 
-**Audit trail**: ogni operazione NeroNuke è firmata nell'audit log (HMAC-SHA256, immutabile).
+Lo stack standard ha un'istanza per servizio. `docker/docker-compose.ha.yml` descrive un
+cluster Patroni a tre nodi con HAProxy e due istanze del control plane; non è mai stato
+provato come cluster, e Valkey vi è un'istanza singola. I job periodici girano solo sul
+leader eletto.
 
----
-
-## Ruoli RBAC
-
-| Ruolo     | Permessi |
-|-----------|----------|
-| `admin`   | Tutto, incluso NeroNuke e gestione utenti |
-| `operator`| Gestione nodi, ACL, topologia |
-| `auditor` | Solo lettura, esportazione audit log |
-
----
-
-## Troubleshooting
-
-| Problema | Causa | Soluzione |
-|----------|-------|-----------|
-| Nodi non si registrano | Schema contratto mancante | Ricostruire l''immagine backend |
-| PG18 non parte | Volume formato vecchio | `podman compose down -v && up` |
-| Frontend 502 | Backend non healthy | Attendere healthcheck, controllare logs |
-| Login fallito | Password errata / JWT scaduto | Reset password via env, riavvio |
+Non ci sono backup programmati. Salvate il volume PostgreSQL con lo strumento che usate
+per PostgreSQL, e tenete il `.env` (in particolare `SOVEREIGN_SHRED_KEK_SECRET`, senza il
+quale i segreti cifrati delle organizzazioni non si leggono) fuori dall'host.

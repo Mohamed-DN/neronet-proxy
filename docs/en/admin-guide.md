@@ -1,70 +1,71 @@
-# NeroNet v4 - Administrator Guide (EN)
+# NeroNet v4: administrator guide
 
-## System Access
+What an operator does day to day, with the endpoints as they exist. The handbook
+([`docs/HANDBOOK.md`](../HANDBOOK.md)) explains how each part works; this page is the
+short version.
 
-### Web Console
-- **URL**: http://127.0.0.1:8443 (Production: https://your-domain:8443)
-- **Default Admin User**: dmin
-- **Default Password**: configured in .env via SOVEREIGN_ADMIN_PASS
+## Access
 
-### REST API
-- **URL**: http://127.0.0.1:8081
-- **OpenAPI Documentation**: http://127.0.0.1:8081/api/docs
-- **Authentication**: POST /api/auth/login -> Bearer JWT token (15 min lifespan, rotation supported)
+| What | Where |
+|---|---|
+| Console | `http://127.0.0.1:8443` in the compose stack. Put TLS in front of it for anything beyond one machine: the containers serve plain HTTP |
+| API | `http://127.0.0.1:8081`, also under `/api` through the console. The contract is [`api/openapi.yaml`](../../api/openapi.yaml); the server does not publish interactive documentation |
+| First account | `admin`, password from `SOVEREIGN_ADMIN_PASS` in `.env` |
+| Sign-in | `POST /api/auth/login`. Access tokens last 15 minutes; the refresh token is an HttpOnly cookie |
 
-### Environment Credentials
-The deployment generates configuration in /opt/neronet/.env. Inspect sensitive variables with:
-`ash
-grep -E 'ADMIN|TOKEN|SECRET' /opt/neronet/.env
-`
+With `SOVEREIGN_MFA_MANDATORY=admins` (the production default) the platform
+super-admin and every organisation owner and admin sign in with a TOTP code. An account
+without an authenticator is taken through enrolment at its next sign-in, and shown its
+recovery codes once.
 
----
+## Nodes
 
-## Node and Fleet Management
+### Enrolling a node
 
-### Automated Node Registration
-Go client nodes connect and register automatically using SOVEREIGN_REGISTRATION_TOKEN.
-Each peer is assigned an overlay IP from the CGNAT block 100.64.0.0/10.
+A node proves it holds its private key on every registration (ADR 0017). What
+authorises a new key is one of:
 
-### Node Revocation & Quarantine
-- **Revoke Node**:
-  `http
-  DELETE /api/nodes/{node_id}
-  Authorization: Bearer <token>
-  `
-  Immediately invalidates the WireGuard peer pubkey across the entire mesh via synchronized Netmap push.
-- **Quarantine Node**:
-  `http
-  PATCH /api/nodes/{node_id}
-  { status: quarantined }
-  `
-  Isolates the target node, injecting dynamic drop rules across all mesh firewalls.
+- a pre-auth key from the console (`POST /api/preauth-keys`), given to the node as
+  `SOVEREIGN_ENROLMENT_KEY` (`nnk1:<key>:<fingerprint>`, which also pins the control
+  plane key); single-use keys are spent at first enrolment;
+- the fleet token `SOVEREIGN_REGISTRATION_TOKEN`, for automated fleets.
 
----
+An enrolled node re-registers with its key alone. Each node gets an overlay address
+from `100.64.0.0/10` and its own credential for everything after registration.
 
-## Topology & Dynamic Link Configuration
+### Quarantine and revocation
 
-### 2D Physics Mesh Ragnatela
-The Web Console features a real-time 2D physics graph displaying peer connections.
-- **Direct WireGuard**: Low latency peer-to-peer kernel/userspace UDP tunnel.
-- **DERP Relay**: Encapsulated TLS fallback via regional relays (derp-eu, derp-us) when symmetric NAT prevents direct hole-punching.
-- **OpenVPN Stealth Mode**: Obfuscated TCP/TLS 443 transport for restrictive enterprise/banking firewalls.
-- **Onion Multi-Hop**: Multi-layered encrypted circuit routing for high-assurance anonymity.
-- **Device Visibility Isolation**: Select two nodes to revoke bilateral visibility without removing peers from the global cluster.
+| Action | Request | Effect |
+|---|---|---|
+| Quarantine | `POST /api/nodes/{id}/action` `{"action":"quarantine","reason":"..."}` | The node leaves every peer set within a heartbeat, and its credential stops working |
+| Lift quarantine | `POST /api/nodes/{id}/action` `{"action":"lift_quarantine"}` | It comes back |
+| Revoke | `DELETE /api/nodes/{id}` | The key is revoked and delivered to every node; the node cannot register again with it |
 
----
+`scripts/dev/scenarios/overlay.sh quarantine` and `revoke` show both on a running
+stack with real traffic.
 
-## High Availability & Backups
+## Access policy
 
-### PostgreSQL HA with Patroni
-Production deployments run three Patroni nodes backed by Raft/etcd consensus. Failover occurs within 3-5 seconds.
-`ash
-patronictl -c /etc/patroni/patroni.yml topology
-`
+Nodes of one organisation only ever peer with each other. Within an organisation, ACL
+rules (`/api/acl/rules`) decide, first match wins; with no rule, the organisation's
+`default_policy` decides (`open` or `deny`). A change reaches the nodes within one
+heartbeat, 15 seconds by default.
 
-### Automated Physical Backups (pgBackRest)
-Daily full and hourly incremental backups are stored in S3/MinIO compatible object stores with AES-256 GCM encryption.
-`ash
-pgbackrest --stanza=neronet backup
-pgbackrest --stanza=neronet check
-`
+## Transports
+
+The overlay is WireGuard (wireguard-go, userspace by default). The pre-shared key of
+each pair rotates every two minutes; it is classical cryptography, not post-quantum.
+Nodes use DERP relays for inbound traffic only: there is no relayed fallback for a
+pair that cannot reach each other directly yet. AmneziaWG-style obfuscation exists in
+the code and is not switched on by the node. There is no OpenVPN or VLESS transport.
+
+## Availability and backups
+
+The standard stack is one instance of each service. `docker/docker-compose.ha.yml`
+describes a three-node Patroni cluster with HAProxy and two control plane instances;
+it has not been exercised as a cluster, and Valkey in it is a single instance.
+Periodic jobs run on the elected leader only.
+
+There are no scheduled backups. Back up the PostgreSQL volume with the tool you use
+for PostgreSQL, and keep `.env` (in particular `SOVEREIGN_SHRED_KEK_SECRET`, without
+which sealed organisation secrets cannot be read) outside the host.

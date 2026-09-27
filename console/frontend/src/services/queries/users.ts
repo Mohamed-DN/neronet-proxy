@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import { apiRequest } from '../apiClient';
-import type { CreateOrgPayload, CreateUserPayload, Organization, QrOnboardingData, UserAccount } from '../types';
+import type {
+  CreateOrgPayload,
+  CreateUserPayload,
+  Organization,
+  OrganizationModule,
+  OrganizationSettingsUpdate,
+  QrOnboardingData,
+  UserAccount
+} from '../types';
 import { queryKeys } from './keys';
 
 /**
@@ -159,6 +167,62 @@ export function useCreateOrganization() {
       return res.organization;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.organizations });
+    }
+  });
+}
+
+/**
+ * One organization, as the caller may see it (their own, or any for the super-admin).
+ */
+export function useOrganization(orgId: string | null | undefined): UseQueryResult<Organization, Error> {
+  return useQuery({
+    queryKey: queryKeys.organization(orgId ?? ''),
+    enabled: Boolean(orgId),
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest<{ organization: Organization }>(
+        `/organizations/${encodeURIComponent(orgId ?? '')}`,
+        {
+          signal
+        }
+      );
+      return res.organization;
+    }
+  });
+}
+
+/**
+ * The feature modules and whether each is on for the organization.
+ */
+export function useOrganizationModules(orgId: string | null | undefined): UseQueryResult<OrganizationModule[], Error> {
+  return useQuery({
+    queryKey: [...queryKeys.organization(orgId ?? ''), 'modules'],
+    enabled: Boolean(orgId),
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest<{ modules: OrganizationModule[] }>(
+        `/organizations/${encodeURIComponent(orgId ?? '')}/modules`,
+        { signal }
+      );
+      return res.modules || [];
+    }
+  });
+}
+
+/**
+ * Change the settings the control plane applies to the organization's nodes.
+ */
+export function useUpdateOrganizationSettings(orgId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: OrganizationSettingsUpdate) => {
+      const res = await apiRequest<{ organization: Organization }>(`/organizations/${encodeURIComponent(orgId)}`, {
+        method: 'PUT',
+        body: payload
+      });
+      return res.organization;
+    },
+    onSuccess: (org) => {
+      queryClient.setQueryData(queryKeys.organization(orgId), org);
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations });
     }
   });

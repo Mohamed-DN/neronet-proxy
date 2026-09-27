@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
-	"strings"
 	"testing"
 )
 
@@ -184,36 +183,5 @@ func TestTransportManager_Negotiation(t *testing.T) {
 	}
 	if s2.H1 != 0x11223344 {
 		t.Fatalf("Peer 2 custom H1 mismatch: got 0x%x", s2.H1)
-	}
-}
-
-func TestFallbacks_OpenVPN_and_VLESS(t *testing.T) {
-	// OpenVPN config verification
-	ovpn := GenerateOpenVPNConfig(OpenVPNProfileConfig{
-		RemoteHost: "mesh-gateway.neronet.internal",
-		RemotePort: 1194,
-		Proto:      "udp",
-		Cipher:     "AES-256-GCM",
-	})
-	if !strings.Contains(ovpn, "remote mesh-gateway.neronet.internal 1194") {
-		t.Fatalf("OpenVPN config missing remote: %s", ovpn)
-	}
-	if !strings.Contains(ovpn, "proto udp") {
-		t.Fatalf("OpenVPN config missing proto: %s", ovpn)
-	}
-
-	// VLESS URI verification
-	vless := GenerateVLESSURI(VLESSProfileConfig{
-		UUID:       "12345678-1234-1234-1234-123456789abc",
-		RemoteHost: "edge.neronet.internal",
-		RemotePort: 443,
-		Path:       "/vless-proxy",
-		Sni:        "edge.neronet.internal",
-	})
-	if !strings.HasPrefix(vless, "vless://12345678-1234-1234-1234-123456789abc@edge.neronet.internal:443") {
-		t.Fatalf("VLESS URI prefix mismatch: %s", vless)
-	}
-	if !strings.Contains(vless, "path=/vless-proxy") {
-		t.Fatalf("VLESS URI path mismatch: %s", vless)
 	}
 }

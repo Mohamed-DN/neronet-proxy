@@ -589,7 +589,7 @@ router.get('/me', authenticateToken, async (req, res, next) => {
   try {
     const pool = getPgPool();
     const userRes = await pool.query(
-      'SELECT id, username, email, role, status, totp_enabled, bypass_apps, created_at FROM users WHERE id = $1',
+      'SELECT id, username, email, role, status, organization_id, totp_enabled, bypass_apps, created_at FROM users WHERE id = $1',
       [req.user.id]
     );
     const user = userRes.rows[0] || null;

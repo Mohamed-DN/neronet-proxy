@@ -155,8 +155,10 @@ class OrgService {
       params.push(profile);
     }
     if (default_transport) {
-      if (!['wireguard', 'amneziawg', 'openvpn', 'vless'].includes(default_transport)) {
-        throw new Error('Invalid default_transport: must be wireguard, amneziawg, openvpn, or vless');
+      // Only transports a node can run are accepted. OpenVPN and VLESS were accepted
+      // here, stored, and ignored by every node.
+      if (!['wireguard', 'amneziawg'].includes(default_transport)) {
+        throw new Error('Invalid default_transport: must be wireguard or amneziawg');
       }
       updates.push(`default_transport = $${idx++}`);
       params.push(default_transport);

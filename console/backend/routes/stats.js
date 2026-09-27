@@ -505,7 +505,9 @@ router.post('/topology/link', async (req, res, next) => {
       return res.status(404).json({ error: 'Node not found' });
     }
     const linkOrgId = ends[0].organization_id || null;
-    const validModes = ['direct', 'derp', 'openvpn', 'onion'];
+    // A link's mode is a label for the topology view; it does not change how the two
+    // nodes reach each other. 'openvpn' is gone: there is no OpenVPN transport.
+    const validModes = ['direct', 'derp', 'onion'];
     const chosenMode = validModes.includes(mode) ? mode : 'direct';
     const visible = Boolean(is_visible);
 

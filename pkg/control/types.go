@@ -296,7 +296,7 @@ type NetmapSelf struct {
 	// ListenPort is the UDP port every node in the deployment binds for WireGuard.
 	ListenPort uint16 `json:"listen_port"`
 
-	// Transport is the active transport protocol ("wireguard", "amneziawg", "openvpn", "vless").
+	// Transport is the active transport protocol: "wireguard" or "amneziawg".
 	Transport string `json:"transport,omitempty"`
 
 	// Stealth carries AmneziaWG obfuscation parameters when Transport is "amneziawg".

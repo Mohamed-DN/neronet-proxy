@@ -1,257 +1,178 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Cpu, Lock, Save, Shield } from 'lucide-react';
 
-import { Badge, Button, Card, FormField, Input, PageHeader, Select, StatusBadge, Switch } from '../../ui';
-import { GlossaryHint } from '../GlossaryHint';
+import { useAuth } from '../../context/AuthContext';
+import { ApiError } from '../../services/apiClient';
+import { useOrganization, useOrganizationModules, useUpdateOrganizationSettings } from '../../services/queries/users';
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  ErrorState,
+  FormField,
+  Input,
+  PageHeader,
+  Select,
+  Skeleton,
+  useToast
+} from '../../ui';
 
+const MIN_STALENESS_SECONDS = 60;
+
+/**
+ * The organisation's settings, read from and written to the control plane.
+ *
+ * This page used to be a form of switches -- onion circuits, ShadowTLS, VLESS
+ * Reality, port hopping, MTU, cipher suite -- held in local state, whose "Apply"
+ * button waited 400 ms and said it was done. None of it reached the control plane,
+ * and several of the options did not exist anywhere. It now shows only settings the
+ * control plane applies, and saves them with PUT /api/organizations/:id.
+ */
 export default function SettingsRoute() {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const { notify } = useToast();
+  const orgId = (user?.organization_id as string | undefined) || 'org-default';
 
-  // Settings State
-  const [onionRouting, setOnionRouting] = useState(true);
-  const [obfuscationProtocol, setObfuscationProtocol] = useState<
-    'shadow-tls' | 'vless-reality' | 'quic-masque' | 'amnezia-wg'
-  >('shadow-tls');
-  const [portHopping, setPortHopping] = useState(true);
-  const [hopInterval, setHopInterval] = useState('30');
+  const org = useOrganization(orgId);
+  const modules = useOrganizationModules(orgId);
+  const update = useUpdateOrganizationSettings(orgId);
 
-  const [listenPort, setListenPort] = useState('51820');
-  const [interfaceMtu, setInterfaceMtu] = useState('1380');
-  const [persistentKeepalive, setPersistentKeepalive] = useState('25');
-  const [cipherSuite, setCipherSuite] = useState('chacha20-poly1305');
+  const [policy, setPolicy] = useState<'open' | 'deny'>('deny');
+  const [staleness, setStaleness] = useState('');
 
-  const [rateLimiting, setRateLimiting] = useState(true);
-  const [auditChainVerification, setAuditChainVerification] = useState(true);
-  const [prometheusMetrics, setPrometheusMetrics] = useState(true);
+  useEffect(() => {
+    if (!org.data) return;
+    setPolicy(org.data.default_policy ?? 'deny');
+    setStaleness(String(org.data.max_netmap_staleness_seconds ?? ''));
+  }, [org.data]);
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
+  const stalenessValue = Number(staleness);
+  const stalenessInvalid =
+    staleness !== '' && (!Number.isInteger(stalenessValue) || stalenessValue < MIN_STALENESS_SECONDS);
 
-  const handleApplySettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
-      setIsSaved(true);
-      setTimeout(() => setIsSaved(false), 3000);
-    }, 400);
+  const save = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (stalenessInvalid) return;
+    try {
+      await update.mutateAsync({
+        default_policy: policy,
+        ...(staleness !== '' ? { max_netmap_staleness_seconds: stalenessValue } : {})
+      });
+      notify(t('settings.saved'), { tone: 'success' });
+    } catch (err) {
+      const message =
+        err instanceof ApiError && err.status === 403
+          ? t('settings.forbidden')
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      notify(message, { tone: 'danger' });
+    }
   };
+
+  if (org.isError) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title={t('settings.title')} description={t('settings.subtitle')} />
+        <ErrorState title={t('settings.loadError')} detail={org.error.message} onRetry={() => org.refetch()} />
+      </div>
+    );
+  }
+
+  const regulated = org.data?.profile === 'regulated';
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <PageHeader
-        title={t('settings.title', 'Sovereign Mesh Global Configuration')}
-        description={t(
-          'settings.subtitle',
-          'Core cryptographic primitives, WireGuard engine tuning, traffic obfuscation, and telemetry parameters.'
-        )}
-        actions={
-          <div className="flex items-center gap-3">
-            <Badge tone="accent" mono>
-              {t('settings.badgeParameters', 'System Parameters')}
-            </Badge>
-            <Button
-              variant="primary"
-              size="md"
-              icon={isSaved ? Check : Save}
-              onClick={handleApplySettings}
-              disabled={isSaving}
-            >
-              {isSaving
-                ? t('settings.saving', 'Applying Changes...')
-                : isSaved
-                  ? t('settings.saved', 'Applied')
-                  : t('settings.btnSave', 'Apply Configuration')}
-            </Button>
-          </div>
-        }
-      />
+      <PageHeader title={t('settings.title')} description={t('settings.subtitle')} />
 
-      <form onSubmit={handleApplySettings} className="space-y-6">
+      {org.isLoading ? (
+        <Skeleton lines={6} />
+      ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Section 1: Traffic & Stealth Obfuscation */}
-          <Card className="space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-border">
-              <div className="flex items-center gap-2 font-bold text-content text-sm">
-                <Shield className="h-4 w-4 text-accent" />
-                <span>{t('settings.sectionTraffic', 'Advanced Traffic & Stealth Routing')}</span>
-                <GlossaryHint
-                  text={t('glossary.onion.body')}
-                  label={t('glossary.ariaLabel', {
-                    term: t('glossary.onion.term')
-                  })}
-                />
-              </div>
-              <StatusBadge status="ok" label="Active" />
-            </div>
-
-            <div className="space-y-4">
-              <Switch
-                label={t('settings.fieldOnion', 'Tor-Grade 3-Hop Onion Circuits')}
-                description={t(
-                  'settings.fieldOnionDesc',
-                  'Layered Noise encryption across mesh relays for metadata privacy'
-                )}
-                checked={onionRouting}
-                onCheckedChange={setOnionRouting}
-              />
-
-              <FormField label={t('settings.fieldObfuscation', 'Stealth Obfuscation Protocol')}>
+          <Card>
+            <CardHeader as="h2" title={t('settings.sectionPolicy')} description={t('settings.sectionPolicyDesc')} />
+            <form onSubmit={save} className="space-y-4">
+              <FormField label={t('settings.fieldPolicy')}>
                 <Select
-                  value={obfuscationProtocol}
-                  onValueChange={(val) => setObfuscationProtocol(val as any)}
+                  value={policy}
+                  onValueChange={(value) => setPolicy(value === 'open' ? 'open' : 'deny')}
                   options={[
-                    {
-                      value: 'shadow-tls',
-                      label: t('settings.optShadowTls', 'ShadowTLS v3 (Mimic TLS 1.3 Handshake)')
-                    },
-                    {
-                      value: 'vless-reality',
-                      label: t('settings.optVless', 'VLESS Reality (Zero-RTT Server Name Indication)')
-                    },
-                    {
-                      value: 'quic-masque',
-                      label: t('settings.optMasque', 'QUIC MASQUE (HTTP/3 Datagram Tunneling)')
-                    },
-                    {
-                      value: 'amnezia-wg',
-                      label: t('settings.optAmnezia', 'AmneziaWG (Junk Packet Prefix & Custom Header Magic)')
-                    }
+                    { value: 'deny', label: t('settings.policyDeny') },
+                    { value: 'open', label: t('settings.policyOpen') }
                   ]}
                 />
               </FormField>
 
-              <Switch
-                label="NeroHop (Dynamic WireGuard UDP Port-Hopping)"
-                description="Rotate external UDP ports every N seconds to defeat 5-tuple firewall tracking"
-                checked={portHopping}
-                onCheckedChange={setPortHopping}
-              />
+              <FormField
+                label={t('settings.fieldStaleness')}
+                hint={t('settings.fieldStalenessHint')}
+                error={stalenessInvalid ? t('settings.stalenessInvalid') : null}
+              >
+                <Input
+                  type="number"
+                  min={MIN_STALENESS_SECONDS}
+                  step={1}
+                  mono
+                  value={staleness}
+                  invalid={stalenessInvalid}
+                  onChange={(e) => setStaleness(e.target.value)}
+                />
+              </FormField>
 
-              {portHopping && (
-                <FormField label="Port-Hop Rotation Interval (seconds)">
-                  <Input
-                    type="number"
-                    min="5"
-                    max="300"
-                    value={hopInterval}
-                    onChange={(e) => setHopInterval(e.target.value)}
-                  />
-                </FormField>
-              )}
-            </div>
+              <Button
+                type="submit"
+                loading={update.isPending}
+                loadingLabel={t('settings.saving')}
+                disabled={stalenessInvalid}
+              >
+                {t('settings.btnSave')}
+              </Button>
+            </form>
           </Card>
 
-          {/* Section 2: WireGuard Engine Parameters */}
-          <Card className="space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-border">
-              <div className="flex items-center gap-2 font-bold text-content text-sm">
-                <Cpu className="h-4 w-4 text-accent" />
-                <span>{t('settings.sectionEngine', 'WireGuard Engine & MTU Sizing')}</span>
-              </div>
-              <Badge tone="neutral" mono>
-                Kernel / TUN
-              </Badge>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label={t('settings.fieldPort', 'Listen UDP Port')}>
-                <Input type="number" value={listenPort} onChange={(e) => setListenPort(e.target.value)} />
-              </FormField>
-
-              <FormField label={t('settings.fieldMtu', 'Interface MTU Size (bytes)')}>
-                <Input
-                  type="number"
-                  min="1280"
-                  max="1500"
-                  value={interfaceMtu}
-                  onChange={(e) => setInterfaceMtu(e.target.value)}
-                />
-              </FormField>
-
-              <FormField label={t('settings.fieldKeepalive', 'Persistent Keepalive Interval (seconds)')}>
-                <Input
-                  type="number"
-                  min="5"
-                  max="120"
-                  value={persistentKeepalive}
-                  onChange={(e) => setPersistentKeepalive(e.target.value)}
-                />
-              </FormField>
-
-              <FormField label={t('settings.fieldCipher', 'Primary Cipher Suite')}>
-                <Select
-                  value={cipherSuite}
-                  onValueChange={setCipherSuite}
-                  options={[
-                    {
-                      value: 'chacha20-poly1305',
-                      label: 'ChaCha20-Poly1305 (RFC 8439)'
-                    },
-                    {
-                      value: 'aes-256-gcm',
-                      label: 'AES-256-GCM (Hardware Accel)'
-                    }
-                  ]}
-                />
-              </FormField>
-            </div>
-
-            <div className="p-3 rounded-lg bg-surface border border-border text-xs text-muted space-y-1">
-              <div className="font-semibold text-content">Automatic Clamp Safeguard</div>
-              <p>
-                MTU is automatically clamped between 1280 and 1420 to prevent packet fragmentation when traversing
-                nested overlay tunnels.
+          <div className="space-y-6">
+            <Card>
+              <CardHeader
+                as="h2"
+                title={t('settings.sectionProfile')}
+                actions={
+                  <Badge tone={regulated ? 'warning' : 'neutral'}>
+                    {regulated ? t('settings.profileRegulated') : t('settings.profileStandard')}
+                  </Badge>
+                }
+              />
+              <p className="text-caption text-subtle">
+                {regulated ? t('settings.profileRegulatedDesc') : t('settings.profileStandardDesc')}
               </p>
-            </div>
-          </Card>
+            </Card>
+
+            <Card>
+              <CardHeader as="h2" title={t('settings.sectionModules')} />
+              {modules.isLoading ? (
+                <Skeleton lines={3} />
+              ) : (
+                <ul className="space-y-2">
+                  {(modules.data ?? []).map((m) => (
+                    <li key={m.module_id} className="flex items-center justify-between font-mono text-caption">
+                      <span className="text-content">{m.module_id}</span>
+                      <Badge tone={m.enabled ? 'success' : 'neutral'}>
+                        {m.enabled ? t('settings.moduleOn') : t('settings.moduleOff')}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+
+            <Card>
+              <CardHeader as="h2" title={t('settings.sectionTransport')} />
+              <p className="text-caption text-subtle">{t('settings.transportBody')}</p>
+            </Card>
+          </div>
         </div>
-
-        {/* Section 3: Telemetry, SIEM & Security Hardening */}
-        <Card className="space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-border">
-            <div className="flex items-center gap-2 font-bold text-content text-sm">
-              <Lock className="h-4 w-4 text-accent" />
-              <span>{t('settings.sectionSecurity', 'Telemetry, SIEM & Hardening')}</span>
-            </div>
-            <StatusBadge status="ok" label="Enforced" />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Switch
-              label={t('settings.fieldRateLimit', 'Strict Rate Limiting')}
-              description={t(
-                'settings.fieldRateLimitDesc',
-                'Protect control plane endpoints against brute-force and credential stuffing'
-              )}
-              checked={rateLimiting}
-              onCheckedChange={setRateLimiting}
-            />
-
-            <Switch
-              label={t('settings.fieldAuditChain', 'HMAC Audit Ledger Verification')}
-              description={t(
-                'settings.fieldAuditChainDesc',
-                'Continuous SHA-256 HMAC cryptographic chain verification'
-              )}
-              checked={auditChainVerification}
-              onCheckedChange={setAuditChainVerification}
-            />
-
-            <Switch
-              label={t('settings.fieldPrometheus', 'Prometheus Metrics Exporter')}
-              description={t(
-                'settings.fieldPrometheusDesc',
-                'Scrape metrics at /metrics for OpenTelemetry and Grafana'
-              )}
-              checked={prometheusMetrics}
-              onCheckedChange={setPrometheusMetrics}
-            />
-          </div>
-        </Card>
-      </form>
+      )}
     </div>
   );
 }
