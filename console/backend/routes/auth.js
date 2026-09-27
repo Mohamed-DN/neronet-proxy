@@ -466,11 +466,21 @@ router.post('/refresh', async (req, res, next) => {
       return res.status(401).json({ error: 'Refresh token expired' });
     }
 
-    // Atomically revoke the used refresh token (Single-use rotation)
-    await pool.query('UPDATE refresh_tokens SET revoked = TRUE, revoked_at = NOW() WHERE id = $1', [rtRow.id]);
+    // Single use. The condition makes the consumption atomic: of two requests racing
+    // with the same token, only one updates the row.
+    const consumed = await pool.query(
+      'UPDATE refresh_tokens SET revoked = TRUE, revoked_at = NOW() WHERE id = $1 AND revoked = FALSE AND revoked_at IS NULL',
+      [rtRow.id]
+    );
+    if (consumed.rowCount !== 1) {
+      clearAuthCookies(res);
+      return res.status(401).json({ error: 'Refresh token already used' });
+    }
 
     // Re-read current role and status from PostgreSQL source of truth
-    const userRes = await pool.query('SELECT id, username, role, status FROM users WHERE id = $1', [rtRow.user_id]);
+    const userRes = await pool.query('SELECT id, username, role, status, organization_id FROM users WHERE id = $1', [
+      rtRow.user_id
+    ]);
     if (userRes.rows.length === 0 || userRes.rows[0].status === 'suspended' || userRes.rows[0].status === 'revoked') {
       clearAuthCookies(res);
       return res.status(401).json({ error: 'Account inactive or suspended' });
@@ -484,11 +494,14 @@ router.post('/refresh', async (req, res, next) => {
     }
     const latestUser = userRes.rows[0];
 
-    // Issue new access token and rotated refresh token with the updated role
+    // Issue new access token and rotated refresh token with the updated role. The
+    // organisation is carried too: the feature module guard reads it from the token,
+    // and without it a regulated organisation got its disabled modules back.
     const userPayload = {
       id: latestUser.id,
       username: latestUser.username,
-      role: latestUser.role
+      role: latestUser.role,
+      organization_id: latestUser.organization_id
     };
 
     const newToken = signToken(userPayload);
