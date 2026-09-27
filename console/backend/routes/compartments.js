@@ -201,6 +201,11 @@ router.post('/lock', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const orgId = req.query.org_id || req.user.organization_id || 'org-default';
+    // The same check as the list: ?org_id names another organisation only for the
+    // platform super-admin.
+    if (req.user.role !== 'super-admin' && req.user.organization_id !== orgId) {
+      return res.status(404).json({ error: 'Compartment not found' });
+    }
     const accessTier = req.user.compartment_access || req.user.access_tier || 'standard';
     const compartment = await CompartmentService.getCompartment(req.params.id, orgId, accessTier);
 
