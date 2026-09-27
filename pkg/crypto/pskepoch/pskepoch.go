@@ -132,9 +132,13 @@ func (m *Manager) Stop() {
 }
 
 func (m *Manager) loop(ctx context.Context) {
+	// The epoch changes at the same wall-clock instant on every node, but each node
+	// notices only at its next poll. Until both ends of a pair have switched, their
+	// keys differ and handshakes fail: polling every 10 seconds left a window of up to
+	// 10 seconds at every boundary. A poll is a comparison of two integers.
 	pollInterval := m.interval / 4
-	if pollInterval > 10*time.Second {
-		pollInterval = 10 * time.Second
+	if pollInterval > time.Second {
+		pollInterval = time.Second
 	}
 	if pollInterval < 10*time.Millisecond {
 		pollInterval = 10 * time.Millisecond
