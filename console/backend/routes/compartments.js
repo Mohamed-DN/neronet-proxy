@@ -8,6 +8,8 @@ const { requireOrgRole, resolveUserOrg } = require('../middleware/rbac');
 const { getPgPool } = require('../db/index');
 const { logAuditEvent } = require('../utils/audit');
 const CompartmentService = require('../services/CompartmentService');
+const DuressService = require('../services/DuressService');
+const logger = require('../utils/logger');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -44,19 +46,18 @@ router.post('/unlock', async (req, res, next) => {
     }
     const user = userRes.rows[0];
 
-    // Check duress stealth wipe password
-    if (user.password_hash_stealth_wipe && (await bcrypt.compare(password, user.password_hash_stealth_wipe))) {
-      await pool.query(
-        'DELETE FROM nodes WHERE compartment_id IN (SELECT id FROM compartments WHERE is_hidden = TRUE)'
-      );
-      await pool.query('DELETE FROM compartments WHERE is_hidden = TRUE');
-      logAuditEvent({
-        eventType: 'DURESS_STEALTH_WIPE',
-        severity: 'critical',
-        actorUserId: user.id,
-        actorUsername: user.username,
-        message: `Stealth wipe triggered by ${user.username} during compartment unlock`
-      });
+    // Duress password: wipes this organisation's hidden compartments, within the
+    // limits DuressService sets, and answers like a wrong password.
+    if (
+      user.password_hash_stealth_wipe &&
+      (await bcrypt.compare(password, user.password_hash_stealth_wipe)) &&
+      (await DuressService.isEnabledFor(user))
+    ) {
+      try {
+        await DuressService.wipeHiddenCompartments(user, { ipAddress: req.ip, via: 'vault_unlock' });
+      } catch (err) {
+        logger.error(`Stealth wipe for ${user.id} failed: ${err.message}`);
+      }
       return res.status(401).json({ error: 'Invalid vault password' });
     }
 

@@ -20,6 +20,8 @@ const { logAuditEvent } = require('../utils/audit');
 const { setAuthCookies, clearAuthCookies } = require('../utils/cookies');
 const TotpService = require('../services/TotpService');
 const OidcService = require('../services/OidcService');
+const DuressService = require('../services/DuressService');
+const logger = require('../utils/logger');
 
 // Pre-computed constant-time dummy bcrypt hash to prevent timing side-channel attacks on non-existent usernames
 const DUMMY_BCRYPT_HASH = '$2a$10$wN3t8gX1ZkGkR0e2M8t0y.9gZ0n4p7s2e6u1v8w5x9y2z3a4b5c6d';
@@ -60,14 +62,16 @@ async function issueUserSession(req, res, user, pool) {
 // 1. Register User (Public)
 router.post('/register', registerLimiter, async (req, res, next) => {
   try {
-    const { username, password, email, role } = req.body || {};
+    // A role in the body is ignored. This endpoint is public; letting it choose the
+    // role handed platform super-admin to anyone who asked.
+    const { username, password, email } = req.body || {};
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Missing required registration fields' });
     }
 
     const userId = `usr-${uuidv4().substring(0, 8)}`;
-    const userRole = role === 'super-admin' ? 'super-admin' : 'user';
+    const userRole = 'user';
     const userEmail = email || `${username}@sovereign.local`;
     const salt = bcrypt.genSaltSync(10);
     const passwordHash = bcrypt.hashSync(password, salt);
@@ -152,30 +156,35 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
-    // EXECUTE DURESS PROTOCOLS IF APPLICABLE
-    if (accessTier === 'stealth_wipe') {
-      try {
-        await pool.query(
-          'DELETE FROM nodes WHERE compartment_id IN (SELECT id FROM compartments WHERE is_hidden = TRUE)'
-        );
-        await pool.query('DELETE FROM compartments WHERE is_hidden = TRUE');
-        console.warn(`[DURESS] Stealth wipe triggered by ${username}`);
-      } catch (e) {
-        console.error('Stealth wipe failed:', e);
-      }
-      accessTier = 'standard'; // Drop them into the standard view so it looks normal
-    } else if (accessTier === 'nuclear_wipe') {
-      try {
-        await pool.query('TRUNCATE TABLE nodes, users CASCADE');
-        console.warn(`[DURESS] NUCLEAR WIPE triggered by ${username}`);
-        return res.status(401).json({ error: 'Invalid username or password' }); // Act like it failed so they don't see an empty shell if it was a real attacker
-      } catch (e) {
-        console.error('Nuclear wipe failed:', e);
+    // Before any duress action: a suspended account destroys nothing.
+    if (user.status === 'suspended' || user.status === 'revoked') {
+      return res.status(403).json({ error: 'Account is suspended or revoked' });
+    }
+
+    // Duress passwords. DuressService bounds what each may destroy to what this
+    // account could delete through the API anyway; see the comment there.
+    if (accessTier === 'stealth_wipe' || accessTier === 'nuclear_wipe') {
+      if (!(await DuressService.isEnabledFor(user))) {
+        // Where the organisation does not allow them, a duress password is a wrong one.
+        return res.status(401).json({ error: 'Invalid username or password' });
       }
     }
 
-    if (user.status === 'suspended' || user.status === 'revoked') {
-      return res.status(403).json({ error: 'Account is suspended or revoked' });
+    if (accessTier === 'stealth_wipe') {
+      try {
+        await DuressService.wipeHiddenCompartments(user, { ipAddress: req.ip, via: 'login' });
+      } catch (err) {
+        logger.error(`Stealth wipe for ${user.id} failed: ${err.message}`);
+      }
+      accessTier = 'standard'; // The decoy session opens either way.
+    } else if (accessTier === 'nuclear_wipe') {
+      try {
+        await DuressService.wipeOwnAccount(user, { ipAddress: req.ip });
+      } catch (err) {
+        logger.error(`Nuclear wipe for ${user.id} failed: ${err.message}`);
+      }
+      // Looks like a failed sign-in, and never opens a session, whether or not the wipe completed.
+      return res.status(401).json({ error: 'Invalid username or password' });
     }
 
     // MFA Enforcement Check (ADR 0018 / WP-105)
