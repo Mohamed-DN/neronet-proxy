@@ -30,7 +30,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
 
@@ -223,6 +222,11 @@ type Device struct {
 
 	mu     sync.Mutex
 	closed bool
+
+	// setMu serialises SetPeers; peerKeys is the set the last one applied, so the
+	// next can remove only the peers that are gone.
+	setMu    sync.Mutex
+	peerKeys map[string]struct{}
 }
 
 // New brings up a tunnel. The device has no peers until SetPeers is called, so it
@@ -275,7 +279,11 @@ func New(cfg Config) (*Device, error) {
 	}
 	logger := newLogger(level, cfg.Logf)
 
-	bind := conn.NewDefaultBind()
+	bind, listenPort, err := portedBind(cfg.ListenPort)
+	if err != nil {
+		_ = filtered.Close()
+		return nil, err
+	}
 	if cfg.Stealth != nil {
 		obf, err := stealth.NewObfuscator(*cfg.Stealth)
 		if err == nil {
@@ -286,7 +294,7 @@ func New(cfg Config) (*Device, error) {
 	wgDev := device.NewDevice(filtered, bind, logger)
 
 	uapi := fmt.Sprintf("private_key=%s\nlisten_port=%d\n",
-		hex.EncodeToString(cfg.PrivateKey[:]), cfg.ListenPort)
+		hex.EncodeToString(cfg.PrivateKey[:]), listenPort)
 	if err := wgDev.IpcSet(uapi); err != nil {
 		wgDev.Close()
 		_ = filtered.Close()
@@ -329,14 +337,23 @@ func (d *Device) LocalAddr() netip.Addr {
 	return d.addresses[0].Addr()
 }
 
-// SetPeers replaces the peer set in one operation.
+// SetPeers makes the device's peer set the one given.
 //
-// Peers are replaced rather than merged because the netmap is a complete document:
-// a peer the control plane stopped sending is a peer this node must stop talking to,
-// and an incremental update cannot express that. The whole set is validated before
-// anything is applied, so a malformed entry leaves the previous peers in place
-// instead of tearing down the overlay halfway through.
+// The netmap is a complete document: a peer the control plane stopped sending is a
+// peer this node must stop talking to, so every peer not in the new set is removed.
+// A peer in both keeps its session and its pre-shared key; only its allowed IPs,
+// endpoint and keepalive are rewritten. The previous version removed and re-created
+// every peer on every netmap (replace_peers=true), which dropped every session in
+// the fleet whenever any rule or node changed, and brought each peer back without
+// the key pkg/crypto/pskepoch had installed, so the next handshake failed.
+//
+// The whole set is validated before anything is applied, so a malformed entry
+// leaves the previous peers in place instead of tearing down the overlay halfway
+// through.
 func (d *Device) SetPeers(peers []Peer) error {
+	d.setMu.Lock()
+	defer d.setMu.Unlock()
+
 	d.mu.Lock()
 	closed := d.closed
 	d.mu.Unlock()
@@ -357,7 +374,11 @@ func (d *Device) SetPeers(peers []Peer) error {
 	}
 
 	var b strings.Builder
-	b.WriteString("replace_peers=true\n")
+	for key := range d.peerKeys {
+		if _, stays := seen[key]; !stays {
+			fmt.Fprintf(&b, "public_key=%s\nremove=true\n", key)
+		}
+	}
 	for _, p := range peers {
 		fmt.Fprintf(&b, "public_key=%s\n", strings.ToLower(strings.TrimSpace(p.PublicKey)))
 		fmt.Fprintf(&b, "replace_allowed_ips=true\n")
@@ -376,6 +397,7 @@ func (d *Device) SetPeers(peers []Peer) error {
 	if err := d.wg.IpcSet(b.String()); err != nil {
 		return fmt.Errorf("dataplane: applying %d peer(s): %w", len(peers), err)
 	}
+	d.peerKeys = seen
 
 	if d.transportMgr != nil {
 		for _, p := range peers {

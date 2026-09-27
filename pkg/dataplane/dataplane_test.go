@@ -497,3 +497,105 @@ func TestICMPChecksumIsCorrect(t *testing.T) {
 		t.Fatal("identifier was not written into the echo header")
 	}
 }
+
+// echoOnce sends one marker through the tunnel and reads it back within the deadline.
+func echoOnce(t *testing.T, from *Device, address string, deadline time.Duration) error {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	defer cancel()
+	c, err := from.DialContext(ctx, "tcp", address)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	_ = c.SetDeadline(time.Now().Add(deadline))
+	const marker = "SESSION-SURVIVES"
+	if _, err := c.Write(append([]byte{ModeByteEcho}, marker...)); err != nil {
+		return err
+	}
+	got := make([]byte, len(marker))
+	if _, err := io.ReadFull(c, got); err != nil {
+		return err
+	}
+	if string(got) != marker {
+		return fmt.Errorf("echo returned %q", got)
+	}
+	return nil
+}
+
+// A new netmap arrives whenever any rule or any node changes. Applying it used to
+// remove every peer and create it again (replace_peers=true): every session in the
+// fleet was dropped, and each peer came back without the pre-shared key the rotation
+// had installed, so the next handshake failed until the rotation ran again. A peer
+// that is in both documents must keep its session and its key.
+func TestSetPeersKeepsTheSessionAndKeyOfAPeerThatStays(t *testing.T) {
+	a, b := pair(t, nil, nil)
+	c := newTestNode(t, "100.64.0.3/10", nil)
+
+	psk := strings.Repeat("ab", 32)
+	if err := a.dev.UpdatePeerPSK(hex.EncodeToString(b.keys.PublicKey[:]), psk); err != nil {
+		t.Fatalf("installing the PSK on A: %v", err)
+	}
+	if err := b.dev.UpdatePeerPSK(hex.EncodeToString(a.keys.PublicKey[:]), psk); err != nil {
+		t.Fatalf("installing the PSK on B: %v", err)
+	}
+
+	responder, err := ListenEcho(b.dev, 9999, nil)
+	if err != nil {
+		t.Fatalf("starting responder on B: %v", err)
+	}
+	// Bounded: when the session is torn down, a connection's close may never reach
+	// the responder, and an unbounded Close would hang the test instead of failing it.
+	t.Cleanup(func() {
+		done := make(chan struct{})
+		go func() { responder.Close(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+		}
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	first, err := dialWithRetry(ctx, a.dev, "100.64.0.2:9999")
+	if err != nil {
+		t.Fatalf("first dial: %v", err)
+	}
+	first.Close()
+	if err := echoOnce(t, a.dev, "100.64.0.2:9999", 5*time.Second); err != nil {
+		t.Fatalf("first exchange: %v", err)
+	}
+
+	before, err := a.dev.Peers()
+	if err != nil || len(before) != 1 || before[0].LastHandshake.IsZero() {
+		t.Fatalf("no session with B before the new netmap: %v %+v", err, before)
+	}
+
+	// The next netmap adds C and keeps B.
+	if err := a.dev.SetPeers([]Peer{b.peerEntry(), c.peerEntry()}); err != nil {
+		t.Fatalf("applying the new peer set: %v", err)
+	}
+
+	after, err := a.dev.Peers()
+	if err != nil {
+		t.Fatalf("reading peers: %v", err)
+	}
+	bKey := hex.EncodeToString(b.keys.PublicKey[:])
+	var kept *PeerStatus
+	for i := range after {
+		if strings.EqualFold(after[i].PublicKey, bKey) {
+			kept = &after[i]
+		}
+	}
+	if kept == nil {
+		t.Fatalf("B is gone from the peer set: %+v", after)
+	}
+	if !kept.LastHandshake.Equal(before[0].LastHandshake) {
+		t.Fatalf("the session with B was reset: handshake %v before, %v after", before[0].LastHandshake, kept.LastHandshake)
+	}
+
+	// Traffic keeps flowing at once, without waiting out a failed handshake.
+	if err := echoOnce(t, a.dev, "100.64.0.2:9999", 3*time.Second); err != nil {
+		t.Fatalf("traffic to B stopped after a netmap that kept B: %v", err)
+	}
+}
