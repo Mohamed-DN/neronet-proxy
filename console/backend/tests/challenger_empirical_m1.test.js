@@ -414,11 +414,13 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
         `Admin expected 50 events, received ${adminReceivedEvents.length}`
       );
 
-      // Tenant A must receive 20 (Alpha) + 10 (Relays) = 30 events, and ZERO Bravo events
+      // Tenant A receives its own 20 events and nothing else. The relays belong to
+      // another account, and a node's RELAY role is chosen by its owner, so it is no
+      // ground for showing it to everyone; the earlier expectation of 30 counted them.
       assert.strictEqual(
         tenantAReceivedEvents.length,
-        30,
-        `Tenant A expected 30 events, received ${tenantAReceivedEvents.length}`
+        20,
+        `Tenant A expected 20 events, received ${tenantAReceivedEvents.length}`
       );
 
       const hasBravoInAlpha = tenantAReceivedEvents.some((e) => e.node && e.node.user_id === userBId);
