@@ -46,3 +46,16 @@ We adopt enterprise session hardening and mandatory TOTP MFA:
 - Web browsers store zero credentials in `localStorage`.
 - Compromising a refresh token yields at most one use before replay detection invalidates the entire session chain.
 - Administrators cannot log in with only a password; TOTP hardware/app token is strictly enforced.
+
+## Amendment, September 2026: the console side
+
+The server side of point 1 was built, but the console kept storing both tokens in
+`localStorage` until September 2026 (`console/frontend/src/services/authToken.ts`),
+so the consequence "zero credentials in `localStorage`" did not hold. Now:
+
+- The console holds the access token in memory only and never stores the refresh
+  token; it relies on the refresh cookie.
+- After a reload the console calls `/api/auth/refresh` with the cookie to get an
+  access token (`resumeSession` in `apiClient.ts`).
+- On load it removes the keys earlier versions wrote.
+- `authToken.test.ts` fails if a sign-in, refresh or sign-out writes to web storage.

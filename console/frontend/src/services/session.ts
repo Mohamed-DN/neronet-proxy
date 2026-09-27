@@ -5,8 +5,7 @@ import { clearSession, storeActiveRole, storeSession } from './authToken';
  * Sign-in, sign-out and "who am I".
  *
  * Separate from `apiClient` because these three are the only calls that touch
- * the session rather than merely carry it, and separate from the pages because
- * WP-105 replaces all three with a cookie exchange.
+ * the session rather than merely carry it.
  */
 
 export interface ConsoleUser {
@@ -33,12 +32,10 @@ export async function signIn(username: string, password: string): Promise<Consol
     throw new Error(body?.error || 'The control plane did not return a session');
   }
 
+  // The refresh token in the body is for API clients; the console relies on the
+  // HttpOnly cookie set with the same response and keeps nothing else.
   storeSession({
     token: body.token,
-    // Issued by the server since sign-in was built and dropped on the floor by
-    // the layer this replaced, which is why sessions ended after fifteen
-    // minutes whatever the operator was doing.
-    refreshToken: body.refreshToken ?? null,
     role: body.user.role ?? 'user'
   });
 

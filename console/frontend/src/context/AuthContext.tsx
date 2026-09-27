@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
+import { resumeSession } from '../services/apiClient';
 import { clearSession, readAccessToken, readActiveRole } from '../services/authToken';
 import { fetchCurrentUser, rememberRole, signIn, signOut, type ConsoleUser } from '../services/session';
 
@@ -40,7 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const verifySession = useCallback(async () => {
-    const saved = readAccessToken();
+    // The access token is held in memory only, so after a reload there is none:
+    // the refresh cookie, if the browser still has one, gets a new one.
+    const saved = readAccessToken() ?? (await resumeSession());
     if (!saved) {
       forget();
       setLoading(false);

@@ -3,8 +3,8 @@
  *
  * It owns the base path, the bearer header, the single shared refresh on a 401,
  * cancellation, and the error type. Nothing else in the console calls `fetch`
- * against /api, so a change to how the session is carried - WP-105 moves it to
- * a cookie - is a change here and in `authToken.ts`.
+ * against /api. The refresh token is an HttpOnly cookie the page never sees;
+ * the access token is held in memory by `authToken.ts`.
  *
  * Every failure throws. The layer this replaced returned `null` for a failed
  * read, which downstream could not tell from "the server answered, and the
@@ -12,7 +12,7 @@
  * and a broken mesh identically.
  */
 
-import { authHeader, clearSession, readRefreshToken, storeAccessToken } from './authToken';
+import { authHeader, clearSession, storeAccessToken } from './authToken';
 import { reportServerAnswered, reportTransportFailure } from './connection';
 
 export const API_BASE = '/api';
@@ -61,17 +61,20 @@ export interface RequestOptions {
  */
 let refreshInFlight: Promise<string | null> | null = null;
 
-async function performRefresh(refreshToken: string): Promise<string | null> {
+async function performRefresh(): Promise<string | null> {
   try {
+    // The refresh token travels as the HttpOnly cookie the control plane set at
+    // sign-in (path /api/auth/refresh); the body carries nothing.
     const res = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken })
+      body: '{}'
     });
 
     if (!res.ok) {
-      // The refresh token is spent, revoked or expired. Clearing the session is
-      // what sends the operator back to the sign-in screen.
+      // The refresh token is spent, revoked, expired or absent. Clearing the
+      // session is what sends the operator back to the sign-in screen.
       clearSession();
       return null;
     }
@@ -82,26 +85,31 @@ async function performRefresh(refreshToken: string): Promise<string | null> {
     storeAccessToken(body.token);
     return body.token;
   } catch {
-    // A network failure is not proof the session ended, so the tokens are kept
+    // A network failure is not proof the session ended, so nothing is cleared
     // and the next request tries again.
     return null;
   }
 }
 
 async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = readRefreshToken();
-  if (!refreshToken) return null;
-
   // Released as soon as the attempt settles. Callers already awaiting hold the
   // promise itself, so nothing they see changes; a caller arriving afterwards
   // gets a new attempt, which is correct, because the previous one is over. The
   // variable used to be cleared on a timer instead, which left a window in
   // which a later 401 was answered with the outcome of an earlier refresh.
-  refreshInFlight ??= performRefresh(refreshToken).finally(() => {
+  refreshInFlight ??= performRefresh().finally(() => {
     refreshInFlight = null;
   });
 
   return refreshInFlight;
+}
+
+/**
+ * Get an access token after a reload, from the refresh cookie. Null when there
+ * is no session to resume.
+ */
+export function resumeSession(): Promise<string | null> {
+  return refreshAccessToken();
 }
 
 function isAuthEndpoint(path: string): boolean {
@@ -130,7 +138,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}, 
     ...extraHeaders
   };
 
-  const init: RequestInit = { method, headers };
+  const init: RequestInit = { method, headers, credentials: 'same-origin' };
   if (signal) init.signal = signal;
   if (body !== undefined) init.body = typeof body === 'string' ? body : JSON.stringify(body);
 
