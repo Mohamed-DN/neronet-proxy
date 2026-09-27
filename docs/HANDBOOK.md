@@ -477,7 +477,7 @@ warrant canary already has the signing machinery.
 | Posture measurement on the node | Not implemented. Disk encryption and firewall state are not measured, so every node is `unverified` |
 | External cryptographic audit | None. A nonce reuse defect was found in-house in the onion layer in September 2026 |
 | Reproducible builds, signed artefacts, SBOM | Not implemented |
-| SSO / OIDC | Not implemented. Blocks any organisational deployment |
+| SSO / OIDC | Authorization code flow with PKCE; ID tokens verified against the provider's published keys; group claims map to organisation roles only. Tested against a local provider in the test suite, not yet against Keycloak or Entra ID. No API or console page configures it: the configuration row is written to `organization_oidc_configs` directly |
 | Role model with an auditor role | Not implemented. Two roles exist |
 | Written threat model | None |
 | Key rotation procedure | None |

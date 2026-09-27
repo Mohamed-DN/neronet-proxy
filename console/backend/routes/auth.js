@@ -635,7 +635,7 @@ router.get('/oidc/authorize', async (req, res, next) => {
   }
 });
 
-router.post('/oidc/callback', async (req, res, next) => {
+router.post('/oidc/callback', loginLimiter, async (req, res, next) => {
   try {
     const { organization_id, code, state, redirect_uri } = req.body || {};
     if (!organization_id || !code || !state) {
