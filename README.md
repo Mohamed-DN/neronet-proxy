@@ -124,13 +124,18 @@ flowchart LR
 
   subgraph mesh["Overlay"]
     wg["WireGuard with hybrid<br/>ML-KEM-768 pre-shared keys"]
-    awg["AmneziaWG obfuscation<br/>per-organisation parameters"]
     onion["Onion circuits<br/>after external review"]
   end
 
+  subgraph transports["Transports, chosen automatically"]
+    udp["Direct UDP"]
+    awg["Obfuscated UDP<br/>AmneziaWG-style"]
+    quic["QUIC datagrams on 443"]
+    reality["REALITY-style TLS on 443"]
+  end
+
   subgraph edges["Edge and exit nodes"]
-    ovpn["OpenVPN gateway<br/>TCP 443 fallback"]
-    vless["VLESS / REALITY ingress<br/>opt-in"]
+    ovpn["OpenVPN gateway<br/>third-party clients only"]
     exit["Exit bridges"]
     tor["Tor egress<br/>opt-in"]
   end
@@ -145,10 +150,12 @@ flowchart LR
   api --> kms
   desk <--> wg
   mobile <--> wg
-  wg --- awg
   wg --- onion
+  wg --- udp
+  wg --- awg
+  wg --- quic
+  wg --- reality
   legacy --> ovpn --> wg
-  legacy --> vless --> wg
   wg --> exit
   exit -.-> tor
   wg -.-> derp
@@ -318,8 +325,9 @@ Known gaps:
 ## Roadmap
 
 In order: release the WireGuard data plane with TLS at the edge and tested backups;
-hybrid post-quantum pre-shared keys; AmneziaWG obfuscation; OpenVPN and VLESS ingress
-on edge nodes; Tor as an opt-in exit; onion circuits after an external review; one
+hybrid post-quantum pre-shared keys; one tunnel with several transports (WireGuard over
+direct UDP, obfuscated UDP, QUIC on 443 and REALITY-style TLS on 443, chosen
+automatically); Tor as an opt-in exit; onion circuits after an external review; one
 mobile client. Details, measurements and decisions:
 [docs/ROADMAP.md](docs/ROADMAP.md).
 

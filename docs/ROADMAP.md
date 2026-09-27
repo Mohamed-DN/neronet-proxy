@@ -474,9 +474,9 @@ is available today.
 
 | Feature | Where it was offered | What exists | Plan |
 |---|---|---|---|
-| OpenVPN transport | API accepted `openvpn` as transport and link mode; admin guides | Nothing. An unused config generator was removed | Gateway on exit bridges for clients that cannot run WireGuard, TCP 443 fallback. After the WireGuard data plane is released |
-| VLESS / VLESS + REALITY | Repository description; API accepted `vless`; Settings page | Nothing. An unused config generator was removed | Opt-in censorship-resistant ingress on edge nodes, as a separate process in front of WireGuard. Off for regulated profiles |
-| ShadowTLS, port hopping | Settings page switches, never sent to a node | Nothing | Part of the obfuscation work below, after AmneziaWG |
+| OpenVPN transport | API accepted `openvpn` as transport and link mode; admin guides | Nothing. An unused config generator was removed | For NeroNet's own nodes, covered by the transports of section 14. A gateway on exit bridges only for third-party clients |
+| VLESS / VLESS + REALITY | Repository description; API accepted `vless`; Settings page | Nothing. An unused config generator was removed | For NeroNet's own nodes, covered by the REALITY-style transport of section 14. Off for regulated profiles |
+| ShadowTLS, port hopping | Settings page switches, never sent to a node | Nothing | Part of the transports of section 14 |
 | AmneziaWG obfuscation | Organisation transport `amneziawg` is accepted | `pkg/dataplane/stealth` wraps and unwraps packets and is tested. No node uses it | Wire it into the data plane with junk-packet parameters chosen per organisation by the control plane and sent in the netmap |
 | Onion routing, three-hop circuits | Node toggle "onion routing", circuit command | Cell sealing in `pkg/routing` and path selection in the control plane. No circuit is ever built; the toggle is a label | Circuits over the WireGuard overlay, after an external review of `pkg/routing` |
 | Tor as an exit | Discussed as an exit option | Nothing | Opt-in egress through Tor on exit bridges. Off for regulated profiles |
@@ -490,3 +490,78 @@ is available today.
 | Release signing and SLSA provenance | Earlier README | SHA-256 checksums | Signed releases with provenance from CI |
 | Cloud PC streaming | Console module | Rows pointing at a host that does not exist; off by default | Revisit after the network product is released |
 | NeroDrop, App Bundles | Console modules | Removed | No plan |
+
+---
+
+## 14. One tunnel, several transports (design, not started)
+
+Goal: WireGuard's speed on open networks, OpenVPN's reach (TCP, port 443, corporate
+proxies) and the resistance of VLESS + REALITY to deep packet inspection and active
+probing, for NeroNet's own nodes and clients.
+
+### 14.1 Why not merge the three protocols
+
+WireGuard, OpenVPN and VLESS are three different cryptographic designs. Combining their
+handshakes would produce a new, unreviewed cryptographic protocol, which is the mistake
+section 7.1 records: the in-house onion layer reused nonces. What each protocol is
+good at does not live in its cryptography:
+
+| Property | Comes from | Where it lives |
+|---|---|---|
+| Speed, small audited code, roaming between networks | WireGuard | The protocol itself |
+| TCP, port 443, passing corporate HTTP proxies | OpenVPN | The transport underneath |
+| Looking like ordinary HTTPS, surviving active probing | VLESS + REALITY | The transport underneath |
+
+### 14.2 Design
+
+WireGuard stays the only cryptographic protocol. Only the way its packets travel
+changes, through wireguard-go's `conn.Bind` interface. The data plane already
+implements it (`pkg/dataplane/bind_port.go`) and already wraps it for obfuscation
+(`pkg/dataplane/stealth_bind.go`, not used by any node yet).
+
+Transports, from fastest to most disguised. A node tries them in parallel and keeps the
+first that works, then retries the faster ones in the background:
+
+1. **Direct UDP.** Plain WireGuard.
+2. **Obfuscated UDP.** AmneziaWG-style junk packets and randomised headers and sizes,
+   with parameters chosen per organisation by the control plane and sent in the netmap.
+3. **QUIC datagrams on UDP 443** (RFC 9221). The flow looks like an HTTP/3 site.
+   Datagrams are unreliable, so tunnelled TCP does not suffer TCP-over-TCP stalls.
+4. **TLS on TCP 443, REALITY-style.** The client hello matches a common browser. The
+   client proves itself with an X25519 key hidden in the handshake. A connection that
+   does not prove itself, including an active probe, is forwarded to a real website,
+   which answers it. WireGuard packets are framed inside the stream. Also usable through
+   an HTTP proxy with `CONNECT`.
+5. **DERP relay over HTTPS.** Last resort. The fallback exists today; the relayed path
+   has not been measured.
+
+### 14.3 Costs and risks
+
+- Transports 4 and 5 put tunnelled TCP inside TCP. Under loss that stalls, so they are
+  fallbacks, not defaults.
+- Disguise is an arms race. TLS fingerprints, packet sizes and timing need maintenance.
+  A disguise nobody maintains becomes a fingerprint of its own.
+- REALITY is published under MPL-2.0 (`github.com/XTLS/REALITY`). Reusing its code, or
+  reimplementing it, needs a licence check against AGPL-3.0.
+- A TLS endpoint on port 443 needs a real website to forward probes to, chosen per
+  deployment.
+- Banks and public administration will usually not want traffic disguised as something
+  else. The allowed transports are set per organisation, and the disguised ones are off
+  for regulated profiles.
+
+### 14.4 Phases
+
+Each phase ships with an overlay scenario in CI, like the existing ones, that blocks
+what the transport is meant to get past.
+
+1. The transport interface and the parallel selection, with direct UDP and DERP behind
+   it. Scenario: UDP blocked between nodes, traffic still flows.
+2. Obfuscated UDP. Scenario: a filter that drops WireGuard's handshake by its header.
+3. TLS on TCP 443 with REALITY-style camouflage. Scenario: only TCP 443 open, and a
+   probe without the key receives the real site.
+4. QUIC datagrams.
+5. External review of the transport layer before it is called stable.
+
+This work starts after the WireGuard data plane is released (section 13). For
+NeroNet's own nodes it replaces the separate OpenVPN and VLESS ingress listed there.
+Those remain only for clients that cannot run NeroNet software.
