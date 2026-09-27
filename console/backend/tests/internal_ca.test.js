@@ -47,6 +47,40 @@ describe('WP-304: Internal CA provisioning and node fingerprint pinning', () => 
     if (dbHelper) await dbHelper.cleanup();
   });
 
+  it('encodes certificate serials as minimal DER integers', () => {
+    const hex = (b) => InternalCAService.derInteger(Buffer.from(b)).toString('hex');
+
+    // A random serial that happens to start with 0x00: the zero must go.
+    assert.strictEqual(hex([0x00, 0x12, 0x34]), '02021234');
+    // A zero that is needed to keep the value positive stays.
+    assert.strictEqual(hex([0x00, 0x85]), '02020085');
+    assert.strictEqual(hex([0x00, 0x00, 0x85]), '02020085');
+    // A high first byte gets one.
+    assert.strictEqual(hex([0x85, 0x01]), '0203008501');
+    assert.strictEqual(hex([0x00]), '020100');
+  });
+
+  it('issues serials OpenSSL accepts, including those with leading zero bytes', () => {
+    // randomBytes decides the serial; replace it for a few issuances with values that
+    // exercise the leading-zero cases.
+    const original = crypto.randomBytes;
+    const serials = [
+      [0x00, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde],
+      [0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
+      [0x00, 0x85, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06]
+    ];
+    try {
+      for (const serial of serials) {
+        crypto.randomBytes = (n) => (n === 8 ? Buffer.from(serial) : original(n));
+        const ca = InternalCAService.createSelfSignedRootCA();
+        const cert = new crypto.X509Certificate(ca.certPem);
+        assert.ok(cert.serialNumber);
+      }
+    } finally {
+      crypto.randomBytes = original;
+    }
+  });
+
   it('provisionRootCA() generates and persists the CA certificate', async () => {
     const ca = await InternalCAService.provisionRootCA({
       commonName: 'NeroNet Test CA',

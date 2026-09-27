@@ -42,8 +42,15 @@ function derSequence(contents) {
   return Buffer.concat([Buffer.from([0x30]), derLength(buf.length), buf]);
 }
 
+// DER wants the shortest two's-complement form: no leading zero byte unless the next
+// byte has its high bit set. Serials are random bytes, so about one certificate in
+// 512 started with 0x00 followed by a byte below 0x80, and OpenSSL rejected it as
+// "illegal padding".
 function derInteger(numOrBuf) {
   let buf = Buffer.isBuffer(numOrBuf) ? numOrBuf : Buffer.from([numOrBuf]);
+  let start = 0;
+  while (start < buf.length - 1 && buf[start] === 0x00) start++;
+  buf = buf.subarray(start);
   if (buf[0] & 0x80) {
     buf = Buffer.concat([Buffer.from([0x00]), buf]);
   }
@@ -379,5 +386,6 @@ module.exports = {
   verifyNodePin,
   revokeNodeCertificate,
   createSelfSignedRootCA,
-  createNodeLeafCertificate
+  createNodeLeafCertificate,
+  derInteger
 };
