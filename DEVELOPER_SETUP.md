@@ -211,6 +211,7 @@ stack uses; only the variables below matter to the running stack.
 | `SOVEREIGN_MAX_BANDWIDTH_KBPS` | `-max-bandwidth-kbps` | `0` | Self-declared capacity; 0 means not declared |
 | `SOVEREIGN_SOCKS5_LISTEN_ADDR` | `-socks-addr` | `127.0.0.1:1080` | SOCKS5 proxy |
 | `SOVEREIGN_HTTP_LISTEN_ADDR` | `-http-addr` | `127.0.0.1:8080` | HTTP CONNECT proxy |
+| `SOVEREIGN_PROXY_USERNAME`, `SOVEREIGN_PROXY_PASSWORD` | none | none | Credentials both proxies then require (SOCKS5 RFC 1929, HTTP `Proxy-Authorization: Basic`). Without them, a proxy listening beyond loopback stops the node from starting, unless `SOVEREIGN_PROXY_ALLOW_UNAUTHENTICATED=true` |
 | `SOVEREIGN_DATAPLANE` | `-dataplane` | `off` | `off`, `netstack` or `tun` |
 | `SOVEREIGN_SPIKE_PEERS` | `-spike-peers` | none | Peers document for the data plane spike |
 

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -70,8 +71,24 @@ func main() {
 
 	netstackBridge := bridge.NewNetstackBridge(policy, doh, guardian)
 
+	// The local proxies. Credentials, when set, are required on both. A proxy that
+	// listens beyond the loopback interface without them is an open relay into the
+	// mesh and out of this host, so the node refuses to start that way unless told
+	// to.
+	proxyUser, proxyPass := os.Getenv("SOVEREIGN_PROXY_USERNAME"), os.Getenv("SOVEREIGN_PROXY_PASSWORD")
+	if proxyUser == "" && proxyPass == "" && os.Getenv("SOVEREIGN_PROXY_ALLOW_UNAUTHENTICATED") != "true" {
+		for _, addr := range []string{*socksAddr, *httpAddr} {
+			if !isLoopbackListen(addr) {
+				log.Fatalf("Refusing to start: proxy listen address %s is not loopback and SOVEREIGN_PROXY_USERNAME/PASSWORD are unset (set SOVEREIGN_PROXY_ALLOW_UNAUTHENTICATED=true to accept an open proxy)", addr)
+			}
+		}
+	}
+
 	// Start Inbound SOCKS5 Proxy
 	socksSrv := bridge.NewSOCKS5Server(*socksAddr, netstackBridge)
+	if proxyUser != "" || proxyPass != "" {
+		socksSrv.SetCredentials(proxyUser, proxyPass)
+	}
 	if err := socksSrv.Start(); err != nil {
 		log.Fatalf("Failed to start SOCKS5 proxy on %s: %v", *socksAddr, err)
 	}
@@ -79,6 +96,9 @@ func main() {
 
 	// Start Inbound HTTP CONNECT Proxy
 	httpSrv := bridge.NewHTTPProxyServer(*httpAddr, netstackBridge)
+	if proxyUser != "" || proxyPass != "" {
+		httpSrv.SetCredentials(proxyUser, proxyPass)
+	}
 	if err := httpSrv.Start(); err != nil {
 		log.Fatalf("Failed to start HTTP proxy on %s: %v", *httpAddr, err)
 	}
@@ -574,4 +594,18 @@ func reregister(
 	}
 
 	return resp.AssignedNodeID, nil
+}
+
+// isLoopbackListen reports whether a listen address accepts connections only from
+// this host. An empty host (":1080") listens on every interface.
+func isLoopbackListen(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

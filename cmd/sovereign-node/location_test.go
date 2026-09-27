@@ -174,3 +174,18 @@ func TestRegistrationBodyOmitsLocationWhenNotDeclared(t *testing.T) {
 		}
 	}
 }
+
+func TestProxyListenAddressLoopbackCheck(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"127.0.0.1:1080": true,
+		"[::1]:1080":     true,
+		"localhost:8080": true,
+		"0.0.0.0:1080":   false,
+		":1080":          false,
+		"10.0.0.5:1080":  false,
+	} {
+		if got := isLoopbackListen(addr); got != want {
+			t.Errorf("isLoopbackListen(%q) = %v, want %v", addr, got, want)
+		}
+	}
+}
