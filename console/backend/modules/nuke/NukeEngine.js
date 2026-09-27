@@ -168,14 +168,17 @@ async function executeInstantUserDestruction(userId, token = null, actorUsername
     await blacklistToken(token, 86400);
   }
 
-  // 2. Cryptographically overwrite (zeroize / randomize) sensitive fields before hard delete
-  try {
-    if (isPostgres()) {
-      const pool = getPgPool();
+  // 2. Overwrite sensitive fields, then delete, in one transaction. A failure used to
+  // be logged and the function went on to report the account wiped.
+  if (isPostgres()) {
+    const pool = getPgPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
       // Overwrite node WireGuard / Noise keys & metadata
       const randomNoiseKey = crypto.randomBytes(32).toString('base64');
-      await pool.query(
+      await client.query(
         `
         UPDATE nodes
         SET preshared_key = $1, public_key = $2, endpoints = '[]'::jsonb, metadata = '{}'::jsonb
@@ -186,7 +189,7 @@ async function executeInstantUserDestruction(userId, token = null, actorUsername
 
       // Overwrite user password & bypass_apps
       const randomHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
-      await pool.query(
+      await client.query(
         `
         UPDATE users
         SET password_hash = $1, email = $2, bypass_apps = '[]'::jsonb
@@ -196,51 +199,57 @@ async function executeInstantUserDestruction(userId, token = null, actorUsername
       );
 
       // Hard delete in cascading order
-      await pool.query('DELETE FROM dead_man_switch WHERE user_id = $1', [userId]);
-      await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
-      await pool.query('DELETE FROM cloud_pcs WHERE user_id = $1', [userId]);
-      await pool.query('DELETE FROM nodes WHERE user_id = $1', [userId]);
-      await pool.query('DELETE FROM users WHERE id = $1', [userId]);
-    } else {
-      const db = getDatabase();
+      await client.query('DELETE FROM dead_man_switch WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM cloud_pcs WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM nodes WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM users WHERE id = $1', [userId]);
 
-      db.pragma('foreign_keys = OFF');
-      try {
-        // Overwrite node keys
-        const randomNoiseKey = crypto.randomBytes(32).toString('base64');
-        db.prepare(
-          `
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      logger.error(`Account destruction for ${userId} failed and was rolled back: ${err.message}`);
+      throw err;
+    } finally {
+      client.release();
+    }
+  } else {
+    const db = getDatabase();
+
+    db.pragma('foreign_keys = OFF');
+    try {
+      // Overwrite node keys
+      const randomNoiseKey = crypto.randomBytes(32).toString('base64');
+      db.prepare(
+        `
           UPDATE nodes
           SET preshared_key = ?, public_key = ?, endpoints = '[]', metadata = '{}'
           WHERE user_id = ?
         `
-        ).run(randomNoiseKey, `dead-${crypto.randomBytes(16).toString('hex')}`, userId);
+      ).run(randomNoiseKey, `dead-${crypto.randomBytes(16).toString('hex')}`, userId);
 
-        // Overwrite user
-        const randomHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
-        db.prepare(
-          `
+      // Overwrite user
+      const randomHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
+      db.prepare(
+        `
           UPDATE users
           SET password_hash = ?, email = ?, bypass_apps = '[]'
           WHERE id = ?
         `
-        ).run(randomHash, `deleted_${crypto.randomBytes(8).toString('hex')}@wiped.local`, userId);
+      ).run(randomHash, `deleted_${crypto.randomBytes(8).toString('hex')}@wiped.local`, userId);
 
-        // Hard delete cascading
-        db.prepare('DELETE FROM dead_man_switch WHERE user_id = ?').run(userId);
-        db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(userId);
-        db.prepare('DELETE FROM app_share_links WHERE user_id = ?').run(userId);
-        db.prepare('DELETE FROM nerodrop_sessions WHERE user_id = ?').run(userId);
-        db.prepare('DELETE FROM app_bundles WHERE user_id = ?').run(userId);
-        db.prepare('DELETE FROM cloud_pcs WHERE user_id = ?').run(userId);
-        db.prepare('DELETE FROM nodes WHERE user_id = ?').run(userId);
-        db.prepare('DELETE FROM users WHERE id = ?').run(userId);
-      } finally {
-        db.pragma('foreign_keys = ON');
-      }
+      // Hard delete cascading
+      db.prepare('DELETE FROM dead_man_switch WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM app_share_links WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM nerodrop_sessions WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM app_bundles WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM cloud_pcs WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM nodes WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    } finally {
+      db.pragma('foreign_keys = ON');
     }
-  } catch (err) {
-    logger.error(`Error during user hard delete: ${err.message}`);
   }
 
   // The revocation bumped the netmap before the rows went; bump again so no peer
@@ -350,17 +359,15 @@ async function getUserNukeStatus(userId) {
   await ensureTables();
 
   let schedAt = null;
-  try {
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const res = await pool.query('SELECT scheduled_deletion_at FROM users WHERE id = $1', [userId]);
-      schedAt = res.rows[0]?.scheduled_deletion_at || null;
-    } else {
-      const db = getDatabase();
-      const row = db.prepare('SELECT scheduled_deletion_at FROM users WHERE id = ?').get(userId);
-      schedAt = row?.scheduled_deletion_at || null;
-    }
-  } catch (err) {}
+  if (isPostgres()) {
+    const pool = getPgPool();
+    const res = await pool.query('SELECT scheduled_deletion_at FROM users WHERE id = $1', [userId]);
+    schedAt = res.rows[0]?.scheduled_deletion_at || null;
+  } else {
+    const db = getDatabase();
+    const row = db.prepare('SELECT scheduled_deletion_at FROM users WHERE id = ?').get(userId);
+    schedAt = row?.scheduled_deletion_at || null;
+  }
 
   const memSched = inMemoryScheduledKills.get(userId);
   const scheduledTime = schedAt || (memSched ? memSched.scheduled_deletion_at : null);
@@ -495,23 +502,21 @@ async function unlockPersonalDMS(userId, stegoCredentials) {
   let dms = inMemoryDms.get(`${userId}:personal_user`);
 
   if (!dms) {
-    try {
-      if (isPostgres()) {
-        const pool = getPgPool();
-        const res = await pool.query(
-          'SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3',
-          [userId, 'personal_user', 'active']
-        );
-        if (res.rows.length > 0) dms = res.rows[0];
-      } else {
-        const db = getDatabase();
-        dms = db
-          .prepare(
-            "SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'"
-          )
-          .get(userId);
-      }
-    } catch (err) {}
+    if (isPostgres()) {
+      const pool = getPgPool();
+      const res = await pool.query(
+        'SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3',
+        [userId, 'personal_user', 'active']
+      );
+      if (res.rows.length > 0) dms = res.rows[0];
+    } else {
+      const db = getDatabase();
+      dms = db
+        .prepare(
+          "SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'"
+        )
+        .get(userId);
+    }
   }
 
   if (!dms) {
@@ -580,23 +585,21 @@ async function heartbeatPersonalDMS(userId) {
 
   let dms = inMemoryDms.get(`${userId}:personal_user`);
   if (!dms) {
-    try {
-      if (isPostgres()) {
-        const pool = getPgPool();
-        const res = await pool.query(
-          'SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3',
-          [userId, 'personal_user', 'active']
-        );
-        if (res.rows.length > 0) dms = res.rows[0];
-      } else {
-        const db = getDatabase();
-        dms = db
-          .prepare(
-            "SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'"
-          )
-          .get(userId);
-      }
-    } catch (err) {}
+    if (isPostgres()) {
+      const pool = getPgPool();
+      const res = await pool.query(
+        'SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3',
+        [userId, 'personal_user', 'active']
+      );
+      if (res.rows.length > 0) dms = res.rows[0];
+    } else {
+      const db = getDatabase();
+      dms = db
+        .prepare(
+          "SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'"
+        )
+        .get(userId);
+    }
   }
 
   if (!dms) {
@@ -609,20 +612,28 @@ async function heartbeatPersonalDMS(userId) {
   const interval = Number(dms.heartbeat_interval_seconds);
   const nextDeadline = new Date(now.getTime() + interval * 1000).toISOString();
 
-  try {
-    if (isPostgres()) {
-      const pool = getPgPool();
-      await pool.query(
-        'UPDATE dead_man_switch SET last_heartbeat_at = NOW(), next_deadline_at = $1 WHERE user_id = $2 AND switch_tier = $3',
-        [nextDeadline, userId, 'personal_user']
-      );
-    } else {
-      const db = getDatabase();
-      db.prepare(
-        "UPDATE dead_man_switch SET last_heartbeat_at = CURRENT_TIMESTAMP, next_deadline_at = ? WHERE user_id = ? AND switch_tier = 'personal_user'"
-      ).run(nextDeadline, userId);
+  // A check-in that did not reach the database is not a check-in. This used to
+  // swallow the error, answer success, and update the in-memory copy, so the user was
+  // told the countdown had been reset while the stored deadline -- the one the sweep
+  // reads -- kept running out.
+  if (isPostgres()) {
+    const pool = getPgPool();
+    const res = await pool.query(
+      "UPDATE dead_man_switch SET last_heartbeat_at = NOW(), next_deadline_at = $1 WHERE user_id = $2 AND switch_tier = $3 AND status = 'active'",
+      [nextDeadline, userId, 'personal_user']
+    );
+    if (res.rowCount === 0) {
+      inMemoryDms.delete(`${userId}:personal_user`);
+      const err = new Error('The personal switch is no longer active');
+      err.status = 409;
+      throw err;
     }
-  } catch (err) {}
+  } else {
+    const db = getDatabase();
+    db.prepare(
+      "UPDATE dead_man_switch SET last_heartbeat_at = CURRENT_TIMESTAMP, next_deadline_at = ? WHERE user_id = ? AND switch_tier = 'personal_user'"
+    ).run(nextDeadline, userId);
+  }
 
   const epochTime = now.getTime() / 1000;
   if (inMemoryDms.has(`${userId}:personal_user`)) {
@@ -645,23 +656,21 @@ async function getPersonalDMSStatus(userId) {
 
   let dms = inMemoryDms.get(`${userId}:personal_user`);
   if (!dms) {
-    try {
-      if (isPostgres()) {
-        const pool = getPgPool();
-        const res = await pool.query(
-          'SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3',
-          [userId, 'personal_user', 'active']
-        );
-        if (res.rows.length > 0) dms = res.rows[0];
-      } else {
-        const db = getDatabase();
-        dms = db
-          .prepare(
-            "SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'"
-          )
-          .get(userId);
-      }
-    } catch (err) {}
+    if (isPostgres()) {
+      const pool = getPgPool();
+      const res = await pool.query(
+        'SELECT * FROM dead_man_switch WHERE user_id = $1 AND switch_tier = $2 AND status = $3',
+        [userId, 'personal_user', 'active']
+      );
+      if (res.rows.length > 0) dms = res.rows[0];
+    } else {
+      const db = getDatabase();
+      dms = db
+        .prepare(
+          "SELECT * FROM dead_man_switch WHERE user_id = ? AND switch_tier = 'personal_user' AND status = 'active'"
+        )
+        .get(userId);
+    }
   }
 
   if (!dms) {
@@ -791,29 +800,27 @@ async function heartbeatOwnerDMS(superAdminUserId, passphrase) {
   let dbHash = inMemoryOwnerDms.passphrase_hash;
   let interval = inMemoryOwnerDms.heartbeat_interval_seconds;
 
-  try {
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const res = await pool.query(
-        "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' ORDER BY created_at DESC LIMIT 1"
-      );
-      if (res.rows.length > 0) {
-        dbHash = res.rows[0].passphrase_hash;
-        interval = Number(res.rows[0].heartbeat_interval_seconds);
-      }
-    } else {
-      const db = getDatabase();
-      const row = db
-        .prepare(
-          "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' ORDER BY created_at DESC LIMIT 1"
-        )
-        .get();
-      if (row) {
-        dbHash = row.passphrase_hash;
-        interval = Number(row.heartbeat_interval_seconds);
-      }
+  if (isPostgres()) {
+    const pool = getPgPool();
+    const res = await pool.query(
+      "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' ORDER BY created_at DESC LIMIT 1"
+    );
+    if (res.rows.length > 0) {
+      dbHash = res.rows[0].passphrase_hash;
+      interval = Number(res.rows[0].heartbeat_interval_seconds);
     }
-  } catch (err) {}
+  } else {
+    const db = getDatabase();
+    const row = db
+      .prepare(
+        "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' ORDER BY created_at DESC LIMIT 1"
+      )
+      .get();
+    if (row) {
+      dbHash = row.passphrase_hash;
+      interval = Number(row.heartbeat_interval_seconds);
+    }
+  }
 
   const shaInput = crypto.createHash('sha256').update(passphrase).digest('hex');
   const validSha = inMemoryOwnerDms.sha_hash && shaInput === inMemoryOwnerDms.sha_hash;
@@ -829,20 +836,23 @@ async function heartbeatOwnerDMS(superAdminUserId, passphrase) {
   const now = new Date();
   const nextDeadline = new Date(now.getTime() + interval * 1000).toISOString();
 
-  try {
-    if (isPostgres()) {
-      const pool = getPgPool();
-      await pool.query(
-        "UPDATE dead_man_switch SET last_heartbeat_at = NOW(), next_deadline_at = $1 WHERE switch_tier = 'owner_global'",
-        [nextDeadline]
-      );
-    } else {
-      const db = getDatabase();
-      db.prepare(
-        "UPDATE dead_man_switch SET last_heartbeat_at = CURRENT_TIMESTAMP, next_deadline_at = ? WHERE switch_tier = 'owner_global'"
-      ).run(nextDeadline);
+  if (isPostgres()) {
+    const pool = getPgPool();
+    const res = await pool.query(
+      "UPDATE dead_man_switch SET last_heartbeat_at = NOW(), next_deadline_at = $1 WHERE switch_tier = 'owner_global' AND status = 'active'",
+      [nextDeadline]
+    );
+    if (res.rowCount === 0 && !inMemoryOwnerDms.configured) {
+      const err = new Error('The owner switch is not active');
+      err.status = 409;
+      throw err;
     }
-  } catch (err) {}
+  } else {
+    const db = getDatabase();
+    db.prepare(
+      "UPDATE dead_man_switch SET last_heartbeat_at = CURRENT_TIMESTAMP, next_deadline_at = ? WHERE switch_tier = 'owner_global'"
+    ).run(nextDeadline);
+  }
 
   const epochTime = now.getTime() / 1000;
   inMemoryOwnerDms.last_heartbeat_at = epochTime;
@@ -863,21 +873,19 @@ async function getOwnerDMSStatus(superAdminUserId) {
   await ensureTables();
 
   let dmsRow = null;
-  try {
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const res = await pool.query(
-        "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' LIMIT 1"
-      );
-      dmsRow = res.rows[0] || null;
-    } else {
-      const db = getDatabase();
-      dmsRow =
-        db
-          .prepare("SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' LIMIT 1")
-          .get() || null;
-    }
-  } catch (err) {}
+  if (isPostgres()) {
+    const pool = getPgPool();
+    const res = await pool.query(
+      "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' LIMIT 1"
+    );
+    dmsRow = res.rows[0] || null;
+  } else {
+    const db = getDatabase();
+    dmsRow =
+      db
+        .prepare("SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' LIMIT 1")
+        .get() || null;
+  }
 
   if (!dmsRow && !inMemoryOwnerDms.configured) {
     return {
@@ -925,7 +933,10 @@ async function executeOwnerGlobalCascadingWipe() {
         .get();
       if (row?.webhook_url) webhookUrl = row.webhook_url;
     }
-  } catch (e) {}
+  } catch (e) {
+    // Not fatal: the wipe goes ahead without the notification.
+    logger.error(`Owner wipe: could not read the webhook address: ${e.message}`);
+  }
 
   if (webhookUrl) {
     await sendWebhookPing(webhookUrl);
@@ -947,29 +958,35 @@ async function executeOwnerGlobalCascadingWipe() {
     'users'
   ];
 
-  try {
-    if (isPostgres()) {
-      const pool = getPgPool();
-      for (const tbl of tables) {
-        try {
-          await pool.query(`DELETE FROM ${tbl}`);
-        } catch (e) {}
-      }
-    } else {
-      const db = getDatabase();
-      db.pragma('foreign_keys = OFF');
+  // Every table is attempted, and a table that could not be emptied is reported: a
+  // silent failure here used to end in "Global cascading wipe completed" while data
+  // remained.
+  const failed = [];
+  if (isPostgres()) {
+    const pool = getPgPool();
+    for (const tbl of tables) {
       try {
-        for (const tbl of tables) {
-          try {
-            db.prepare(`DELETE FROM ${tbl}`).run();
-          } catch (e) {}
-        }
-      } finally {
-        db.pragma('foreign_keys = ON');
+        await pool.query(`DELETE FROM ${tbl}`);
+      } catch (e) {
+        failed.push(tbl);
+        logger.error(`Owner wipe: could not empty ${tbl}: ${e.message}`);
       }
     }
-  } catch (err) {
-    logger.error(`Error during cascading wipe: ${err.message}`);
+  } else {
+    const db = getDatabase();
+    db.pragma('foreign_keys = OFF');
+    try {
+      for (const tbl of tables) {
+        try {
+          db.prepare(`DELETE FROM ${tbl}`).run();
+        } catch (e) {
+          failed.push(tbl);
+          logger.error(`Owner wipe: could not empty ${tbl}: ${e.message}`);
+        }
+      }
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
   }
 
   // 3. Clear in-memory caches and Valkey
@@ -990,6 +1007,11 @@ async function executeOwnerGlobalCascadingWipe() {
   // 4. Invalidate Warrant Canary
   await invalidateCanary();
 
+  if (failed.length > 0) {
+    logger.error(`NeroNuke: global wipe finished with ${failed.length} table(s) not emptied: ${failed.join(', ')}`);
+    return { success: false, message: 'Global wipe incomplete', failed_tables: failed };
+  }
+
   logger.warn('NeroNuke: Global cascading disaster wipe completed.');
 
   return {
@@ -1003,93 +1025,89 @@ async function executeOwnerGlobalCascadingWipe() {
  */
 async function checkExpiredDeadManSwitches() {
   await ensureTables();
-  const now = new Date();
 
-  // 1. Check Owner Global Dead Man's Switch
+  // Each expired entry is claimed with an UPDATE that only one caller can win before
+  // anything is destroyed. The sweep runs on the elected leader, but a leadership
+  // hand-over, a slow tick overlapping the next, or a caller outside the scheduler
+  // could otherwise act on the same row twice. A claim that is not followed by a
+  // completed destruction is released, so the next tick retries it.
+  //
+  // Errors are logged. They were swallowed, so a database failure here was
+  // indistinguishable from "nothing expired".
+  if (!isPostgres()) return;
+  const pool = getPgPool();
+
+  // 1. Owner global switch
   try {
-    let ownerExpired = false;
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const res = await pool.query(
-        "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' AND next_deadline_at < NOW()"
-      );
-      if (res.rows.length > 0) ownerExpired = true;
-    } else {
-      const db = getDatabase();
-      const row = db
-        .prepare(
-          "SELECT * FROM dead_man_switch WHERE switch_tier = 'owner_global' AND status = 'active' AND next_deadline_at < CURRENT_TIMESTAMP"
-        )
-        .get();
-      if (row) ownerExpired = true;
-    }
-
-    if (ownerExpired) {
+    const claimed = await pool.query(
+      `UPDATE dead_man_switch SET status = 'triggered'
+        WHERE switch_tier = 'owner_global' AND status = 'active' AND next_deadline_at < NOW()
+        RETURNING id`
+    );
+    if (claimed.rowCount > 0) {
       logger.warn('Owner Dead Man Switch expired! Triggering global cascading wipe...');
       await executeOwnerGlobalCascadingWipe();
       return;
     }
-  } catch (err) {}
+  } catch (err) {
+    logger.error(`Dead man's switch sweep (owner): ${err.message}`);
+  }
 
-  // 2. Check Expired Personal Dead Man's Switches
+  // 2. Personal switches
   try {
-    let expiredPersonal = [];
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const res = await pool.query(
-        "SELECT user_id FROM dead_man_switch WHERE switch_tier = 'personal_user' AND status = 'active' AND next_deadline_at < NOW()"
+    const due = await pool.query(
+      `SELECT user_id FROM dead_man_switch
+        WHERE switch_tier = 'personal_user' AND status = 'active' AND next_deadline_at < NOW()`
+    );
+    for (const { user_id: uid } of due.rows) {
+      const claim = await pool.query(
+        `UPDATE dead_man_switch SET status = 'triggered'
+          WHERE user_id = $1 AND switch_tier = 'personal_user' AND status = 'active' AND next_deadline_at < NOW()`,
+        [uid]
       );
-      expiredPersonal = res.rows.map((r) => r.user_id);
-    } else {
-      const db = getDatabase();
-      const rows = db
-        .prepare(
-          "SELECT user_id FROM dead_man_switch WHERE switch_tier = 'personal_user' AND status = 'active' AND next_deadline_at < CURRENT_TIMESTAMP"
-        )
-        .all();
-      expiredPersonal = rows.map((r) => r.user_id);
-    }
+      if (claim.rowCount === 0) continue; // checked in, or claimed by another run
 
-    for (const uid of expiredPersonal) {
       logger.info(`Personal Dead Man Switch expired for user ${uid}. Silently wiping account...`);
       try {
         await executeInstantUserDestruction(uid, null, 'dms_timer');
       } catch (err) {
-        // One failure must not stop the others; this one is retried on the next tick.
-        logger.error(`Could not destroy account ${uid} (dms_timer): ${err.message}`);
+        logger.error(`Could not destroy account ${uid} (dms_timer), retrying next tick: ${err.message}`);
+        await pool.query(
+          "UPDATE dead_man_switch SET status = 'active' WHERE user_id = $1 AND switch_tier = 'personal_user' AND status = 'triggered'",
+          [uid]
+        );
       }
     }
-  } catch (err) {}
+  } catch (err) {
+    logger.error(`Dead man's switch sweep (personal): ${err.message}`);
+  }
 
-  // 3. Check Scheduled User Deletions
+  // 3. Scheduled deletions
   try {
-    let scheduledUsers = [];
-    if (isPostgres()) {
-      const pool = getPgPool();
-      const res = await pool.query(
-        'SELECT id FROM users WHERE scheduled_deletion_at IS NOT NULL AND scheduled_deletion_at <= NOW()'
+    const due = await pool.query(
+      'SELECT id, scheduled_deletion_at FROM users WHERE scheduled_deletion_at IS NOT NULL AND scheduled_deletion_at <= NOW()'
+    );
+    for (const { id: uid, scheduled_deletion_at: at } of due.rows) {
+      const claim = await pool.query(
+        'UPDATE users SET scheduled_deletion_at = NULL WHERE id = $1 AND scheduled_deletion_at = $2',
+        [uid, at]
       );
-      scheduledUsers = res.rows.map((r) => r.id);
-    } else {
-      const db = getDatabase();
-      const rows = db
-        .prepare(
-          'SELECT id FROM users WHERE scheduled_deletion_at IS NOT NULL AND scheduled_deletion_at <= CURRENT_TIMESTAMP'
-        )
-        .all();
-      scheduledUsers = rows.map((r) => r.id);
-    }
+      if (claim.rowCount === 0) continue;
 
-    for (const uid of scheduledUsers) {
       logger.info(`Scheduled deletion deadline reached for user ${uid}. Executing wipe...`);
       try {
         await executeInstantUserDestruction(uid, null, 'scheduled_timer');
       } catch (err) {
-        // One failure must not stop the others; this one is retried on the next tick.
-        logger.error(`Could not destroy account ${uid} (scheduled_timer): ${err.message}`);
+        logger.error(`Could not destroy account ${uid} (scheduled_timer), retrying next tick: ${err.message}`);
+        await pool.query(
+          'UPDATE users SET scheduled_deletion_at = $1 WHERE id = $2 AND scheduled_deletion_at IS NULL',
+          [at, uid]
+        );
       }
     }
-  } catch (err) {}
+  } catch (err) {
+    logger.error(`Dead man's switch sweep (scheduled deletions): ${err.message}`);
+  }
 }
 
 module.exports = {

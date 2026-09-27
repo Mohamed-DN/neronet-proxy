@@ -116,9 +116,9 @@ services:
       - PATRONI_POSTGRESQL_CONNECT_ADDRESS=patroni-1:5432
       - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data
       - PATRONI_REPLICATION_USERNAME=replicator
-      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD:-replicator_secret_pass}
+      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD:?set PATRONI_REPLICATION_PASSWORD}
       - PATRONI_SUPERUSER_USERNAME=postgres
-      - PATRONI_SUPERUSER_PASSWORD=${POSTGRES_PASSWORD:-neronet_secure_pass_18}
+      - PATRONI_SUPERUSER_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes:
       - patroni1_data:/var/lib/postgresql/data
       - ../configs/patroni/patroni.yml.template:/etc/patroni/patroni.yml:ro
@@ -143,9 +143,9 @@ services:
       - PATRONI_POSTGRESQL_CONNECT_ADDRESS=patroni-2:5432
       - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data
       - PATRONI_REPLICATION_USERNAME=replicator
-      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD:-replicator_secret_pass}
+      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD:?set PATRONI_REPLICATION_PASSWORD}
       - PATRONI_SUPERUSER_USERNAME=postgres
-      - PATRONI_SUPERUSER_PASSWORD=${POSTGRES_PASSWORD:-neronet_secure_pass_18}
+      - PATRONI_SUPERUSER_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes:
       - patroni2_data:/var/lib/postgresql/data
       - ../configs/patroni/patroni.yml.template:/etc/patroni/patroni.yml:ro
@@ -170,9 +170,9 @@ services:
       - PATRONI_POSTGRESQL_CONNECT_ADDRESS=patroni-3:5432
       - PATRONI_POSTGRESQL_DATA_DIR=/var/lib/postgresql/data
       - PATRONI_REPLICATION_USERNAME=replicator
-      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD:-replicator_secret_pass}
+      - PATRONI_REPLICATION_PASSWORD=${PATRONI_REPLICATION_PASSWORD:?set PATRONI_REPLICATION_PASSWORD}
       - PATRONI_SUPERUSER_USERNAME=postgres
-      - PATRONI_SUPERUSER_PASSWORD=${POSTGRES_PASSWORD:-neronet_secure_pass_18}
+      - PATRONI_SUPERUSER_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes:
       - patroni3_data:/var/lib/postgresql/data
       - ../configs/patroni/patroni.yml.template:/etc/patroni/patroni.yml:ro
@@ -211,12 +211,20 @@ services:
       - POSTGRES_HOST=haproxy
       - POSTGRES_PORT=5000
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neronet_secure_pass_18}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       - POSTGRES_DB=neronet_db
       - VALKEY_HOST=valkey-ha
       - VALKEY_PORT=6379
-      - DISTRIBUTED_LEADER_ENABLED=true
       - INSTANCE_ID=backend-instance-1
+      # The same secrets as the single-node stack. With NODE_ENV=production the
+      # backend refuses to start without them, which this file never provided.
+      - SOVEREIGN_JWT_SECRET=${SOVEREIGN_JWT_SECRET:?set SOVEREIGN_JWT_SECRET}
+      - SOVEREIGN_REFRESH_SECRET=${SOVEREIGN_REFRESH_SECRET:?set SOVEREIGN_REFRESH_SECRET}
+      - SOVEREIGN_AUDIT_HMAC_SECRET=${SOVEREIGN_AUDIT_HMAC_SECRET:?set SOVEREIGN_AUDIT_HMAC_SECRET}
+      - SOVEREIGN_SHRED_KEK_SECRET=${SOVEREIGN_SHRED_KEK_SECRET:?set SOVEREIGN_SHRED_KEK_SECRET}
+      - SOVEREIGN_ADMIN_PASS=${SOVEREIGN_ADMIN_PASS:?set SOVEREIGN_ADMIN_PASS}
+      - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN}
+      - SOVEREIGN_MFA_MANDATORY=${SOVEREIGN_MFA_MANDATORY:-admins}
     networks:
       - neronet-ha-mesh
     depends_on:
@@ -236,12 +244,20 @@ services:
       - POSTGRES_HOST=haproxy
       - POSTGRES_PORT=5000
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neronet_secure_pass_18}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       - POSTGRES_DB=neronet_db
       - VALKEY_HOST=valkey-ha
       - VALKEY_PORT=6379
-      - DISTRIBUTED_LEADER_ENABLED=true
       - INSTANCE_ID=backend-instance-2
+      # The same secrets as the single-node stack. With NODE_ENV=production the
+      # backend refuses to start without them, which this file never provided.
+      - SOVEREIGN_JWT_SECRET=${SOVEREIGN_JWT_SECRET:?set SOVEREIGN_JWT_SECRET}
+      - SOVEREIGN_REFRESH_SECRET=${SOVEREIGN_REFRESH_SECRET:?set SOVEREIGN_REFRESH_SECRET}
+      - SOVEREIGN_AUDIT_HMAC_SECRET=${SOVEREIGN_AUDIT_HMAC_SECRET:?set SOVEREIGN_AUDIT_HMAC_SECRET}
+      - SOVEREIGN_SHRED_KEK_SECRET=${SOVEREIGN_SHRED_KEK_SECRET:?set SOVEREIGN_SHRED_KEK_SECRET}
+      - SOVEREIGN_ADMIN_PASS=${SOVEREIGN_ADMIN_PASS:?set SOVEREIGN_ADMIN_PASS}
+      - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN}
+      - SOVEREIGN_MFA_MANDATORY=${SOVEREIGN_MFA_MANDATORY:-admins}
     networks:
       - neronet-ha-mesh
     depends_on:
