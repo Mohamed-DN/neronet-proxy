@@ -140,6 +140,17 @@ class OrgService {
       if (!['standard', 'regulated'].includes(profile)) {
         throw new Error('Invalid profile: must be standard or regulated');
       }
+      // Leaving the regulated profile turns nuke, deniability and onion back on. ADR
+      // 0015 has the organisation unable to do that itself, so only the platform
+      // super-admin may; tightening is open to the organisation.
+      if (profile === 'standard' && actor?.role !== 'super-admin') {
+        const current = await pool.query('SELECT profile FROM organizations WHERE id = $1', [orgId]);
+        if (current.rows[0] && current.rows[0].profile === 'regulated') {
+          const err = new Error('Only the platform super-admin can take an organization out of the regulated profile');
+          err.status = 403;
+          throw err;
+        }
+      }
       updates.push(`profile = $${idx++}`);
       params.push(profile);
     }
@@ -246,14 +257,18 @@ class OrgService {
     const pool = getPgPool();
     const memId = `mem-${uuidv4().substring(0, 8)}`;
 
+    // Adding never changes an existing member's role; updateMemberRole does, under
+    // its own permission. An upsert here let an admin re-add themselves as owner.
     const res = await pool.query(
       `INSERT INTO memberships (id, user_id, organization_id, role)
        VALUES ($1, $2, $3, $4)
-       ON CONFLICT (user_id, organization_id)
-       DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()
+       ON CONFLICT (user_id, organization_id) DO NOTHING
        RETURNING *`,
       [memId, userId, orgId, role]
     );
+    if (res.rows.length === 0) {
+      return null;
+    }
 
     // Update user's active organization_id if not set
     await pool.query('UPDATE users SET organization_id = $1 WHERE id = $2 AND organization_id IS NULL', [
