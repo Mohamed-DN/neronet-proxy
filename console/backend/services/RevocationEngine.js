@@ -74,7 +74,11 @@ async function revokeNodeKeys(nodeIds, { reason = 'manual', actorId = null } = {
       `INSERT INTO revoked_keys (public_key_hex, node_id, reason, revoked_by, expires_at)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (public_key_hex) DO UPDATE SET
-         reason = EXCLUDED.reason,
+         reason = CASE
+           WHEN EXCLUDED.reason LIKE 'quarantine:%' AND revoked_keys.reason NOT LIKE 'quarantine:%'
+             THEN revoked_keys.reason
+           ELSE EXCLUDED.reason
+         END,
          revoked_by = EXCLUDED.revoked_by,
          revoked_at = NOW(),
          expires_at = EXCLUDED.expires_at`,
@@ -82,7 +86,11 @@ async function revokeNodeKeys(nodeIds, { reason = 'manual', actorId = null } = {
       `INSERT INTO revoked_keys (public_key_hex, node_id, reason, revoked_by, expires_at)
        VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (public_key_hex) DO UPDATE SET
-         reason = excluded.reason,
+         reason = CASE
+           WHEN excluded.reason LIKE 'quarantine:%' AND revoked_keys.reason NOT LIKE 'quarantine:%'
+             THEN revoked_keys.reason
+           ELSE excluded.reason
+         END,
          revoked_by = excluded.revoked_by,
          revoked_at = CURRENT_TIMESTAMP,
          expires_at = excluded.expires_at`,
@@ -113,6 +121,32 @@ async function isRevoked(publicKeyHex) {
     [keyHex]
   );
   return rows.length > 0;
+}
+
+/**
+ * Withdraw the revocation a quarantine wrote for this node, so it can register again.
+ *
+ * Only a quarantine's own entry goes: a key revoked for any other reason stays revoked
+ * when a quarantine on the same node is lifted.
+ */
+async function liftQuarantineRevocation(nodeId) {
+  const rows = await query(
+    "SELECT public_key_hex FROM revoked_keys WHERE node_id = $1 AND reason LIKE 'quarantine:%'",
+    [nodeId],
+    "SELECT public_key_hex FROM revoked_keys WHERE node_id = ? AND reason LIKE 'quarantine:%'",
+    [nodeId]
+  );
+  if (rows.length === 0) return [];
+
+  await query(
+    "DELETE FROM revoked_keys WHERE node_id = $1 AND reason LIKE 'quarantine:%'",
+    [nodeId],
+    "DELETE FROM revoked_keys WHERE node_id = ? AND reason LIKE 'quarantine:%'",
+    [nodeId]
+  );
+  await bumpEpoch('acl');
+  logger.info(`Lifted the quarantine revocation of ${rows.length} key(s) for ${nodeId}.`);
+  return rows.map((r) => r.public_key_hex);
 }
 
 /** Revoke every node belonging to a user. Used when a user is destroyed. */
@@ -158,5 +192,6 @@ module.exports = {
   revokeUserNodes,
   activeRevocations,
   isRevoked,
+  liftQuarantineRevocation,
   purgeExpired
 };

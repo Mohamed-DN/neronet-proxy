@@ -151,3 +151,78 @@ describe('WP-205: Revocation-to-Data-Plane propagation', () => {
     assert.strictEqual(count, 1, 'Revoked key must appear exactly once despite double revocation');
   });
 });
+
+// A quarantine revokes the node's key and its credential, and a revoked key cannot
+// register. Lifting the quarantine left the revocation in place, so the node could
+// never get a credential again and stayed cut off.
+describe('Lifting a quarantine', () => {
+  let app;
+  let dbHelper;
+  let pool;
+  let adminToken;
+  let observer;
+
+  async function enrol(key) {
+    const res = await register(app, { public_key_hex: key, role: 'CLIENT_ORIGIN', endpoints: [] });
+    assert.strictEqual(res.status, 200, `register: ${res.status} ${JSON.stringify(res.body)}`);
+    const row = (await pool.query('SELECT id, user_id FROM nodes WHERE public_key = $1', [key])).rows[0];
+    return { ...res.body, node_id: row.id, user_id: row.user_id };
+  }
+
+  function action(nodeId, body) {
+    return request(app).post(`/api/nodes/${nodeId}/action`).set('Authorization', `Bearer ${adminToken}`).send(body);
+  }
+
+  before(async () => {
+    dbHelper = await setupTestDatabase();
+    pool = dbHelper.pool;
+    app = createApp();
+    observer = await enrol(nodeKey());
+    adminToken = jwt.sign(
+      {
+        sub: observer.user_id,
+        id: observer.user_id,
+        username: 'testadmin',
+        role: 'super-admin',
+        compartment_access: 'standard'
+      },
+      config.JWT_SECRET
+    );
+  });
+
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
+  });
+
+  it('lets the node register again and stops sending its key as revoked', async () => {
+    const key = nodeKey();
+    const node = await enrol(key);
+
+    assert.strictEqual((await action(node.node_id, { action: 'quarantine', reason: 'test' })).status, 200);
+    const refused = await register(app, { public_key_hex: key, role: 'CLIENT_ORIGIN', endpoints: [] });
+    assert.strictEqual(refused.status, 403, 'a quarantined key must not register');
+
+    assert.strictEqual((await action(node.node_id, { action: 'lift_quarantine' })).status, 200);
+
+    assert.strictEqual(await RevocationEngine.isRevoked(key), false);
+    const hb = await request(app).post('/v4/control/heartbeat').send({ node_id: observer.assigned_node_id });
+    assert.strictEqual(hb.status, 200);
+    assert.ok(!hb.body.revoked_keys.includes(key), 'peers must stop receiving the lifted key');
+
+    const again = await register(app, { public_key_hex: key, role: 'CLIENT_ORIGIN', endpoints: [] });
+    assert.strictEqual(again.status, 200, `re-registration after the lift: ${again.status}`);
+  });
+
+  it('does not undo a revocation made for another reason', async () => {
+    const key = nodeKey();
+    const node = await enrol(key);
+
+    await RevocationEngine.revokeNodeKeys([node.node_id], { reason: 'compromised' });
+    assert.strictEqual((await action(node.node_id, { action: 'quarantine', reason: 'test' })).status, 200);
+    assert.strictEqual((await action(node.node_id, { action: 'lift_quarantine' })).status, 200);
+
+    assert.strictEqual(await RevocationEngine.isRevoked(key), true);
+    const refused = await register(app, { public_key_hex: key, role: 'CLIENT_ORIGIN', endpoints: [] });
+    assert.strictEqual(refused.status, 403);
+  });
+});

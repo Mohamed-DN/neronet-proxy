@@ -787,6 +787,9 @@ router.post('/:id/action', async (req, res, next) => {
         [node.id]
       );
 
+      // The quarantine revoked the node's key, and a revoked key cannot register. The
+      // node's credential was revoked too, so without this it could never come back.
+      await RevocationEngine.liftQuarantineRevocation(node.id);
       await bumpNetmap();
 
       logAuditEvent({

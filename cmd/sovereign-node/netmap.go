@@ -90,7 +90,11 @@ type netmapManager struct {
 	// failClosed records that staleness has already emptied the peer set, so the
 	// node says so once rather than on every tick.
 	failClosed bool
-	revoked    map[string]bool
+	// revoked maps a revoked key to the netmap version the control plane held when
+	// the node learned of it. A document at that version or later that no longer
+	// lists the key has withdrawn the revocation, as lifting a quarantine does; an
+	// older document says nothing about it.
+	revoked map[string]uint64
 }
 
 // netmapHolder lets the heartbeat loop reach a manager that is constructed after it.
@@ -134,7 +138,7 @@ func (h *netmapHolder) onHeartbeat(ctx context.Context, nodeID string, resp *con
 	}
 
 	if len(resp.RevokedKeys) > 0 {
-		m.ApplyRevocations(resp.RevokedKeys)
+		m.ApplyRevocations(resp.RevokedKeys, resp.NetmapVersion)
 	}
 
 	// A heartbeat that came back is proof the control plane is reachable, whatever it
@@ -192,7 +196,7 @@ func newNetmapManager(
 		listenPort: listenPort,
 		stunServer: stunServer,
 		fallback:   fb,
-		revoked:    make(map[string]bool),
+		revoked:    make(map[string]uint64),
 	}
 }
 
@@ -288,15 +292,28 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 		return errors.New("netmap: nil document")
 	}
 
+	listed := make(map[string]bool, len(netmap.RevokedKeys))
+	for _, key := range netmap.RevokedKeys {
+		listed[normaliseKey(key)] = true
+	}
+
 	m.mu.Lock()
-	revoked := make(map[string]bool, len(m.revoked))
-	for k := range m.revoked {
-		revoked[k] = true
+	revoked := make(map[string]uint64, len(m.revoked)+len(listed))
+	for k, learnedAt := range m.revoked {
+		if netmap.Version >= learnedAt && !listed[k] {
+			continue
+		}
+		revoked[k] = learnedAt
 	}
 	m.mu.Unlock()
 
-	for _, key := range netmap.RevokedKeys {
-		revoked[normaliseKey(key)] = true
+	for k := range listed {
+		if k == "" {
+			continue
+		}
+		if learnedAt, ok := revoked[k]; !ok || learnedAt < netmap.Version {
+			revoked[k] = netmap.Version
+		}
 	}
 
 	peers, dropped, err := netmapPeers(netmap.Peers, revoked)
@@ -361,25 +378,31 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 // ApplyRevocations removes revoked peers at once, without waiting for a new document.
 //
 // A revocation is the one update that cannot wait for a version to advance: the point
-// of revoking a key is that the tunnel it holds open stops now.
-func (m *netmapManager) ApplyRevocations(keys []string) {
+// of revoking a key is that the tunnel it holds open stops now. atVersion is the netmap
+// version the control plane reported alongside the revocation.
+func (m *netmapManager) ApplyRevocations(keys []string, atVersion uint64) {
 	m.mu.Lock()
 	newly := 0
 	for _, key := range keys {
 		k := normaliseKey(key)
-		if k == "" || m.revoked[k] {
+		if k == "" {
 			continue
 		}
-		m.revoked[k] = true
-		newly++
+		learnedAt, known := m.revoked[k]
+		if !known {
+			newly++
+		}
+		if !known || learnedAt < atVersion {
+			m.revoked[k] = atVersion
+		}
 	}
 	if newly == 0 {
 		m.mu.Unlock()
 		return
 	}
-	revoked := make(map[string]bool, len(m.revoked))
-	for k := range m.revoked {
-		revoked[k] = true
+	revoked := make(map[string]uint64, len(m.revoked))
+	for k, v := range m.revoked {
+		revoked[k] = v
 	}
 	current := m.peers
 	m.mu.Unlock()
@@ -553,10 +576,10 @@ func normaliseKey(key string) string {
 // It returns the peers it dropped rather than silently omitting them: a revoked peer
 // and a malformed one mean very different things, and a node that quietly carries
 // fewer peers than the control plane sent is a node nobody can debug.
-func netmapPeers(in []control.NetmapPeer, revoked map[string]bool) (peers []dataplane.Peer, dropped []string, err error) {
+func netmapPeers(in []control.NetmapPeer, revoked map[string]uint64) (peers []dataplane.Peer, dropped []string, err error) {
 	for i, p := range in {
 		key := normaliseKey(p.PublicKeyHex)
-		if revoked[key] {
+		if _, isRevoked := revoked[key]; isRevoked {
 			dropped = append(dropped, fmt.Sprintf("%s revoked", p.NodeID))
 			continue
 		}

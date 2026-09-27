@@ -291,7 +291,7 @@ func TestRevocationRemovesThePeerWithoutANewNetmap(t *testing.T) {
 		t.Fatalf("A holds %d peer(s) before the revocation, want 1", got)
 	}
 
-	managerA.ApplyRevocations([]string{b.keyHex()})
+	managerA.ApplyRevocations([]string{b.keyHex()}, 4)
 
 	if got := peerCount(t, a.dev); got != 0 {
 		t.Fatalf("A still holds %d peer(s) after the revocation", got)
@@ -310,7 +310,9 @@ func TestARevokedKeyIsNotReadmittedByALaterNetmap(t *testing.T) {
 	b := newOverlayNode(t, "100.64.0.10/10")
 
 	managerA := managerFor(t, a)
-	managerA.ApplyRevocations([]string{b.keyHex()})
+	// The heartbeat that carried the revocation reported netmap version 5, so a
+	// version 4 document was compiled before it and cannot have withdrawn it.
+	managerA.ApplyRevocations([]string{b.keyHex()}, 5)
 
 	if err := managerA.Apply(netmapFor(4, a.addr, allowAllPolicy("a", a.addr, b.addr), b.peerEntry("b")), time.Now()); err != nil {
 		t.Fatalf("applying A's netmap: %v", err)
@@ -318,6 +320,30 @@ func TestARevokedKeyIsNotReadmittedByALaterNetmap(t *testing.T) {
 
 	if got := peerCount(t, a.dev); got != 0 {
 		t.Fatalf("A admitted %d revoked peer(s) from a later netmap", got)
+	}
+}
+
+// Lifting a quarantine withdraws the revocation it wrote. A node that kept every key it
+// was ever told about would never talk to the lifted peer again.
+func TestAWithdrawnRevocationReadmitsThePeer(t *testing.T) {
+	a := newOverlayNode(t, "100.64.0.13/10")
+	b := newOverlayNode(t, "100.64.0.14/10")
+
+	managerA := managerFor(t, a)
+	managerA.ApplyRevocations([]string{b.keyHex()}, 5)
+
+	revoking := netmapFor(5, a.addr, allowAllPolicy("a", a.addr, b.addr))
+	revoking.RevokedKeys = []string{b.keyHex()}
+	if err := managerA.Apply(revoking, time.Now()); err != nil {
+		t.Fatalf("applying the revoking netmap: %v", err)
+	}
+
+	if err := managerA.Apply(netmapFor(6, a.addr, allowAllPolicy("a", a.addr, b.addr), b.peerEntry("b")), time.Now()); err != nil {
+		t.Fatalf("applying the netmap that lifts it: %v", err)
+	}
+
+	if got := peerCount(t, a.dev); got != 1 {
+		t.Fatalf("A holds %d peer(s) after the revocation was withdrawn, want 1", got)
 	}
 }
 
