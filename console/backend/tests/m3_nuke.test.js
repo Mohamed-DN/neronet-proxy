@@ -63,6 +63,7 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
   let userToken;
   let victimToken;
   let victimUserId;
+  let victimNodeId;
   let victimUsername;
 
   before(async () => {
@@ -98,10 +99,12 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     victimUserId = victimReg.body.user.id;
 
     // Register a node for victim user
-    await request(app)
+    const victimNode = await request(app)
       .post('/api/nodes')
       .set('Authorization', `Bearer ${victimToken}`)
       .send({ name: 'Victim-Workstation-1' });
+    assert.strictEqual(victimNode.status, 201, 'Victim node registration should succeed');
+    victimNodeId = victimNode.body.node.id;
   });
 
   after(async () => {
@@ -226,6 +229,14 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
         .get(`/api/users/${victimUserId}`)
         .set('Authorization', `Bearer ${adminToken}`);
       assert.strictEqual(userLookup.status, 404);
+
+      // The device is gone and its key is revoked, so peers drop the tunnel.
+      const pool = dbHelper.pool;
+      const nodeRows = await pool.query('SELECT id FROM nodes WHERE id = $1', [victimNodeId]);
+      assert.strictEqual(nodeRows.rows.length, 0);
+      const revoked = await pool.query('SELECT reason FROM revoked_keys WHERE node_id = $1', [victimNodeId]);
+      assert.strictEqual(revoked.rows.length, 1, 'the destroyed device key must be revoked on the data plane');
+      assert.strictEqual(revoked.rows[0].reason, 'user_destroyed');
     });
   });
 

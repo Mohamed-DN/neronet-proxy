@@ -7,6 +7,8 @@ const { isPostgres, getPgPool, getDatabase } = require('../../db/index');
 const { blacklistToken, publishTopologyEvent } = require('../../db/valkey');
 const { logAuditEvent } = require('../../utils/audit');
 const { generateCanary, invalidateCanary } = require('../../services/CanaryService');
+const RevocationEngine = require('../../services/RevocationEngine');
+const { bumpNetmap } = require('../../services/AclEngine');
 const logger = require('../../utils/logger');
 
 // In-memory state store for fallback and rapid O(1) checks
@@ -151,13 +153,13 @@ function sendWebhookPing(url) {
 async function executeInstantUserDestruction(userId, token = null, actorUsername = 'user') {
   // Revoke before deleting. Once the rows are gone the keys cannot be looked up, and
   // every peer that federated with this user would keep routing to devices that no
-  // longer exist.
-  try {
-    const { revokeUserNodes } = require('./RevocationEngine');
-    await revokeUserNodes(userId, { reason: 'user_destroyed' });
-  } catch (err) {
-    logger.error(`Could not revoke keys for ${userId} before destruction: ${err.message}`);
-  }
+  // longer exist. If revocation fails nothing is deleted: the caller gets the error,
+  // and the timers retry on their next tick.
+  //
+  // This used to require './RevocationEngine', a file that does not exist in this
+  // module. The require threw, the catch logged it, and every account was deleted
+  // with its device keys still valid on the data plane.
+  await RevocationEngine.revokeUserNodes(userId, { reason: 'user_destroyed' });
 
   await ensureTables();
 
@@ -240,6 +242,10 @@ async function executeInstantUserDestruction(userId, token = null, actorUsername
   } catch (err) {
     logger.error(`Error during user hard delete: ${err.message}`);
   }
+
+  // The revocation bumped the netmap before the rows went; bump again so no peer
+  // keeps a netmap that still lists the deleted devices.
+  await bumpNetmap();
 
   // Clear in-memory caches
   inMemoryDms.delete(`${userId}:personal_user`);
@@ -1046,7 +1052,12 @@ async function checkExpiredDeadManSwitches() {
 
     for (const uid of expiredPersonal) {
       logger.info(`Personal Dead Man Switch expired for user ${uid}. Silently wiping account...`);
-      await executeInstantUserDestruction(uid, null, 'dms_timer');
+      try {
+        await executeInstantUserDestruction(uid, null, 'dms_timer');
+      } catch (err) {
+        // One failure must not stop the others; this one is retried on the next tick.
+        logger.error(`Could not destroy account ${uid} (dms_timer): ${err.message}`);
+      }
     }
   } catch (err) {}
 
@@ -1071,7 +1082,12 @@ async function checkExpiredDeadManSwitches() {
 
     for (const uid of scheduledUsers) {
       logger.info(`Scheduled deletion deadline reached for user ${uid}. Executing wipe...`);
-      await executeInstantUserDestruction(uid, null, 'scheduled_timer');
+      try {
+        await executeInstantUserDestruction(uid, null, 'scheduled_timer');
+      } catch (err) {
+        // One failure must not stop the others; this one is retried on the next tick.
+        logger.error(`Could not destroy account ${uid} (scheduled_timer): ${err.message}`);
+      }
     }
   } catch (err) {}
 }
