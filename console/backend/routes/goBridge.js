@@ -22,7 +22,6 @@
  */
 
 const express = require('express');
-const crypto = require('crypto');
 
 const { getPgPool } = require('../db/index');
 const { allocateNextVip, normalisePublicKeyHex } = require('../utils/crypto');
@@ -35,9 +34,9 @@ const NetmapService = require('../services/NetmapService');
 const ControlPlaneKeyService = require('../services/ControlPlaneKeyService');
 const PreAuthKeyService = require('../services/PreAuthKeyService');
 const NodeCredentialService = require('../services/NodeCredentialService');
-const config = require('../config/env');
 const logger = require('../utils/logger');
 const { logAuditEvent } = require('../utils/audit');
+const { checkNodeAuth, checkEnrolmentToken } = require('../middleware/nodeAuth');
 const { validateRequest, responseValidationInterceptor } = require('../middleware/contractValidator');
 
 const router = express.Router();
@@ -116,73 +115,6 @@ async function resolveOwnerId() {
  * authentication of any kind, so anyone able to reach the port could enrol nodes into
  * the mesh and exhaust the address pool.
  */
-/**
- * Authenticates node requests on /v4/control/* endpoints.
- *
- * Implements ADR 0017 (Node Identity v2):
- * - Accepts 256-bit bearer node credentials (nnt1_<hex>)
- * - Enforces node ID invariance: request body node_id must match authenticated identity (403 Forbidden)
- * - Validates credential revocation and expiration (401 Unauthorized)
- * - Retains legacy registration token support during transition and development
- */
-async function checkNodeAuth(req) {
-  const header = String(req.get('authorization') || '').trim();
-  let bearer = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
-  if (!bearer && req.body && req.body.credential) {
-    bearer = String(req.body.credential).trim();
-  }
-  if (!bearer && req.body && req.body.auth_token) {
-    bearer = String(req.body.auth_token).trim();
-  }
-
-  // 1. Node Credential (nnt1_...)
-  if (bearer && bearer.startsWith('nnt1_')) {
-    const credResult = await NodeCredentialService.validateCredential(bearer);
-    if (!credResult.ok) {
-      return { ok: false, status: credResult.status || 401, error: credResult.error || 'invalid node credential' };
-    }
-
-    const node = credResult.node;
-    const bodyNodeId = req.body && req.body.node_id ? String(req.body.node_id).trim() : null;
-    const queryNodeId = req.query && req.query.node_id ? String(req.query.node_id).trim() : null;
-    const declaredNodeId = bodyNodeId || queryNodeId;
-
-    if (declaredNodeId && declaredNodeId !== node.id) {
-      logger.warn(`Node identity spoofing attempted: credential for ${node.id} attempted to act as ${declaredNodeId}`);
-      return { ok: false, status: 403, error: 'forbidden: credential belongs to another node' };
-    }
-
-    req.node = node;
-    return { ok: true, node, token: bearer };
-  }
-
-  // 2. Shared Registration Token fallback
-  const expected = process.env.SOVEREIGN_REGISTRATION_TOKEN;
-  if (!expected) {
-    if (config.IS_PRODUCTION) {
-      return { ok: false, status: 401, error: 'node credential required (Authorization: Bearer <token>)' };
-    }
-    logger.warn('SOVEREIGN_REGISTRATION_TOKEN is not set - node control request permitted in dev.');
-    return { ok: true, legacy: true };
-  }
-
-  if (!bearer) {
-    return { ok: false, status: 401, error: 'node credential or enrolment token required' };
-  }
-
-  const a = Buffer.from(String(bearer), 'utf8');
-  const b = Buffer.from(expected, 'utf8');
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-    return { ok: false, status: 401, error: 'invalid enrolment token' };
-  }
-
-  return { ok: true, legacy: true };
-}
-
-function checkRegistrationToken(req) {
-  return checkNodeAuth(req);
-}
-
 /** Run a query against the PostgreSQL database. */
 async function runQuery(pgSql, pgParams = []) {
   const pool = getPgPool();
@@ -201,7 +133,7 @@ router.post('/challenge', validateRequest('ChallengeRequest'), async (req, res) 
     });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Challenge generation failed: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -225,6 +157,10 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
 
     const nodeId = deriveNodeId(publicKeyHex);
     let ownerId = null;
+    // The organisation the node joins: the pre-auth key's, else its owner's. Nodes used
+    // to be inserted with none, so a key issued for one organisation enrolled a node
+    // outside it.
+    let organizationId = null;
 
     // Check if node exists already (needed for owner check & role check)
     const existing = await runQuery(
@@ -232,54 +168,67 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       [nodeId]
     );
 
-    // Node Identity v2: Pre-auth key & Proof of possession
-    if (req.body.proof || req.body.nonce || req.body.preauth_key) {
-      const nonce = String(req.body.nonce || '').trim();
-      const proof = String(req.body.proof || '').trim();
-      const preauthKey = String(req.body.preauth_key || '').trim();
+    // Proof of possession, for every registration. A public key is not a secret --
+    // every peer receives it in its netmap -- so a registration that only named a key
+    // let anyone holding the fleet token be issued the credential of a node they did
+    // not control.
+    const requestedRole = String(req.body.role || 'CLIENT_ORIGIN');
+    const nonce = String(req.body.nonce || '').trim();
+    const proof = String(req.body.proof || '').trim();
+    const preauthKey = String(req.body.preauth_key || '').trim();
 
-      if (!nonce || !proof) {
-        return res.status(401).json({ error: 'nonce and proof are required for proof of possession' });
-      }
-      if (!preauthKey) {
-        return res.status(401).json({ error: 'preauth_key is required' });
-      }
+    if (!nonce || !proof) {
+      return res
+        .status(401)
+        .json({ error: 'proof of possession required: request a nonce from /v4/control/challenge' });
+    }
+    if (!(await ControlPlaneKeyService.consumeChallenge(nonce))) {
+      return res.status(401).json({ error: 'invalid or expired challenge nonce' });
+    }
+    if (!ControlPlaneKeyService.verifyProof(publicKeyHex, nonce, proof, requestedRole)) {
+      return res.status(401).json({ error: 'invalid proof of possession' });
+    }
 
-      // 1. Consume challenge nonce (single-use anti-replay)
-      const consumed = await ControlPlaneKeyService.consumeChallenge(nonce);
-      if (!consumed) {
-        return res.status(401).json({ error: 'invalid or expired challenge nonce' });
-      }
+    // A revoked key stays out. It used to register again and get a new credential.
+    if (await RevocationEngine.isRevoked(publicKeyHex)) {
+      await logAuditEvent({
+        eventType: 'node.revoked_key_register_refused',
+        severity: 'warn',
+        targetId: nodeId,
+        targetType: 'node',
+        message: `Registration refused for ${nodeId}: its key is revoked`,
+        ipAddress: req.ip
+      });
+      return res.status(403).json({ error: 'this key has been revoked' });
+    }
 
-      // 2. Verify proof of possession
-      const validProof = ControlPlaneKeyService.verifyProof(publicKeyHex, nonce, proof);
-      if (!validProof) {
-        return res.status(401).json({ error: 'invalid proof of possession' });
-      }
-
-      // 3. Validate pre-auth key
-      const requestedRole = String(req.body.role || 'CLIENT_ORIGIN');
+    if (preauthKey) {
       const preauthResult = await PreAuthKeyService.validateAndConsumePreAuthKey(preauthKey, requestedRole);
       if (!preauthResult.ok) {
         return res.status(preauthResult.status || 401).json({ error: preauthResult.error });
       }
 
       ownerId = preauthResult.key.owner_id;
+      organizationId = preauthResult.key.organization_id || null;
 
-      // 4. Invariance: if node already exists, owner must match
+      // Invariance: if node already exists, owner must match
       if (existing.length > 0 && existing[0].user_id && existing[0].user_id !== ownerId) {
         return res.status(403).json({ error: 'pre-auth key owner does not match existing node owner' });
       }
+    } else if (existing.length > 0) {
+      // A node that is already enrolled and has just proved it holds its key needs no
+      // enrolment secret to come back: that is how it restarts after its single-use
+      // pre-auth key has been spent. Owner and organisation stay as enrolled.
+      ownerId = existing[0].user_id || (await resolveOwnerId());
     } else {
-      // Legacy fallback
-      const auth = await checkNodeAuth(req);
+      const auth = checkEnrolmentToken(req);
       if (!auth.ok) {
         return res.status(auth.status).json({ error: auth.error });
       }
       ownerId = await resolveOwnerId();
     }
 
-    const role = String(req.body.role || 'CLIENT_ORIGIN');
+    const role = requestedRole;
     const capability = req.body.capability || {};
     const countryCode = String(capability.country_code || 'US')
       .slice(0, 2)
@@ -332,11 +281,17 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       existing.length > 0 ? describeMismatch(existing[0], { role, ipClass, countryCode, declared }) : null;
 
     const pool = getPgPool();
+    if (!organizationId && ownerId) {
+      const ownerRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [ownerId]);
+      organizationId = (ownerRes.rows[0] && ownerRes.rows[0].organization_id) || null;
+    }
+
+    // organization_id, like role and country, is set at first enrolment only.
     await pool.query(
       `INSERT INTO nodes (
          id, user_id, name, role, ip_class, country_code, city, asn,
-         is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb)
+         is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints, organization_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb, $13)
        ON CONFLICT (id) DO UPDATE SET
          is_healthy = TRUE,
          endpoints = EXCLUDED.endpoints,
@@ -353,7 +308,8 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
         publicKeyHex,
         overlayIpv4,
         overlayIpv6,
-        endpointsJson
+        endpointsJson,
+        organizationId
       ]
     );
 
@@ -601,7 +557,7 @@ router.post('/heartbeat', normalizeRegisterBody, validateRequest('HeartbeatReque
 // to enumerate.
 router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) => {
   try {
-    const auth = await checkNodeAuth(req);
+    const auth = await checkNodeAuth(req, { allowFleetToken: true });
     if (!auth.ok) {
       return res.status(auth.status).json({ error: auth.error });
     }

@@ -93,29 +93,38 @@ func (b *NetstackBridge) overlayDialer() OverlayDialer {
 	return b.overlay
 }
 
-// DialAndPipe forwards traffic from an inbound client connection to a destination host:port
+// DialAndPipe opens the outbound connection for targetHost:targetPort and copies
+// between it and clientConn until one side finishes. It closes clientConn.
 func (b *NetstackBridge) DialAndPipe(ctx context.Context, clientConn net.Conn, targetHost string, targetPort int) error {
 	defer clientConn.Close()
+	outboundConn, err := b.Dial(ctx, targetHost, targetPort)
+	if err != nil {
+		return err
+	}
+	return b.Pipe(ctx, clientConn, outboundConn)
+}
 
+// Dial opens the outbound connection a proxy request asks for, applying the same
+// checks DialAndPipe does. The proxies call it before answering the client, so that
+// "connected" is only ever said about a connection that exists.
+func (b *NetstackBridge) Dial(ctx context.Context, targetHost string, targetPort int) (net.Conn, error) {
 	// 1. Guardian check
 	if b.guardian.IsSuspended() {
-		return ErrEgressNotPermitted
+		return nil, ErrEgressNotPermitted
 	}
 
 	// 2. Resolve target IP via Anti-Leak DoH Resolver
 	ips, err := b.resolver.ResolveIPs(ctx, targetHost)
 	if err != nil {
-		return fmt.Errorf("DNS resolution failed for %s: %w", targetHost, err)
+		return nil, fmt.Errorf("DNS resolution failed for %s: %w", targetHost, err)
 	}
 
 	if len(ips) == 0 {
-		return fmt.Errorf("no IP addresses found for %s", targetHost)
+		return nil, fmt.Errorf("no IP addresses found for %s: %w", targetHost, ErrDNSLookupFailed)
 	}
 
 	targetIP := ips[0]
 	targetAddr := net.JoinHostPort(targetIP.String(), strconv.Itoa(targetPort))
-
-	var outboundConn net.Conn
 
 	// 3. An overlay destination goes through the mesh, not out of the host.
 	//
@@ -127,29 +136,33 @@ func (b *NetstackBridge) DialAndPipe(ctx context.Context, clientConn net.Conn, t
 	if overlay := b.overlayDialer(); overlay != nil && IsOverlayIP(targetIP) {
 		conn, dialErr := overlay.DialContext(ctx, "tcp", targetAddr)
 		if dialErr != nil {
-			return fmt.Errorf("overlay dial to %s failed: %w", targetAddr, dialErr)
+			return nil, fmt.Errorf("overlay dial to %s failed: %w", targetAddr, dialErr)
 		}
-		outboundConn = conn
-	} else {
-		// 4. Validate sandbox policy (Bogon IP, blocked ports, battery)
-		batPct, onBat, _, _ := b.guardian.Status()
-		if err := b.policy.ValidateEgress(targetIP, targetPort, batPct, onBat); err != nil {
-			return err
-		}
-
-		// 5. Dial destination
-		conn, dialErr := b.dialer.DialContext(ctx, "tcp", targetAddr)
-		if dialErr != nil {
-			return fmt.Errorf("outbound dial to %s failed: %w", targetAddr, dialErr)
-		}
-		outboundConn = conn
+		return conn, nil
 	}
+
+	// 4. Validate sandbox policy (Bogon IP, blocked ports, battery)
+	batPct, onBat, _, _ := b.guardian.Status()
+	if err := b.policy.ValidateEgress(targetIP, targetPort, batPct, onBat); err != nil {
+		return nil, err
+	}
+
+	// 5. Dial destination
+	conn, dialErr := b.dialer.DialContext(ctx, "tcp", targetAddr)
+	if dialErr != nil {
+		return nil, fmt.Errorf("outbound dial to %s failed: %w", targetAddr, dialErr)
+	}
+	return conn, nil
+}
+
+// Pipe copies between clientConn and outboundConn until one direction finishes,
+// then closes outboundConn. The caller owns clientConn.
+func (b *NetstackBridge) Pipe(ctx context.Context, clientConn, outboundConn net.Conn) error {
 	defer outboundConn.Close()
 
 	atomic.AddInt64(&b.activeStreams, 1)
 	defer atomic.AddInt64(&b.activeStreams, -1)
 
-	// 6. Bidirectional copy
 	errCh := make(chan error, 2)
 
 	go func() {

@@ -108,8 +108,16 @@ class ModuleLoader {
         }
       },
       scheduler: {
+        // Runs on the elected leader only: a module's periodic job must run once for
+        // the fleet, not once per control plane instance. Without a started leader
+        // service (a process that never called initDatabase) nothing runs.
         every: (intervalMs, fn) => {
-          const intervalId = setInterval(fn, intervalMs);
+          const { getDistributedLeaderService } = require('./DistributedLeaderService');
+          const tick = () =>
+            getDistributedLeaderService()
+              .executeAsLeader(`${moduleId}:scheduled`, fn)
+              .catch((err) => logger.error(`[MODULE:${moduleId}] scheduled job failed: ${err.message}`));
+          const intervalId = setInterval(tick, intervalMs);
           if (intervalId.unref) intervalId.unref();
           return intervalId;
         }
@@ -181,8 +189,10 @@ class ModuleLoader {
 
       return true;
     } catch (err) {
-      // In case table does not exist or DB error, fall back to global loaded state
-      return true;
+      // Fail closed. These modules destroy data or hide it; if the organisation's
+      // profile cannot be read, it may be one that has them switched off.
+      logger.error(`[MODULES] Could not read module state for ${orgId}: ${err.message}`);
+      return false;
     }
   }
 
@@ -212,12 +222,24 @@ class ModuleLoader {
         }
 
         if (token && !token.startsWith('nnt1_')) {
+          let decoded = null;
           try {
-            const decoded = jwt.verify(token, config.JWT_SECRET);
-            orgId = decoded.organization_id;
-            req.user = req.user || decoded;
+            decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
           } catch (e) {
             // Downstream authenticateToken middleware handles invalid tokens
+          }
+
+          if (decoded) {
+            orgId = decoded.organization_id;
+            // A token without an organisation still belongs to a user who has one.
+            // Skipping the check for such tokens let a regulated organisation use
+            // its disabled modules after the first token refresh.
+            if (!orgId) {
+              orgId = await self.resolveUserOrgId(decoded.sub || decoded.id);
+              if (!orgId) {
+                return res.status(404).json({ error: 'Not found' });
+              }
+            }
           }
         }
       }
@@ -231,6 +253,22 @@ class ModuleLoader {
 
       return next();
     };
+  }
+
+  /**
+   * The organisation a user belongs to, as middleware/rbac resolves it. Null when the
+   * user does not exist or the lookup fails.
+   */
+  async resolveUserOrgId(userId) {
+    if (!userId) return null;
+    try {
+      const res = await getPgPool().query('SELECT organization_id FROM users WHERE id = $1', [userId]);
+      if (res.rows.length === 0) return null;
+      return res.rows[0].organization_id || 'org-default';
+    } catch (err) {
+      logger.error(`[MODULES] Could not resolve the organisation of ${userId}: ${err.message}`);
+      return null;
+    }
   }
 
   /**

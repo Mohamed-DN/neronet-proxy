@@ -1,10 +1,10 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
-const crypto = require('node:crypto');
 const request = require('supertest');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
+const { nodeKey, register } = require('./helpers/nodeEnrolment');
 
 /**
  * These exercise the wire contract the Go node actually speaks, taken from the struct
@@ -13,8 +13,8 @@ const { createApp } = require('../server');
  * could register, hold an address, or land a heartbeat.
  */
 
-const GO_PUBKEY_A = 'a'.repeat(64);
-const GO_PUBKEY_B = 'b'.repeat(64);
+const GO_PUBKEY_A = nodeKey();
+const GO_PUBKEY_B = nodeKey();
 
 function registerBody(publicKeyHex, overrides = {}) {
   // Field names as the Go client marshals them.
@@ -50,7 +50,7 @@ describe('Go data-plane bridge', () => {
 
   describe('registration', () => {
     it('returns an overlay address in the shape the Go client decodes', async () => {
-      const res = await request(app).post('/v4/control/register').send(registerBody(GO_PUBKEY_A));
+      const res = await register(app, registerBody(GO_PUBKEY_A));
 
       assert.strictEqual(res.status, 200);
 
@@ -70,14 +70,14 @@ describe('Go data-plane bridge', () => {
     });
 
     it('assigns the same node id the Go client derives locally', async () => {
-      const res = await request(app).post('/v4/control/register').send(registerBody(GO_PUBKEY_A));
+      const res = await register(app, registerBody(GO_PUBKEY_A));
 
       // control.GenerateNodeID is fmt.Sprintf("pk_%x", pubKey[:8]).
       assert.strictEqual(res.body.assigned_node_id, `pk_${GO_PUBKEY_A.slice(0, 16)}`);
     });
 
     it('stores the public key the node sent', async () => {
-      await request(app).post('/v4/control/register').send(registerBody(GO_PUBKEY_A));
+      await register(app, registerBody(GO_PUBKEY_A));
 
       const qRes = await dbHelper.pool.query('SELECT public_key FROM nodes WHERE id = $1', [
         `pk_${GO_PUBKEY_A.slice(0, 16)}`
@@ -91,8 +91,8 @@ describe('Go data-plane bridge', () => {
     });
 
     it('gives a second node a distinct overlay address', async () => {
-      const first = await request(app).post('/v4/control/register').send(registerBody(GO_PUBKEY_A));
-      const second = await request(app).post('/v4/control/register').send(registerBody(GO_PUBKEY_B));
+      const first = await register(app, registerBody(GO_PUBKEY_A));
+      const second = await register(app, registerBody(GO_PUBKEY_B));
 
       assert.strictEqual(second.status, 200, `second node rejected: ${JSON.stringify(second.body)}`);
 
@@ -104,8 +104,8 @@ describe('Go data-plane bridge', () => {
     });
 
     it('returns the existing address when a node re-registers', async () => {
-      const first = await request(app).post('/v4/control/register').send(registerBody(GO_PUBKEY_A));
-      const again = await request(app).post('/v4/control/register').send(registerBody(GO_PUBKEY_A));
+      const first = await register(app, registerBody(GO_PUBKEY_A));
+      const again = await register(app, registerBody(GO_PUBKEY_A));
 
       // A restart must not burn a fresh address and orphan the previous lease.
       assert.strictEqual(again.body.overlay_ipv4, first.body.overlay_ipv4);
@@ -123,7 +123,7 @@ describe('Go data-plane bridge', () => {
     let nodeId;
 
     before(async () => {
-      const res = await request(app).post('/v4/control/register').send(registerBody(GO_PUBKEY_A));
+      const res = await register(app, registerBody(GO_PUBKEY_A));
       nodeId = res.body.assigned_node_id;
     });
 
@@ -207,12 +207,11 @@ describe('Go data-plane bridge', () => {
     let bridgeId;
 
     before(async () => {
-      const bridgeKey = 'c'.repeat(64);
-      const res = await request(app)
-        .post('/v4/control/register')
-        .send(
-          registerBody(bridgeKey, { role: 'EXIT_BRIDGE', capability: { country_code: 'DE', ip_class: 'DATACENTER' } })
-        );
+      const bridgeKey = nodeKey();
+      const res = await register(
+        app,
+        registerBody(bridgeKey, { role: 'EXIT_BRIDGE', capability: { country_code: 'DE', ip_class: 'DATACENTER' } })
+      );
       bridgeId = res.body.assigned_node_id;
 
       await request(app).post('/v4/control/heartbeat').send({ node_id: bridgeId, cpu_usage_pct: 5 });
@@ -249,10 +248,8 @@ describe('Go data-plane bridge', () => {
     });
 
     it('does not offer client origins as bridges', async () => {
-      const clientKey = 'd'.repeat(64);
-      const reg = await request(app)
-        .post('/v4/control/register')
-        .send(registerBody(clientKey, { role: 'CLIENT_ORIGIN' }));
+      const clientKey = nodeKey();
+      const reg = await register(app, registerBody(clientKey, { role: 'CLIENT_ORIGIN' }));
 
       const res = await request(app).post('/v4/control/discover').send({ limit: 100 });
 
@@ -293,9 +290,7 @@ describe('Go data-plane bridge', () => {
     it('rejects a wrong token when one is configured', async () => {
       process.env.SOVEREIGN_REGISTRATION_TOKEN = 'the-real-token';
       try {
-        const res = await request(app)
-          .post('/v4/control/register')
-          .send(registerBody(crypto.randomBytes(32).toString('hex'), { auth_token: 'wrong' }));
+        const res = await register(app, registerBody(nodeKey(), { auth_token: 'wrong' }));
 
         assert.strictEqual(res.status, 401);
       } finally {
@@ -306,9 +301,7 @@ describe('Go data-plane bridge', () => {
     it('accepts the correct token', async () => {
       process.env.SOVEREIGN_REGISTRATION_TOKEN = 'the-real-token';
       try {
-        const res = await request(app)
-          .post('/v4/control/register')
-          .send(registerBody(crypto.randomBytes(32).toString('hex'), { auth_token: 'the-real-token' }));
+        const res = await register(app, registerBody(nodeKey(), { auth_token: 'the-real-token' }));
 
         assert.strictEqual(res.status, 200);
       } finally {

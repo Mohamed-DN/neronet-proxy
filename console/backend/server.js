@@ -15,6 +15,7 @@ const HeartbeatBuffer = require('./services/HeartbeatBuffer');
 const { initValkey, reportValkeyState, closeValkey } = require('./db/valkey');
 const { initTopologySync } = require('./services/TopologySync');
 const { startCollector } = require('./services/MetricsCollector');
+const { getDistributedLeaderService } = require('./services/DistributedLeaderService');
 const { initTopologyWebSocket } = require('./ws/topologyServer');
 
 // Import Route Handlers
@@ -128,6 +129,22 @@ async function initDatabase() {
     await runMigrations(pool);
     await bootstrapPostgresAdmin(pool);
 
+    // Organisation secrets stored before they were sealed with the organisation's
+    // data key are sealed now, and data keys wrapped with a retiring KEK re-wrapped.
+    const { CryptoShreddingService } = require('./services/CryptoShreddingService');
+    if (config.SHRED_KEK_PREVIOUS) {
+      await CryptoShreddingService.rewrapAllDataKeys();
+    }
+    await CryptoShreddingService.sealLegacySecrets();
+
+    // Leader election among control plane instances (ADR 0001). Periodic jobs that
+    // must run once per fleet, not once per instance, run only on the leader: the
+    // dead man's switch and scheduled destruction checks, and metrics sampling. The
+    // service existed but was never started, so every instance ran them.
+    await getDistributedLeaderService().start({
+      heartbeatIntervalMs: Number(process.env.SOVEREIGN_LEADER_HEARTBEAT_MS || 5000)
+    });
+
     const { getControlPlaneKeypair } = require('./services/ControlPlaneKeyService');
     getControlPlaneKeypair();
 
@@ -176,6 +193,10 @@ if (require.main === module) {
     });
 
   const shutdown = () => {
+    // Hand leadership over at once rather than when the lock's session times out.
+    getDistributedLeaderService()
+      .stop()
+      .catch(() => {});
     logger.info('Gracefully stopping NeroNet Console Control Plane...');
     if (server) {
       server.close(() => {

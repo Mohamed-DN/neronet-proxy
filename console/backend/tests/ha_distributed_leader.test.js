@@ -122,6 +122,43 @@ describe('WP-307: High Availability & Distributed Leadership (ADR 0001)', () => 
     await standby.stop();
   });
 
+  // A timer fires on schedule whether or not the previous run finished. A slow job
+  // used to start a second copy of itself on the leader.
+  test('3b. A job still running is not started again', async () => {
+    const leader = createTrackedInstance('slow-job-leader');
+    await leader.start({ heartbeatIntervalMs: 100 });
+
+    let running = 0;
+    let maxConcurrent = 0;
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const slow = async () => {
+      running++;
+      maxConcurrent = Math.max(maxConcurrent, running);
+      await gate;
+      running--;
+    };
+
+    const first = leader.executeAsLeader('slow-sample', slow);
+    const second = leader.executeAsLeader('slow-sample', slow);
+    await new Promise((resolve) => setImmediate(resolve));
+    const concurrentWhileBlocked = maxConcurrent;
+
+    release();
+    const [firstRun, secondRun] = await Promise.all([first, second]);
+    assert.equal(concurrentWhileBlocked, 1, 'two copies of the job ran at once');
+    assert.equal(firstRun.executed, true);
+    assert.equal(secondRun.executed, false);
+    assert.equal(secondRun.reason, 'IN_FLIGHT');
+
+    const third = await leader.executeAsLeader('slow-sample', async () => 'again');
+    assert.equal(third.executed, true, 'the job runs again once the previous run is done');
+
+    await leader.stop();
+  });
+
   test('4. Automatic failover: when active leader steps down, standby claims leadership', async () => {
     const instance1 = createTrackedInstance('instance-primary');
     const instance2 = createTrackedInstance('instance-standby');

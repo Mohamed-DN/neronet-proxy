@@ -528,14 +528,19 @@ async function buildNetmap(nodeId) {
   const candidates = self.is_quarantined
     ? []
     : await query(
+        // Same organisation only. The compiled policy already limits peers to it; this
+        // keeps another tenant's keys and endpoints out of the document even if the
+        // policy were ever to name one.
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode
            FROM nodes
-          WHERE id <> $1 AND is_quarantined = FALSE AND is_healthy = TRUE`,
-        [nodeId],
+          WHERE id <> $1 AND is_quarantined = FALSE AND is_healthy = TRUE
+            AND COALESCE(organization_id, 'org-default') = $2`,
+        [nodeId, self.organization_id || 'org-default'],
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode
            FROM nodes
-          WHERE id <> ? AND is_quarantined = 0 AND is_healthy = 1`,
-        [nodeId]
+          WHERE id <> ? AND is_quarantined = 0 AND is_healthy = 1
+            AND COALESCE(organization_id, 'org-default') = ?`,
+        [nodeId, self.organization_id || 'org-default']
       );
 
   const peers = [];

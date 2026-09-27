@@ -24,9 +24,11 @@ async function freshDb(nodeCount = 0) {
     const v4s = [];
     const v6s = [];
     let inserted = 0;
+    let lastOffset = 0;
     for (let offset = 1; inserted < nodeCount; offset++) {
       const vip = vipFromOffset(offset);
       if (!vip.usable) continue;
+      lastOffset = offset;
       ids.push(`n${offset}`);
       names.push(`n${offset}`);
       keys.push(`key_${offset}_`.padEnd(64, 'x'));
@@ -39,7 +41,11 @@ async function freshDb(nodeCount = 0) {
        SELECT unnest($1::text[]), (SELECT id FROM users WHERE role = 'super-admin' LIMIT 1), unnest($2::text[]), unnest($3::text[]), unnest($4::text[]), unnest($5::text[])`,
       [ids, names, keys, v4s, v6s]
     );
-    await pool.query("SELECT setval('overlay_vip_seq', $1, true)", [nodeCount + 8]);
+    // Past the last offset used. Offsets ending in .0 and .255 are skipped, so this
+    // is not nodeCount: 20,000 nodes reach offset ~20,157. Setting the counter to
+    // nodeCount left the first allocation probing ~150 taken addresses, which alone
+    // put the 20,000-node case near the 5x bound of the cost test below.
+    await pool.query("SELECT setval('overlay_vip_seq', $1, true)", [lastOffset]);
   }
 
   return dbHelper;

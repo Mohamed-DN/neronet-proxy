@@ -114,6 +114,21 @@
     "submit": "Sign in",
     "working": "Signing in",
     "failed": "Sign-in failed.",
-    "method": "Password sign-in - bcrypt - signed session token"
+    "method": "Password sign-in - bcrypt - signed session token",
+    "mfa": {
+      "prompt": "Enter the six-digit code from your authenticator app.",
+      "codeLabel": "Authenticator code",
+      "submit": "Verify",
+      "useRecovery": "Use a recovery code",
+      "useCode": "Use the authenticator code",
+      "recoveryPrompt": "Enter one of your recovery codes. Each code works once.",
+      "recoveryLabel": "Recovery code",
+      "startOver": "Start over",
+      "enrolIntro": "This account must use two-factor sign-in. Scan the code with an authenticator app (for example Aegis, 2FAS or Google Authenticator), then enter the six-digit code it shows.",
+      "qrAlt": "QR code to add this account to an authenticator app",
+      "secretLabel": "Or enter this key by hand:",
+      "recoveryIntro": "Recovery codes. Store them somewhere safe now: they are shown only once, and each one replaces a code once if you lose the device.",
+      "enrolSubmit": "Confirm and sign in"
+    }
   }
 }

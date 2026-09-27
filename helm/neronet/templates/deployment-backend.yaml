@@ -47,6 +47,23 @@ spec:
                 secretKeyRef:
                   name: {{ include "neronet.secretName" . }}
                   key: refresh-secret
+            - name: SOVEREIGN_AUDIT_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "neronet.secretName" . }}
+                  key: audit-hmac-secret
+            - name: SOVEREIGN_SHRED_KEK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "neronet.secretName" . }}
+                  key: shred-kek-secret
+            # Present only while rotating the key above (secrets.shredKekPrevious).
+            - name: SOVEREIGN_SHRED_KEK_PREVIOUS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "neronet.secretName" . }}
+                  key: shred-kek-previous
+                  optional: true
             - name: SOVEREIGN_ADMIN_PASS
               valueFrom:
                 secretKeyRef:

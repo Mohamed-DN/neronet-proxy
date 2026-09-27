@@ -3,6 +3,7 @@ const { runPostgresMigrations } = require('../../db/migrator');
 const { seedPostgresDatabase } = require('../../db/seed');
 const { getPgPool, closeDatabase, setUsePostgres } = require('../../db/index');
 const logger = require('../../utils/logger');
+const { settleAuditWrites } = require('../../utils/audit');
 
 const TEMPLATE_DB_NAME = 'neronet_test_template';
 const ADVISORY_LOCK_ID = 7429148;
@@ -128,6 +129,10 @@ async function setupTestDatabase() {
   const pool = getPgPool();
 
   const cleanup = async () => {
+    // Audit writes are not awaited by the code under test. Dropping the database
+    // under one that is still running kills its connection mid-transaction.
+    await settleAuditWrites();
+
     try {
       closeDatabase();
     } catch (e) {

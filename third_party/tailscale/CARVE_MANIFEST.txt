@@ -5,6 +5,7 @@ goos considered: linux windows
 roots: tailscale.com/derp tailscale.com/derp/derphttp tailscale.com/derp/derpserver tailscale.com/net/stun tailscale.com/disco
 test roots: tailscale.com/derp tailscale.com/derp/derphttp tailscale.com/derp/derpserver tailscale.com/net/stun tailscale.com/disco
 shims: tailscale.com/client/local=github.com/sovereign/proxy/v4/pkg/transplant/shim/local
+patches: 0001-derpserver-test-count-packets-enqueued-after-pong.patch
 packages: 76
   tailscale.com -
   tailscale.com/derp T

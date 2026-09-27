@@ -1,122 +1,112 @@
 # Security Policy
 
-## Supported Versions
+## Status
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 4.x     | YES (current)      |
-| 3.x     | Critical fixes only|
-| < 3.0   | No                 |
+NeroNet is not production software. It has had no external security audit and no
+penetration test, and several parts of it are known to be incomplete (see
+[`docs/HANDBOOK.md`](docs/HANDBOOK.md), section 6). Do not deploy it to protect
+anything that matters until that changes.
+
+Only the `main` branch is maintained. There are no supported releases.
 
 ## Reporting a Vulnerability
 
-**DO NOT** open a public GitHub issue for security vulnerabilities.
+Do not open a public issue for a vulnerability. Report it privately through GitHub:
+the repository's **Security** tab, **Report a vulnerability**.
 
-### Private Disclosure
+Include what is affected, how to reproduce it, and what an attacker gains. A
+suggested fix is welcome but not required.
 
-Send an encrypted report to: **security@neronet.io**
-PGP Key: Available at `/.well-known/pgp-key.txt`
-
-Include:
-- Description of the vulnerability
-- Steps to reproduce
-- Affected versions
-- Potential impact assessment
-- Your suggested remediation (optional)
-
-### Response Timeline
-
-| Stage                  | Target       |
-|------------------------|--------------|
-| Acknowledgment         | 24 hours     |
-| Initial assessment     | 72 hours     |
-| Patch available        | 14 days      |
-| Public disclosure      | 90 days      |
-
-We follow **coordinated disclosure**. We will not pursue legal action
-against researchers acting in good faith under these guidelines.
+Reports are handled by one maintainer, on a best-effort basis. Please allow time for
+a fix before disclosing publicly; 90 days is the default we ask for. We will not take
+legal action against anyone researching in good faith.
 
 ## Scope
 
-**In scope:**
-- All NeroNet v4 server components (`console/`, `pkg/`, `cmd/`)
-- Control plane API (`/api/v4/`)
-- WireGuard data plane (`pkg/dataplane/`)
-- Authentication & authorization (RBAC, OIDC, JWT)
-- Cryptographic implementations
+In scope:
 
-**Out of scope:**
-- Third-party dependencies (report to upstream)
-- Social engineering
-- Physical attacks
-- DoS/DDoS without exploitable vulnerability
+- The control plane: `console/backend` (API under `/api/` and the node bridge under
+  `/v4/control/`)
+- The console: `console/frontend`
+- The node and data plane: `cmd/`, `pkg/`
+- The deployment files in this repository: `docker-compose.yml`, `helm/`, `scripts/`
 
-## Security Architecture
+Out of scope: vulnerabilities in third-party dependencies (report them upstream),
+social engineering, physical attacks, and volumetric denial of service.
 
-NeroNet v4 implements defense-in-depth:
+## What is in place, and what is not
 
-### Transport Security
-- **WireGuard** (Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s) for data plane
-- **TLS 1.3** for control plane API with HSTS
-- **REALITY camouflage** for active probing resistance
+This section describes the code as it is. Where something is missing, it says so.
 
-### Authentication
-- **RBAC** with `admin`, `operator`, `auditor` roles
-- **OIDC/SSO** integration with group mapping
-- **JWT** (HS256, 15-minute access tokens, 7-day refresh)
-- **MFA** support via TOTP
+### Transport
 
-### Data Protection
-- **AES-256-GCM** for data at rest
-- **Crypto-shredding** (NeroNuke) for GDPR right-to-erasure
-- **HMAC-SHA256** audit log integrity chain
+- Between nodes: WireGuard through `wireguard-go` (`pkg/dataplane`). Each peer's
+  pre-shared key is rotated from the static X25519 keys (`pkg/crypto/pskepoch`); that
+  is classical and adds no post-quantum protection. A post-quantum pre-shared key
+  (Rosenpass) is planned, not built.
+- Console and API: the containers serve plain HTTP. TLS has to be terminated in front
+  of them by the operator. The backend sends HSTS, which browsers only honour over
+  HTTPS.
+- Nodes to control plane: plain HTTP unless the operator puts TLS in front. An
+  internal CA service exists (`InternalCAService`) but nothing serves TLS with it yet.
 
-### Supply Chain
-- **SLSA v1.0** Build Level 3 provenance
-- **Cosign** image signing (keyless via Sigstore)
-- **CycloneDX + SPDX SBOM** on every release
-- Reproducible builds (SOURCE_DATE_EPOCH, hermetic containers)
+### Authentication and authorisation
 
-## DORA Compliance (EU 2022/2554)
+- Console sessions: HS256 JWT access tokens (15 minutes) and single-use refresh tokens
+  (7 days), set as HttpOnly cookies and also returned in the response body. A refresh
+  re-reads the user's role and status.
+- TOTP multi-factor authentication, mandatory only where configured.
+- Roles: a platform role (`super-admin` or `user`) and a role within an organisation
+  (`owner`, `admin`, `network_admin`, `auditor`, `member`).
+- OIDC single sign-on: authorization code flow with PKCE and a nonce, ID tokens
+  verified against the provider's published keys. There is no API or console page to
+  configure it yet.
+- Nodes: enrolment with a shared registration token or a pre-auth key, and a
+  challenge that proves possession of the node's key.
 
-NeroNet v4 addresses DORA requirements:
+### Audit
 
-| Requirement                    | Implementation                                |
-|-------------------------------|-----------------------------------------------|
-| ICT Risk Management (Art. 5)  | RBAC, audit logs, crypto-shredding            |
-| Incident Classification       | Severity matrix in `docs/incident-response.md`|
-| Incident Reporting            | SIEM export, Prometheus alerting              |
-| Resilience Testing            | WP-501 fuzzing, WP-502 load testing           |
-| Third-party Risk              | SBOM + Renovate dependency tracking           |
-| Information Sharing           | TLPT-ready audit trail                        |
+- An HMAC-SHA256 hash chain over the audit events, keyed with a secret used for
+  nothing else, and Ed25519-signed checkpoints of its head. The chain detects edited,
+  deleted and inserted events; the checkpoints detect truncation and wholesale
+  rewrites, provided the checkpoint public key is recorded somewhere the server cannot
+  write.
+- Events are not tagged by organisation, so only the platform super-admin can read
+  or export the whole ledger.
 
-## NIS2 Compliance (EU 2022/2555)
+### Data at rest
 
-| Category             | Measure                                     |
-|---------------------|---------------------------------------------|
-| Policies (Art. 21a)  | ISMS documented in `docs/isms/`             |
-| Incident handling    | 24h reporting capability via audit log      |
-| Business continuity  | HA Patroni/etcd + automated backup          |
-| Supply chain         | SLSA, SBOM, cosign                          |
-| Access control       | MFA, RBAC, OIDC, session management         |
-| Cryptography         | AES-256, WireGuard, TLS 1.3                 |
-| Asset management     | Node inventory in control plane DB          |
+- The database as a whole is not encrypted by the application. Encrypting the
+  PostgreSQL volume is left to the operator.
+- Organisation secrets are sealed (AES-256-GCM) with a data key per organisation:
+  identity-provider client secrets, users' TOTP seeds and identity-provider refresh
+  tokens. Data keys are wrapped with a key derived from `SOVEREIGN_SHRED_KEK_SECRET`,
+  which is used for nothing else.
+- Crypto-shredding an organisation destroys its data key, which makes those sealed
+  secrets unreadable in the live database, deletes its nodes, rules, enrolment keys and
+  compartments, and revokes its users. Other data (node rows, audit events) is deleted
+  or kept, not encrypted, and backups keep it until they expire. A backup taken before
+  the shred stays readable until `SOVEREIGN_SHRED_KEK_SECRET` is rotated and the old
+  value destroyed.
 
-## GDPR Compliance (EU 2016/679)
+### Supply chain
 
-| Requirement              | Implementation                            |
-|-------------------------|-------------------------------------------|
-| Data minimization        | Only required node metadata stored        |
-| Right to erasure         | NeroNuke crypto-shredding (Art. 17)       |
-| Data portability         | API export endpoints                      |
-| Privacy by design        | Zero-knowledge relay architecture         |
-| Audit trail              | HMAC-chained immutable audit log          |
-| DPA Agreement            | Template in `docs/compliance/dpa.md`      |
+- Releases publish SHA-256 checksums (`scripts/gitops/sign_release_artifacts.sh`).
+  They are not signed unless a GPG key is configured, and container images are not
+  signed.
+- There is no build provenance attestation.
+- `scripts/generate_sbom.sh` lists the direct dependencies named in `go.mod` and the
+  two `package.json` files. It does not read lockfiles, so transitive dependencies
+  and exact resolved versions are missing.
+- `scripts/verify_reproducible_build.sh` builds the node twice in one container and
+  compares the hashes. That shows the build is deterministic with one toolchain on
+  one machine, not that it reproduces elsewhere.
+- CI runs `govulncheck`, gitleaks over the history and CodeQL.
 
-## AgID / ACSC Guidelines
+## Regulatory frameworks
 
-Conformità alle Linee Guida AgID (AGID/ACSC 2023):
-- Autenticazione multi-fattore obbligatoria per accessi admin
-- Cifratura in transito (TLS 1.3) e a riposo (AES-256)
-- Dichiarazione di accessibilità WCAG 2.1 AA: `docs/accessibility-statement.md`
-- Log di accesso e audit con integrità crittografica
+No assessment against DORA, NIS2, the GDPR or the AgID minimum ICT security measures
+has been made, and this project makes no claim of conformity with any of them.
+[`compliance/compliance-mapping.md`](compliance/compliance-mapping.md) lists which
+relevant controls exist in the code and in what state, as input for an operator's own
+assessment.

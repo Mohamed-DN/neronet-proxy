@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"math/big"
 	"sync"
 )
@@ -13,8 +12,6 @@ import (
 const (
 	TransportWireGuard = "wireguard"
 	TransportAmneziaWG = "amneziawg"
-	TransportOpenVPN   = "openvpn"
-	TransportVLESS     = "vless"
 )
 
 // Standard WireGuard message types (RFC WireGuard protocol)
@@ -295,7 +292,7 @@ type TransportManager struct {
 	mu             sync.RWMutex
 	localTransport string
 	localStealth   Config
-	peerTransports map[string]string // peerPubHex -> transport ("wireguard", "amneziawg", "openvpn", "vless")
+	peerTransports map[string]string // peerPubHex -> transport ("wireguard" or "amneziawg")
 	peerStealth    map[string]Config // peerPubHex -> Config
 }
 
@@ -339,69 +336,4 @@ func (m *TransportManager) GetEffectiveTransport(peerPubHex string) (string, Con
 	}
 
 	return t, s
-}
-
-// OpenVPNProfileConfig represents parameters for OpenVPN fallback encapsulation.
-type OpenVPNProfileConfig struct {
-	RemoteHost string
-	RemotePort uint16
-	Proto      string // "tcp" or "udp"
-	Cipher     string // "AES-256-GCM"
-}
-
-// GenerateOpenVPNConfig generates a client configuration stanza for OpenVPN fallback.
-func GenerateOpenVPNConfig(cfg OpenVPNProfileConfig) string {
-	proto := cfg.Proto
-	if proto == "" {
-		proto = "tcp"
-	}
-	port := cfg.RemotePort
-	if port == 0 {
-		port = 443
-	}
-	cipher := cfg.Cipher
-	if cipher == "" {
-		cipher = "AES-256-GCM"
-	}
-
-	return fmt.Sprintf(`client
-dev tun
-proto %s
-remote %s %d
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-cipher %s
-auth SHA256
-verb 3
-`, proto, cfg.RemoteHost, port, cipher)
-}
-
-// VLESSProfileConfig represents parameters for VLESS / Xray WebSocket/TLS fallback.
-type VLESSProfileConfig struct {
-	UUID       string
-	RemoteHost string
-	RemotePort uint16
-	Path       string
-	Sni        string
-}
-
-// GenerateVLESSURI formats a client connection URI for VLESS fallback over TLS.
-func GenerateVLESSURI(cfg VLESSProfileConfig) string {
-	port := cfg.RemotePort
-	if port == 0 {
-		port = 443
-	}
-	path := cfg.Path
-	if path == "" {
-		path = "/neronet-vless"
-	}
-	sni := cfg.Sni
-	if sni == "" {
-		sni = cfg.RemoteHost
-	}
-
-	return fmt.Sprintf("vless://%s@%s:%d?encryption=none&security=tls&sni=%s&type=ws&path=%s#NeroNet-Mesh",
-		cfg.UUID, cfg.RemoteHost, port, sni, path)
 }

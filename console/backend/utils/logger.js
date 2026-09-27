@@ -19,8 +19,8 @@ function formatJsonLog(level, args) {
   let message = '';
   const meta = [];
 
-  for (let i = 0; i < args.length; i++) {
-    const formatted = formatArg(args[i]);
+  for (const arg of args) {
+    const formatted = formatArg(arg);
     if (typeof formatted === 'string') {
       message = message ? `${message} ${formatted}` : formatted;
     } else if (typeof formatted === 'object' && formatted !== null) {

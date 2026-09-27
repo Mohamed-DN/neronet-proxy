@@ -185,6 +185,8 @@ jobs:
       # The runner has Podman and Docker installed; only the Docker daemon runs.
       NERONET_ENGINE: docker
       COMPOSE_PROJECT_NAME: neronet-ci
+      # Short enough for the fail-static scenario to observe the fail-closed step.
+      NERONET_MAX_NETMAP_STALENESS_SECONDS: "60"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -210,6 +212,18 @@ jobs:
 
       - name: Overlay deny rule
         run: sh scripts/dev/scenarios/overlay.sh rule-deny
+
+      - name: Overlay quarantine
+        run: sh scripts/dev/scenarios/overlay.sh quarantine
+
+      # The overlay keeps running with the control plane stopped, fails closed past
+      # the staleness bound, and recovers when the control plane returns.
+      - name: Overlay fail-static and fail-closed
+        run: sh scripts/dev/scenarios/overlay.sh fail-static
+
+      # Last: it removes a node from the fleet.
+      - name: Overlay revocation
+        run: sh scripts/dev/scenarios/overlay.sh revoke
 
       - name: Service logs
         if: failure()

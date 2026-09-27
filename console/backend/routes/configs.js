@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getPgPool } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
+const { resolveUserOrg } = require('../middleware/rbac');
 const { logAuditEvent } = require('../utils/audit');
 const {
   generateCurve25519Keypair,
@@ -13,10 +14,19 @@ const {
 const { broadcastNodeEvent } = require('../services/TopologySync');
 
 router.use(authenticateToken);
+router.use(resolveUserOrg);
 
 // 1. Generate Full Crypto & Config Bundle
 router.post('/generate', async (req, res, next) => {
   try {
+    // The same rules as POST /api/nodes, which this also creates: read-only roles
+    // cannot, and the node joins the caller's organisation. It used to do neither.
+    const orgRole = req.user.org_role || req.user.role;
+    if (orgRole === 'auditor' || orgRole === 'viewer') {
+      return res.status(403).json({ error: 'Forbidden: read-only role cannot create nodes' });
+    }
+    const organizationId = req.user.organization_id || 'org-default';
+
     const { name, role, country_code, onion_routing_enabled, onion_hops, kill_switch_enabled } = req.body || {};
 
     if (!name || !name.trim()) {
@@ -54,11 +64,11 @@ router.post('/generate', async (req, res, next) => {
       INSERT INTO nodes (
         id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6,
         role, ip_class, country_code, onion_routing_enabled, onion_hops, kill_switch_enabled,
-        is_healthy, is_quarantined, latency_ms, longitude, latitude
+        is_healthy, is_quarantined, latency_ms, longitude, latitude, organization_id
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7,
         $8, 'RESIDENTIAL', $9, $10, $11, $12,
-        TRUE, FALSE, 10.0, $13, $14
+        TRUE, FALSE, 10.0, $13, $14, $15
       )
     `,
       [
@@ -75,7 +85,8 @@ router.post('/generate', async (req, res, next) => {
         hops,
         killSwitch,
         lon,
-        lat
+        lat,
+        organizationId
       ]
     );
 

@@ -21,8 +21,9 @@
 #      modules the closure imports to the versions the upstream go.mod resolves.
 #
 # It is repeatable: run it again against another upstream commit and the diff of
-# third_party/<project>/ is the upstream diff plus the changed import lines.
-# Carved files are never edited by hand; adaptations live in pkg/transplant.
+# third_party/<project>/ is the upstream diff plus the changed import lines and the
+# patches in scripts/thirdparty/patches/<project>/. Carved files are never edited by
+# hand; adaptations live in pkg/transplant, fixes to upstream defects in patches.
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -174,6 +175,19 @@ find "$DEST" -name '*.go' -exec sed -E -i \
   "s#${pre}\"${modre}(/[^\"]*)?\"${post}#\\1\"${NEWBASE}\\4\"\\5#" {} +
 gorun /work "gofmt -w third_party/$PROJECT"
 
+# 4b. patches. scripts/thirdparty/patches/<project>/*.patch are applied in name order,
+#     each a git diff against the carved tree with a header saying what it changes
+#     and why. They are for upstream defects, not adaptations (those live in
+#     pkg/transplant), and each is listed in the manifest.
+patches=""
+if [ -d "$HERE/patches/$PROJECT" ]; then
+  for p in "$HERE/patches/$PROJECT"/*.patch; do
+    [ -f "$p" ] || continue
+    git -C "$REPO" apply --whitespace=nowarn "$p" || { echo "patch does not apply: $p" >&2; exit 1; }
+    patches="$patches $(basename "$p")"
+  done
+fi
+
 # 5. manifest and module requirements
 {
   echo "project: $PROJECT"
@@ -183,6 +197,7 @@ gorun /work "gofmt -w third_party/$PROJECT"
   echo "roots:$roots"
   echo "test roots:$troots"
   echo "shims: $SHIMS"
+  echo "patches:$patches"
   echo "packages: $npk"
   grep '^PKG' "$WORK/closure.txt" | awk -F'\t' '{print "  " $2 " " $4}'
   echo "external imports:"

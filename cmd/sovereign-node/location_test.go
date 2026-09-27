@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/sovereign/proxy/v4/pkg/control"
@@ -112,6 +113,10 @@ func registerAndCapture(t *testing.T, capability control.CapabilityDesc) map[str
 
 	var received map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v4/control/challenge" {
+			_, _ = w.Write([]byte(`{"nonce":"` + strings.Repeat("ab", 32) + `","cp_public_key":"` + strings.Repeat("09", 32) + `"}`))
+			return
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Errorf("reading the request body: %v", err)
@@ -123,9 +128,11 @@ func registerAndCapture(t *testing.T, capability control.CapabilityDesc) map[str
 	}))
 	defer server.Close()
 
-	var key [crypto.KeySize]byte
-	key[0] = 1
-	if _, err := control.NewClient(server.URL).Register(context.Background(), key, "CLIENT_ORIGIN", nil, capability); err != nil {
+	keypair, err := crypto.GenerateKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := enrolmentFor(keypair, "").register(context.Background(), control.NewClient(server.URL), "CLIENT_ORIGIN", capability); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -164,6 +171,21 @@ func TestRegistrationBodyOmitsLocationWhenNotDeclared(t *testing.T) {
 	for _, field := range []string{"city", "latitude", "longitude"} {
 		if value, present := sent[field]; present {
 			t.Errorf("%s is present (%v); an undeclared position must be absent from the wire", field, value)
+		}
+	}
+}
+
+func TestProxyListenAddressLoopbackCheck(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"127.0.0.1:1080": true,
+		"[::1]:1080":     true,
+		"localhost:8080": true,
+		"0.0.0.0:1080":   false,
+		":1080":          false,
+		"10.0.0.5:1080":  false,
+	} {
+		if got := isLoopbackListen(addr); got != want {
+			t.Errorf("isLoopbackListen(%q) = %v, want %v", addr, got, want)
 		}
 	}
 }

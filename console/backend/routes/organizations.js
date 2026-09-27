@@ -117,7 +117,17 @@ router.post('/:id/members', requireOrgRole('owner', 'admin'), async (req, res, n
       return res.status(400).json({ error: 'user_id is required' });
     }
 
-    const membership = await OrgService.addMember(req.params.id, user_id, role || 'member', req.user);
+    // Making someone owner is an owner's decision, as a role change through PUT is.
+    // Admins could otherwise add themselves again with role owner.
+    const newRole = role || 'member';
+    if (newRole === 'owner' && req.user.role !== 'super-admin' && req.user.org_role !== 'owner') {
+      return res.status(403).json({ error: 'Forbidden: only an owner can add an owner' });
+    }
+
+    const membership = await OrgService.addMember(req.params.id, user_id, newRole, req.user);
+    if (!membership) {
+      return res.status(409).json({ error: 'Already a member; change the role with PUT' });
+    }
     return res.status(201).json({ membership });
   } catch (err) {
     next(err);

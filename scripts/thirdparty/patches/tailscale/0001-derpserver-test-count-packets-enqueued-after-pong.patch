@@ -1,0 +1,67 @@
+Upstream: tailscale.com derp/derpserver, TestWriterFloodDoesNotStarveControlFrames
+
+The test floods a client's send queue and checks that a pong queued during the flood
+is written after at most a queue's depth of packets enqueued after it. It compares
+the highest sequence number written before the pong with the sequence number at the
+time the pong was queued. A full queue drops its head to make room, so the packets
+written after the pong was queued can carry sequence numbers far beyond depth past it
+while being fewer than depth in number, and the test fails without the writer doing
+anything wrong: 3 runs in 30 on a CI runner, and on upstream main as of 2026-09-27.
+
+This patch counts, among the packets written before the pong, those whose sequence
+number was taken after the pong was queued. Removing the writer's per-pass budget
+still fails it.
+
+diff --git a/third_party/tailscale/derp/derpserver/derpserver_test.go b/third_party/tailscale/derp/derpserver/derpserver_test.go
+index c135ef5..fcd29b4 100644
+--- a/third_party/tailscale/derp/derpserver/derpserver_test.go
++++ b/third_party/tailscale/derp/derpserver/derpserver_test.go
+@@ -2147,6 +2147,8 @@ type frameSeqConn struct {
+ 	maxSeq       uint32 // highest sequence number written
+ 	pongs        int    // pong frames written
+ 	maxSeqAtPong uint32 // maxSeq when the first pong was written
++
++	seqsBeforePong []uint32 // sequence numbers of the packets written before the first pong
+ }
+ 
+ func (c *frameSeqConn) Write(p []byte) (int, error) {
+@@ -2163,7 +2165,11 @@ func (c *frameSeqConn) Write(p []byte) (int, error) {
+ 		switch ft {
+ 		case derp.FrameRecvPacket:
+ 			c.packets++
+-			c.maxSeq = max(c.maxSeq, binary.BigEndian.Uint32(payload[len(payload)-4:]))
++			seq := binary.BigEndian.Uint32(payload[len(payload)-4:])
++			c.maxSeq = max(c.maxSeq, seq)
++			if c.pongs == 0 {
++				c.seqsBeforePong = append(c.seqsBeforePong, seq)
++			}
+ 		case derp.FramePong:
+ 			if c.pongs == 0 {
+ 				c.maxSeqAtPong = c.maxSeq
+@@ -2260,9 +2266,23 @@ func TestWriterFloodDoesNotStarveControlFrames(t *testing.T) {
+ 	// The pass in progress may finish its budget of depth packets
+ 	// first, and then the pong goes out before the next pass's packets,
+ 	// so at most depth packets enqueued after the pong precede it.
+-	_, _, maxSeqAtPong := conn.stats()
+-	if maxSeqAtPong > seqAtPong+depth {
+-		t.Errorf("pong written after packet %d; want no later than packet %d (pong queued at %d, depth %d)", maxSeqAtPong, seqAtPong+depth, seqAtPong, depth)
++	//
++	// Count those packets rather than compare sequence numbers: the
++	// flood keeps the queue full, a full queue drops its head to make
++	// room, and so the few packets written after the pong was queued
++	// can carry sequence numbers far beyond depth past it. A sequence
++	// number above seqAtPong was taken after queuePong returned, so its
++	// packet was certainly enqueued after the pong.
++	conn.mu.Lock()
++	var after uint32
++	for _, s := range conn.seqsBeforePong {
++		if s > seqAtPong {
++			after++
++		}
++	}
++	conn.mu.Unlock()
++	if after > depth {
++		t.Errorf("pong written after %d packets enqueued after it; want at most %d (depth)", after, depth)
+ 	}
+ }
+ 

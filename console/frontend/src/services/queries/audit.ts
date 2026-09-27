@@ -31,10 +31,12 @@ export function useAuditEvents(limit = 100): UseQueryResult<AuditEvent[], Error>
 
 /**
  * Perform live cryptographic hash chain verification across all audit records.
+ * Platform super-admin only on the server; pass enabled=false for anyone else.
  */
-export function useVerifyAuditChain(): UseQueryResult<AuditVerificationResult, Error> {
+export function useVerifyAuditChain(enabled = true): UseQueryResult<AuditVerificationResult, Error> {
   return useQuery({
     queryKey: queryKeys.auditVerify,
+    enabled,
     queryFn: async ({ signal }) => {
       const res = await apiRequest<{ verification: AuditVerificationResult }>('/audit/verify', { signal });
       return res?.verification ?? { valid: false };
@@ -46,9 +48,12 @@ export function useVerifyAuditChain(): UseQueryResult<AuditVerificationResult, E
 /**
  * List signed cryptographic audit checkpoints.
  */
-export function useAuditCheckpoints(): UseQueryResult<{ checkpoints: AuditCheckpoint[]; public_key?: string }, Error> {
+export function useAuditCheckpoints(
+  enabled = true
+): UseQueryResult<{ checkpoints: AuditCheckpoint[]; public_key?: string }, Error> {
   return useQuery({
     queryKey: queryKeys.auditCheckpoints,
+    enabled,
     queryFn: async ({ signal }) => {
       const res = await apiRequest<{ checkpoints: AuditCheckpoint[]; public_key?: string }>('/audit/checkpoints', {
         signal
@@ -81,9 +86,10 @@ export function useCreateAuditCheckpoint() {
 /**
  * List registered SIEM forwarders (Syslog RFC 5424, CEF, LEEF, JSON).
  */
-export function useSiemDestinations(): UseQueryResult<SiemDestination[], Error> {
+export function useSiemDestinations(enabled = true): UseQueryResult<SiemDestination[], Error> {
   return useQuery({
     queryKey: queryKeys.auditSiem,
+    enabled,
     queryFn: async ({ signal }) => {
       const res = await apiRequest<{ destinations: SiemDestination[] }>('/audit/siem', { signal });
       return res?.destinations ?? [];

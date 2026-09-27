@@ -14,7 +14,7 @@ import (
 	"github.com/sovereign/proxy/v4/pkg/bridge"
 	"github.com/sovereign/proxy/v4/pkg/control"
 	"github.com/sovereign/proxy/v4/pkg/crypto"
-	"github.com/sovereign/proxy/v4/pkg/crypto/rosenpass"
+	"github.com/sovereign/proxy/v4/pkg/crypto/pskepoch"
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
 )
 
@@ -172,8 +172,8 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		opts.Keypair.PublicKey, onRelayPacket,
 	)
 
-	pqManager := rosenpass.NewManager(dev, opts.Keypair, rosenpass.DefaultRotationInterval)
-	manager.SetPQManager(pqManager)
+	pskManager := pskepoch.NewManager(dev, opts.Keypair, pskepoch.DefaultRotationInterval)
+	manager.SetPSKManager(pskManager)
 
 	switch {
 	case fetched != nil:
@@ -239,11 +239,11 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 	// Start the DERP fallback manager now that loopCtx is available. It is a
 	// no-op until the first netmap populates relay URLs.
 	manager.fallback.Start(loopCtx)
-	pqManager.Start(loopCtx)
+	pskManager.Start(loopCtx)
 
 	return func() {
 		stopLoops()
-		pqManager.Stop()
+		pskManager.Stop()
 		manager.fallback.Stop()
 		if echo != nil {
 			_ = echo.Close()

@@ -2,11 +2,11 @@ const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 const fs = require('node:fs');
-const crypto = require('node:crypto');
 const request = require('supertest');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
+const { nodeKey, register } = require('./helpers/nodeEnrolment');
 const RevocationEngine = require('../services/RevocationEngine');
 const AclEngine = require('../services/AclEngine');
 
@@ -38,13 +38,9 @@ describe('Key revocation', () => {
     dbHelper = await setupTestDatabase();
     app = createApp();
 
-    betaKey = crypto.randomBytes(32).toString('hex');
-    alpha = (
-      await request(app)
-        .post('/v4/control/register')
-        .send(registerBody('a'.repeat(64)))
-    ).body;
-    beta = (await request(app).post('/v4/control/register').send(registerBody(betaKey))).body;
+    betaKey = nodeKey();
+    alpha = (await register(app, registerBody(nodeKey()))).body;
+    beta = (await register(app, registerBody(betaKey))).body;
   });
 
   after(async () => {

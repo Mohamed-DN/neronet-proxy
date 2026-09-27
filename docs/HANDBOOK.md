@@ -161,15 +161,37 @@ mounted at two paths. Console users authenticate with a JWT (HS256, 15 minute ac
 token) whose `jti` is checked against a revocation list in Valkey and in the database.
 There are two roles: `super-admin` and `user`. Nodes do not use JWTs; see section 3.
 
+TOTP (RFC 6238) is required for accounts that enrolled one and for the accounts
+`SOVEREIGN_MFA_MANDATORY` names (`admins` by default in production: the platform
+super-admin and organisation owners and admins). After the password, sign-in returns a
+short-lived token that can only complete that sign-in (`/api/auth/mfa/verify`) or, for
+an account with no authenticator, enrol one (`/api/auth/mfa/setup`); it is spent by the
+sign-in it completes. Replacing an enrolled authenticator takes a full session and a
+current code, and the new one counts only once a code from it is confirmed.
+
 ---
 
 ## 3. The node protocol
 
-Six endpoints under `/v4/control` serve the Go node. All of them are implemented in
-`console/backend/routes/goBridge.js` and all of them require the enrolment token
-(`SOVEREIGN_REGISTRATION_TOKEN`) in the `Authorization: Bearer` header. The token is one
-value shared by the whole fleet. Per-node credentials and proof that a node holds its
-private key are not implemented.
+Endpoints under `/v4/control` serve the Go node, implemented in
+`console/backend/routes/goBridge.js` with authentication in
+`console/backend/middleware/nodeAuth.js` (ADR 0017).
+
+- **Registration proves possession of the node key.** The node asks
+  `/v4/control/challenge` for a single-use nonce and sends
+  `HMAC(HKDF(X25519(node key, control plane key)), nonce || public key || role)`. A
+  registration without a valid proof is refused, whatever else it carries. A key with
+  an active revocation is refused.
+- **What authorises a registration:** a pre-auth key from the console
+  (`SOVEREIGN_ENROLMENT_KEY` on the node), or the fleet enrolment token
+  (`SOVEREIGN_REGISTRATION_TOKEN`) for a key the control plane does not know yet. A
+  key that is already enrolled re-registers with the proof alone, keeping its owner,
+  organisation, role and country.
+- **Everything else takes the node credential** (`nnt1_...`) that registration returns
+  and heartbeats rotate, bound to one node id. The fleet token names no node and is
+  refused there; it is still accepted by `/v4/control/discover`, which lists exit
+  bridges rather than serving one node. With no fleet token configured, outside
+  production only, node requests pass unauthenticated.
 
 | Endpoint | Purpose |
 |---|---|
@@ -442,8 +464,16 @@ After a `DELETE`, the rows remain in:
 - unvacuumed heap pages
 - streaming replicas, until they apply and vacuum
 
-The designed answer is per-organisation encryption keys, with destruction meaning key
-destruction. It is not implemented. Organisation-wide destruction
+Per-organisation data keys exist and seal the secrets an organisation stores: its
+identity-provider client secret, its users' TOTP seeds and identity-provider refresh
+tokens (`CryptoShreddingService.sealForOrg`). The keys are wrapped with a key-encryption
+key derived from `SOVEREIGN_SHRED_KEK_SECRET`, used for nothing else. Shredding an
+organisation destroys its data key, deletes its nodes, rules, enrolment keys and
+compartments, and revokes its users. The rest of its data is not encrypted with the key:
+node rows and audit events are deleted or kept, and a backup holds them until it expires.
+A backup taken before the shred can still open the sealed secrets while the
+key-encryption key that wrapped the data key exists: rotate it
+(`SOVEREIGN_SHRED_KEK_PREVIOUS`) and destroy the old value. Organisation-wide destruction
 requires two people and respects a legal hold. The tiers that act without an
 administrator (the personal switch) are available in the default profile and switched off
 in the `regulated` one (ADR 0015).
@@ -457,28 +487,33 @@ X25519 + ML-KEM-1024.
 The personal dead man's switch unlock accepts the credential the user stored, and no
 other. The global wipe requires an explicit confirmation.
 
-### 6.2 The audit log is not tamper-evident
+### 6.2 The audit log
 
-`audit_events` is an ordinary table. There is no hash chain, no signature and no
-append-only constraint. Anyone with database access can edit or delete entries,
-including the entries that record it.
+Each event carries an HMAC-SHA256 over its content and its predecessor's hash, keyed with
+`SOVEREIGN_AUDIT_HMAC_SECRET`, which is used for nothing else. The head of the chain is
+signed on request with an Ed25519 key (`SOVEREIGN_AUDIT_SIGNING_KEY`, or one generated
+once into the data directory), and verification checks every signed checkpoint against
+the event it covers. The chain detects edited, deleted and inserted events; the
+checkpoints detect a truncated tail and a chain rewritten from the start.
 
-Regulated buyers require an audit trail that survives an attacker with database access.
-Minimum: each row carries the hash of its predecessor, the chain head is signed
-periodically, and the signature is published somewhere the database cannot reach. The
-warrant canary already has the signing machinery.
+What it does not do: checkpoints are not taken on a schedule, and they only mean
+something if their public key is recorded somewhere the server cannot write. Events
+written before the dedicated key existed were keyed with the JWT secret; they verify only
+as an unbroken prefix of the chain, and `SOVEREIGN_AUDIT_ACCEPT_LEGACY=false` refuses
+them. Events carry no organisation, so the ledger is readable in bulk by the platform
+super-admin only.
 
 ### 6.3 Remaining gaps
 
 | Requirement | State |
 |---|---|
 | Data plane | A spike behind a flag; not the default ([ADR 0020](adr/0020-data-plane.md)) |
-| Per-node credentials, proof of key possession | Not implemented. One enrolment token serves the fleet |
+| Per-node credentials, proof of key possession | Pre-auth keys and a proof-of-possession challenge. The fleet-wide enrolment token still works as a fallback |
 | Posture measurement on the node | Not implemented. Disk encryption and firewall state are not measured, so every node is `unverified` |
 | External cryptographic audit | None. A nonce reuse defect was found in-house in the onion layer in September 2026 |
 | Reproducible builds, signed artefacts, SBOM | Not implemented |
-| SSO / OIDC | Not implemented. Blocks any organisational deployment |
-| Role model with an auditor role | Not implemented. Two roles exist |
+| SSO / OIDC | Authorization code flow with PKCE; ID tokens verified against the provider's published keys; group claims map to organisation roles only. Tested against a local provider in the test suite, not yet against Keycloak or Entra ID. No API or console page configures it: the configuration row is written to `organization_oidc_configs` directly |
+| Role model with an auditor role | Platform role (`super-admin`, `user`) and per-organisation roles (`owner`, `admin`, `network_admin`, `auditor`, `member`) |
 | Written threat model | None |
 | Key rotation procedure | None |
 | High availability | Designed ([ADR 0001](adr/0001-no-multi-master-postgresql.md)), not built |
@@ -502,7 +537,9 @@ warrant canary already has the signing machinery.
   `NODE_ENV=production`. The nginx edge of the compose stack does not send HSTS, because
   it serves plain HTTP.
 - Tenant isolation enforced centrally and probed by a test that enumerates
-  node-addressed routes as the wrong tenant.
+  node-addressed routes as the wrong tenant. On the overlay a node's peers and rules are
+  its own organisation's (and the platform's rules); with no rule, the organisation's
+  `default_policy` decides.
 - JWT revocation with `jti` and a shared blacklist.
 - Federation requires signature verification and out-of-band fingerprint confirmation.
 - The node heartbeat requires the enrolment token, like the other five node endpoints.
@@ -580,7 +617,7 @@ container. To try the data plane spike, see `scripts/dev/dataplane-spike-lab.sh`
 | Variable | Effect if wrong |
 |---|---|
 | `SOVEREIGN_TRUST_PROXY_HOPS` | Too low: every request reports the proxy address, so rate limiting buckets the whole world together. Too high: a client forges `X-Forwarded-For` and bypasses the limiter |
-| `SOVEREIGN_REGISTRATION_TOKEN` | Unset in production: no node can enrol, and no node endpoint answers. Every node needs the same value |
+| `SOVEREIGN_REGISTRATION_TOKEN` | Unset in production: nodes enrol only with a pre-auth key. It authorises enrolling new keys, nothing else: nodes still prove possession of their key, and use their own credential afterwards |
 | `SOVEREIGN_VALKEY_NAMESPACE` | Unset with a shared Valkey: deployments cross-talk. `{pid}` is substituted |
 | `SOVEREIGN_DATA_DIR` | Wrong: the federation identity lands outside the volume and is destroyed on container recreation |
 | `SOVEREIGN_FEATURE_CLOUD_PC` | Off by default. Turning it on exposes a feature that cannot stream and is not supported |
@@ -664,13 +701,17 @@ agreement and destroying a user both put keys in the window. Three cases remain 
 3. An agreement expires. No job expires an agreement or revokes its imported nodes when
    it lapses.
 
-### 10.3 Crypto-shredding
+### 10.3 Crypto-shredding: what remains
 
-Section 6.1. This is what makes NeroNuke mean what it claims.
+Section 6.1. Organisation secrets are sealed with the organisation's data key; node rows,
+rules and audit events are not. What remains is a key-encryption key held outside the
+database host (a KMS or HSM), and deciding which further tenant data to seal.
 
-### 10.4 Tamper-evident audit log
+### 10.4 Audit log: what remains
 
-Section 6.2. A prerequisite for any regulated buyer.
+Section 6.2. The chain and the checkpoints exist; what remains is taking checkpoints on
+a schedule, publishing their public key outside the server, and tagging events with their
+organisation so an organisation's auditors can verify their own part.
 
 ### 10.5 Then
 

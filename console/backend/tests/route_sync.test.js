@@ -6,6 +6,7 @@ const request = require('supertest');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
+const { nodeKey, register } = require('./helpers/nodeEnrolment');
 const RouteEngine = require('../services/RouteEngine');
 const AclEngine = require('../services/AclEngine');
 
@@ -59,16 +60,8 @@ describe('Route delivery', () => {
     dbHelper = await setupTestDatabase();
     app = createApp();
 
-    gateway = (
-      await request(app)
-        .post('/v4/control/register')
-        .send(registerBody('a'.repeat(64), { role: 'EXIT_BRIDGE' }))
-    ).body;
-    client = (
-      await request(app)
-        .post('/v4/control/register')
-        .send(registerBody('b'.repeat(64)))
-    ).body;
+    gateway = (await register(app, registerBody(nodeKey(), { role: 'EXIT_BRIDGE' }))).body;
+    client = (await register(app, registerBody(nodeKey()))).body;
   });
 
   after(async () => {
@@ -157,11 +150,7 @@ describe('Route delivery', () => {
   });
 
   it('orders gateways by priority', async () => {
-    const second = (
-      await request(app)
-        .post('/v4/control/register')
-        .send(registerBody('c'.repeat(64), { role: 'RELAY' }))
-    ).body;
+    const second = (await register(app, registerBody(nodeKey(), { role: 'RELAY' }))).body;
 
     await RouteEngine.createRoute({
       network_cidr: '10.100.0.0/24',
@@ -183,11 +172,7 @@ describe('Route delivery', () => {
       routing_peers: [{ node_id: gateway.assigned_node_id, priority: 1, is_healthy: true }]
     });
 
-    const second = (
-      await request(app)
-        .post('/v4/control/register')
-        .send(registerBody('d'.repeat(64), { role: 'RELAY' }))
-    ).body;
+    const second = (await register(app, registerBody(nodeKey(), { role: 'RELAY' }))).body;
     await RouteEngine.deleteRoute('none');
 
     await RouteEngine.createRoute({
@@ -222,14 +207,20 @@ describe('Route delivery', () => {
     assert.strictEqual((await sync('pk_0000000000000000')).status, 404);
   });
 
-  it('requires the enrolment token when one is configured', async () => {
+  it('requires the node credential when a fleet token is configured', async () => {
     process.env.SOVEREIGN_REGISTRATION_TOKEN = 'route-token';
     try {
       assert.strictEqual((await sync(client.assigned_node_id)).status, 401);
 
-      const allowed = await request(app)
+      const fleet = await request(app)
         .post('/v4/control/sync-routes')
         .set('Authorization', 'Bearer route-token')
+        .send({ node_id: client.assigned_node_id, route_epoch: 0 });
+      assert.strictEqual(fleet.status, 401);
+
+      const allowed = await request(app)
+        .post('/v4/control/sync-routes')
+        .set('Authorization', `Bearer ${client.credential}`)
         .send({ node_id: client.assigned_node_id, route_epoch: 0 });
       assert.strictEqual(allowed.status, 200);
     } finally {

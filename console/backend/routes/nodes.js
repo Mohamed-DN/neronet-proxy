@@ -787,6 +787,9 @@ router.post('/:id/action', async (req, res, next) => {
         [node.id]
       );
 
+      // The quarantine revoked the node's key, and a revoked key cannot register. The
+      // node's credential was revoked too, so without this it could never come back.
+      await RevocationEngine.liftQuarantineRevocation(node.id);
       await bumpNetmap();
 
       logAuditEvent({
@@ -812,7 +815,9 @@ router.post('/:id/action', async (req, res, next) => {
     }
 
     if (action === 'set_transport') {
-      const allowedTransports = ['wireguard', 'amneziawg', 'openvpn', 'vless'];
+      // Transports a node can run. OpenVPN and VLESS used to be accepted and stored,
+      // and no node ever used them.
+      const allowedTransports = ['wireguard', 'amneziawg'];
       const transport = req.body.transport || req.body.params?.transport;
       if (!transport || !allowedTransports.includes(transport)) {
         return res.status(400).json({ error: `Invalid transport. Allowed: ${allowedTransports.join(', ')}` });

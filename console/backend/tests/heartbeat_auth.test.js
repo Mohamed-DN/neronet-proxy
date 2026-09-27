@@ -5,6 +5,7 @@ const request = require('supertest');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
+const { nodeKey, register } = require('./helpers/nodeEnrolment');
 
 // The bridge only enforces the shared token when one is configured; with the
 // variable unset it warns and lets every caller in, which is the development
@@ -19,25 +20,28 @@ process.env.SOVEREIGN_REGISTRATION_TOKEN = REGISTRATION_TOKEN;
  * forge telemetry and read the quarantine state of any node whose id they guessed.
  */
 
-const GO_PUBKEY = 'c'.repeat(64);
+const GO_PUBKEY = nodeKey();
 const UNKNOWN_NODE_ID = 'pk_00000000deadbeef';
 
 describe('Heartbeat authentication', () => {
   let dbHelper;
   let app;
   let nodeId;
+  let credential;
 
   before(async () => {
     dbHelper = await setupTestDatabase();
     app = createApp();
 
-    const registered = await request(app)
-      .post('/v4/control/register')
-      .set('Authorization', `Bearer ${REGISTRATION_TOKEN}`)
-      .send({ public_key_hex: GO_PUBKEY, role: 'RELAY', endpoints: [], capability: { country_code: 'DE' } });
+    const registered = await register(
+      app,
+      { public_key_hex: GO_PUBKEY, role: 'RELAY', endpoints: [], capability: { country_code: 'DE' } },
+      { token: REGISTRATION_TOKEN }
+    );
 
     assert.strictEqual(registered.status, 200, `registration failed: ${JSON.stringify(registered.body)}`);
     nodeId = registered.body.assigned_node_id;
+    credential = registered.body.credential;
   });
 
   after(async () => {
@@ -92,10 +96,10 @@ describe('Heartbeat authentication', () => {
     assert.strictEqual(nodeReads, 0, `the handler read the nodes table ${nodeReads} time(s) before authenticating`);
   });
 
-  it('accepts a heartbeat that carries the enrolment token', async () => {
+  it('accepts a heartbeat that carries the node credential', async () => {
     const res = await request(app)
       .post('/v4/control/heartbeat')
-      .set('Authorization', `Bearer ${REGISTRATION_TOKEN}`)
+      .set('Authorization', `Bearer ${credential}`)
       .send({ node_id: nodeId, cpu_usage_pct: 12, rtt_ms: 7 });
 
     assert.strictEqual(res.status, 200);
@@ -103,12 +107,24 @@ describe('Heartbeat authentication', () => {
     assert.strictEqual(typeof res.body.policy_epoch, 'number');
   });
 
-  it('still answers 404 for an unknown node once the caller is authenticated', async () => {
+  // The enrolment token is shared by the whole fleet and names no node, so accepting
+  // it here let any holder beat for any node id.
+  it('refuses the enrolment token, known node or not', async () => {
+    for (const id of [nodeId, UNKNOWN_NODE_ID]) {
+      const res = await request(app)
+        .post('/v4/control/heartbeat')
+        .set('Authorization', `Bearer ${REGISTRATION_TOKEN}`)
+        .send({ node_id: id });
+      assert.strictEqual(res.status, 401);
+    }
+  });
+
+  it("refuses a credential used for another node's id", async () => {
     const res = await request(app)
       .post('/v4/control/heartbeat')
-      .set('Authorization', `Bearer ${REGISTRATION_TOKEN}`)
+      .set('Authorization', `Bearer ${credential}`)
       .send({ node_id: UNKNOWN_NODE_ID });
 
-    assert.strictEqual(res.status, 404);
+    assert.strictEqual(res.status, 403);
   });
 });

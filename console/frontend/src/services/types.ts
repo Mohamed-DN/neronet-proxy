@@ -358,8 +358,19 @@ export interface Organization {
   slug: string;
   default_policy?: 'open' | 'deny';
   max_netmap_staleness_seconds?: number;
+  profile?: 'standard' | 'regulated';
   created_at?: string;
   updated_at?: string;
+}
+
+export interface OrganizationModule {
+  module_id: string;
+  enabled: boolean;
+}
+
+export interface OrganizationSettingsUpdate {
+  default_policy?: 'open' | 'deny';
+  max_netmap_staleness_seconds?: number;
 }
 
 export interface QrOnboardingData {

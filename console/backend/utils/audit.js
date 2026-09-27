@@ -3,7 +3,29 @@ const logger = require('./logger');
 const { AuditChainService } = require('../services/AuditChainService');
 const { SiemExporter } = require('../services/SiemExporter');
 
-async function logAuditEvent({
+// Writes still in flight. Callers do not await logAuditEvent, so without this there
+// is no way to know when the ledger has caught up, which a test tearing down its
+// database, or a process shutting down, needs to.
+const inFlight = new Set();
+
+function track(promise) {
+  inFlight.add(promise);
+  promise.finally(() => inFlight.delete(promise)).catch(() => {});
+  return promise;
+}
+
+/** Resolve once every audit write started so far has finished, successfully or not. */
+async function settleAuditWrites() {
+  while (inFlight.size > 0) {
+    await Promise.allSettled([...inFlight]);
+  }
+}
+
+function logAuditEvent(event) {
+  return track(writeAuditEvent(event));
+}
+
+async function writeAuditEvent({
   eventType,
   severity = 'info',
   actorUserId = null,
@@ -32,9 +54,11 @@ async function logAuditEvent({
     });
 
     // Asynchronously forward to configured SIEM destinations
-    SiemExporter.forwardEvent(row).catch((err) => {
-      logger.warn('Asynchronous SIEM forward error: ' + err.message);
-    });
+    track(
+      SiemExporter.forwardEvent(row).catch((err) => {
+        logger.warn('Asynchronous SIEM forward error: ' + err.message);
+      })
+    );
 
     return row;
   } catch (err) {
@@ -79,4 +103,4 @@ function auditHealth() {
   };
 }
 
-module.exports = { logAuditEvent, auditHealth };
+module.exports = { logAuditEvent, auditHealth, settleAuditWrites };

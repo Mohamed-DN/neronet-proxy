@@ -3,7 +3,8 @@
 Code copied into this repository from other projects. Each directory keeps the upstream
 licence and every file keeps its original copyright header. Carved code is not edited by
 hand: `scripts/thirdparty/carve.sh` reproduces it from a pinned upstream commit, rewriting
-only import paths.
+import paths and applying the patches in `scripts/thirdparty/patches/<project>/`, each of
+which fixes an upstream defect and says which and why.
 
 | Directory | Upstream | Commit | Licence | Packages | Used by a binary |
 |---|---|---|---|---|---|
@@ -14,8 +15,14 @@ only import paths.
 The Tailscale packages were carved to replace the relay and endpoint-discovery code in
 `pkg/derp` and `pkg/nat`. That integration has not been done, so today they add code and
 tests but no behaviour. CI runs their upstream tests separately from the project's race
-suite, because several DERP tests assert on write ordering and are sensitive to a loaded
-runner.
+suite.
+
+Patches applied to the Tailscale carve:
+
+- `0001-derpserver-test-count-packets-enqueued-after-pong.patch`: the upstream test
+  `TestWriterFloodDoesNotStarveControlFrames` measured its bound in sequence numbers,
+  which the queue's drop-oldest policy inflates, and failed about one run in ten with
+  the writer behaving correctly. The patch measures the same bound in packets.
 
 To refresh the carve against a newer upstream commit:
 

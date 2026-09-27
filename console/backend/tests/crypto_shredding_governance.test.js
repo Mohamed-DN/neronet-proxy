@@ -76,9 +76,13 @@ describe('WP-302: Crypto-Shredding with Governance (NeroNuke v2)', () => {
     if (dbHelper) await dbHelper.cleanup();
   });
 
+  // Sealed before the shred, the way a backup would hold it.
+  let sealedBeforeShred;
+
   it('1. performs envelope encryption with per-org isolated DEK', async () => {
     const sensitivePayload = 'Top Secret Organization Ledger Records 12345';
     const ciphertext = await CryptoShreddingService.encryptData(testOrgId, sensitivePayload);
+    sealedBeforeShred = ciphertext;
     assert.ok(ciphertext);
     assert.notStrictEqual(ciphertext, sensitivePayload);
 
@@ -141,7 +145,7 @@ describe('WP-302: Crypto-Shredding with Governance (NeroNuke v2)', () => {
   it('4. ensures data in historical backups is permanently illegible after crypto-shredding', async () => {
     // Attempting to decrypt data created before the shredding must fail permanently with KeyShreddedError
     await assert.rejects(async () => {
-      await CryptoShreddingService.decryptData(testOrgId, 'some-ciphertext-from-backup');
+      await CryptoShreddingService.decryptData(testOrgId, sealedBeforeShred);
     }, KeyShreddedError);
   });
 

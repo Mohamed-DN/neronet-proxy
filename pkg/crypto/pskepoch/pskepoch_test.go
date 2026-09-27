@@ -1,4 +1,4 @@
-package rosenpass
+package pskepoch
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func (m *mockPSKUpdater) getPSK(peerPubHex string) string {
 	return m.updates[peerPubHex]
 }
 
-func TestDerivePQPSK_Symmetry(t *testing.T) {
+func TestDeriveEpochPSK_Symmetry(t *testing.T) {
 	aliceKP, err := crypto.GenerateKeypair()
 	if err != nil {
 		t.Fatalf("Alice keypair: %v", err)
@@ -41,13 +41,13 @@ func TestDerivePQPSK_Symmetry(t *testing.T) {
 	epoch := uint64(100)
 
 	// Alice derives PSK for Bob
-	pskAlice, err := DerivePQPSK(aliceKP.PrivateKey, bobKP.PublicKey, epoch)
+	pskAlice, err := DeriveEpochPSK(aliceKP.PrivateKey, bobKP.PublicKey, epoch)
 	if err != nil {
 		t.Fatalf("Alice derive: %v", err)
 	}
 
 	// Bob derives PSK for Alice
-	pskBob, err := DerivePQPSK(bobKP.PrivateKey, aliceKP.PublicKey, epoch)
+	pskBob, err := DeriveEpochPSK(bobKP.PrivateKey, aliceKP.PublicKey, epoch)
 	if err != nil {
 		t.Fatalf("Bob derive: %v", err)
 	}
@@ -57,16 +57,16 @@ func TestDerivePQPSK_Symmetry(t *testing.T) {
 	}
 }
 
-func TestDerivePQPSK_EpochRotation(t *testing.T) {
+func TestDeriveEpochPSK_EpochRotation(t *testing.T) {
 	aliceKP, _ := crypto.GenerateKeypair()
 	bobKP, _ := crypto.GenerateKeypair()
 
-	pskEpoch1, err := DerivePQPSK(aliceKP.PrivateKey, bobKP.PublicKey, 1)
+	pskEpoch1, err := DeriveEpochPSK(aliceKP.PrivateKey, bobKP.PublicKey, 1)
 	if err != nil {
 		t.Fatalf("Epoch 1 derive: %v", err)
 	}
 
-	pskEpoch2, err := DerivePQPSK(aliceKP.PrivateKey, bobKP.PublicKey, 2)
+	pskEpoch2, err := DeriveEpochPSK(aliceKP.PrivateKey, bobKP.PublicKey, 2)
 	if err != nil {
 		t.Fatalf("Epoch 2 derive: %v", err)
 	}

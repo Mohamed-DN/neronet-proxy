@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AuditRoute from './AuditRoute';
+import AuthContext, { type AuthValue } from '../../context/AuthContext';
 import { ShellProvider } from '../shell';
 import { createQueryClient } from '../../services/queries/client';
 import type { AuditCheckpoint, AuditEvent, AuditVerificationResult, SiemDestination } from '../../services/types';
@@ -83,22 +84,39 @@ function jsonResponse(data: unknown, status = 200) {
   );
 }
 
-function renderAudit(initialEntries = ['/audit']) {
+function authAs(role: string): AuthValue {
+  return {
+    user: { id: `usr-${role}`, username: role, role },
+    role,
+    token: null,
+    loading: false,
+    isAuthenticated: true,
+    switchRole: () => {},
+    login: async () => ({ id: `usr-${role}`, username: role, role }),
+    completeMfaSignIn: async () => ({ id: `usr-${role}`, username: role, role }),
+    logout: async () => {},
+    refreshUser: async () => {}
+  };
+}
+
+function renderAudit(initialEntries = ['/audit'], role = 'super-admin') {
   const queryClient = createQueryClient();
   queryClient.setDefaultOptions({
     queries: { retry: false, refetchOnWindowFocus: false }
   });
 
   return renderUI(
-    <QueryClientProvider client={queryClient}>
-      <ShellProvider>
-        <MemoryRouter initialEntries={initialEntries}>
-          <Routes>
-            <Route path="/audit" element={<AuditRoute />} />
-          </Routes>
-        </MemoryRouter>
-      </ShellProvider>
-    </QueryClientProvider>
+    <AuthContext.Provider value={authAs(role)}>
+      <QueryClientProvider client={queryClient}>
+        <ShellProvider>
+          <MemoryRouter initialEntries={initialEntries}>
+            <Routes>
+              <Route path="/audit" element={<AuditRoute />} />
+            </Routes>
+          </MemoryRouter>
+        </ShellProvider>
+      </QueryClientProvider>
+    </AuthContext.Provider>
   );
 }
 
@@ -316,5 +334,23 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
     });
 
     await expectNoAxeViolations(container);
+  });
+  it('7. Shows an ordinary user their events without the platform-admin panels', async () => {
+    const fetchMock = setupFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderAudit(['/audit'], 'user');
+
+    await waitFor(() => {
+      expect(screen.getByText('Sovereign node enrolled successfully')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('verify-chain-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('siem-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('export-audit-button')).not.toBeInTheDocument();
+
+    const called = fetchMock.mock.calls.map((c: unknown[]) => String(c[0]));
+    for (const path of ['/api/audit/verify', '/api/audit/checkpoints', '/api/audit/siem']) {
+      expect(called.some((u) => u.includes(path))).toBe(false);
+    }
   });
 });

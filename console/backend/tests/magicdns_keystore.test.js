@@ -29,8 +29,8 @@ describe('WP-210: MagicDNS, In-Mesh Gateway & Keystore', () => {
 
     testOrgId = 'org-magicdns';
     await pool.query(
-      `INSERT INTO organizations (id, name, slug, profile, search_domain)
-       VALUES ($1, 'MagicDNS Org', 'magicdns-org', 'standard', 'magicdns-org.neronet')
+      `INSERT INTO organizations (id, name, slug, profile, search_domain, default_policy)
+       VALUES ($1, 'MagicDNS Org', 'magicdns-org', 'standard', 'magicdns-org.neronet', 'open')
        ON CONFLICT (id) DO NOTHING`,
       [testOrgId]
     );

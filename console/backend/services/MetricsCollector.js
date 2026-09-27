@@ -88,15 +88,24 @@ async function readFleetState(accessTier = 'standard') {
  * the fleet sizes this console handles and is the first thing to turn into a stored
  * column if that stops being true.
  */
-async function readPostureCounts(accessTier = 'standard') {
+async function readPostureCounts(accessTier = 'standard', organizationId = undefined) {
   let rows;
 
   if (isPostgres()) {
-    const hiddenClause =
-      accessTier === 'root'
-        ? ''
-        : ' LEFT JOIN compartments c ON nodes.compartment_id = c.id WHERE (c.is_hidden IS NULL OR c.is_hidden = FALSE)';
-    const result = await getPgPool().query(`SELECT posture_checks FROM nodes ${hiddenClause}`);
+    // organizationId limits the count to one organisation's nodes; without it the
+    // count covers the platform.
+    const where = [];
+    const params = [];
+    if (accessTier !== 'root') where.push('(c.is_hidden IS NULL OR c.is_hidden = FALSE)');
+    if (organizationId !== undefined) {
+      params.push(organizationId);
+      where.push(`COALESCE(nodes.organization_id, 'org-default') = $${params.length}`);
+    }
+    const result = await getPgPool().query(
+      `SELECT nodes.posture_checks FROM nodes LEFT JOIN compartments c ON nodes.compartment_id = c.id
+       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`,
+      params
+    );
     rows = result.rows;
   } else {
     rows = getDatabase().prepare('SELECT posture_checks FROM nodes').all();
@@ -201,10 +210,15 @@ function startCollector() {
   // A failed sample leaves a gap in the chart. It must not take the process down,
   // and it must not stop the timer, or one transient database error would end
   // metrics collection until the next restart.
+  // One sample per fleet, taken by the elected leader; every instance sampling wrote
+  // one row each per interval.
+  const { getDistributedLeaderService } = require('./DistributedLeaderService');
   const run = () => {
-    collectOnce().catch((err) => {
-      console.error('[METRICS] sample failed:', err.message);
-    });
+    getDistributedLeaderService()
+      .executeAsLeader('metrics-sample', collectOnce)
+      .catch((err) => {
+        console.error('[METRICS] sample failed:', err.message);
+      });
   };
 
   run();

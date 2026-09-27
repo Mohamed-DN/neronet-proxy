@@ -6,6 +6,7 @@ const request = require('supertest');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
+const { nodeKey, register } = require('./helpers/nodeEnrolment');
 const HeartbeatBuffer = require('../services/HeartbeatBuffer');
 const MetricsCollector = require('../services/MetricsCollector');
 const { buildPostureDocument } = require('../utils/posture');
@@ -17,7 +18,7 @@ const { buildPostureDocument } = require('../utils/posture');
  * assert on what the database holds and what the endpoints answer.
  */
 
-const NODE_KEY = 'a1'.repeat(32);
+const NODE_KEY = nodeKey();
 
 function registerBody(publicKeyHex) {
   return {
@@ -165,7 +166,7 @@ describe('posture reports only what was measured', () => {
     let nodeId;
 
     beforeEach(async () => {
-      const reg = await request(app).post('/v4/control/register').send(registerBody(NODE_KEY));
+      const reg = await register(app, registerBody(NODE_KEY));
       assert.strictEqual(reg.status, 200, JSON.stringify(reg.body));
       nodeId = reg.body.assigned_node_id;
       await dbHelper.pool.query("UPDATE nodes SET posture_checks = '{}' WHERE id = $1", [nodeId]);

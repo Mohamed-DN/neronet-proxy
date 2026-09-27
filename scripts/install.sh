@@ -35,9 +35,11 @@ detect_runtime() {
 }
 
 generate_env() {
-  local jwt refresh admin_pass reg_token pg_pass
+  local jwt refresh audit_hmac shred_kek admin_pass reg_token pg_pass
   jwt=$(openssl rand -base64 48)
   refresh=$(openssl rand -base64 48)
+  audit_hmac=$(openssl rand -base64 48)
+  shred_kek=$(openssl rand -base64 48)
   admin_pass=$(openssl rand -base64 18 | tr -d '+/=' | head -c 20)
   reg_token=$(openssl rand -hex 32)
   pg_pass=$(openssl rand -base64 18 | tr -d '+/=' | head -c 20)
@@ -46,6 +48,8 @@ generate_env() {
 POSTGRES_PASSWORD=${pg_pass}
 SOVEREIGN_JWT_SECRET=${jwt}
 SOVEREIGN_REFRESH_SECRET=${refresh}
+SOVEREIGN_AUDIT_HMAC_SECRET=${audit_hmac}
+SOVEREIGN_SHRED_KEK_SECRET=${shred_kek}
 SOVEREIGN_ADMIN_PASS=${admin_pass}
 SOVEREIGN_REGISTRATION_TOKEN=${reg_token}
 NERONET_CONSOLE_PORT=8443

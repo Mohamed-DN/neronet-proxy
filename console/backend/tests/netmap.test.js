@@ -13,6 +13,7 @@ const { createApp } = require('../server');
 const AclEngine = require('../services/AclEngine');
 const NetmapService = require('../services/NetmapService');
 const RevocationEngine = require('../services/RevocationEngine');
+const { nodeKey, register } = require('./helpers/nodeEnrolment');
 
 /**
  * The netmap is what decides which node can reach which. Everything here executes the
@@ -39,14 +40,20 @@ function registerBody(publicKeyHex, overrides = {}) {
   };
 }
 
+// Each node asks for its own netmap with the credential registration gave it; the
+// fleet token names no node and is refused.
+const credentials = new Map();
+const nodeAuth = (nodeId) => ({ Authorization: `Bearer ${credentials.get(nodeId)}` });
+
 async function registerNode(app, keyHex) {
-  const res = await request(app).post('/v4/control/register').set(AUTH).send(registerBody(keyHex));
+  const res = await register(app, registerBody(keyHex), { token: REGISTRATION_TOKEN });
   assert.strictEqual(res.status, 200, `registration failed: ${JSON.stringify(res.body)}`);
+  credentials.set(res.body.assigned_node_id, res.body.credential);
   return { id: res.body.assigned_node_id, key: keyHex, vip: res.body.overlay_ipv4, vip6: res.body.overlay_ipv6 };
 }
 
 async function fetchNetmap(app, nodeId, version = 0) {
-  const res = await request(app).post('/v4/control/netmap').set(AUTH).send({ node_id: nodeId, version });
+  const res = await request(app).post('/v4/control/netmap').set(nodeAuth(nodeId)).send({ node_id: nodeId, version });
   return res;
 }
 
@@ -73,9 +80,9 @@ describe('Netmap delivery', () => {
     await dbHelper.pool.query("DELETE FROM nodes WHERE id LIKE 'svrn-node-seed%'");
     app = createApp();
 
-    alpha = await registerNode(app, 'a'.repeat(64));
-    beta = await registerNode(app, 'b'.repeat(64));
-    gamma = await registerNode(app, 'c'.repeat(64));
+    alpha = await registerNode(app, nodeKey());
+    beta = await registerNode(app, nodeKey());
+    gamma = await registerNode(app, nodeKey());
   });
 
   after(async () => {
@@ -100,9 +107,19 @@ describe('Netmap delivery', () => {
     assert.ok(!('peers' in res.body), 'an unauthenticated caller must not receive a peer set');
   });
 
-  it('answers 404 for a node it has never seen', async () => {
-    const res = await fetchNetmap(app, 'pk_0000000000000000');
-    assert.strictEqual(res.status, 404);
+  it('refuses the fleet token, which names no node', async () => {
+    const res = await request(app).post('/v4/control/netmap').set(AUTH).send({ node_id: alpha.id, version: 0 });
+    assert.strictEqual(res.status, 401);
+    assert.ok(!('peers' in res.body));
+  });
+
+  it("refuses one node's credential for another node's netmap", async () => {
+    const res = await request(app)
+      .post('/v4/control/netmap')
+      .set(nodeAuth(beta.id))
+      .send({ node_id: alpha.id, version: 0 });
+    assert.strictEqual(res.status, 403);
+    assert.ok(!('peers' in res.body));
   });
 
   it('carries this node addresses, its MTU and its listen port', async () => {
@@ -311,9 +328,10 @@ describe('Netmap delivery', () => {
     it('gives the quarantined node itself no peers at all', async () => {
       await dbHelper.pool.query('UPDATE nodes SET is_quarantined = true, is_healthy = false WHERE id = $1', [gamma.id]);
 
+      // Its credential stops working while it is quarantined (ADR 0017).
       const c = await fetchNetmap(app, gamma.id);
-      assert.strictEqual(c.status, 200);
-      assert.deepStrictEqual(c.body.peers, []);
+      assert.strictEqual(c.status, 403);
+      assert.ok(!('peers' in c.body));
     });
 
     it('restores the node when the quarantine is lifted', async () => {
@@ -339,7 +357,7 @@ describe('Netmap delivery', () => {
   describe('a seventh node', () => {
     it('appears in the other netmaps and advances the version', async () => {
       const before = await NetmapService.getVersion();
-      const delta = await registerNode(app, 'd'.repeat(64));
+      const delta = await registerNode(app, nodeKey());
       const after = await NetmapService.getVersion();
 
       assert.ok(after > before, 'registering a node must advance the netmap version');
@@ -353,7 +371,7 @@ describe('Netmap delivery', () => {
 
   describe('endpoints reported on the heartbeat', () => {
     async function beat(nodeId, endpoints) {
-      return request(app).post('/v4/control/heartbeat').set(AUTH).send({ node_id: nodeId, endpoints });
+      return request(app).post('/v4/control/heartbeat').set(nodeAuth(nodeId)).send({ node_id: nodeId, endpoints });
     }
 
     it('reports the netmap version on every heartbeat', async () => {

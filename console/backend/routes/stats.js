@@ -4,13 +4,22 @@ const express = require('express');
 const router = express.Router();
 const { getPgPool } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
-const { resolveUserOrg } = require('../middleware/rbac');
+const { resolveUserOrg, requireSuperAdmin } = require('../middleware/rbac');
 const { readFleetState, readPostureCounts, LIVENESS_WINDOW_SECONDS } = require('../services/MetricsCollector');
 const { COUNTRY_NAMES } = require('../utils/countries');
 const AclEngine = require('../services/AclEngine');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
+
+// The audit ledger, its checkpoints and its SIEM sinks are platform wide: events are
+// not tagged with an organisation. Until they are, only the platform super-admin may
+// read the ledger in bulk or change where it is sent. These routes checked nothing,
+// so any signed-in user could export every tenant's audit trail, or add a SIEM sink
+// and receive every future event.
+//
+// Roles that may change links between their organisation's nodes.
+const TOPOLOGY_ROLES = new Set(['owner', 'admin', 'network_admin']);
 
 // 1. Overview Statistics
 //
@@ -429,15 +438,22 @@ router.get('/topology', topologyHandler);
 router.get('/topology/links', async (req, res, next) => {
   try {
     const pool = getPgPool();
-    const q = await pool.query('SELECT * FROM mesh_link_configs ORDER BY updated_at DESC');
+    const q =
+      req.user.role === 'super-admin'
+        ? await pool.query('SELECT * FROM mesh_link_configs ORDER BY updated_at DESC')
+        : await pool.query(
+            `SELECT l.* FROM mesh_link_configs l JOIN nodes n ON n.id = l.source_node_id
+              WHERE n.organization_id = $1 ORDER BY l.updated_at DESC`,
+            [req.user.organization_id]
+          );
     return res.status(200).json({ links: q.rows });
   } catch (err) {
     next(err);
   }
 });
 
-// POST /api/stats/topology/link
-router.post('/topology/reconnect-all', async (req, res, next) => {
+// Platform wide: it clears every isolation rule in every organisation.
+router.post('/topology/reconnect-all', requireSuperAdmin, async (req, res, next) => {
   try {
     const pool = getPgPool();
     await pool.query('UPDATE mesh_link_configs SET is_visible = TRUE, updated_at = NOW()');
@@ -469,7 +485,29 @@ router.post('/topology/link', async (req, res, next) => {
       return res.status(400).json({ error: 'source_node_id and target_node_id are required' });
     }
     const pool = getPgPool();
-    const validModes = ['direct', 'derp', 'openvpn', 'onion'];
+
+    // Both ends must belong to the caller's organisation, and the caller must be one
+    // of the roles that manage its network. Without this any user could cut traffic
+    // between any two nodes on the platform.
+    const endsRes = await pool.query('SELECT id, organization_id FROM nodes WHERE id = ANY($1::varchar[])', [
+      [String(source_node_id), String(target_node_id)]
+    ]);
+    const ends = endsRes.rows;
+    const bothExist = ends.length === 2 || (ends.length === 1 && source_node_id === target_node_id);
+    if (req.user.role !== 'super-admin') {
+      if (!TOPOLOGY_ROLES.has(req.user.org_role)) {
+        return res.status(403).json({ error: 'Forbidden: insufficient organizational role permissions' });
+      }
+      if (!bothExist || ends.some((n) => n.organization_id !== req.user.organization_id)) {
+        return res.status(404).json({ error: 'Node not found' });
+      }
+    } else if (!bothExist) {
+      return res.status(404).json({ error: 'Node not found' });
+    }
+    const linkOrgId = ends[0].organization_id || null;
+    // A link's mode is a label for the topology view; it does not change how the two
+    // nodes reach each other. 'openvpn' is gone: there is no OpenVPN transport.
+    const validModes = ['direct', 'derp', 'onion'];
     const chosenMode = validModes.includes(mode) ? mode : 'direct';
     const visible = Boolean(is_visible);
 
@@ -499,16 +537,16 @@ router.post('/topology/link', async (req, res, next) => {
         const dropId1 = `acl-iso-${crypto.randomBytes(6).toString('hex')}`;
         const dropId2 = `acl-iso-${crypto.randomBytes(6).toString('hex')}`;
         await pool.query(
-          `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, enabled)
-           VALUES ($1, 5, $2, $3, 'ALL', 0, 65535, 'DROP', 'Node explicit isolation', TRUE)
+          `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, enabled, organization_id)
+           VALUES ($1, 5, $2, $3, 'ALL', 0, 65535, 'DROP', 'Node explicit isolation', TRUE, $4)
            ON CONFLICT DO NOTHING`,
-          [dropId1, `${sNode.overlay_ipv4}/32`, `${tNode.overlay_ipv4}/32`]
+          [dropId1, `${sNode.overlay_ipv4}/32`, `${tNode.overlay_ipv4}/32`, linkOrgId]
         );
         await pool.query(
-          `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, enabled)
-           VALUES ($1, 5, $2, $3, 'ALL', 0, 65535, 'DROP', 'Node explicit isolation', TRUE)
+          `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, enabled, organization_id)
+           VALUES ($1, 5, $2, $3, 'ALL', 0, 65535, 'DROP', 'Node explicit isolation', TRUE, $4)
            ON CONFLICT DO NOTHING`,
-          [dropId2, `${tNode.overlay_ipv4}/32`, `${sNode.overlay_ipv4}/32`]
+          [dropId2, `${tNode.overlay_ipv4}/32`, `${sNode.overlay_ipv4}/32`, linkOrgId]
         );
       }
     } else {
@@ -529,6 +567,9 @@ router.post('/topology/link', async (req, res, next) => {
 
     await publishTopologyEvent({
       event: 'TOPOLOGY_LINK_CONFIG_UPDATED',
+      // Without it the event reached only the platform super-admin: the socket sends
+      // an event with no organisation to nobody else.
+      organization_id: linkOrgId,
       source_node_id,
       target_node_id,
       mode: chosenMode,
@@ -617,7 +658,7 @@ router.get('/events', auditLogsHandler);
 router.get('/logs', auditLogsHandler);
 
 // WP-301: Cryptographic Chain Verification Endpoint
-router.get('/verify', async (req, res, next) => {
+router.get('/verify', requireSuperAdmin, async (req, res, next) => {
   try {
     const { AuditChainService } = require('../services/AuditChainService');
     const fromSeq = req.query.from ? Number(req.query.from) : 1;
@@ -635,11 +676,7 @@ router.get('/verify', async (req, res, next) => {
 });
 
 // WP-301: Checkpoints Endpoints
-router.post('/checkpoints', async (req, res, next) => {
-  const orgRole = req.user?.org_role || req.user?.role || 'member';
-  if (!['super-admin', 'owner', 'admin', 'auditor'].includes(orgRole)) {
-    return res.status(403).json({ error: 'Forbidden: only administrators and auditors can trigger audit checkpoints' });
-  }
+router.post('/checkpoints', requireSuperAdmin, async (req, res, next) => {
   try {
     const { AuditChainService } = require('../services/AuditChainService');
     const checkpoint = await AuditChainService.createCheckpoint();
@@ -649,7 +686,7 @@ router.post('/checkpoints', async (req, res, next) => {
   }
 });
 
-router.get('/checkpoints', async (req, res, next) => {
+router.get('/checkpoints', requireSuperAdmin, async (req, res, next) => {
   try {
     const { AuditChainService } = require('../services/AuditChainService');
     const pool = getPgPool();
@@ -664,7 +701,7 @@ router.get('/checkpoints', async (req, res, next) => {
 });
 
 // WP-301 & WP-408: SIEM Destinations
-router.get('/siem', async (req, res, next) => {
+router.get('/siem', requireSuperAdmin, async (req, res, next) => {
   try {
     const pool = getPgPool();
     const qRes = await pool.query('SELECT * FROM audit_siem_destinations ORDER BY created_at DESC');
@@ -674,7 +711,7 @@ router.get('/siem', async (req, res, next) => {
   }
 });
 
-router.post('/siem', async (req, res, next) => {
+router.post('/siem', requireSuperAdmin, async (req, res, next) => {
   try {
     const { id, name, protocol, endpoint, format = 'rfc5424' } = req.body || {};
     if (!name || !protocol || !endpoint) {
@@ -694,7 +731,7 @@ router.post('/siem', async (req, res, next) => {
   }
 });
 
-router.put('/siem/:id', async (req, res, next) => {
+router.put('/siem/:id', requireSuperAdmin, async (req, res, next) => {
   try {
     const { name, protocol, endpoint, format, enabled } = req.body || {};
     const pool = getPgPool();
@@ -722,7 +759,7 @@ router.put('/siem/:id', async (req, res, next) => {
   }
 });
 
-router.delete('/siem/:id', async (req, res, next) => {
+router.delete('/siem/:id', requireSuperAdmin, async (req, res, next) => {
   try {
     const pool = getPgPool();
     const qRes = await pool.query('DELETE FROM audit_siem_destinations WHERE id = $1 RETURNING id', [req.params.id]);
@@ -736,7 +773,7 @@ router.delete('/siem/:id', async (req, res, next) => {
 });
 
 // WP-408: Compliance Export Endpoint
-router.get('/export', async (req, res, next) => {
+router.get('/export', requireSuperAdmin, async (req, res, next) => {
   try {
     const { AuditChainService } = require('../services/AuditChainService');
     const pool = getPgPool();

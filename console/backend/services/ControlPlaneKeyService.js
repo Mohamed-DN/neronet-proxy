@@ -12,13 +12,42 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const logger = require('../utils/logger');
-const { getValkeyClient, NAMESPACE } = require('../db/valkey');
+const config = require('../config/env');
+const valkeyStore = require('../db/valkey');
+
+const { NAMESPACE } = valkeyStore;
 
 const X25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b656e04220420', 'hex');
 const X25519_SPKI_PREFIX = Buffer.from('302a300506032b656e032100', 'hex');
 
 let cachedKeypair = null;
 const memoryChallengeStore = new Map();
+// Bounds the in-process store, which fills from an unauthenticated endpoint.
+const MEMORY_CHALLENGE_LIMIT = 10000;
+
+function rememberInProcess(nonce, expiresAtMs) {
+  if (memoryChallengeStore.size >= MEMORY_CHALLENGE_LIMIT) {
+    const now = Date.now();
+    for (const [key, expiry] of memoryChallengeStore) {
+      if (expiry < now) memoryChallengeStore.delete(key);
+    }
+    if (memoryChallengeStore.size >= MEMORY_CHALLENGE_LIMIT) {
+      const err = new Error('too many outstanding challenges');
+      err.status = 503;
+      throw err;
+    }
+  }
+  memoryChallengeStore.set(nonce, expiresAtMs);
+}
+
+// A nonce kept in one process's memory is single-use in that process only: with
+// several control plane instances, another could accept it again. In production a
+// Valkey failure therefore fails the challenge instead of falling back.
+function challengeStoreUnavailable(err) {
+  const e = new Error(`challenge store unavailable: ${err.message}`);
+  e.status = 503;
+  return e;
+}
 
 function rawPrivateToKeyObject(rawBuffer) {
   return crypto.createPrivateKey({
@@ -148,18 +177,19 @@ async function createChallenge() {
   const expiresAtMs = Date.now() + 90 * 1000;
   const expiresAt = new Date(expiresAtMs).toISOString();
 
-  const valkey = getValkeyClient();
+  const valkey = valkeyStore.getValkeyClient();
   const key = `${NAMESPACE ? `${NAMESPACE}:` : ''}challenge:${nonce}`;
 
   if (valkey) {
     try {
       await valkey.set(key, '1', 'EX', 90);
     } catch (err) {
+      if (config.IS_PRODUCTION) throw challengeStoreUnavailable(err);
       logger.warn(`Valkey set challenge failed: ${err.message}`);
-      memoryChallengeStore.set(nonce, expiresAtMs);
+      rememberInProcess(nonce, expiresAtMs);
     }
   } else {
-    memoryChallengeStore.set(nonce, expiresAtMs);
+    rememberInProcess(nonce, expiresAtMs);
   }
 
   return {
@@ -178,7 +208,7 @@ async function consumeChallenge(nonce) {
   }
   const cleanNonce = nonce.trim().toLowerCase();
 
-  const valkey = getValkeyClient();
+  const valkey = valkeyStore.getValkeyClient();
   const key = `${NAMESPACE ? `${NAMESPACE}:` : ''}challenge:${cleanNonce}`;
 
   if (valkey) {
@@ -189,6 +219,7 @@ async function consumeChallenge(nonce) {
       }
     } catch (err) {
       logger.warn(`Valkey del challenge failed: ${err.message}`);
+      if (config.IS_PRODUCTION) return false;
     }
   }
 
@@ -207,9 +238,17 @@ async function consumeChallenge(nonce) {
  * Verifies proof of possession for a given node public key and nonce.
  *
  * Formula:
- * proof = HMAC-SHA256(HKDF-SHA256(X25519(cp_priv, node_pub), info="neronet/v4/register"), nonce || node_pub)
+ * proof = HMAC-SHA256(HKDF-SHA256(X25519(cp_priv, node_pub), info="neronet/v4/register"), nonce || node_pub || role)
+ *
+ * The role is covered so that a proof made for one role cannot be replayed, or
+ * rewritten in transit, to enrol the same key as another -- EXIT_BRIDGE puts a node
+ * on other nodes' exit path.
  */
-function verifyProof(nodePublicKeyHex, nonceHex, proofHex) {
+function proofMessage(nonceHex, rawNodePub, role) {
+  return Buffer.concat([Buffer.from(nonceHex.trim(), 'hex'), rawNodePub, Buffer.from(String(role), 'utf8')]);
+}
+
+function verifyProof(nodePublicKeyHex, nonceHex, proofHex, role = 'CLIENT_ORIGIN') {
   if (!nodePublicKeyHex || !nonceHex || !proofHex) {
     return false;
   }
@@ -236,7 +275,7 @@ function verifyProof(nodePublicKeyHex, nonceHex, proofHex) {
     );
 
     const hmac = crypto.createHmac('sha256', derivedKey);
-    hmac.update(Buffer.concat([Buffer.from(nonceHex.trim(), 'hex'), rawNodePub]));
+    hmac.update(proofMessage(nonceHex, rawNodePub, role));
     const expectedProof = hmac.digest();
     const actualProof = Buffer.from(proofHex.trim(), 'hex');
 
@@ -254,7 +293,7 @@ function verifyProof(nodePublicKeyHex, nonceHex, proofHex) {
 /**
  * Computes client-side proof (helper for testing and Go client parity).
  */
-function computeClientProof(nodePrivateKeyHex, cpPublicKeyHex, nonceHex) {
+function computeClientProof(nodePrivateKeyHex, cpPublicKeyHex, nonceHex, role = 'CLIENT_ORIGIN') {
   const rawNodePriv = Buffer.from(nodePrivateKeyHex.trim(), 'hex');
   const rawCpPub = Buffer.from(cpPublicKeyHex.trim(), 'hex');
 
@@ -275,7 +314,7 @@ function computeClientProof(nodePrivateKeyHex, cpPublicKeyHex, nonceHex) {
   );
 
   const hmac = crypto.createHmac('sha256', derivedKey);
-  hmac.update(Buffer.concat([Buffer.from(nonceHex.trim(), 'hex'), rawNodePub]));
+  hmac.update(proofMessage(nonceHex, rawNodePub, role));
   return hmac.digest('hex');
 }
 

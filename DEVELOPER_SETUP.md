@@ -168,7 +168,8 @@ SOVEREIGN_NODE_KEY_PATH=./node_identity.key \
   go run ./cmd/sovereign-node -control-url http://127.0.0.1:8443 -country IT
 ```
 
-The node reads `SOVEREIGN_REGISTRATION_TOKEN` from the environment. Without a writable
+The node reads `SOVEREIGN_REGISTRATION_TOKEN` (or a pre-auth key in
+`SOVEREIGN_ENROLMENT_KEY`) from the environment. Without a writable
 `SOVEREIGN_NODE_KEY_PATH` it stops, because an identity that changes on every start is
 not an identity. The console lists the node once it enrols.
 
@@ -202,13 +203,15 @@ stack uses; only the variables below matter to the running stack.
 | Variable | Flag | Default | Meaning |
 |---|---|---|---|
 | `SOVEREIGN_CONTROL_PLANE_URL` | `-control-url` | `http://127.0.0.1:8443` | Where to enrol. In the stack: `http://frontend:8443` |
-| `SOVEREIGN_REGISTRATION_TOKEN` | none | none | Enrolment token, sent as a bearer credential. The same value for the whole fleet |
+| `SOVEREIGN_REGISTRATION_TOKEN` | none | none | Fleet enrolment token. Authorises enrolling a new key; the node still proves it holds the key, and uses its own credential afterwards |
+| `SOVEREIGN_ENROLMENT_KEY` | none | none | Pre-auth key from the console (`nnk1:<key>:<fingerprint>`), instead of the fleet token. The fingerprint pins the control plane key. Not needed once the node is enrolled |
 | `SOVEREIGN_NODE_KEY_PATH` | `-identity` | `/var/lib/neronet/node_identity.key` | Persistent identity key, created on first start |
 | `SOVEREIGN_COUNTRY_CODE` | `-country` | `US` | Self-declared country. Not measured |
 | `SOVEREIGN_ENABLE_EXIT_BRIDGE` | `-enable-exit` | `false` | Register as an exit bridge |
 | `SOVEREIGN_MAX_BANDWIDTH_KBPS` | `-max-bandwidth-kbps` | `0` | Self-declared capacity; 0 means not declared |
 | `SOVEREIGN_SOCKS5_LISTEN_ADDR` | `-socks-addr` | `127.0.0.1:1080` | SOCKS5 proxy |
 | `SOVEREIGN_HTTP_LISTEN_ADDR` | `-http-addr` | `127.0.0.1:8080` | HTTP CONNECT proxy |
+| `SOVEREIGN_PROXY_USERNAME`, `SOVEREIGN_PROXY_PASSWORD` | none | none | Credentials both proxies then require (SOCKS5 RFC 1929, HTTP `Proxy-Authorization: Basic`). Without them, a proxy listening beyond loopback stops the node from starting, unless `SOVEREIGN_PROXY_ALLOW_UNAUTHENTICATED=true` |
 | `SOVEREIGN_DATAPLANE` | `-dataplane` | `off` | `off`, `netstack` or `tun` |
 | `SOVEREIGN_SPIKE_PEERS` | `-spike-peers` | none | Peers document for the data plane spike |
 
@@ -227,7 +230,11 @@ matter:
 |---|---|
 | `NODE_ENV` | `production` in the stack. Turns on the secret checks and HSTS |
 | `SOVEREIGN_JWT_SECRET`, `SOVEREIGN_REFRESH_SECRET` | Signing keys. Required in production, and a value that has ever been committed is refused |
+| `SOVEREIGN_AUDIT_HMAC_SECRET` | HMAC key of the audit ledger, used for nothing else. Required in production |
+| `SOVEREIGN_SHRED_KEK_SECRET` | Key-encryption key of the per-organisation data keys (crypto-shredding), used for nothing else. Required in production; losing it makes sealed organisation secrets unreadable. `SOVEREIGN_SHRED_KEK_PREVIOUS` is set only while rotating it |
+| `SOVEREIGN_AUDIT_SIGNING_KEY` | Optional Ed25519 key for audit checkpoints; generated once into `SOVEREIGN_DATA_DIR` when unset |
 | `SOVEREIGN_ADMIN_PASS` | Password of the `admin` account created at first start |
+| `SOVEREIGN_MFA_MANDATORY` | `off`, `admins` or `all`: who must sign in with TOTP. Unset means `admins` in production. `gen-env.sh` sets `off`, because the scenario scripts sign in with the password alone |
 | `SOVEREIGN_REGISTRATION_TOKEN` | Enrolment token that nodes present |
 | `DATABASE_URL`, `POSTGRES_*` | PostgreSQL connection |
 | `VALKEY_URL` | Valkey connection |
@@ -318,9 +325,30 @@ With Go on the host: `make test` runs `go test -v -race ./pkg/...` and `make lin
 
 CI (`.github/workflows/ci.yml`) runs the Go suite, the backend suite three times, the
 frontend build and tests, the compose stack with six nodes and a smoke check
-(`scripts/dev/smoke.sh`), the console security headers check, linters, the legacy tool
-tests and the image builds. Secret scanning, CodeQL and dependency audits run from
-`security-scan.yml`.
+(`scripts/dev/smoke.sh`), the console security headers check, the overlay scenarios
+below, linters, the legacy tool tests and the image builds. Secret scanning, CodeQL and
+dependency audits run from `security-scan.yml`.
+
+### The fleet, end to end
+
+```bash
+sh scripts/dev/e2e.sh                 # every scenario on a throw-away stack, then down
+sh scripts/dev/e2e.sh --keep matrix   # one scenario, and leave the stack running
+```
+
+`e2e.sh` starts its own stack (`COMPOSE_PROJECT_NAME=neronet-e2e`, ports offset by
+3000), the six nodes, and runs `scripts/dev/scenarios/overlay.sh` for each scenario:
+
+| Scenario | What it checks, with real traffic between containers |
+|---|---|
+| `matrix` | every node reaches every other one over the overlay |
+| `rule-deny` | a deny rule written through the API blocks one pair and nothing else; deleting it restores the pair |
+| `quarantine` | a quarantined node is cut off from every peer, and comes back when lifted |
+| `fail-static` | the overlay keeps running with the backend stopped, fails closed past the staleness bound, recovers when the backend returns |
+| `revoke` | a revoked node is gone from every peer, and the rest of the mesh is unaffected |
+
+It forces `SOVEREIGN_MFA_MANDATORY=off` (the scenarios sign in with the admin password)
+and a 60 second netmap staleness bound for the run.
 
 ### Documentation links
 

@@ -23,7 +23,7 @@ describe('apiRequest', () => {
   });
 
   it('sends the stored access token as a bearer header', async () => {
-    storeSession({ token: 'access-1', refreshToken: 'refresh-1' });
+    storeSession({ token: 'access-1' });
     const fetchMock = vi.fn(async () => jsonResponse({ nodes: [] }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -68,7 +68,7 @@ describe('apiRequest', () => {
   });
 
   it('refreshes once on a 401 and retries the original request', async () => {
-    storeSession({ token: 'expired', refreshToken: 'refresh-1' });
+    storeSession({ token: 'expired' });
     const calls: string[] = [];
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       calls.push(`${init?.method ?? 'GET'} ${url}`);
@@ -87,7 +87,7 @@ describe('apiRequest', () => {
   });
 
   it('shares one refresh between concurrent callers', async () => {
-    storeSession({ token: 'expired', refreshToken: 'refresh-1' });
+    storeSession({ token: 'expired' });
     let refreshes = 0;
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === '/api/auth/refresh') {
@@ -106,7 +106,7 @@ describe('apiRequest', () => {
   });
 
   it('clears the session when the refresh token is rejected', async () => {
-    storeSession({ token: 'expired', refreshToken: 'spent' });
+    storeSession({ token: 'expired' });
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {

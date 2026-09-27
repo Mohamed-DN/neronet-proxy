@@ -67,3 +67,6 @@ reports/
 
 # Output of scripts/sim (fleet plan, override file, measurements)
 scripts/sim/out/
+
+# scripts/dev/e2e.sh writes the service logs of a failed run here
+e2e-*.log

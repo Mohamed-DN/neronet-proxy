@@ -29,14 +29,16 @@ function authenticateSocket(req) {
       return null;
     }
 
-    const decoded = jwt.verify(token, config.JWT_SECRET);
+    const decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
+    if (decoded.type === 'mfa_pending') return null;
     return {
       token,
       user: {
         id: decoded.sub || decoded.id,
         username: decoded.username,
         role: decoded.role,
-        tier: decoded.tier
+        tier: decoded.tier,
+        organization_id: decoded.organization_id || 'org-default'
       }
     };
   } catch (err) {
@@ -65,6 +67,24 @@ function initTopologyWebSocket(httpServer) {
       socket.write('HTTP/1.1 401 Unauthorized (Token Revoked)\r\n\r\n');
       socket.destroy();
       return;
+    }
+
+    // The organisation and the role in it decide what the socket receives; read them
+    // from the database, as middleware/rbac does for HTTP requests.
+    try {
+      const { getPgPool } = require('../db/index');
+      const pool = getPgPool();
+      const userRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [authResult.user.id]);
+      if (userRes.rows[0] && userRes.rows[0].organization_id) {
+        authResult.user.organization_id = userRes.rows[0].organization_id;
+      }
+      const memRes = await pool.query('SELECT role FROM memberships WHERE user_id = $1 AND organization_id = $2', [
+        authResult.user.id,
+        authResult.user.organization_id
+      ]);
+      authResult.user.org_role = memRes.rows[0] ? memRes.rows[0].role : 'member';
+    } catch (err) {
+      authResult.user.org_role = 'member';
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
@@ -157,6 +177,32 @@ function closeTopologyWebSocket() {
   }
 }
 
+// Organisation roles that see the whole organisation's topology, as GET
+// /api/stats/topology does. A member sees their own nodes.
+const ORG_WIDE_ROLES = new Set(['owner', 'admin', 'network_admin', 'auditor']);
+
+/**
+ * Whether a topology event may go to a connected console user.
+ *
+ * The platform super-admin sees every event. Anyone else sees events of their own
+ * organisation only: all of them with an organisation-wide role, their own nodes and
+ * account otherwise. The previous rule sent every event that carried no user_id, and
+ * every relay and exit node event, to every user: node names, addresses and account
+ * wipes of other organisations included.
+ */
+function isVisibleTo(user, event) {
+  if (!user) return false;
+  if (user.role === 'super-admin') return true;
+
+  const eventOrg = event.organization_id ?? event.node?.organization_id ?? null;
+  const eventUser = event.user_id ?? event.node?.user_id ?? event.payload?.user_id ?? null;
+  const own = Boolean(eventUser) && eventUser === user.id;
+
+  if (eventOrg && eventOrg !== (user.organization_id || 'org-default')) return false;
+  if (!eventOrg) return own;
+  return own || ORG_WIDE_ROLES.has(user.org_role);
+}
+
 function broadcastTopologyMessage(payload) {
   if (clients.size === 0) return;
 
@@ -164,22 +210,8 @@ function broadcastTopologyMessage(payload) {
   const dataObj = typeof payload === 'string' ? JSON.parse(payload) : payload;
 
   for (const client of clients) {
-    if (client.readyState === WebSocket.OPEN) {
-      // Role-based visibility scoping
-      if (client.user.role === 'super-admin') {
-        client.send(dataString);
-      } else {
-        // Tenant users only see events related to their own nodes or global relays
-        if (
-          !dataObj.user_id ||
-          dataObj.user_id === client.user.id ||
-          dataObj.node?.user_id === client.user.id ||
-          dataObj.node?.role === 'RELAY' ||
-          dataObj.node?.role === 'EXIT_BRIDGE'
-        ) {
-          client.send(dataString);
-        }
-      }
+    if (client.readyState === WebSocket.OPEN && isVisibleTo(client.user, dataObj)) {
+      client.send(dataString);
     }
   }
 }
@@ -192,5 +224,6 @@ module.exports = {
   initTopologyWebSocket,
   closeTopologyWebSocket,
   broadcastTopologyMessage,
-  getConnectedClientsCount
+  getConnectedClientsCount,
+  isVisibleTo
 };

@@ -29,8 +29,8 @@ describe('WP-209: DAITA Anti-AI Traffic Fingerprinting & Shaping', () => {
 
     testOrgId = 'org-daita-shaping';
     await pool.query(
-      `INSERT INTO organizations (id, name, slug, profile, default_daita_mode)
-       VALUES ($1, 'DAITA Org', 'daita-org', 'standard', 'off')
+      `INSERT INTO organizations (id, name, slug, profile, default_daita_mode, default_policy)
+       VALUES ($1, 'DAITA Org', 'daita-org', 'standard', 'off', 'open')
        ON CONFLICT (id) DO NOTHING`,
       [testOrgId]
     );

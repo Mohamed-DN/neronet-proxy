@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -45,7 +46,7 @@ describe('WP-107: Feature Module Isolation and Organization Profiles', () => {
     standardUserId = 'usr-std-owner';
     await pool.query(`
       INSERT INTO users (id, username, email, password_hash, role, organization_id)
-      VALUES ('${standardUserId}', 'stdowner', 'owner@std.local', 'hash', 'user', '${standardOrgId}')
+      VALUES ('${standardUserId}', 'stdowner', 'owner@std.local', '${await bcrypt.hash('current_standard_password1', 4)}', 'user', '${standardOrgId}')
       ON CONFLICT (id) DO NOTHING;
     `);
     await pool.query(`
@@ -158,7 +159,7 @@ describe('WP-107: Feature Module Isolation and Organization Profiles', () => {
       const res = await request(app)
         .post('/api/auth/setup-passwords')
         .set('Authorization', `Bearer ${standardUserToken}`)
-        .send({ pwd_standard: 'new_standard_password123' });
+        .send({ current_password: 'current_standard_password1', pwd_standard: 'new_standard_password123' });
 
       assert.strictEqual(res.status, 200);
       assert.strictEqual(res.body.success, true);

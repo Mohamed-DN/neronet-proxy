@@ -1,9 +1,9 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const crypto = require('node:crypto');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
+const { nodeKey, register } = require('./helpers/nodeEnrolment');
 const RevocationEngine = require('../services/RevocationEngine');
 const jwt = require('jsonwebtoken');
 const config = require('../config/env');
@@ -41,26 +41,14 @@ describe('WP-205: Revocation-to-Data-Plane propagation', () => {
     pool = dbHelper.pool;
     app = createApp();
 
-    betaKey = crypto.randomBytes(32).toString('hex');
-    gammaKey = crypto.randomBytes(32).toString('hex');
+    betaKey = nodeKey();
+    gammaKey = nodeKey();
 
-    alpha = (
-      await request(app)
-        .post('/v4/control/register')
-        .send({ public_key_hex: 'a'.repeat(64), role: 'CLIENT_ORIGIN', endpoints: [] })
-    ).body;
+    alpha = (await register(app, { public_key_hex: nodeKey(), role: 'CLIENT_ORIGIN', endpoints: [] })).body;
 
-    beta = (
-      await request(app)
-        .post('/v4/control/register')
-        .send({ public_key_hex: betaKey, role: 'CLIENT_ORIGIN', endpoints: [] })
-    ).body;
+    beta = (await register(app, { public_key_hex: betaKey, role: 'CLIENT_ORIGIN', endpoints: [] })).body;
 
-    gamma = (
-      await request(app)
-        .post('/v4/control/register')
-        .send({ public_key_hex: gammaKey, role: 'CLIENT_ORIGIN', endpoints: [] })
-    ).body;
+    gamma = (await register(app, { public_key_hex: gammaKey, role: 'CLIENT_ORIGIN', endpoints: [] })).body;
 
     // Retrieve beta's and gamma's node IDs and user IDs for direct API calls
     const betaNode = (await pool.query('SELECT * FROM nodes WHERE public_key = $1', [betaKey])).rows[0];
@@ -143,12 +131,8 @@ describe('WP-205: Revocation-to-Data-Plane propagation', () => {
 
   it('ACL epoch is bumped on each revocation so peers re-sync their policy', async () => {
     const { bumpEpoch, getEpoch } = require('../services/AclEngine');
-    const delta = crypto.randomBytes(32).toString('hex');
-    const deltaNode = (
-      await request(app)
-        .post('/v4/control/register')
-        .send({ public_key_hex: delta, role: 'CLIENT_ORIGIN', endpoints: [] })
-    ).body;
+    const delta = nodeKey();
+    const deltaNode = (await register(app, { public_key_hex: delta, role: 'CLIENT_ORIGIN', endpoints: [] })).body;
 
     const epochBefore = await getEpoch('acl');
 
@@ -165,5 +149,80 @@ describe('WP-205: Revocation-to-Data-Plane propagation', () => {
     const active = await RevocationEngine.activeRevocations();
     const count = active.filter((k) => k === betaKey).length;
     assert.strictEqual(count, 1, 'Revoked key must appear exactly once despite double revocation');
+  });
+});
+
+// A quarantine revokes the node's key and its credential, and a revoked key cannot
+// register. Lifting the quarantine left the revocation in place, so the node could
+// never get a credential again and stayed cut off.
+describe('Lifting a quarantine', () => {
+  let app;
+  let dbHelper;
+  let pool;
+  let adminToken;
+  let observer;
+
+  async function enrol(key) {
+    const res = await register(app, { public_key_hex: key, role: 'CLIENT_ORIGIN', endpoints: [] });
+    assert.strictEqual(res.status, 200, `register: ${res.status} ${JSON.stringify(res.body)}`);
+    const row = (await pool.query('SELECT id, user_id FROM nodes WHERE public_key = $1', [key])).rows[0];
+    return { ...res.body, node_id: row.id, user_id: row.user_id };
+  }
+
+  function action(nodeId, body) {
+    return request(app).post(`/api/nodes/${nodeId}/action`).set('Authorization', `Bearer ${adminToken}`).send(body);
+  }
+
+  before(async () => {
+    dbHelper = await setupTestDatabase();
+    pool = dbHelper.pool;
+    app = createApp();
+    observer = await enrol(nodeKey());
+    adminToken = jwt.sign(
+      {
+        sub: observer.user_id,
+        id: observer.user_id,
+        username: 'testadmin',
+        role: 'super-admin',
+        compartment_access: 'standard'
+      },
+      config.JWT_SECRET
+    );
+  });
+
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
+  });
+
+  it('lets the node register again and stops sending its key as revoked', async () => {
+    const key = nodeKey();
+    const node = await enrol(key);
+
+    assert.strictEqual((await action(node.node_id, { action: 'quarantine', reason: 'test' })).status, 200);
+    const refused = await register(app, { public_key_hex: key, role: 'CLIENT_ORIGIN', endpoints: [] });
+    assert.strictEqual(refused.status, 403, 'a quarantined key must not register');
+
+    assert.strictEqual((await action(node.node_id, { action: 'lift_quarantine' })).status, 200);
+
+    assert.strictEqual(await RevocationEngine.isRevoked(key), false);
+    const hb = await request(app).post('/v4/control/heartbeat').send({ node_id: observer.assigned_node_id });
+    assert.strictEqual(hb.status, 200);
+    assert.ok(!hb.body.revoked_keys.includes(key), 'peers must stop receiving the lifted key');
+
+    const again = await register(app, { public_key_hex: key, role: 'CLIENT_ORIGIN', endpoints: [] });
+    assert.strictEqual(again.status, 200, `re-registration after the lift: ${again.status}`);
+  });
+
+  it('does not undo a revocation made for another reason', async () => {
+    const key = nodeKey();
+    const node = await enrol(key);
+
+    await RevocationEngine.revokeNodeKeys([node.node_id], { reason: 'compromised' });
+    assert.strictEqual((await action(node.node_id, { action: 'quarantine', reason: 'test' })).status, 200);
+    assert.strictEqual((await action(node.node_id, { action: 'lift_quarantine' })).status, 200);
+
+    assert.strictEqual(await RevocationEngine.isRevoked(key), true);
+    const refused = await register(app, { public_key_hex: key, role: 'CLIENT_ORIGIN', endpoints: [] });
+    assert.strictEqual(refused.status, 403);
   });
 });

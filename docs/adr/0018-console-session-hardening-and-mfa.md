@@ -46,3 +46,32 @@ We adopt enterprise session hardening and mandatory TOTP MFA:
 - Web browsers store zero credentials in `localStorage`.
 - Compromising a refresh token yields at most one use before replay detection invalidates the entire session chain.
 - Administrators cannot log in with only a password; TOTP hardware/app token is strictly enforced.
+
+## Amendment, September 2026: the console side
+
+The server side of point 1 was built, but the console kept storing both tokens in
+`localStorage` until September 2026 (`console/frontend/src/services/authToken.ts`),
+so the consequence "zero credentials in `localStorage`" did not hold. Now:
+
+- The console holds the access token in memory only and never stores the refresh
+  token; it relies on the refresh cookie.
+- After a reload the console calls `/api/auth/refresh` with the cookie to get an
+  access token (`resumeSession` in `apiClient.ts`).
+- On load it removes the keys earlier versions wrote.
+- `authToken.test.ts` fails if a sign-in, refresh or sign-out writes to web storage.
+
+## Amendment, September 2026: MFA as implemented
+
+Point 4 did not hold. MFA was required only of accounts that had enrolled, and of the
+super-admin only when `SOVEREIGN_MFA_MANDATORY=true` or a client sent the header
+`X-Enforce-MFA`. The console could not complete an MFA sign-in at all. And
+`/api/auth/mfa/setup` accepted the password-step token, replaced the account's secret
+and returned the new one, so the password alone was enough to sign in to an account
+with MFA.
+
+Now: `SOVEREIGN_MFA_MANDATORY` is `off`, `admins` or `all` (default `admins` in
+production), the header is ignored, the password-step token cannot enrol over an
+existing authenticator and is single-use, a new authenticator is kept pending until a
+code from it is confirmed, and the console sign-in handles the code, recovery codes and
+enrolment.
+

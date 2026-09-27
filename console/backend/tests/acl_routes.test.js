@@ -199,14 +199,16 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
     assert.ok(Array.isArray(res.body.outbound_rules));
   });
 
-  it('10. DELETE /api/acl/rules/:id deletes rule and reopens mesh', async () => {
+  it('10. DELETE /api/acl/rules/:id deletes the rule; the deny default then leaves the mesh closed', async () => {
     const res = await request(app)
       .delete(`/api/acl/rules/${createdRuleId}`)
       .set('Authorization', `Bearer ${superAdminToken}`);
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.deleted, createdRuleId);
-    assert.strictEqual(res.body.policy_is_open, true);
+    // Test 6 set this organisation's default policy to deny. With no rule left the
+    // default decides, and deny is not open.
+    assert.strictEqual(res.body.policy_is_open, false);
 
     const listRes = await request(app).get('/api/acl/rules').set('Authorization', `Bearer ${standardToken}`);
     assert.strictEqual(listRes.body.rules.length, 0);
