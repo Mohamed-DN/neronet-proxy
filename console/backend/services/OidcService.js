@@ -33,6 +33,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { getPgPool } = require('../db/index');
 const logger = require('../utils/logger');
+const { CryptoShreddingService } = require('./CryptoShreddingService');
 
 // Role precedence, highest first. super-admin is listed so that mapGroupsToRole keeps
 // its meaning as a pure function; provisioning never assigns it (see ORG_ROLES).
@@ -245,6 +246,8 @@ async function saveOidcConfig(
   assertProviderUrl(issuerUrl, 'issuer');
   const pool = getPgPool();
   const id = `oidc-${uuidv4().substring(0, 8)}`;
+  // Stored sealed with the organisation's data key: a shred makes it unreadable.
+  const sealedSecret = await CryptoShreddingService.sealForOrg(organizationId, clientSecret);
 
   const res = await pool.query(
     `INSERT INTO organization_oidc_configs
@@ -260,16 +263,21 @@ async function saveOidcConfig(
        enabled = EXCLUDED.enabled,
        updated_at = NOW()
      RETURNING *`,
-    [id, organizationId, issuerUrl, clientId, clientSecret, JSON.stringify(groupMappings), defaultRole, enabled]
+    [id, organizationId, issuerUrl, clientId, sealedSecret, JSON.stringify(groupMappings), defaultRole, enabled]
   );
 
-  return res.rows[0];
+  return openConfig(res.rows[0]);
+}
+
+async function openConfig(row) {
+  if (!row) return null;
+  return { ...row, client_secret: await CryptoShreddingService.openForOrg(row.organization_id, row.client_secret) };
 }
 
 async function getOidcConfig(organizationId) {
   const pool = getPgPool();
   const res = await pool.query(`SELECT * FROM organization_oidc_configs WHERE organization_id = $1`, [organizationId]);
-  return res.rows[0] || null;
+  return openConfig(res.rows[0]);
 }
 
 function prunePendingStates() {
@@ -400,7 +408,7 @@ async function exchangeCodeAndAuthenticate(organizationId, code, state, redirect
     const updateRes = await pool.query(
       `UPDATE users SET oidc_refresh_token = COALESCE($1, oidc_refresh_token), updated_at = NOW()
         WHERE id = $2 RETURNING *`,
-      [idpRefreshToken, user.id]
+      [await CryptoShreddingService.sealForOrg(user.organization_id, idpRefreshToken), user.id]
     );
     user = updateRes.rows[0];
   } else {
@@ -427,7 +435,15 @@ async function exchangeCodeAndAuthenticate(organizationId, code, state, redirect
        VALUES
          ($1, $2, $3, 'SSO_MANAGED_ACCOUNT', 'user', $4, 'active', $5, $6, $7, NOW(), NOW())
        RETURNING *`,
-      [newUserId, username, email, organizationId, claims.sub, config.id, idpRefreshToken]
+      [
+        newUserId,
+        username,
+        email,
+        organizationId,
+        claims.sub,
+        config.id,
+        await CryptoShreddingService.sealForOrg(organizationId, idpRefreshToken)
+      ]
     );
     user = insertRes.rows[0];
   }
@@ -448,7 +464,7 @@ async function exchangeCodeAndAuthenticate(organizationId, code, state, redirect
 async function verifyUserActiveOnIdP(userId) {
   const pool = getPgPool();
   const userRes = await pool.query(
-    'SELECT id, oidc_sub, oidc_idp_id, oidc_refresh_token, status FROM users WHERE id = $1',
+    'SELECT id, oidc_sub, oidc_idp_id, oidc_refresh_token, status, organization_id FROM users WHERE id = $1',
     [userId]
   );
   if (userRes.rows.length === 0) {
@@ -464,7 +480,7 @@ async function verifyUserActiveOnIdP(userId) {
   }
 
   const cfgRes = await pool.query('SELECT * FROM organization_oidc_configs WHERE id = $1', [user.oidc_idp_id]);
-  const config = cfgRes.rows[0];
+  const config = await openConfig(cfgRes.rows[0]);
   if (!config || !config.enabled) {
     return { active: false, reason: 'Identity provider is no longer configured for this organization' };
   }
@@ -478,7 +494,7 @@ async function verifyUserActiveOnIdP(userId) {
     const provider = await getProvider(config.issuer_url);
     tokenRes = await tokenRequest(provider, config, {
       grant_type: 'refresh_token',
-      refresh_token: user.oidc_refresh_token
+      refresh_token: await CryptoShreddingService.openForOrg(user.organization_id, user.oidc_refresh_token)
     });
   } catch (err) {
     // Fail closed without suspending: the session ends, the account does not.
@@ -488,7 +504,10 @@ async function verifyUserActiveOnIdP(userId) {
 
   if (tokenRes.ok) {
     if (tokenRes.body && tokenRes.body.refresh_token) {
-      await pool.query('UPDATE users SET oidc_refresh_token = $1 WHERE id = $2', [tokenRes.body.refresh_token, userId]);
+      await pool.query('UPDATE users SET oidc_refresh_token = $1 WHERE id = $2', [
+        await CryptoShreddingService.sealForOrg(user.organization_id, tokenRes.body.refresh_token),
+        userId
+      ]);
     }
     return { active: true };
   }

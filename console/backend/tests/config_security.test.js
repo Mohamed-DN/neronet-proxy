@@ -41,6 +41,7 @@ describe('Production secret enforcement', () => {
     SOVEREIGN_JWT_SECRET: '',
     SOVEREIGN_REFRESH_SECRET: '',
     SOVEREIGN_AUDIT_HMAC_SECRET: '',
+    SOVEREIGN_SHRED_KEK_SECRET: '',
     SOVEREIGN_ADMIN_PASS: '',
     PGPASSWORD: '',
     POSTGRES_PASSWORD: ''
@@ -54,6 +55,7 @@ describe('Production secret enforcement', () => {
     assert.match(res.output, /SOVEREIGN_JWT_SECRET/);
     assert.match(res.output, /SOVEREIGN_REFRESH_SECRET/);
     assert.match(res.output, /SOVEREIGN_AUDIT_HMAC_SECRET/);
+    assert.match(res.output, /SOVEREIGN_SHRED_KEK_SECRET/);
     assert.match(res.output, /SOVEREIGN_ADMIN_PASS/);
   });
 
@@ -64,6 +66,7 @@ describe('Production secret enforcement', () => {
         SOVEREIGN_JWT_SECRET: 'a-real-secret-value',
         SOVEREIGN_REFRESH_SECRET: 'another-real-secret-value',
         SOVEREIGN_AUDIT_HMAC_SECRET: 'a-third-real-secret-value',
+        SOVEREIGN_SHRED_KEK_SECRET: 'a-fourth-real-secret-value',
         SOVEREIGN_ADMIN_PASS: 'a-real-admin-password'
       },
       "const c = require('./config/env'); c.assertProductionSecrets(); console.log('STARTED', c.missingSecrets.length);"

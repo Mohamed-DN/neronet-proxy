@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const TotpService = require('../services/TotpService');
+const { CryptoShreddingService } = require('../services/CryptoShreddingService');
 
 // /api/auth/mfa/setup accepted the "mfa_pending" token that sign-in hands to anyone
 // who knows the password, generated a new TOTP secret, returned it, and switched
@@ -111,7 +112,9 @@ describe('MFA enrolment cannot be taken over with the password alone', () => {
       .send({ code: TotpService.generateTotp(rotated.body.secret) });
     assert.strictEqual(confirm.status, 200, JSON.stringify(confirm.body));
     const after = (await pool.query("SELECT totp_secret FROM users WHERE id = 'usr-mfa-victim'")).rows[0];
-    assert.strictEqual(after.totp_secret, rotated.body.secret);
+    // Stored sealed with the organisation's data key, never as the plain seed.
+    assert.ok(CryptoShreddingService.isSealed(after.totp_secret));
+    assert.strictEqual(await CryptoShreddingService.openForOrg(null, after.totp_secret), rotated.body.secret);
     secret = rotated.body.secret;
   });
 

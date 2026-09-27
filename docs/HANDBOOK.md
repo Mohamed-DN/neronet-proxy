@@ -464,8 +464,16 @@ After a `DELETE`, the rows remain in:
 - unvacuumed heap pages
 - streaming replicas, until they apply and vacuum
 
-The designed answer is per-organisation encryption keys, with destruction meaning key
-destruction. It is not implemented. Organisation-wide destruction
+Per-organisation data keys exist and seal the secrets an organisation stores: its
+identity-provider client secret, its users' TOTP seeds and identity-provider refresh
+tokens (`CryptoShreddingService.sealForOrg`). The keys are wrapped with a key-encryption
+key derived from `SOVEREIGN_SHRED_KEK_SECRET`, used for nothing else. Shredding an
+organisation destroys its data key, deletes its nodes, rules, enrolment keys and
+compartments, and revokes its users. The rest of its data is not encrypted with the key:
+node rows and audit events are deleted or kept, and a backup holds them until it expires.
+A backup taken before the shred can still open the sealed secrets while the
+key-encryption key that wrapped the data key exists: rotate it
+(`SOVEREIGN_SHRED_KEK_PREVIOUS`) and destroy the old value. Organisation-wide destruction
 requires two people and respects a legal hold. The tiers that act without an
 administrator (the personal switch) are available in the default profile and switched off
 in the `regulated` one (ADR 0015).
@@ -693,9 +701,11 @@ agreement and destroying a user both put keys in the window. Three cases remain 
 3. An agreement expires. No job expires an agreement or revokes its imported nodes when
    it lapses.
 
-### 10.3 Crypto-shredding
+### 10.3 Crypto-shredding: what remains
 
-Section 6.1. This is what makes NeroNuke mean what it claims.
+Section 6.1. Organisation secrets are sealed with the organisation's data key; node rows,
+rules and audit events are not. What remains is a key-encryption key held outside the
+database host (a KMS or HSM), and deciding which further tenant data to seal.
 
 ### 10.4 Audit log: what remains
 

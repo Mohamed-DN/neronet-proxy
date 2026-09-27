@@ -76,12 +76,18 @@ This section describes the code as it is. Where something is missing, it says so
 
 ### Data at rest
 
-- The application does not encrypt data at rest. Encrypting the PostgreSQL volume is
-  left to the operator.
-- The organisation key service used by NeroNuke (`CryptoShreddingService`) wraps keys
-  with a key derived from the JWT secret, and no stored data is encrypted with those
-  keys. Destroying them therefore makes no stored data unreadable: there is no
-  working crypto-shredding.
+- The database as a whole is not encrypted by the application. Encrypting the
+  PostgreSQL volume is left to the operator.
+- Organisation secrets are sealed (AES-256-GCM) with a data key per organisation:
+  identity-provider client secrets, users' TOTP seeds and identity-provider refresh
+  tokens. Data keys are wrapped with a key derived from `SOVEREIGN_SHRED_KEK_SECRET`,
+  which is used for nothing else.
+- Crypto-shredding an organisation destroys its data key, which makes those sealed
+  secrets unreadable in the live database, deletes its nodes, rules, enrolment keys and
+  compartments, and revokes its users. Other data (node rows, audit events) is deleted
+  or kept, not encrypted, and backups keep it until they expire. A backup taken before
+  the shred stays readable until `SOVEREIGN_SHRED_KEK_SECRET` is rotated and the old
+  value destroyed.
 
 ### Supply chain
 

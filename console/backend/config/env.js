@@ -29,7 +29,14 @@ const PUBLISHED_SECRET_HASHES = new Set([
   '6d4525c2a21f9be1cca9e41f3aa402e0765ee5fcc3e7fea34a169b1730ae386e',
   'e4016c6d60e80cc89e97952bf618eb6da5731cfb4cf257e65442914ff756db48',
   'afa66a8109f7e3402afe12b48e6dcac17cf5bc0a3a5b24ebd5270eeaeaa00e9e',
-  '040c3811488fa58b9cb87fe049a74c34a662232a0816f09b35f5f4e985ced86f'
+  '040c3811488fa58b9cb87fe049a74c34a662232a0816f09b35f5f4e985ced86f',
+  // The development fallbacks below, and the key-encryption-key literal the
+  // crypto-shredding service used to fall back to.
+  '6e7f667376dfc021013d40be9c6d1482118f3594660c4c6bb46e75b15f12f5dd',
+  '4172ee043387c9d5571fe2914c339c0e22b2c9937909c22c91e69de8691d3a89',
+  '964f787d0fc28bca95112eb394a9d61e54152868da17cc7552249c3c9a5a30d0',
+  'af452d62ce18f14558ae9d7e9f271a5cc9e92edded04e5d2ec6fe98aee03bd21',
+  '37ecd8a2d3a7e45fd7551baf225b195ae4fd34097dfad776e969eac90d3cb4f2'
 ]);
 
 /** Report whether a value is one of the defaults published in this repository. */
@@ -98,6 +105,13 @@ const config = {
   // HMAC key of the audit ledger, and nothing else. It used to be JWT_SECRET, which
   // let anything that could mint a session also rewrite the ledger undetected.
   AUDIT_HMAC_SECRET: requireSecret('SOVEREIGN_AUDIT_HMAC_SECRET', 'dev-only-audit-hmac-secret-do-not-deploy'),
+
+  // Key-encryption key of the per-organisation data keys (crypto-shredding), and
+  // nothing else. It used to be derived from JWT_SECRET, with a literal fallback
+  // committed to this repository. SHRED_KEK_PREVIOUS is read only while rotating:
+  // data keys wrapped with it are re-wrapped with the current one at start-up.
+  SHRED_KEK_SECRET: requireSecret('SOVEREIGN_SHRED_KEK_SECRET', 'dev-only-shred-kek-do-not-deploy'),
+  SHRED_KEK_PREVIOUS: process.env.SOVEREIGN_SHRED_KEK_PREVIOUS || null,
 
   // Default Super-Admin Credentials
   ADMIN_USERNAME: process.env.SOVEREIGN_ADMIN_USER || 'admin',

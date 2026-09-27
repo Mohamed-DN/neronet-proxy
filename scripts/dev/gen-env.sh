@@ -33,6 +33,7 @@ fi
   echo "SOVEREIGN_JWT_SECRET=$(rand_hex 32)"
   echo "SOVEREIGN_REFRESH_SECRET=$(rand_hex 32)"
   echo "SOVEREIGN_AUDIT_HMAC_SECRET=$(rand_hex 32)"
+  echo "SOVEREIGN_SHRED_KEK_SECRET=$(rand_hex 32)"
   echo "SOVEREIGN_ADMIN_PASS=$(rand_hex 16)"
   echo "SOVEREIGN_REGISTRATION_TOKEN=$(rand_hex 32)"
   echo "# The scenario scripts sign in as the admin with the password alone. A stack"
@@ -43,4 +44,4 @@ fi
 # No effect on filesystems without POSIX modes (NTFS through Git Bash).
 chmod 600 "$TARGET" 2>/dev/null || true
 
-echo "wrote $TARGET (6 secrets, not shown)"
+echo "wrote $TARGET (7 secrets, not shown)"

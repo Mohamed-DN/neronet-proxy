@@ -52,6 +52,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "neronet.secretName" . }}
                   key: audit-hmac-secret
+            - name: SOVEREIGN_SHRED_KEK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "neronet.secretName" . }}
+                  key: shred-kek-secret
             - name: SOVEREIGN_ADMIN_PASS
               valueFrom:
                 secretKeyRef:

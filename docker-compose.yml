@@ -115,6 +115,8 @@ services:
       - SOVEREIGN_JWT_SECRET=${SOVEREIGN_JWT_SECRET:?set SOVEREIGN_JWT_SECRET in .env}
       - SOVEREIGN_REFRESH_SECRET=${SOVEREIGN_REFRESH_SECRET:?set SOVEREIGN_REFRESH_SECRET in .env}
       - SOVEREIGN_AUDIT_HMAC_SECRET=${SOVEREIGN_AUDIT_HMAC_SECRET:?set SOVEREIGN_AUDIT_HMAC_SECRET in .env}
+      - SOVEREIGN_SHRED_KEK_SECRET=${SOVEREIGN_SHRED_KEK_SECRET:?set SOVEREIGN_SHRED_KEK_SECRET in .env}
+      - SOVEREIGN_SHRED_KEK_PREVIOUS=${SOVEREIGN_SHRED_KEK_PREVIOUS:-}
       - SOVEREIGN_ADMIN_PASS=${SOVEREIGN_ADMIN_PASS:?set SOVEREIGN_ADMIN_PASS in .env}
       # Who must sign in with TOTP: off, admins (super-admin, organisation owners and
       # admins) or all. Administrators without an authenticator enrol at sign-in.

@@ -230,6 +230,7 @@ matter:
 | `NODE_ENV` | `production` in the stack. Turns on the secret checks and HSTS |
 | `SOVEREIGN_JWT_SECRET`, `SOVEREIGN_REFRESH_SECRET` | Signing keys. Required in production, and a value that has ever been committed is refused |
 | `SOVEREIGN_AUDIT_HMAC_SECRET` | HMAC key of the audit ledger, used for nothing else. Required in production |
+| `SOVEREIGN_SHRED_KEK_SECRET` | Key-encryption key of the per-organisation data keys (crypto-shredding), used for nothing else. Required in production; losing it makes sealed organisation secrets unreadable. `SOVEREIGN_SHRED_KEK_PREVIOUS` is set only while rotating it |
 | `SOVEREIGN_AUDIT_SIGNING_KEY` | Optional Ed25519 key for audit checkpoints; generated once into `SOVEREIGN_DATA_DIR` when unset |
 | `SOVEREIGN_ADMIN_PASS` | Password of the `admin` account created at first start |
 | `SOVEREIGN_MFA_MANDATORY` | `off`, `admins` or `all`: who must sign in with TOTP. Unset means `admins` in production. `gen-env.sh` sets `off`, because the scenario scripts sign in with the password alone |

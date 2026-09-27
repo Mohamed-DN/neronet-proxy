@@ -22,6 +22,7 @@ const TotpService = require('../services/TotpService');
 const OidcService = require('../services/OidcService');
 const DuressService = require('../services/DuressService');
 const MfaPolicy = require('../services/MfaPolicy');
+const { CryptoShreddingService } = require('../services/CryptoShreddingService');
 const logger = require('../utils/logger');
 
 // Pre-computed constant-time dummy bcrypt hash to prevent timing side-channel attacks on non-existent usernames
@@ -198,7 +199,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     if (requiresMfa) {
       // If user has totp configured and provided OTP code directly in login payload
       if (user.totp_enabled && providedOtp) {
-        const isValid = TotpService.verifyTotp(providedOtp, user.totp_secret);
+        const isValid = TotpService.verifyTotp(providedOtp, await openTotpSecret(user, user.totp_secret));
         if (!isValid) {
           return res.status(401).json({ error: 'Invalid TOTP code' });
         }
@@ -289,6 +290,11 @@ async function resolveMfaCaller(req) {
   return { token, decoded, user, passwordStepOnly: decoded.type === 'mfa_pending' };
 }
 
+/** TOTP secrets are stored sealed with the account's organisation data key. */
+function openTotpSecret(user, value) {
+  return CryptoShreddingService.openForOrg(user.organization_id, value);
+}
+
 function parseCodes(value) {
   let codes = value;
   if (typeof codes === 'string') {
@@ -323,7 +329,7 @@ router.post('/mfa/setup', loginLimiter, async (req, res, next) => {
         });
       }
       const currentCode = req.body && req.body.current_code;
-      if (!currentCode || !TotpService.verifyTotp(String(currentCode), user.totp_secret)) {
+      if (!currentCode || !TotpService.verifyTotp(String(currentCode), await openTotpSecret(user, user.totp_secret))) {
         return res.status(401).json({ error: 'A current code from the enrolled authenticator is required' });
       }
     }
@@ -335,7 +341,7 @@ router.post('/mfa/setup', loginLimiter, async (req, res, next) => {
 
     await getPgPool().query(
       'UPDATE users SET totp_pending_secret = $1, totp_pending_recovery_codes = $2::jsonb WHERE id = $3',
-      [secret, JSON.stringify(hashedCodes), user.id]
+      [await CryptoShreddingService.sealForOrg(user.organization_id, secret), JSON.stringify(hashedCodes), user.id]
     );
 
     logAuditEvent({
@@ -387,7 +393,7 @@ router.post('/mfa/verify', loginLimiter, async (req, res, next) => {
       if (!code) {
         return res.status(400).json({ error: 'Missing code' });
       }
-      if (!TotpService.verifyTotp(String(code), user.totp_pending_secret)) {
+      if (!TotpService.verifyTotp(String(code), await openTotpSecret(user, user.totp_pending_secret))) {
         return res.status(401).json({ error: 'Invalid TOTP code' });
       }
       await pool.query(
@@ -409,7 +415,7 @@ router.post('/mfa/verify', loginLimiter, async (req, res, next) => {
         user.id
       ]);
     } else if (code) {
-      if (!TotpService.verifyTotp(String(code), user.totp_secret)) {
+      if (!TotpService.verifyTotp(String(code), await openTotpSecret(user, user.totp_secret))) {
         return res.status(401).json({ error: 'Invalid TOTP code' });
       }
     } else {
