@@ -201,10 +201,15 @@ function startCollector() {
   // A failed sample leaves a gap in the chart. It must not take the process down,
   // and it must not stop the timer, or one transient database error would end
   // metrics collection until the next restart.
+  // One sample per fleet, taken by the elected leader; every instance sampling wrote
+  // one row each per interval.
+  const { getDistributedLeaderService } = require('./DistributedLeaderService');
   const run = () => {
-    collectOnce().catch((err) => {
-      console.error('[METRICS] sample failed:', err.message);
-    });
+    getDistributedLeaderService()
+      .executeAsLeader('metrics-sample', collectOnce)
+      .catch((err) => {
+        console.error('[METRICS] sample failed:', err.message);
+      });
   };
 
   run();

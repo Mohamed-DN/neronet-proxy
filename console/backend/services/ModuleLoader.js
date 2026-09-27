@@ -108,8 +108,16 @@ class ModuleLoader {
         }
       },
       scheduler: {
+        // Runs on the elected leader only: a module's periodic job must run once for
+        // the fleet, not once per control plane instance. Without a started leader
+        // service (a process that never called initDatabase) nothing runs.
         every: (intervalMs, fn) => {
-          const intervalId = setInterval(fn, intervalMs);
+          const { getDistributedLeaderService } = require('./DistributedLeaderService');
+          const tick = () =>
+            getDistributedLeaderService()
+              .executeAsLeader(`${moduleId}:scheduled`, fn)
+              .catch((err) => logger.error(`[MODULE:${moduleId}] scheduled job failed: ${err.message}`));
+          const intervalId = setInterval(tick, intervalMs);
           if (intervalId.unref) intervalId.unref();
           return intervalId;
         }
