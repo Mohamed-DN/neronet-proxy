@@ -114,6 +114,21 @@
     "submit": "Accedi",
     "working": "Accesso in corso",
     "failed": "Accesso non riuscito.",
-    "method": "Accesso con password - bcrypt - token di sessione firmato"
+    "method": "Accesso con password - bcrypt - token di sessione firmato",
+    "mfa": {
+      "prompt": "Inserisci il codice di sei cifre dell'app di autenticazione.",
+      "codeLabel": "Codice di autenticazione",
+      "submit": "Verifica",
+      "useRecovery": "Usa un codice di recupero",
+      "useCode": "Usa il codice dell'app",
+      "recoveryPrompt": "Inserisci uno dei codici di recupero. Ogni codice vale una volta sola.",
+      "recoveryLabel": "Codice di recupero",
+      "startOver": "Ricomincia",
+      "enrolIntro": "Questo account richiede l'accesso a due fattori. Inquadra il codice con un'app di autenticazione (per esempio Aegis, 2FAS o Google Authenticator), poi inserisci il codice di sei cifre che mostra.",
+      "qrAlt": "Codice QR per aggiungere questo account a un'app di autenticazione",
+      "secretLabel": "Oppure inserisci questa chiave a mano:",
+      "recoveryIntro": "Codici di recupero. Conservali subito in un posto sicuro: vengono mostrati una sola volta, e ognuno sostituisce un codice una volta se perdi il dispositivo.",
+      "enrolSubmit": "Conferma e accedi"
+    }
   }
 }

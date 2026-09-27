@@ -252,11 +252,16 @@ describe('WP-105: Console Session Hardening and Mandatory TOTP MFA', () => {
       ON CONFLICT DO NOTHING
     `);
 
-    // Attempt login with strict MFA header
-    const loginRes = await request(app)
-      .post('/api/auth/login')
-      .set('X-Enforce-MFA', 'true')
-      .send({ username: 'unconfigured_admin', password: 'AdminPass123!' });
+    // The policy comes from the server's configuration, not from a request header.
+    process.env.SOVEREIGN_MFA_MANDATORY = 'admins';
+    let loginRes;
+    try {
+      loginRes = await request(app)
+        .post('/api/auth/login')
+        .send({ username: 'unconfigured_admin', password: 'AdminPass123!' });
+    } finally {
+      delete process.env.SOVEREIGN_MFA_MANDATORY;
+    }
 
     assert.strictEqual(loginRes.status, 200);
     assert.strictEqual(loginRes.body.mfa_required, true);

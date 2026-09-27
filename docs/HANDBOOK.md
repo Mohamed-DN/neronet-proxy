@@ -161,6 +161,14 @@ mounted at two paths. Console users authenticate with a JWT (HS256, 15 minute ac
 token) whose `jti` is checked against a revocation list in Valkey and in the database.
 There are two roles: `super-admin` and `user`. Nodes do not use JWTs; see section 3.
 
+TOTP (RFC 6238) is required for accounts that enrolled one and for the accounts
+`SOVEREIGN_MFA_MANDATORY` names (`admins` by default in production: the platform
+super-admin and organisation owners and admins). After the password, sign-in returns a
+short-lived token that can only complete that sign-in (`/api/auth/mfa/verify`) or, for
+an account with no authenticator, enrol one (`/api/auth/mfa/setup`); it is spent by the
+sign-in it completes. Replacing an enrolled authenticator takes a full session and a
+current code, and the new one counts only once a code from it is confirmed.
+
 ---
 
 ## 3. The node protocol

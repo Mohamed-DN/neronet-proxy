@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import { resumeSession } from '../services/apiClient';
 import { clearSession, readAccessToken, readActiveRole } from '../services/authToken';
-import { fetchCurrentUser, rememberRole, signIn, signOut, type ConsoleUser } from '../services/session';
+import { completeMfa, fetchCurrentUser, rememberRole, signIn, signOut, type ConsoleUser } from '../services/session';
 
 /**
  * The session, as the console sees it.
@@ -20,7 +20,9 @@ export interface AuthValue {
   loading: boolean;
   isAuthenticated: boolean;
   switchRole: (role: string) => void;
+  /** Throws MfaChallenge when the account needs a TOTP code; finish with completeMfaSignIn. */
   login: (username: string, password: string) => Promise<ConsoleUser>;
+  completeMfaSignIn: (mfaToken: string, proof: { code: string } | { recovery_code: string }) => Promise<ConsoleUser>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -87,6 +89,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       async login(username: string, password: string) {
         const signedIn = await signIn(username, password);
+        setUser(signedIn);
+        setRole(signedIn.role ?? 'user');
+        setToken(readAccessToken());
+        return signedIn;
+      },
+      async completeMfaSignIn(mfaToken: string, proof: { code: string } | { recovery_code: string }) {
+        const signedIn = await completeMfa(mfaToken, proof);
         setUser(signedIn);
         setRole(signedIn.role ?? 'user');
         setToken(readAccessToken());

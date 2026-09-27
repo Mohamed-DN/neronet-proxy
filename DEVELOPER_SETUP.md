@@ -232,6 +232,7 @@ matter:
 | `SOVEREIGN_AUDIT_HMAC_SECRET` | HMAC key of the audit ledger, used for nothing else. Required in production |
 | `SOVEREIGN_AUDIT_SIGNING_KEY` | Optional Ed25519 key for audit checkpoints; generated once into `SOVEREIGN_DATA_DIR` when unset |
 | `SOVEREIGN_ADMIN_PASS` | Password of the `admin` account created at first start |
+| `SOVEREIGN_MFA_MANDATORY` | `off`, `admins` or `all`: who must sign in with TOTP. Unset means `admins` in production. `gen-env.sh` sets `off`, because the scenario scripts sign in with the password alone |
 | `SOVEREIGN_REGISTRATION_TOKEN` | Enrolment token that nodes present |
 | `DATABASE_URL`, `POSTGRES_*` | PostgreSQL connection |
 | `VALKEY_URL` | Valkey connection |

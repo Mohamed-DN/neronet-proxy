@@ -59,3 +59,19 @@ so the consequence "zero credentials in `localStorage`" did not hold. Now:
   access token (`resumeSession` in `apiClient.ts`).
 - On load it removes the keys earlier versions wrote.
 - `authToken.test.ts` fails if a sign-in, refresh or sign-out writes to web storage.
+
+## Amendment, September 2026: MFA as implemented
+
+Point 4 did not hold. MFA was required only of accounts that had enrolled, and of the
+super-admin only when `SOVEREIGN_MFA_MANDATORY=true` or a client sent the header
+`X-Enforce-MFA`. The console could not complete an MFA sign-in at all. And
+`/api/auth/mfa/setup` accepted the password-step token, replaced the account's secret
+and returned the new one, so the password alone was enough to sign in to an account
+with MFA.
+
+Now: `SOVEREIGN_MFA_MANDATORY` is `off`, `admins` or `all` (default `admins` in
+production), the header is ignored, the password-step token cannot enrol over an
+existing authenticator and is single-use, a new authenticator is kept pending until a
+code from it is confirmed, and the console sign-in handles the code, recovery codes and
+enrolment.
+

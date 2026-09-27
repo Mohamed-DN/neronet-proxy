@@ -93,6 +93,7 @@ function authAs(role: string): AuthValue {
     isAuthenticated: true,
     switchRole: () => {},
     login: async () => ({ id: `usr-${role}`, username: role, role }),
+    completeMfaSignIn: async () => ({ id: `usr-${role}`, username: role, role }),
     logout: async () => {},
     refreshUser: async () => {}
   };

@@ -21,6 +21,7 @@ const { setAuthCookies, clearAuthCookies } = require('../utils/cookies');
 const TotpService = require('../services/TotpService');
 const OidcService = require('../services/OidcService');
 const DuressService = require('../services/DuressService');
+const MfaPolicy = require('../services/MfaPolicy');
 const logger = require('../utils/logger');
 
 // Pre-computed constant-time dummy bcrypt hash to prevent timing side-channel attacks on non-existent usernames
@@ -34,6 +35,7 @@ async function issueUserSession(req, res, user, pool) {
     id: user.id,
     username: user.username,
     role: user.role,
+    organization_id: user.organization_id,
     compartment_access: user.compartment_access || 'standard'
   };
 
@@ -187,10 +189,9 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
-    // MFA Enforcement Check (ADR 0018 / WP-105)
-    // Mandatory if totp_enabled is TRUE or if user is super-admin with strict MFA enabled
-    const enforceAdminMfa = process.env.SOVEREIGN_MFA_MANDATORY === 'true' || req.headers['x-enforce-mfa'] === 'true';
-    const requiresMfa = Boolean(user.totp_enabled) || (user.role === 'super-admin' && enforceAdminMfa);
+    // MFA (ADR 0018): required when the account enrolled, or when the server's policy
+    // (SOVEREIGN_MFA_MANDATORY, see MfaPolicy) requires it for this account.
+    const requiresMfa = await MfaPolicy.isMfaRequired(user);
 
     const providedOtp = totp_code || code;
 
@@ -204,6 +205,8 @@ router.post('/login', loginLimiter, async (req, res, next) => {
         // Valid TOTP -> fall through to issue session!
       } else {
         // Issue temporary 5-minute mfa_token for verification step
+        // Proves the password step only. It is spent by the sign-in it completes, and
+        // it can enrol an authenticator only on an account that has none.
         const mfaToken = jwt.sign(
           {
             sub: user.id,
@@ -212,7 +215,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
             type: 'mfa_pending'
           },
           config.JWT_SECRET,
-          { expiresIn: '5m' }
+          { expiresIn: '5m', jwtid: uuidv4() }
         );
 
         return res.status(200).json({
@@ -242,52 +245,109 @@ router.post('/login', loginLimiter, async (req, res, next) => {
   }
 });
 
-// 2a. MFA Setup (Authenticated or with mfa_token)
-router.post('/mfa/setup', async (req, res, next) => {
+/**
+ * Who is calling an MFA endpoint: a full session, or the password step of a sign-in
+ * (an "mfa_pending" token). The two are allowed different things; treating them the
+ * same is what let the password step replace an enrolled authenticator.
+ */
+async function resolveMfaCaller(req) {
+  let token = (req.body && req.body.mfa_token) || '';
+  const authHeader = req.headers['authorization'] || '';
+  if (!token && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
+  } else if (!token && req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
+  if (!token) {
+    return { error: { status: 401, message: 'Authentication or MFA token required' } };
+  }
+
+  let decoded;
   try {
-    let userId = null;
-    let username = null;
+    decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
+  } catch (e) {
+    return { error: { status: 401, message: 'Invalid or expired token' } };
+  }
+  if (await isTokenBlacklisted(token)) {
+    return { error: { status: 401, message: 'Token has been revoked or already used' } };
+  }
 
-    // Check mfa_token from body or header
-    const authHeader = req.headers['authorization'] || '';
-    let token = '';
-    if (authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7).trim();
-    } else if (req.body && req.body.mfa_token) {
-      token = req.body.mfa_token;
-    } else if (req.cookies && req.cookies.token) {
-      token = req.cookies.token;
-    }
+  const userRes = await getPgPool().query(
+    `SELECT id, username, email, role, status, organization_id, totp_secret, totp_enabled,
+            totp_recovery_codes, totp_pending_secret, totp_pending_recovery_codes
+       FROM users WHERE id = $1`,
+    [decoded.sub || decoded.id]
+  );
+  if (userRes.rows.length === 0) {
+    return { error: { status: 401, message: 'Invalid or expired token' } };
+  }
+  const user = userRes.rows[0];
+  if (user.status && user.status !== 'active') {
+    return { error: { status: 403, message: `Account is ${user.status}` } };
+  }
 
-    if (!token) {
-      return res.status(401).json({ error: 'Authentication or MFA token required' });
-    }
+  return { token, decoded, user, passwordStepOnly: decoded.type === 'mfa_pending' };
+}
 
+function parseCodes(value) {
+  let codes = value;
+  if (typeof codes === 'string') {
     try {
-      const decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
-      userId = decoded.sub || decoded.id;
-      username = decoded.username;
+      codes = JSON.parse(codes);
     } catch (e) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
+      codes = [];
     }
+  }
+  return Array.isArray(codes) ? codes : [];
+}
 
-    const pool = getPgPool();
-    const userRes = await pool.query('SELECT id, username, email FROM users WHERE id = $1', [userId]);
-    if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+// 2a. MFA Setup: start enrolling an authenticator.
+//
+// From the password step only for an account with no authenticator yet: that is how
+// an account the policy requires MFA of enrols before its first session. Replacing an
+// enrolled authenticator needs a full session and a current code from it. Either way
+// the new secret is held as pending; the one in use is untouched until /mfa/verify
+// confirms a code from the new one.
+router.post('/mfa/setup', loginLimiter, async (req, res, next) => {
+  try {
+    const caller = await resolveMfaCaller(req);
+    if (caller.error) {
+      return res.status(caller.error.status).json({ error: caller.error.message });
     }
-    const user = userRes.rows[0];
+    const { user, passwordStepOnly } = caller;
+
+    if (user.totp_enabled) {
+      if (passwordStepOnly) {
+        return res.status(409).json({
+          error: 'An authenticator is already enrolled. Sign in with it, then replace it from your account.'
+        });
+      }
+      const currentCode = req.body && req.body.current_code;
+      if (!currentCode || !TotpService.verifyTotp(String(currentCode), user.totp_secret)) {
+        return res.status(401).json({ error: 'A current code from the enrolled authenticator is required' });
+      }
+    }
 
     const secret = TotpService.generateSecret(20);
     const { qrDataUrl, otpauthUri } = await TotpService.generateQrCode(user.username, secret);
     const recoveryCodes = TotpService.generateRecoveryCodes(8);
     const hashedCodes = recoveryCodes.map((c) => TotpService.hashRecoveryCode(c));
 
-    // Save secret & recovery codes, but keep totp_enabled = FALSE until verified
-    await pool.query(
-      'UPDATE users SET totp_secret = $1, totp_recovery_codes = $2::jsonb, totp_enabled = FALSE WHERE id = $3',
+    await getPgPool().query(
+      'UPDATE users SET totp_pending_secret = $1, totp_pending_recovery_codes = $2::jsonb WHERE id = $3',
       [secret, JSON.stringify(hashedCodes), user.id]
     );
+
+    logAuditEvent({
+      eventType: 'AUTH_MFA_SETUP_STARTED',
+      severity: 'info',
+      actorUserId: user.id,
+      actorUsername: user.username,
+      targetId: user.id,
+      targetType: 'user',
+      message: `User ${user.username} started enrolling an authenticator${user.totp_enabled ? ' to replace the current one' : ''}`,
+      ipAddress: req.ip
+    });
 
     return res.status(200).json({
       secret,
@@ -300,88 +360,77 @@ router.post('/mfa/setup', async (req, res, next) => {
   }
 });
 
-// 2b. MFA Verify (Completes login or enables MFA)
-router.post('/mfa/verify', async (req, res, next) => {
+// 2b. MFA Verify: completes a sign-in, or confirms an authenticator being enrolled.
+//
+// - Password step, account with an authenticator: a code (or a recovery code) from
+//   the enrolled one completes the sign-in.
+// - Password step, account without one: a code from the pending authenticator enrols
+//   it and completes the sign-in.
+// - Full session: a code from the pending authenticator replaces the enrolled one.
+// The password-step token is spent when it completes a sign-in.
+router.post('/mfa/verify', loginLimiter, async (req, res, next) => {
   try {
-    const { code, recovery_code, mfa_token } = req.body || {};
-
-    let token = mfa_token || '';
-    const authHeader = req.headers['authorization'] || '';
-    if (!token && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7).trim();
-    } else if (!token && req.cookies && req.cookies.token) {
-      token = req.cookies.token;
+    const caller = await resolveMfaCaller(req);
+    if (caller.error) {
+      return res.status(caller.error.status).json({ error: caller.error.message });
     }
-
-    if (!token) {
-      return res.status(401).json({ error: 'Missing MFA token or session' });
-    }
-
-    let decoded;
-    try {
-      decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
-    } catch (e) {
-      return res.status(401).json({ error: 'Invalid or expired MFA token' });
-    }
-
-    const userId = decoded.sub || decoded.id;
+    const { user, passwordStepOnly, token, decoded } = caller;
+    const { code, recovery_code } = req.body || {};
     const pool = getPgPool();
-    const userRes = await pool.query(
-      'SELECT id, username, role, status, totp_secret, totp_enabled, totp_recovery_codes FROM users WHERE id = $1',
-      [userId]
-    );
 
-    if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    const user = userRes.rows[0];
+    const confirmingPending = !(passwordStepOnly && user.totp_enabled);
 
-    if (!user.totp_secret) {
-      return res.status(400).json({ error: 'MFA setup not initialized for user' });
-    }
-
-    let recoveryCodes = user.totp_recovery_codes;
-    if (typeof recoveryCodes === 'string') {
-      try {
-        recoveryCodes = JSON.parse(recoveryCodes);
-      } catch (e) {
-        recoveryCodes = [];
+    if (confirmingPending) {
+      if (!user.totp_pending_secret) {
+        return res.status(400).json({ error: 'No authenticator is being enrolled' });
       }
-    }
-    if (!Array.isArray(recoveryCodes)) recoveryCodes = [];
-
-    let isVerified = false;
-
-    if (recovery_code) {
-      const result = TotpService.verifyAndConsumeRecoveryCode(recovery_code, recoveryCodes);
+      if (!code) {
+        return res.status(400).json({ error: 'Missing code' });
+      }
+      if (!TotpService.verifyTotp(String(code), user.totp_pending_secret)) {
+        return res.status(401).json({ error: 'Invalid TOTP code' });
+      }
+      await pool.query(
+        `UPDATE users SET totp_secret = totp_pending_secret,
+                          totp_recovery_codes = COALESCE(totp_pending_recovery_codes, '[]'::jsonb),
+                          totp_enabled = TRUE,
+                          totp_pending_secret = NULL,
+                          totp_pending_recovery_codes = NULL
+          WHERE id = $1`,
+        [user.id]
+      );
+    } else if (recovery_code) {
+      const result = TotpService.verifyAndConsumeRecoveryCode(recovery_code, parseCodes(user.totp_recovery_codes));
       if (!result.valid) {
         return res.status(401).json({ error: 'Invalid recovery code' });
       }
-      isVerified = true;
-      recoveryCodes = result.remainingCodes;
+      await pool.query('UPDATE users SET totp_recovery_codes = $1::jsonb WHERE id = $2', [
+        JSON.stringify(result.remainingCodes),
+        user.id
+      ]);
     } else if (code) {
-      isVerified = TotpService.verifyTotp(code, user.totp_secret);
-      if (!isVerified) {
+      if (!TotpService.verifyTotp(String(code), user.totp_secret)) {
         return res.status(401).json({ error: 'Invalid TOTP code' });
       }
     } else {
       return res.status(400).json({ error: 'Missing code or recovery_code' });
     }
 
-    // Mark TOTP enabled and save updated recovery codes
-    await pool.query('UPDATE users SET totp_enabled = TRUE, totp_recovery_codes = $1::jsonb WHERE id = $2', [
-      JSON.stringify(recoveryCodes),
-      user.id
-    ]);
+    if (passwordStepOnly) {
+      const remaining = Math.max(1, (decoded.exp || 0) - Math.floor(Date.now() / 1000));
+      await blacklistToken(token, remaining);
+    }
 
     logAuditEvent({
-      eventType: 'AUTH_MFA_VERIFY',
+      eventType: confirmingPending ? 'AUTH_MFA_ENROLLED' : 'AUTH_MFA_VERIFY',
       severity: 'info',
       actorUserId: user.id,
       actorUsername: user.username,
       targetId: user.id,
       targetType: 'user',
-      message: `User ${user.username} successfully verified MFA`,
+      message: confirmingPending
+        ? `User ${user.username} enrolled an authenticator`
+        : `User ${user.username} successfully verified MFA`,
       ipAddress: req.ip
     });
 

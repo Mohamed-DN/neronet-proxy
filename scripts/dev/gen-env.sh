@@ -35,6 +35,9 @@ fi
   echo "SOVEREIGN_AUDIT_HMAC_SECRET=$(rand_hex 32)"
   echo "SOVEREIGN_ADMIN_PASS=$(rand_hex 16)"
   echo "SOVEREIGN_REGISTRATION_TOKEN=$(rand_hex 32)"
+  echo "# The scenario scripts sign in as the admin with the password alone. A stack"
+  echo "# other people can reach should use 'admins' (the production default) or 'all'."
+  echo "SOVEREIGN_MFA_MANDATORY=off"
 } > "$TARGET"
 
 # No effect on filesystems without POSIX modes (NTFS through Git Bash).
