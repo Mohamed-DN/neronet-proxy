@@ -11,6 +11,32 @@ const requireAclAdmin = requireRole('super-admin', 'admin');
 router.use(authenticateToken);
 router.use(resolveUserOrg);
 
+// Rules are scoped to an organisation, or to the platform when organization_id is null.
+// The platform super-admin sees and manages all of them; anyone else sees the rules
+// that apply to their organisation and manages only its own.
+const isSuperAdmin = (req) => req.user.role === 'super-admin';
+const orgOf = (req) => req.user.organization_id || 'org-default';
+
+function rulesVisibleTo(req) {
+  return isSuperAdmin(req) ? AclEngine.listRules() : AclEngine.listRules(orgOf(req));
+}
+
+// Open means every peer is permitted: no rule applies and the default policy is open.
+async function policyIsOpen(req, rules) {
+  if (rules.length > 0) return false;
+  if (!isPostgres()) return true;
+  const orgRes = await getPgPool().query('SELECT default_policy FROM organizations WHERE id = $1', [orgOf(req)]);
+  return orgRes.rows.length > 0 && orgRes.rows[0].default_policy === 'open';
+}
+
+async function findManageableRule(req, id) {
+  const rules = await AclEngine.listRules();
+  const rule = rules.find((r) => r.id === id);
+  if (!rule) return null;
+  if (isSuperAdmin(req)) return rule;
+  return rule.organization_id === orgOf(req) ? rule : null;
+}
+
 /**
  * ACL rule administration and visual zero-trust policy engine.
  *
@@ -22,13 +48,13 @@ router.use(resolveUserOrg);
 // 1. List ACL rules & mesh status
 router.get('/rules', async (req, res, next) => {
   try {
-    const rules = await AclEngine.listRules();
+    const rules = await rulesVisibleTo(req);
     const epoch = await AclEngine.getEpoch('acl');
 
     return res.status(200).json({
       rules,
       epoch,
-      policy_is_open: rules.length === 0,
+      policy_is_open: await policyIsOpen(req, rules),
       count: rules.length
     });
   } catch (err) {
@@ -39,7 +65,9 @@ router.get('/rules', async (req, res, next) => {
 // 2. Create ACL rule
 router.post('/rules', requireAclAdmin, async (req, res, next) => {
   try {
-    const id = await AclEngine.createRule(req.body || {});
+    const body = req.body || {};
+    const organizationId = isSuperAdmin(req) ? body.organization_id || null : orgOf(req);
+    const id = await AclEngine.createRule(body, { organizationId });
     const rules = await AclEngine.listRules();
     const created = rules.find((r) => r.id === id) || { id };
 
@@ -66,6 +94,9 @@ router.post('/rules', requireAclAdmin, async (req, res, next) => {
 // 3. Update ACL rule
 router.put('/rules/:id', requireAclAdmin, async (req, res, next) => {
   try {
+    if (!(await findManageableRule(req, req.params.id))) {
+      return res.status(404).json({ error: `no ACL rule ${req.params.id}` });
+    }
     const updated = await AclEngine.updateRule(req.params.id, req.body || {});
     if (!updated) {
       return res.status(404).json({ error: `no ACL rule ${req.params.id}` });
@@ -94,8 +125,7 @@ router.put('/rules/:id', requireAclAdmin, async (req, res, next) => {
 // 4. Delete ACL rule
 router.delete('/rules/:id', requireAclAdmin, async (req, res, next) => {
   try {
-    const rules = await AclEngine.listRules();
-    const existing = rules.find((r) => r.id === req.params.id);
+    const existing = await findManageableRule(req, req.params.id);
 
     if (!existing) {
       return res.status(404).json({ error: `no ACL rule ${req.params.id}` });
@@ -114,11 +144,11 @@ router.delete('/rules/:id', requireAclAdmin, async (req, res, next) => {
       ipAddress: req.ip
     });
 
-    const remaining = await AclEngine.listRules();
+    const remaining = await rulesVisibleTo(req);
     return res.status(200).json({
       deleted: req.params.id,
       epoch: await AclEngine.getEpoch('acl'),
-      policy_is_open: remaining.length === 0
+      policy_is_open: await policyIsOpen(req, remaining)
     });
   } catch (err) {
     next(err);
@@ -215,7 +245,8 @@ router.post('/simulate', async (req, res, next) => {
       destination_ip,
       protocol: protocol || 'ALL',
       port: port !== undefined ? Number(port) : 0,
-      defaultPolicy
+      defaultPolicy,
+      organizationId: orgId
     });
 
     return res.status(200).json(result);
@@ -245,6 +276,9 @@ router.post('/preview', requireAclAdmin, async (req, res, next) => {
       return res.status(400).json({ error: 'node_id is required' });
     }
 
+    if (!isSuperAdmin(req) && (await AclEngine.nodeOrganization(node_id)) !== orgOf(req)) {
+      return res.status(404).json({ error: `no node ${node_id}` });
+    }
     const preview = await AclEngine.compilePreview(node_id, candidate_rule);
     if (!preview) {
       return res.status(404).json({ error: `no node ${node_id}` });

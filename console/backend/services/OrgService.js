@@ -189,6 +189,11 @@ class OrgService {
       params
     );
 
+    // The default policy is compiled into every node's policy; nodes re-sync on a new epoch.
+    if (default_policy) {
+      await require('./AclEngine').bumpEpoch('acl');
+    }
+
     logAuditEvent({
       eventType: 'ORG_UPDATE',
       severity: 'info',

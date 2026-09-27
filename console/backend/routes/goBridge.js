@@ -225,6 +225,10 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
 
     const nodeId = deriveNodeId(publicKeyHex);
     let ownerId = null;
+    // The organisation the node joins: the pre-auth key's, else its owner's. Nodes used
+    // to be inserted with none, so a key issued for one organisation enrolled a node
+    // outside it.
+    let organizationId = null;
 
     // Check if node exists already (needed for owner check & role check)
     const existing = await runQuery(
@@ -265,6 +269,7 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       }
 
       ownerId = preauthResult.key.owner_id;
+      organizationId = preauthResult.key.organization_id || null;
 
       // 4. Invariance: if node already exists, owner must match
       if (existing.length > 0 && existing[0].user_id && existing[0].user_id !== ownerId) {
@@ -332,11 +337,17 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       existing.length > 0 ? describeMismatch(existing[0], { role, ipClass, countryCode, declared }) : null;
 
     const pool = getPgPool();
+    if (!organizationId && ownerId) {
+      const ownerRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [ownerId]);
+      organizationId = (ownerRes.rows[0] && ownerRes.rows[0].organization_id) || null;
+    }
+
+    // organization_id, like role and country, is set at first enrolment only.
     await pool.query(
       `INSERT INTO nodes (
          id, user_id, name, role, ip_class, country_code, city, asn,
-         is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb)
+         is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints, organization_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb, $13)
        ON CONFLICT (id) DO UPDATE SET
          is_healthy = TRUE,
          endpoints = EXCLUDED.endpoints,
@@ -353,7 +364,8 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
         publicKeyHex,
         overlayIpv4,
         overlayIpv6,
-        endpointsJson
+        endpointsJson,
+        organizationId
       ]
     );
 

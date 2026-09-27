@@ -119,16 +119,38 @@ async function bumpNetmap() {
   return bumpEpoch('netmap');
 }
 
-async function listRules() {
+const DEFAULT_ORG = 'org-default';
+
+/**
+ * Enabled rules, in evaluation order.
+ *
+ * With an organisation, the rules that apply to its nodes: its own and the platform's
+ * (organization_id NULL). Without one, every rule, for the platform super-admin.
+ */
+async function listRules(organizationId) {
+  if (organizationId === undefined) {
+    return query(
+      'SELECT * FROM acl_rules WHERE enabled = TRUE ORDER BY priority ASC, id ASC',
+      [],
+      'SELECT * FROM acl_rules WHERE enabled = 1 ORDER BY priority ASC, id ASC',
+      []
+    );
+  }
   return query(
-    'SELECT * FROM acl_rules WHERE enabled = TRUE ORDER BY priority ASC, id ASC',
-    [],
-    'SELECT * FROM acl_rules WHERE enabled = 1 ORDER BY priority ASC, id ASC',
-    []
+    `SELECT * FROM acl_rules WHERE enabled = TRUE AND (organization_id = $1 OR organization_id IS NULL)
+      ORDER BY priority ASC, id ASC`,
+    [organizationId],
+    `SELECT * FROM acl_rules WHERE enabled = 1 AND (organization_id = ? OR organization_id IS NULL)
+      ORDER BY priority ASC, id ASC`,
+    [organizationId]
   );
 }
 
-async function createRule(rule) {
+/**
+ * Create a rule. organizationId scopes it to one organisation's nodes; null makes it a
+ * platform rule, which applies in every organisation.
+ */
+async function createRule(rule, { organizationId = null } = {}) {
   const id = rule.id || `acl-${crypto.randomBytes(6).toString('hex')}`;
 
   const values = [
@@ -140,7 +162,8 @@ async function createRule(rule) {
     Number(rule.port_start) || 0,
     Number.isFinite(Number(rule.port_end)) ? Number(rule.port_end) : 65535,
     (rule.action || 'ACCEPT').toUpperCase(),
-    rule.description || ''
+    rule.description || '',
+    organizationId
   ];
 
   for (const cidr of [values[2], values[3]]) {
@@ -152,11 +175,11 @@ async function createRule(rule) {
   }
 
   await query(
-    `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, organization_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     values,
-    `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, organization_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     values
   );
 
@@ -183,36 +206,74 @@ async function deleteRule(id) {
  * closed when the first rule is written -- which is also how Tailscale behaves.
  */
 async function compilePolicyFor(nodeId) {
-  const selfRows = await query(
-    'SELECT id, overlay_ipv4 FROM nodes WHERE id = $1',
+  return compileFor(nodeId);
+}
+
+/**
+ * The organisation a node belongs to and that organisation's default policy.
+ * Nodes enrolled before organisations existed have none and belong to the default one.
+ */
+async function nodeScope(nodeId) {
+  const rows = await query(
+    `SELECT n.id, n.overlay_ipv4, COALESCE(n.organization_id, '${DEFAULT_ORG}') AS organization_id, o.default_policy
+       FROM nodes n
+       LEFT JOIN organizations o ON o.id = COALESCE(n.organization_id, '${DEFAULT_ORG}')
+      WHERE n.id = $1`,
     [nodeId],
-    'SELECT id, overlay_ipv4 FROM nodes WHERE id = ?',
+    `SELECT n.id, n.overlay_ipv4, COALESCE(n.organization_id, '${DEFAULT_ORG}') AS organization_id, o.default_policy
+       FROM nodes n
+       LEFT JOIN organizations o ON o.id = COALESCE(n.organization_id, '${DEFAULT_ORG}')
+      WHERE n.id = ?`,
     [nodeId]
   );
+  return rows[0] || null;
+}
 
-  if (selfRows.length === 0) return null;
-
-  const self = selfRows[0];
+/**
+ * Compile a node's policy, optionally with a candidate rule added (for a preview).
+ *
+ * Only nodes of the same organisation are peers, and only the organisation's rules and
+ * the platform's apply. Before this, every node on the platform was a candidate peer
+ * and every rule applied everywhere, so two organisations with no rules could reach
+ * each other's nodes.
+ *
+ * With no applicable rule, the organisation's default policy decides: "open" permits
+ * every peer in the organisation, "deny" none, and so does an organisation whose policy
+ * cannot be read. Once a rule applies, the rules alone decide.
+ */
+async function compileFor(nodeId, { candidateRule = null } = {}) {
+  const self = await nodeScope(nodeId);
+  if (!self) return null;
 
   // Ordered because the compiled policy is now part of the netmap, and the netmap has
   // to serialise to the same bytes for the same inputs: an unordered scan is free to
   // return the rows in a different sequence on the same data.
   const peers = await query(
-    'SELECT id, overlay_ipv4 FROM nodes WHERE id <> $1 AND is_quarantined = FALSE ORDER BY id ASC',
-    [nodeId],
-    'SELECT id, overlay_ipv4 FROM nodes WHERE id <> ? AND is_quarantined = 0 ORDER BY id ASC',
-    [nodeId]
+    `SELECT id, overlay_ipv4 FROM nodes
+      WHERE id <> $1 AND is_quarantined = FALSE AND COALESCE(organization_id, '${DEFAULT_ORG}') = $2
+      ORDER BY id ASC`,
+    [nodeId, self.organization_id],
+    `SELECT id, overlay_ipv4 FROM nodes
+      WHERE id <> ? AND is_quarantined = 0 AND COALESCE(organization_id, '${DEFAULT_ORG}') = ?
+      ORDER BY id ASC`,
+    [nodeId, self.organization_id]
   );
 
-  const rules = await listRules();
+  let rules = await listRules(self.organization_id);
+  if (candidateRule) {
+    rules = rules.filter((r) => r.id !== candidateRule.id);
+    if (candidateRule.enabled) rules.push(candidateRule);
+    rules.sort((a, b) => (Number(a.priority) || 100) - (Number(b.priority) || 100));
+  }
   const epoch = await getEpoch('acl');
 
   if (rules.length === 0) {
+    const open = self.default_policy === 'open';
     return {
       node_id: self.id,
       overlay_ipv4: self.overlay_ipv4,
-      inbound_rules: peers.map((p) => allowAll(p.overlay_ipv4)),
-      outbound_rules: peers.map((p) => allowAll(p.overlay_ipv4)),
+      inbound_rules: open ? peers.map((p) => allowAll(p.overlay_ipv4)) : [],
+      outbound_rules: open ? peers.map((p) => allowAll(p.overlay_ipv4)) : [],
       epoch
     };
   }
@@ -222,6 +283,7 @@ async function compilePolicyFor(nodeId) {
 
   for (const rule of rules) {
     const portRanges = [{ start: Number(rule.port_start) || 0, end: Number(rule.port_end) || 65535 }];
+    const tag = candidateRule ? { rule_id: rule.id } : {};
 
     for (const peer of peers) {
       // Outbound: this node is the source, the peer is the destination.
@@ -231,7 +293,8 @@ async function compilePolicyFor(nodeId) {
           protocol: rule.protocol,
           port_ranges: portRanges,
           action: rule.action,
-          is_directional: true
+          is_directional: true,
+          ...tag
         });
       }
 
@@ -242,7 +305,8 @@ async function compilePolicyFor(nodeId) {
           protocol: rule.protocol,
           port_ranges: portRanges,
           action: rule.action,
-          is_directional: true
+          is_directional: true,
+          ...tag
         });
       }
     }
@@ -318,8 +382,15 @@ async function updateRule(id, updates = {}) {
 /**
  * Simulate packet evaluation against current ACL rules and mesh default policy.
  */
-async function simulatePacket({ source_ip, destination_ip, protocol = 'ALL', port = 0, defaultPolicy = 'deny' }) {
-  const rules = await listRules();
+async function simulatePacket({
+  source_ip,
+  destination_ip,
+  protocol = 'ALL',
+  port = 0,
+  defaultPolicy = 'deny',
+  organizationId
+}) {
+  const rules = await listRules(organizationId);
   const proto = String(protocol).toUpperCase();
   const portNum = Number(port) || 0;
 
@@ -364,18 +435,20 @@ async function simulatePacket({ source_ip, destination_ip, protocol = 'ALL', por
     };
   }
 
-  // No rule matched
-  const isMeshOpen = rules.length === 0 || defaultPolicy === 'open';
-  const verdict = isMeshOpen ? 'ACCEPT' : 'DROP';
+  // No rule matched. This mirrors compileFor: the default policy decides only while
+  // no rule applies; once one does, whatever no rule permits is dropped. The simulator
+  // used to apply an open default even with rules in place, and so reported traffic
+  // as permitted that nodes were dropping.
+  const verdict = rules.length === 0 && defaultPolicy === 'open' ? 'ACCEPT' : 'DROP';
   return {
     verdict,
     matched_rule: null,
     reason:
       rules.length === 0
-        ? 'No rules configured — mesh is currently open by default'
-        : defaultPolicy === 'open'
-          ? 'No rule matched — organization default policy is OPEN (Permit)'
-          : 'No rule matched — Zero-Trust organization default policy is DENY (Drop)',
+        ? defaultPolicy === 'open'
+          ? 'No rules apply — organization default policy is OPEN (Permit)'
+          : 'No rules apply — organization default policy is DENY (Drop)'
+        : 'No rule matched — DENY: with rules in place, anything no rule permits is dropped',
     packet: {
       source_ip,
       destination_ip,
@@ -389,27 +462,9 @@ async function simulatePacket({ source_ip, destination_ip, protocol = 'ALL', por
  * Preview compiled policy for a node given an optional candidate rule.
  */
 async function compilePreview(nodeId, candidateRule = null) {
-  const selfRows = await query(
-    'SELECT id, overlay_ipv4 FROM nodes WHERE id = $1',
-    [nodeId],
-    'SELECT id, overlay_ipv4 FROM nodes WHERE id = ?',
-    [nodeId]
-  );
-
-  if (selfRows.length === 0) return null;
-  const self = selfRows[0];
-
-  const peers = await query(
-    'SELECT id, overlay_ipv4 FROM nodes WHERE id <> $1 AND is_quarantined = FALSE ORDER BY id ASC',
-    [nodeId],
-    'SELECT id, overlay_ipv4 FROM nodes WHERE id <> ? AND is_quarantined = 0 ORDER BY id ASC',
-    [nodeId]
-  );
-
-  let rules = await listRules();
-
+  let normalized = null;
   if (candidateRule) {
-    const normalized = {
+    normalized = {
       id: candidateRule.id || 'candidate-preview',
       priority: Number(candidateRule.priority) || 100,
       source_cidr: candidateRule.source_cidr || '0.0.0.0/0',
@@ -421,66 +476,16 @@ async function compilePreview(nodeId, candidateRule = null) {
       enabled: candidateRule.enabled !== undefined ? Boolean(candidateRule.enabled) : true,
       description: candidateRule.description || 'Candidate preview rule'
     };
-
-    rules = rules.filter((r) => r.id !== normalized.id);
-    if (normalized.enabled) {
-      rules.push(normalized);
-    }
-    rules.sort((a, b) => (Number(a.priority) || 100) - (Number(b.priority) || 100));
   }
 
-  const epoch = await getEpoch('acl');
+  const compiled = await compileFor(nodeId, { candidateRule: normalized });
+  return compiled ? { ...compiled, is_preview: true } : null;
+}
 
-  if (rules.length === 0) {
-    return {
-      node_id: self.id,
-      overlay_ipv4: self.overlay_ipv4,
-      inbound_rules: peers.map((p) => allowAll(p.overlay_ipv4)),
-      outbound_rules: peers.map((p) => allowAll(p.overlay_ipv4)),
-      epoch,
-      is_preview: true
-    };
-  }
-
-  const outbound = [];
-  const inbound = [];
-
-  for (const rule of rules) {
-    const portRanges = [{ start: Number(rule.port_start) || 0, end: Number(rule.port_end) || 65535 }];
-
-    for (const peer of peers) {
-      if (cidrContains(rule.source_cidr, self.overlay_ipv4) && cidrContains(rule.destination_cidr, peer.overlay_ipv4)) {
-        outbound.push({
-          allowed_peer_vip: peer.overlay_ipv4,
-          protocol: rule.protocol,
-          port_ranges: portRanges,
-          action: rule.action,
-          is_directional: true,
-          rule_id: rule.id
-        });
-      }
-
-      if (cidrContains(rule.source_cidr, peer.overlay_ipv4) && cidrContains(rule.destination_cidr, self.overlay_ipv4)) {
-        inbound.push({
-          allowed_peer_vip: peer.overlay_ipv4,
-          protocol: rule.protocol,
-          port_ranges: portRanges,
-          action: rule.action,
-          is_directional: true,
-          rule_id: rule.id
-        });
-      }
-    }
-  }
-
-  return {
-    node_id: self.id,
-    overlay_ipv4: self.overlay_ipv4,
-    inbound_rules: inbound,
-    outbound_rules: outbound,
-    epoch,
-    is_preview: true
-  };
+/** The organisation a node belongs to, or null when the node is unknown. */
+async function nodeOrganization(nodeId) {
+  const self = await nodeScope(nodeId);
+  return self ? self.organization_id : null;
 }
 
 module.exports = {
@@ -495,5 +500,6 @@ module.exports = {
   deleteRule,
   compilePolicyFor,
   compilePreview,
+  nodeOrganization,
   simulatePacket
 };
