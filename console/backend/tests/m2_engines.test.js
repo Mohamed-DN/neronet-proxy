@@ -520,11 +520,15 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       assert.strictEqual(acceptRes.body.success, true);
       assert.strictEqual(acceptRes.body.peering_agreement.status, 'active');
 
-      const nodesRes = await request(app).get('/api/peering/nodes').set('Authorization', `Bearer ${tenantAToken}`);
+      // Federation is the platform super-admin's; a tenant cannot list peered nodes.
+      const tenantRes = await request(app).get('/api/peering/nodes').set('Authorization', `Bearer ${tenantAToken}`);
+      assert.strictEqual(tenantRes.status, 403);
 
+      const nodesRes = await request(app).get('/api/peering/nodes').set('Authorization', `Bearer ${adminToken}`);
       assert.strictEqual(nodesRes.status, 200);
-      assert.ok(nodesRes.body.peered_nodes.length >= 1);
-      assert.strictEqual(nodesRes.body.peered_nodes[0].is_peered, true);
+      assert.ok(Array.isArray(nodesRes.body.peered_nodes));
+      // Only nodes an agreement actually imported; none are invented.
+      assert.ok(nodesRes.body.peered_nodes.every((n) => !String(n.name || '').startsWith('External-Peer-Node')));
     });
 
     it('should retrieve peering agreement by ID via /api/peering/:id and /api/peering/agreements/:id', async () => {

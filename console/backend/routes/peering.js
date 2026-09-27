@@ -69,7 +69,8 @@ router.get('/agreements', requireSuperAdmin, async (req, res, next) => {
 });
 
 // 4. List Peered Nodes Tagged for 3D Topology
-router.get('/nodes', async (req, res, next) => {
+// Federation is the platform super-admin's, like every other peering route.
+router.get('/nodes', requireSuperAdmin, async (req, res, next) => {
   try {
     const peered_nodes = await PeeringEngine.getPeeredNodes();
     return res.status(200).json({ peered_nodes, total: peered_nodes.length });

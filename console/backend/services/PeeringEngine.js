@@ -631,23 +631,8 @@ async function getPeeredNodes() {
     }
   }
 
-  if (peeredNodes.length === 0) {
-    // If agreements exist or for fallback rendering, provide default tagged peered nodes
-    const sampleAgId = agreements.length > 0 ? agreements[0].peering_id : 'peer-0001';
-    for (let i = 1; i <= 3; i++) {
-      peeredNodes.push({
-        id: `peered-node-${sampleAgId}-${i}`,
-        name: `External-Peer-Node-${i}`,
-        peering_id: sampleAgId,
-        color: '#8b5cf6',
-        is_peered: true,
-        role: i === 1 ? 'RELAY' : 'EXIT_BRIDGE',
-        overlay_ipv4: `100.64.200.${i}`,
-        status: 'active'
-      });
-    }
-  }
-
+  // No fallback. This used to invent three "External-Peer-Node" entries whenever
+  // there were none, so the topology view showed peers that did not exist.
   return peeredNodes;
 }
 
