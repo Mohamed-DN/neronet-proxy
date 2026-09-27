@@ -16,7 +16,7 @@ import (
 
 	"github.com/sovereign/proxy/v4/pkg/acl"
 	"github.com/sovereign/proxy/v4/pkg/control"
-	"github.com/sovereign/proxy/v4/pkg/crypto/rosenpass"
+	"github.com/sovereign/proxy/v4/pkg/crypto/pskepoch"
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
 	"github.com/sovereign/proxy/v4/pkg/derp"
 	"github.com/sovereign/proxy/v4/pkg/nat"
@@ -67,8 +67,8 @@ type netmapManager struct {
 	// with fresh relay URLs every time a netmap is applied.
 	fallback *derp.FallbackManager
 
-	// pq, when non-nil, is the Rosenpass post-quantum PSK rotation manager.
-	pq *rosenpass.Manager
+	// psk, when non-nil, rotates each peer's pre-shared key (classical; see pkg/crypto/pskepoch).
+	psk *pskepoch.Manager
 
 	mu sync.Mutex
 	// version is the version of the document currently applied. Zero means none has
@@ -196,10 +196,10 @@ func newNetmapManager(
 	}
 }
 
-// SetPQManager attaches the Rosenpass post-quantum PSK manager.
-func (m *netmapManager) SetPQManager(pq *rosenpass.Manager) {
+// SetPSKManager attaches the pre-shared key rotation manager.
+func (m *netmapManager) SetPSKManager(psk *pskepoch.Manager) {
 	m.mu.Lock()
-	m.pq = pq
+	m.psk = psk
 	m.mu.Unlock()
 }
 
@@ -336,17 +336,17 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 		}
 	}
 
-	// Propagate active peers to the Rosenpass post-quantum PSK manager so
+	// Propagate active peers to the pre-shared key rotation manager so
 	// rotating pre-shared keys are continuously derived and installed.
 	m.mu.Lock()
-	pq := m.pq
+	psk := m.psk
 	m.mu.Unlock()
-	if pq != nil {
+	if psk != nil {
 		keys := make([]string, 0, len(netmap.Peers))
 		for _, p := range netmap.Peers {
 			keys = append(keys, p.PublicKeyHex)
 		}
-		pq.SetPeers(keys)
+		psk.SetPeers(keys)
 	}
 
 	if err := m.persist(netmap, fetchedAt); err != nil {

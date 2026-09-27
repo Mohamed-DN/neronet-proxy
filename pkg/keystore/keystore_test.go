@@ -90,8 +90,8 @@ func TestFileKeyStore(t *testing.T) {
 	})
 
 	t.Run("Multiple aliases isolation", func(t *testing.T) {
-		alias2 := "psk-rosenpass"
-		key2 := []byte("rosenpass-psk-material-super-key")
+		alias2 := "psk-epoch"
+		key2 := []byte("epoch-psk-material-32-bytes-long")
 
 		if err := ks.StoreKey(alias2, key2); err != nil {
 			t.Fatalf("StoreKey alias2 failed: %v", err)

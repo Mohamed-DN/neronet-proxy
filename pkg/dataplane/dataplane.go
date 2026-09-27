@@ -155,8 +155,8 @@ type Peer struct {
 	// non-zero value for the mapping to survive.
 	PersistentKeepalive uint16 `json:"persistent_keepalive,omitempty"`
 
-	// PresharedKey is hex encoded and optional. Rosenpass will drive this field;
-	// nothing sets it yet.
+	// PresharedKey is hex encoded and optional. Nothing sets it here: pkg/crypto/pskepoch
+	// installs rotating keys on the device through UpdatePeerPSK instead.
 	PresharedKey string `json:"preshared_key,omitempty"`
 
 	// Transport specifies the peer's preferred transport protocol ("wireguard", "amneziawg", "openvpn", "vless").
@@ -391,7 +391,8 @@ func (d *Device) SetPeers(peers []Peer) error {
 }
 
 // UpdatePeerPSK installs or rotates the WireGuard pre-shared key for a specific peer.
-// This is called by the post-quantum key exchange (Rosenpass) every rotation interval (2 minutes).
+// This is called by the pre-shared key rotation (pkg/crypto/pskepoch) every rotation
+// interval (2 minutes). It is classical; a post-quantum source (Rosenpass) is planned.
 func (d *Device) UpdatePeerPSK(peerPubHex string, pskHex string) error {
 	d.mu.Lock()
 	closed := d.closed

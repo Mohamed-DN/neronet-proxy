@@ -1,4 +1,18 @@
-package rosenpass
+// Package pskepoch rotates the WireGuard pre-shared key of each peer on a fixed
+// epoch.
+//
+// The key is HKDF-SHA256 over the X25519 shared secret of the two static keys,
+// salted with the epoch number. Both ends compute it on their own, so nothing is
+// exchanged. It is classical cryptography and adds no post-quantum protection: an
+// adversary who can break X25519 recovers the static shared secret, and with it
+// every key this package derives. It does not defend against anything WireGuard's
+// own handshake does not already defend against.
+//
+// This package used to be called rosenpass and described itself as post-quantum.
+// Rosenpass is a separate protocol with a post-quantum key exchange (Classic
+// McEliece and Kyber); running it to supply the pre-shared key is still planned
+// (ADR 0020, section 7), and this package is not it.
+package pskepoch
 
 import (
 	"context"
@@ -14,10 +28,12 @@ import (
 )
 
 const (
-	// DefaultRotationInterval is the Rosenpass key rotation period (2 minutes).
+	// DefaultRotationInterval is the rotation period (2 minutes).
 	DefaultRotationInterval = 2 * time.Minute
 
-	// PSKDomainSeparator binds the derived PSK to this specific protocol and purpose.
+	// PSKDomainSeparator binds the derived PSK to this purpose. The value is a wire
+	// constant: both ends must use the same one, so it keeps its old spelling
+	// rather than break tunnels between nodes on either side of an upgrade.
 	PSKDomainSeparator = "neronet-rosenpass-pq-psk-v1"
 )
 
@@ -26,13 +42,13 @@ type PSKUpdater interface {
 	UpdatePeerPSK(peerPubHex string, pskHex string) error
 }
 
-// DerivePQPSK derives a 256-bit post-quantum pre-shared key for a peer at the specified epoch.
-// Both sides of the tunnel derive the identical key deterministically using Diffie-Hellman
-// over their static keys combined with the time epoch via HKDF-SHA256.
-func DerivePQPSK(localPriv, peerPub [32]byte, epoch uint64) ([32]byte, error) {
+// DeriveEpochPSK derives the 256-bit pre-shared key for a peer at an epoch. Both sides
+// derive the same key from the X25519 shared secret of their static keys and the
+// epoch, through HKDF-SHA256. Classical: see the package comment.
+func DeriveEpochPSK(localPriv, peerPub [32]byte, epoch uint64) ([32]byte, error) {
 	dh, err := crypto.DH(localPriv, peerPub)
 	if err != nil {
-		return [32]byte{}, fmt.Errorf("rosenpass: DH failed: %w", err)
+		return [32]byte{}, fmt.Errorf("pskepoch: DH failed: %w", err)
 	}
 
 	// Salt is the 8-byte big-endian epoch counter
@@ -43,7 +59,7 @@ func DerivePQPSK(localPriv, peerPub [32]byte, epoch uint64) ([32]byte, error) {
 	return crypto.DeriveKey(dh[:], salt[:], info)
 }
 
-// Manager supervises post-quantum pre-shared key rotation for peers on the WireGuard tunnel.
+// Manager rotates the pre-shared key of every peer on the WireGuard tunnel.
 type Manager struct {
 	mu        sync.Mutex
 	updater   PSKUpdater
@@ -55,7 +71,7 @@ type Manager struct {
 	wg        sync.WaitGroup
 }
 
-// NewManager creates a Rosenpass post-quantum PSK rotation manager.
+// NewManager creates a PSK rotation manager.
 func NewManager(updater PSKUpdater, localKP *crypto.Keypair, interval time.Duration) *Manager {
 	if interval <= 0 {
 		interval = DefaultRotationInterval
@@ -149,16 +165,16 @@ func (m *Manager) rotateLocked(t time.Time) {
 	m.lastEpoch = epoch
 
 	for pubHex, peerPub := range m.peers {
-		psk, err := DerivePQPSK(m.localKP.PrivateKey, peerPub, epoch)
+		psk, err := DeriveEpochPSK(m.localKP.PrivateKey, peerPub, epoch)
 		if err != nil {
-			log.Printf("[ROSENPASS] Failed to derive PQ PSK for peer %.8s: %v", pubHex, err)
+			log.Printf("[PSK-EPOCH] Failed to derive PSK for peer %.8s: %v", pubHex, err)
 			continue
 		}
 		pskHex := hex.EncodeToString(psk[:])
 		if err := m.updater.UpdatePeerPSK(pubHex, pskHex); err != nil {
-			log.Printf("[ROSENPASS] Failed to install PQ PSK for peer %.8s: %v", pubHex, err)
+			log.Printf("[PSK-EPOCH] Failed to install PSK for peer %.8s: %v", pubHex, err)
 		} else {
-			log.Printf("[ROSENPASS] Rotated PQ PSK for peer %.8s (epoch %d)", pubHex, epoch)
+			log.Printf("[PSK-EPOCH] Rotated PSK for peer %.8s (epoch %d)", pubHex, epoch)
 		}
 	}
 }
