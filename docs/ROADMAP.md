@@ -462,3 +462,31 @@ The development stack runs on Podman or Docker. The order of deployment targets 
 - Migrating from a root container to the unprivileged image leaves volume files owned
   by root. Fix once:
   `docker run --rm -v <volume>:/data alpine chown -R 10001:10001 /data`
+
+---
+
+## 13. Advertised, not implemented
+
+Features the repository description, the console or the guides offered at some point
+and that do not exist in the code that runs. The console offered no more of them after
+`27cc554`. The API refuses `openvpn` and `vless`. Each one is planned work: none of them
+is available today.
+
+| Feature | Where it was offered | What exists | Plan |
+|---|---|---|---|
+| OpenVPN transport | API accepted `openvpn` as transport and link mode; admin guides | Nothing. An unused config generator was removed | Gateway on exit bridges for clients that cannot run WireGuard, TCP 443 fallback. After the WireGuard data plane is released |
+| VLESS / VLESS + REALITY | Repository description; API accepted `vless`; Settings page | Nothing. An unused config generator was removed | Opt-in censorship-resistant ingress on edge nodes, as a separate process in front of WireGuard. Off for regulated profiles |
+| ShadowTLS, port hopping | Settings page switches, never sent to a node | Nothing | Part of the obfuscation work below, after AmneziaWG |
+| AmneziaWG obfuscation | Organisation transport `amneziawg` is accepted | `pkg/dataplane/stealth` wraps and unwraps packets and is tested. No node uses it | Wire it into the data plane with junk-packet parameters chosen per organisation by the control plane and sent in the netmap |
+| Onion routing, three-hop circuits | Node toggle "onion routing", circuit command | Cell sealing in `pkg/routing` and path selection in the control plane. No circuit is ever built; the toggle is a label | Circuits over the WireGuard overlay, after an external review of `pkg/routing` |
+| Tor as an exit | Discussed as an exit option | Nothing | Opt-in egress through Tor on exit bridges. Off for regulated profiles |
+| 3proxy | Early plans | Not present. The node's own SOCKS5 and HTTP CONNECT proxies do this job | Only if a feature the built-in proxies lack is needed |
+| Post-quantum tunnel | Earlier README and marketing text | The tunnel is classical X25519 with rotating pre-shared keys | Hybrid pre-shared key from ML-KEM-768 exchanged through the control plane, activated by epoch (section 8) |
+| MTU and cipher suite settings | Settings page | The netmap carries an MTU of 1380 for every node | MTU per organisation. Cipher selection will not be offered: WireGuard has one fixed suite |
+| pgBackRest backups | Admin guides | A restore verification service and a manual script | Scheduled backups with a restore test in CI |
+| Patroni failover in three seconds | Admin guides | `docker/docker-compose.ha.yml`, never tested | Failover test in CI, then measured figures |
+| Kernel packet acceleration (eBPF/XDP) | Earlier README | A simulation, removed | Only after the userspace data plane has measured limits |
+| Mobile clients | Earlier plans | Nothing | One platform first (section 7) |
+| Release signing and SLSA provenance | Earlier README | SHA-256 checksums | Signed releases with provenance from CI |
+| Cloud PC streaming | Console module | Rows pointing at a host that does not exist; off by default | Revisit after the network product is released |
+| NeroDrop, App Bundles | Console modules | Removed | No plan |
