@@ -314,7 +314,9 @@ func (c *Client) RegisterWithProof(
 		hash := sha256.Sum256(rawCpPub)
 		actualFingerprint := hex.EncodeToString(hash[:])
 		if !strings.EqualFold(actualFingerprint, expectedFingerprint) {
-			return nil, fmt.Errorf("control plane fingerprint mismatch: expected %s, got %s", expectedFingerprint, actualFingerprint)
+			// The expected value comes from the enrolment string, which also carries the
+			// pre-auth key, so it is not repeated in an error that ends up in the log.
+			return nil, fmt.Errorf("control plane fingerprint mismatch: %s is not the one in the enrolment string", actualFingerprint)
 		}
 	}
 

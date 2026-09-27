@@ -199,6 +199,10 @@ func TestRegisterWithProof_FingerprintMismatch(t *testing.T) {
 	if !strings.Contains(err.Error(), "control plane fingerprint mismatch") {
 		t.Errorf("unexpected error message: %v", err)
 	}
+	// The error is logged. Nothing taken from the enrolment string belongs in it.
+	if strings.Contains(err.Error(), wrongFingerprint) || strings.Contains(err.Error(), "secretkey123") {
+		t.Errorf("error repeats the enrolment string: %v", err)
+	}
 }
 
 func TestHeartbeatRotatesCredential(t *testing.T) {
