@@ -127,8 +127,8 @@ describe('WP-301: Tamper-Evident Audit Log & SIEM Export', () => {
       `INSERT INTO audit_events (
          id, sequence_num, prev_hash, entry_hash, event_type, severity,
          actor_user_id, actor_username, target_id, target_type, message,
-         ip_address, user_agent, metadata_json, created_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+         ip_address, user_agent, metadata_json, created_at, hmac_key_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         deletedRow.id,
         deletedRow.sequence_num,
@@ -144,7 +144,8 @@ describe('WP-301: Tamper-Evident Audit Log & SIEM Export', () => {
         deletedRow.ip_address,
         deletedRow.user_agent,
         JSON.stringify(deletedRow.metadata_json),
-        deletedRow.created_at
+        deletedRow.created_at,
+        deletedRow.hmac_key_id
       ]
     );
 
@@ -240,5 +241,200 @@ describe('WP-301: Tamper-Evident Audit Log & SIEM Export', () => {
 
     assert.strictEqual(resListSiem.status, 200);
     assert.strictEqual(resListSiem.body.destinations.length, 1);
+  });
+  describe('keys, checkpoints and concurrency', () => {
+    const crypto = require('node:crypto');
+    const { computeEventHash } = require('../services/AuditChainService');
+
+    async function freshLedger() {
+      await pool.query('DELETE FROM audit_checkpoints');
+      await pool.query('DELETE FROM audit_siem_destinations');
+      await pool.query('DELETE FROM audit_events');
+      for (let i = 1; i <= 3; i++) {
+        await logAuditEvent({
+          eventType: 'TEST_EVENT',
+          message: `event ${i}`,
+          metadata: { step: i, nested: { a: i } }
+        });
+      }
+    }
+
+    it('does not accept an event rehashed with the session signing key', async () => {
+      await freshLedger();
+      const row = (await pool.query('SELECT * FROM audit_events WHERE sequence_num = 2')).rows[0];
+      row.message = 'rewritten by someone holding the JWT secret';
+      const forged = computeEventHash(row, config.JWT_SECRET);
+      await pool.query('UPDATE audit_events SET message = $1, entry_hash = $2 WHERE sequence_num = 2', [
+        row.message,
+        forged
+      ]);
+
+      const result = await AuditChainService.verifyChain();
+      assert.strictEqual(result.valid, false);
+      assert.strictEqual(result.broken_at_sequence, 2);
+    });
+
+    it('covers nested metadata', async () => {
+      await freshLedger();
+      await pool.query(
+        `UPDATE audit_events SET metadata_json = jsonb_set(metadata_json, '{nested,a}', '99') WHERE sequence_num = 2`
+      );
+
+      const result = await AuditChainService.verifyChain();
+      assert.strictEqual(result.valid, false);
+      assert.strictEqual(result.reason, 'HASH_TAMPERED');
+    });
+
+    it('rejects a checkpoint signed with any key but its own', async () => {
+      await freshLedger();
+      const real = await AuditChainService.createCheckpoint();
+      assert.strictEqual(AuditChainService.verifyCheckpoint(real), true);
+
+      // Whoever can write the table can also sign with a key of their own and store
+      // its public half in the same row. That must not verify.
+      const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
+      const data = Buffer.from(`${real.last_event_id}|${real.last_sequence_num}|${'f'.repeat(64)}`);
+      const forged = {
+        ...real,
+        checkpoint_hash: 'f'.repeat(64),
+        signature: crypto.sign(null, data, privateKey).toString('hex'),
+        public_key: publicKey.export({ type: 'spki', format: 'pem' })
+      };
+      assert.strictEqual(AuditChainService.verifyCheckpoint(forged), false);
+    });
+
+    it('detects a truncated tail below a signed checkpoint', async () => {
+      await freshLedger();
+      await AuditChainService.createCheckpoint();
+      await pool.query('DELETE FROM audit_events WHERE sequence_num = 3');
+
+      const result = await AuditChainService.verifyChain();
+      assert.strictEqual(result.valid, false);
+      assert.strictEqual(result.reason, 'TRUNCATED');
+    });
+
+    it('detects a chain rewritten from the start under a signed checkpoint', async () => {
+      await freshLedger();
+      await AuditChainService.createCheckpoint();
+
+      // Rewrite every event consistently with the real HMAC key: the chain itself
+      // verifies, only the checkpoint can tell.
+      const rows = (await pool.query('SELECT * FROM audit_events ORDER BY sequence_num')).rows;
+      let prev = rows[0].prev_hash;
+      for (const row of rows) {
+        row.prev_hash = prev;
+        row.message = `${row.message} (rewritten)`;
+        row.entry_hash = computeEventHash(row);
+        await pool.query('UPDATE audit_events SET message = $1, prev_hash = $2, entry_hash = $3 WHERE id = $4', [
+          row.message,
+          row.prev_hash,
+          row.entry_hash,
+          row.id
+        ]);
+        prev = row.entry_hash;
+      }
+
+      const result = await AuditChainService.verifyChain();
+      assert.strictEqual(result.valid, false);
+      assert.strictEqual(result.reason, 'CHECKPOINT_MISMATCH');
+    });
+
+    it('keeps every event when many are written at once', async () => {
+      await freshLedger();
+      await Promise.all(
+        Array.from({ length: 25 }, (_, i) => logAuditEvent({ eventType: 'CONCURRENT', message: `c${i}` }))
+      );
+
+      const count = Number((await pool.query('SELECT count(*) AS n FROM audit_events')).rows[0].n);
+      assert.strictEqual(count, 28, 'no event may be lost to a sequence collision');
+      const result = await AuditChainService.verifyChain();
+      assert.strictEqual(result.valid, true, JSON.stringify(result));
+    });
+
+    it('accepts events from before the dedicated key only as a prefix', async () => {
+      await pool.query('DELETE FROM audit_checkpoints');
+      await pool.query('DELETE FROM audit_events');
+
+      // Two events as the previous code wrote them: no key id, keyed with the JWT secret.
+      const { GENESIS_HASH: genesis } = require('../services/AuditChainService');
+      let prev = genesis;
+      for (let seq = 1; seq <= 2; seq++) {
+        const row = {
+          sequence_num: seq,
+          prev_hash: prev,
+          event_type: 'LEGACY',
+          severity: 'info',
+          actor_user_id: null,
+          actor_username: 'system',
+          target_id: null,
+          target_type: null,
+          message: `legacy ${seq}`,
+          ip_address: '127.0.0.1',
+          created_at: new Date(),
+          metadata_json: {}
+        };
+        row.entry_hash = computeEventHash(row, config.JWT_SECRET);
+        await pool.query(
+          `INSERT INTO audit_events (sequence_num, prev_hash, entry_hash, event_type, severity, actor_username,
+                                     message, ip_address, metadata_json, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, $9)`,
+          [
+            seq,
+            row.prev_hash,
+            row.entry_hash,
+            row.event_type,
+            row.severity,
+            row.actor_username,
+            row.message,
+            row.ip_address,
+            row.created_at
+          ]
+        );
+        prev = row.entry_hash;
+      }
+      await logAuditEvent({ eventType: 'CURRENT', message: 'after the upgrade' });
+
+      const ok = await AuditChainService.verifyChain();
+      assert.strictEqual(ok.valid, true, JSON.stringify(ok));
+      assert.strictEqual(ok.legacy_events, 2);
+
+      // A legacy-style event appended after a current one is a forgery.
+      const head = (await pool.query('SELECT * FROM audit_events ORDER BY sequence_num DESC LIMIT 1')).rows[0];
+      const forged = {
+        sequence_num: Number(head.sequence_num) + 1,
+        prev_hash: head.entry_hash,
+        event_type: 'FORGED',
+        severity: 'info',
+        actor_user_id: null,
+        actor_username: 'system',
+        target_id: null,
+        target_type: null,
+        message: 'inserted with the JWT secret',
+        ip_address: '127.0.0.1',
+        created_at: new Date(),
+        metadata_json: {}
+      };
+      forged.entry_hash = computeEventHash(forged, config.JWT_SECRET);
+      await pool.query(
+        `INSERT INTO audit_events (sequence_num, prev_hash, entry_hash, event_type, severity, actor_username,
+                                   message, ip_address, metadata_json, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, $9)`,
+        [
+          forged.sequence_num,
+          forged.prev_hash,
+          forged.entry_hash,
+          forged.event_type,
+          forged.severity,
+          forged.actor_username,
+          forged.message,
+          forged.ip_address,
+          forged.created_at
+        ]
+      );
+
+      const bad = await AuditChainService.verifyChain();
+      assert.strictEqual(bad.valid, false);
+      assert.strictEqual(bad.reason, 'LEGACY_KEY');
+    });
   });
 });

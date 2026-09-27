@@ -227,6 +227,8 @@ matter:
 |---|---|
 | `NODE_ENV` | `production` in the stack. Turns on the secret checks and HSTS |
 | `SOVEREIGN_JWT_SECRET`, `SOVEREIGN_REFRESH_SECRET` | Signing keys. Required in production, and a value that has ever been committed is refused |
+| `SOVEREIGN_AUDIT_HMAC_SECRET` | HMAC key of the audit ledger, used for nothing else. Required in production |
+| `SOVEREIGN_AUDIT_SIGNING_KEY` | Optional Ed25519 key for audit checkpoints; generated once into `SOVEREIGN_DATA_DIR` when unset |
 | `SOVEREIGN_ADMIN_PASS` | Password of the `admin` account created at first start |
 | `SOVEREIGN_REGISTRATION_TOKEN` | Enrolment token that nodes present |
 | `DATABASE_URL`, `POSTGRES_*` | PostgreSQL connection |

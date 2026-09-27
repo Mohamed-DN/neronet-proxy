@@ -95,6 +95,10 @@ const config = {
   REFRESH_SECRET: requireSecret('SOVEREIGN_REFRESH_SECRET', 'dev-only-refresh-secret-do-not-deploy'),
   REFRESH_EXPIRES_IN: process.env.SOVEREIGN_REFRESH_EXPIRES_IN || '7d',
 
+  // HMAC key of the audit ledger, and nothing else. It used to be JWT_SECRET, which
+  // let anything that could mint a session also rewrite the ledger undetected.
+  AUDIT_HMAC_SECRET: requireSecret('SOVEREIGN_AUDIT_HMAC_SECRET', 'dev-only-audit-hmac-secret-do-not-deploy'),
+
   // Default Super-Admin Credentials
   ADMIN_USERNAME: process.env.SOVEREIGN_ADMIN_USER || 'admin',
   ADMIN_PASSWORD: requireSecret('SOVEREIGN_ADMIN_PASS', 'admin_password'),

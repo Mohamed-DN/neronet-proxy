@@ -114,6 +114,7 @@ services:
       - VALKEY_PORT=6379
       - SOVEREIGN_JWT_SECRET=${SOVEREIGN_JWT_SECRET:?set SOVEREIGN_JWT_SECRET in .env}
       - SOVEREIGN_REFRESH_SECRET=${SOVEREIGN_REFRESH_SECRET:?set SOVEREIGN_REFRESH_SECRET in .env}
+      - SOVEREIGN_AUDIT_HMAC_SECRET=${SOVEREIGN_AUDIT_HMAC_SECRET:?set SOVEREIGN_AUDIT_HMAC_SECRET in .env}
       - SOVEREIGN_ADMIN_PASS=${SOVEREIGN_ADMIN_PASS:?set SOVEREIGN_ADMIN_PASS in .env}
       # Shared enrolment token for Go data-plane nodes. Without it the bridge refuses
       # to enrol anyone in production, since /v4/control/register writes to the node

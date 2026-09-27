@@ -41,6 +41,7 @@ secrets:
   # Or provide inline (dev only)
   jwtSecret: ""
   refreshSecret: ""
+  auditHmacSecret: ""
   adminPassword: ""
   registrationToken: ""
   postgresPassword: ""

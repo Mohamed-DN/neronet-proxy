@@ -32,6 +32,7 @@ fi
   echo "POSTGRES_PASSWORD=$(rand_hex 24)"
   echo "SOVEREIGN_JWT_SECRET=$(rand_hex 32)"
   echo "SOVEREIGN_REFRESH_SECRET=$(rand_hex 32)"
+  echo "SOVEREIGN_AUDIT_HMAC_SECRET=$(rand_hex 32)"
   echo "SOVEREIGN_ADMIN_PASS=$(rand_hex 16)"
   echo "SOVEREIGN_REGISTRATION_TOKEN=$(rand_hex 32)"
 } > "$TARGET"
@@ -39,4 +40,4 @@ fi
 # No effect on filesystems without POSIX modes (NTFS through Git Bash).
 chmod 600 "$TARGET" 2>/dev/null || true
 
-echo "wrote $TARGET (5 secrets, not shown)"
+echo "wrote $TARGET (6 secrets, not shown)"
