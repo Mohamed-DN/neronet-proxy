@@ -73,6 +73,16 @@ class AuditChainService {
     const pool = getPgPool();
     const client = await pool.connect();
 
+    // A checked-out client whose connection drops between queries emits 'error'.
+    // With no listener that is an uncaught exception, and the process dies with the
+    // database connection: on a failover, or a test dropping its database.
+    let connectionError = null;
+    const onError = (err) => {
+      connectionError = err;
+      logger.warn(`Audit ledger connection lost: ${err.message}`);
+    };
+    client.on('error', onError);
+
     try {
       await client.query('BEGIN');
 
@@ -142,10 +152,12 @@ class AuditChainService {
       await client.query('COMMIT');
       return insertRes.rows[0];
     } catch (err) {
-      await client.query('ROLLBACK');
+      await client.query('ROLLBACK').catch(() => {});
       throw err;
     } finally {
-      client.release();
+      client.removeListener('error', onError);
+      // A broken connection is discarded rather than returned to the pool.
+      client.release(connectionError || undefined);
     }
   }
 
