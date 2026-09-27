@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { Check, Copy, Download, Lock, Plus, Search, Share2, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -12,6 +12,7 @@ import {
   useVerifyAuditChain
 } from '../../services/queries';
 import type { AuditEvent } from '../../services/types';
+import AuthContext from '../../context/AuthContext';
 import {
   Badge,
   Button,
@@ -33,11 +34,17 @@ import {
 export default function AuditRoute() {
   const { t } = useTranslation('ui');
 
+  // The ledger is platform wide (events carry no organisation), so verification,
+  // checkpoints, SIEM sinks and export are the platform super-admin's. Other users
+  // see their own events only.
+  const auth = useContext(AuthContext);
+  const isPlatformAdmin = auth?.user?.role === 'super-admin';
+
   // Queries
   const { data: events = [], isLoading, error, refetch } = useAuditEvents(250);
-  const { data: verifyResult, isLoading: isVerifying, refetch: refetchVerify } = useVerifyAuditChain();
-  const { data: checkpointData } = useAuditCheckpoints();
-  const { data: siemDestinations = [] } = useSiemDestinations();
+  const { data: verifyResult, isLoading: isVerifying, refetch: refetchVerify } = useVerifyAuditChain(isPlatformAdmin);
+  const { data: checkpointData } = useAuditCheckpoints(isPlatformAdmin);
+  const { data: siemDestinations = [] } = useSiemDestinations(isPlatformAdmin);
 
   // Mutations
   const createCheckpoint = useCreateAuditCheckpoint();
@@ -294,31 +301,33 @@ export default function AuditRoute() {
         title={t('audit.title')}
         description={t('audit.description')}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                refetchVerify();
-                setVerifyModalOpen(true);
-              }}
-              data-testid="verify-chain-button"
-            >
-              <ShieldCheck className="w-4 h-4 mr-2 text-success" />
-              <span>{t('audit.actions.verifyChain')}</span>
-            </Button>
-            <Button variant="secondary" onClick={() => setCheckpointModalOpen(true)} data-testid="checkpoints-button">
-              <Lock className="w-4 h-4 mr-2" />
-              <span>{t('audit.actions.createCheckpoint')}</span>
-            </Button>
-            <Button variant="secondary" onClick={() => setSiemModalOpen(true)} data-testid="siem-button">
-              <Share2 className="w-4 h-4 mr-2" />
-              <span>{t('audit.actions.siemTargets')}</span>
-            </Button>
-            <Button variant="primary" onClick={() => setExportModalOpen(true)} data-testid="export-audit-button">
-              <Download className="w-4 h-4 mr-2" />
-              <span>{t('audit.actions.exportLog')}</span>
-            </Button>
-          </div>
+          isPlatformAdmin ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  refetchVerify();
+                  setVerifyModalOpen(true);
+                }}
+                data-testid="verify-chain-button"
+              >
+                <ShieldCheck className="w-4 h-4 mr-2 text-success" />
+                <span>{t('audit.actions.verifyChain')}</span>
+              </Button>
+              <Button variant="secondary" onClick={() => setCheckpointModalOpen(true)} data-testid="checkpoints-button">
+                <Lock className="w-4 h-4 mr-2" />
+                <span>{t('audit.actions.createCheckpoint')}</span>
+              </Button>
+              <Button variant="secondary" onClick={() => setSiemModalOpen(true)} data-testid="siem-button">
+                <Share2 className="w-4 h-4 mr-2" />
+                <span>{t('audit.actions.siemTargets')}</span>
+              </Button>
+              <Button variant="primary" onClick={() => setExportModalOpen(true)} data-testid="export-audit-button">
+                <Download className="w-4 h-4 mr-2" />
+                <span>{t('audit.actions.exportLog')}</span>
+              </Button>
+            </div>
+          ) : undefined
         }
       />
 
@@ -327,8 +336,16 @@ export default function AuditRoute() {
         <Stat label={t('audit.stats.totalEvents')} value={events.length} hint="Immutable HMAC ledger" />
         <Stat
           label={t('audit.stats.chainStatus')}
-          value={verifyResult?.valid ? 'VALID' : 'VERIFIED'}
-          hint={verifyResult?.valid ? t('audit.stats.validBadge') : 'Checking hash link...'}
+          value={!isPlatformAdmin || !verifyResult ? '—' : verifyResult.valid ? 'VALID' : 'BROKEN'}
+          hint={
+            !isPlatformAdmin
+              ? 'Verified by the platform administrator'
+              : !verifyResult
+                ? 'Checking hash link...'
+                : verifyResult.valid
+                  ? t('audit.stats.validBadge')
+                  : `Broken at #${verifyResult.broken_at_sequence ?? '?'}`
+          }
         />
         <Stat label={t('audit.stats.checkpoints')} value={checkpoints.length} hint="Signed Ed25519 anchors" />
         <Stat
