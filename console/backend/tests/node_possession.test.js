@@ -153,3 +153,27 @@ describe('Registration requires possession of the node key', () => {
     assert.strictEqual(res.status, 401);
   });
 });
+
+// NODEID-3: a nonce kept in one process's memory is single-use in that process only.
+describe('Challenge nonces with the store unavailable', () => {
+  const config = require('../config/env');
+  const valkey = require('../db/valkey');
+
+  it('refuses to issue one in production instead of keeping it in memory', async () => {
+    const realGet = valkey.getValkeyClient;
+    const savedProd = config.IS_PRODUCTION;
+    const failing = { set: async () => Promise.reject(new Error('valkey down')), del: async () => 0 };
+    // ControlPlaneKeyService reads the client through the module at call time.
+    valkey.getValkeyClient = () => failing;
+    config.IS_PRODUCTION = true;
+    try {
+      await assert.rejects(
+        () => ControlPlaneKeyService.createChallenge(),
+        (err) => err.status === 503
+      );
+    } finally {
+      valkey.getValkeyClient = realGet;
+      config.IS_PRODUCTION = savedProd;
+    }
+  });
+});

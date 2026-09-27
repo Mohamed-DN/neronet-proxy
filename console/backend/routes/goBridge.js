@@ -133,7 +133,7 @@ router.post('/challenge', validateRequest('ChallengeRequest'), async (req, res) 
     });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Challenge generation failed: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(err.status || 500).json({ error: err.message });
   }
 });
 
