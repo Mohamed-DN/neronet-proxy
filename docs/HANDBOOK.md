@@ -457,28 +457,33 @@ X25519 + ML-KEM-1024.
 The personal dead man's switch unlock accepts the credential the user stored, and no
 other. The global wipe requires an explicit confirmation.
 
-### 6.2 The audit log is not tamper-evident
+### 6.2 The audit log
 
-`audit_events` is an ordinary table. There is no hash chain, no signature and no
-append-only constraint. Anyone with database access can edit or delete entries,
-including the entries that record it.
+Each event carries an HMAC-SHA256 over its content and its predecessor's hash, keyed with
+`SOVEREIGN_AUDIT_HMAC_SECRET`, which is used for nothing else. The head of the chain is
+signed on request with an Ed25519 key (`SOVEREIGN_AUDIT_SIGNING_KEY`, or one generated
+once into the data directory), and verification checks every signed checkpoint against
+the event it covers. The chain detects edited, deleted and inserted events; the
+checkpoints detect a truncated tail and a chain rewritten from the start.
 
-Regulated buyers require an audit trail that survives an attacker with database access.
-Minimum: each row carries the hash of its predecessor, the chain head is signed
-periodically, and the signature is published somewhere the database cannot reach. The
-warrant canary already has the signing machinery.
+What it does not do: checkpoints are not taken on a schedule, and they only mean
+something if their public key is recorded somewhere the server cannot write. Events
+written before the dedicated key existed were keyed with the JWT secret; they verify only
+as an unbroken prefix of the chain, and `SOVEREIGN_AUDIT_ACCEPT_LEGACY=false` refuses
+them. Events carry no organisation, so the ledger is readable in bulk by the platform
+super-admin only.
 
 ### 6.3 Remaining gaps
 
 | Requirement | State |
 |---|---|
 | Data plane | A spike behind a flag; not the default ([ADR 0020](adr/0020-data-plane.md)) |
-| Per-node credentials, proof of key possession | Not implemented. One enrolment token serves the fleet |
+| Per-node credentials, proof of key possession | Pre-auth keys and a proof-of-possession challenge. The fleet-wide enrolment token still works as a fallback |
 | Posture measurement on the node | Not implemented. Disk encryption and firewall state are not measured, so every node is `unverified` |
 | External cryptographic audit | None. A nonce reuse defect was found in-house in the onion layer in September 2026 |
 | Reproducible builds, signed artefacts, SBOM | Not implemented |
 | SSO / OIDC | Authorization code flow with PKCE; ID tokens verified against the provider's published keys; group claims map to organisation roles only. Tested against a local provider in the test suite, not yet against Keycloak or Entra ID. No API or console page configures it: the configuration row is written to `organization_oidc_configs` directly |
-| Role model with an auditor role | Not implemented. Two roles exist |
+| Role model with an auditor role | Platform role (`super-admin`, `user`) and per-organisation roles (`owner`, `admin`, `network_admin`, `auditor`, `member`) |
 | Written threat model | None |
 | Key rotation procedure | None |
 | High availability | Designed ([ADR 0001](adr/0001-no-multi-master-postgresql.md)), not built |
@@ -502,7 +507,9 @@ warrant canary already has the signing machinery.
   `NODE_ENV=production`. The nginx edge of the compose stack does not send HSTS, because
   it serves plain HTTP.
 - Tenant isolation enforced centrally and probed by a test that enumerates
-  node-addressed routes as the wrong tenant.
+  node-addressed routes as the wrong tenant. On the overlay a node's peers and rules are
+  its own organisation's (and the platform's rules); with no rule, the organisation's
+  `default_policy` decides.
 - JWT revocation with `jti` and a shared blacklist.
 - Federation requires signature verification and out-of-band fingerprint confirmation.
 - The node heartbeat requires the enrolment token, like the other five node endpoints.
@@ -668,9 +675,11 @@ agreement and destroying a user both put keys in the window. Three cases remain 
 
 Section 6.1. This is what makes NeroNuke mean what it claims.
 
-### 10.4 Tamper-evident audit log
+### 10.4 Audit log: what remains
 
-Section 6.2. A prerequisite for any regulated buyer.
+Section 6.2. The chain and the checkpoints exist; what remains is taking checkpoints on
+a schedule, publishing their public key outside the server, and tagging events with their
+organisation so an organisation's auditors can verify their own part.
 
 ### 10.5 Then
 
