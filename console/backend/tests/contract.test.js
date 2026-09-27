@@ -11,6 +11,7 @@ process.env.SOVEREIGN_REGISTRATION_TOKEN = REGISTRATION_TOKEN;
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const { validateResponse, validators } = require('../middleware/contractValidator');
+const { nodeKey, register } = require('./helpers/nodeEnrolment');
 
 const FIXTURES_DIR = path.resolve(__dirname, '../../../api/contract/v4/fixtures');
 
@@ -66,13 +67,19 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
 
   describe('Valid request fixtures succeed against real handlers', () => {
     let registeredNodeId;
+    // The per-node endpoints take the credential registration issues, not the fleet token.
+    let NODE_AUTH;
 
     it('POST /v4/control/register with RegisterRequest.json', async () => {
       const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'RegisterRequest.json'), 'utf8'));
-      const res = await request(app).post('/v4/control/register').set(AUTH).send(fixture);
+      // The fixture's key is a constant nobody holds the private half of; the
+      // registration has to prove possession, so it uses a real one.
+      fixture.public_key_hex = nodeKey();
+      const res = await register(app, fixture, { token: REGISTRATION_TOKEN });
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
       registeredNodeId = res.body.assigned_node_id;
+      NODE_AUTH = { Authorization: `Bearer ${res.body.credential}` };
 
       // Validate response against RegisterResponse schema
       const val = validateResponse('RegisterResponse', res.body);
@@ -82,7 +89,7 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     it('POST /v4/control/heartbeat with HeartbeatRequest.json', async () => {
       const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'HeartbeatRequest.json'), 'utf8'));
       fixture.node_id = registeredNodeId;
-      const res = await request(app).post('/v4/control/heartbeat').set(AUTH).send(fixture);
+      const res = await request(app).post('/v4/control/heartbeat').set(NODE_AUTH).send(fixture);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
 
@@ -102,7 +109,8 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
 
     it('POST /v4/control/circuit with CircuitRequest.json', async () => {
       const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'CircuitRequest.json'), 'utf8'));
-      const res = await request(app).post('/v4/control/circuit').set(AUTH).send(fixture);
+      fixture.node_id = registeredNodeId;
+      const res = await request(app).post('/v4/control/circuit').set(NODE_AUTH).send(fixture);
 
       // Either 200 or 503 (if test db has fewer than 3 distinct relays for diversity)
       assert.ok([200, 503].includes(res.status));
@@ -115,7 +123,7 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     it('POST /v4/control/sync-acls with ACLSyncRequest.json', async () => {
       const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'ACLSyncRequest.json'), 'utf8'));
       fixture.node_id = registeredNodeId;
-      const res = await request(app).post('/v4/control/sync-acls').set(AUTH).send(fixture);
+      const res = await request(app).post('/v4/control/sync-acls').set(NODE_AUTH).send(fixture);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
 
@@ -126,7 +134,7 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     it('POST /v4/control/sync-routes with RouteSyncRequest.json', async () => {
       const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'RouteSyncRequest.json'), 'utf8'));
       fixture.node_id = registeredNodeId;
-      const res = await request(app).post('/v4/control/sync-routes').set(AUTH).send(fixture);
+      const res = await request(app).post('/v4/control/sync-routes').set(NODE_AUTH).send(fixture);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
 
@@ -137,7 +145,7 @@ describe('Wire contract enforcement on /v4/control/* endpoints', () => {
     it('POST /v4/control/netmap with NetmapRequest.json', async () => {
       const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'NetmapRequest.json'), 'utf8'));
       fixture.node_id = registeredNodeId;
-      const res = await request(app).post('/v4/control/netmap').set(AUTH).send(fixture);
+      const res = await request(app).post('/v4/control/netmap').set(NODE_AUTH).send(fixture);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
 

@@ -1,9 +1,9 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const crypto = require('node:crypto');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
+const { nodeKey, register } = require('./helpers/nodeEnrolment');
 const RevocationEngine = require('../services/RevocationEngine');
 const jwt = require('jsonwebtoken');
 const config = require('../config/env');
@@ -41,26 +41,14 @@ describe('WP-205: Revocation-to-Data-Plane propagation', () => {
     pool = dbHelper.pool;
     app = createApp();
 
-    betaKey = crypto.randomBytes(32).toString('hex');
-    gammaKey = crypto.randomBytes(32).toString('hex');
+    betaKey = nodeKey();
+    gammaKey = nodeKey();
 
-    alpha = (
-      await request(app)
-        .post('/v4/control/register')
-        .send({ public_key_hex: 'a'.repeat(64), role: 'CLIENT_ORIGIN', endpoints: [] })
-    ).body;
+    alpha = (await register(app, { public_key_hex: nodeKey(), role: 'CLIENT_ORIGIN', endpoints: [] })).body;
 
-    beta = (
-      await request(app)
-        .post('/v4/control/register')
-        .send({ public_key_hex: betaKey, role: 'CLIENT_ORIGIN', endpoints: [] })
-    ).body;
+    beta = (await register(app, { public_key_hex: betaKey, role: 'CLIENT_ORIGIN', endpoints: [] })).body;
 
-    gamma = (
-      await request(app)
-        .post('/v4/control/register')
-        .send({ public_key_hex: gammaKey, role: 'CLIENT_ORIGIN', endpoints: [] })
-    ).body;
+    gamma = (await register(app, { public_key_hex: gammaKey, role: 'CLIENT_ORIGIN', endpoints: [] })).body;
 
     // Retrieve beta's and gamma's node IDs and user IDs for direct API calls
     const betaNode = (await pool.query('SELECT * FROM nodes WHERE public_key = $1', [betaKey])).rows[0];
@@ -143,12 +131,8 @@ describe('WP-205: Revocation-to-Data-Plane propagation', () => {
 
   it('ACL epoch is bumped on each revocation so peers re-sync their policy', async () => {
     const { bumpEpoch, getEpoch } = require('../services/AclEngine');
-    const delta = crypto.randomBytes(32).toString('hex');
-    const deltaNode = (
-      await request(app)
-        .post('/v4/control/register')
-        .send({ public_key_hex: delta, role: 'CLIENT_ORIGIN', endpoints: [] })
-    ).body;
+    const delta = nodeKey();
+    const deltaNode = (await register(app, { public_key_hex: delta, role: 'CLIENT_ORIGIN', endpoints: [] })).body;
 
     const epochBefore = await getEpoch('acl');
 

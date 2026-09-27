@@ -7,6 +7,7 @@ const request = require('supertest');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const AclEngine = require('../services/AclEngine');
+const { nodeKey, register } = require('./helpers/nodeEnrolment');
 
 /**
  * pkg/acl compiles and enforces zero-trust policy correctly and was handed nothing,
@@ -68,11 +69,11 @@ describe('ACL policy delivery', () => {
     dbHelper = await setupTestDatabase();
     app = createApp();
 
-    const register = async (key) => (await request(app).post('/v4/control/register').send(registerBody(key))).body;
+    const enrol = async () => (await register(app, registerBody(nodeKey()))).body;
 
-    alpha = await register('a'.repeat(64));
-    beta = await register('b'.repeat(64));
-    gamma = await register('c'.repeat(64));
+    alpha = await enrol();
+    beta = await enrol();
+    gamma = await enrol();
   });
 
   after(async () => {
@@ -204,9 +205,7 @@ describe('ACL policy delivery', () => {
     // Rules expand per peer, so the compiled result changes when the fleet changes.
     // Missing this leaves rules identical while the peers they expand to are not.
     const before = await AclEngine.getEpoch('acl');
-    await request(app)
-      .post('/v4/control/register')
-      .send(registerBody('d'.repeat(64)));
+    await register(app, registerBody(nodeKey()));
     const after = await AclEngine.getEpoch('acl');
 
     assert.ok(after > before, 'a new node did not invalidate existing policies');
@@ -223,9 +222,7 @@ describe('ACL policy delivery', () => {
     await AclEngine.bumpEpoch('acl');
     const epoch = await AclEngine.getEpoch('acl');
 
-    const res = await request(app)
-      .post('/v4/control/register')
-      .send(registerBody('e'.repeat(64)));
+    const res = await register(app, registerBody(nodeKey()));
 
     assert.strictEqual(
       res.body.policy_epoch,
@@ -236,9 +233,7 @@ describe('ACL policy delivery', () => {
   });
 
   it('reports a raised epoch on heartbeat so a running node re-syncs', async () => {
-    const reg = await request(app)
-      .post('/v4/control/register')
-      .send(registerBody('f'.repeat(64)));
+    const reg = await register(app, registerBody(nodeKey()));
     const held = reg.body.policy_epoch;
 
     const before = await request(app)
@@ -264,15 +259,22 @@ describe('ACL policy delivery', () => {
     assert.strictEqual(res.status, 404);
   });
 
-  it('requires the enrolment token when one is configured', async () => {
+  it('requires the node credential when a fleet token is configured', async () => {
     process.env.SOVEREIGN_REGISTRATION_TOKEN = 'acl-token';
     try {
       const denied = await sync(alpha.assigned_node_id);
       assert.strictEqual(denied.status, 401);
 
-      const allowed = await request(app)
+      // The fleet token identifies no node, so it cannot read a node's policy.
+      const fleet = await request(app)
         .post('/v4/control/sync-acls')
         .set('Authorization', 'Bearer acl-token')
+        .send({ node_id: alpha.assigned_node_id, policy_epoch: 0 });
+      assert.strictEqual(fleet.status, 401);
+
+      const allowed = await request(app)
+        .post('/v4/control/sync-acls')
+        .set('Authorization', `Bearer ${alpha.credential}`)
         .send({ node_id: alpha.assigned_node_id, policy_epoch: 0 });
       assert.strictEqual(allowed.status, 200);
     } finally {

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -106,6 +107,7 @@ func TestRegisterWithProof(t *testing.T) {
 
 			mac := hmac.New(sha256.New, derivedKey)
 			mac.Write(append(nonceBytes, nodePubBytes...))
+			mac.Write([]byte(req.Role))
 			expectedProof := hex.EncodeToString(mac.Sum(nil))
 
 			if req.Proof != expectedProof {
@@ -227,5 +229,106 @@ func TestHeartbeatRotatesCredential(t *testing.T) {
 	}
 	if client.authToken != "nnt1_rotated_token_new" {
 		t.Errorf("client authToken was not rotated: got %s", client.authToken)
+	}
+}
+
+// The control plane computes the proof in Node (ControlPlaneKeyService.verifyProof);
+// these values come from its computeClientProof for the same keys, nonce and role.
+// A difference in byte order, key derivation or role encoding between the two
+// implementations fails here rather than as every node in the fleet being refused.
+func TestRegisterWithProofMatchesControlPlaneVector(t *testing.T) {
+	const (
+		cpPubHex   = "0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f20"
+		nodePubHex = "7b4e909bbe7ffe44c465a220037d608ee35897d31ef972f07f74892cb0f73f13"
+		nonceHex   = "3333333333333333333333333333333333333333333333333333333333333333"
+	)
+	want := map[string]string{
+		"CLIENT_ORIGIN": "0153baf887b10fd732e798dc3bae799a994b679afa5c1a6c72dbb0a7781d391a",
+		"EXIT_BRIDGE":   "18fef69fed9fa1a0b2c777eaf57350000571528c6622a8a7579d1217738f4121",
+	}
+
+	var nodePriv, nodePub [crypto.KeySize]byte
+	for i := range nodePriv {
+		nodePriv[i] = 0x11
+	}
+	curve25519.ScalarBaseMult(&nodePub, &nodePriv)
+	if got := hex.EncodeToString(nodePub[:]); got != nodePubHex {
+		t.Fatalf("node public key %s, want %s", got, nodePubHex)
+	}
+
+	for role, proof := range want {
+		var sent RegisterRequest
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if r.URL.Path == "/v4/control/challenge" {
+				_ = json.NewEncoder(w).Encode(ChallengeResponse{Nonce: nonceHex, ControlPlanePubHex: cpPubHex})
+				return
+			}
+			_ = json.NewDecoder(r.Body).Decode(&sent)
+			_ = json.NewEncoder(w).Encode(RegisterResponse{AssignedNodeID: "pk_x", OverlayIPv4: "100.64.0.9"})
+		}))
+
+		_, err := NewClient(server.URL).RegisterWithProof(context.Background(), nodePriv, nodePub, role, nil, CapabilityDesc{}, "")
+		server.Close()
+		if err != nil {
+			t.Fatalf("%s: %v", role, err)
+		}
+		if sent.Proof != proof {
+			t.Errorf("%s: proof %s, control plane expects %s", role, sent.Proof, proof)
+		}
+	}
+}
+
+// After registration the node authenticates as itself. The fleet token stays for
+// the next enrolment and is never sent where a node credential is expected.
+func TestCredentialReplacesEnrolmentTokenAfterRegistration(t *testing.T) {
+	var cpPriv, cpPub [crypto.KeySize]byte
+	cpPriv[0] = 9
+	curve25519.ScalarBaseMult(&cpPub, &cpPriv)
+
+	seen := map[string]string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen[r.URL.Path] = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v4/control/challenge":
+			_ = json.NewEncoder(w).Encode(ChallengeResponse{Nonce: strings.Repeat("ab", 32), ControlPlanePubHex: hex.EncodeToString(cpPub[:])})
+		case "/v4/control/register":
+			_ = json.NewEncoder(w).Encode(RegisterResponse{AssignedNodeID: "pk_x", OverlayIPv4: "100.64.0.9", Credential: "nnt1_node"})
+		case "/v4/control/heartbeat":
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"node credential has expired"}`))
+		}
+	}))
+	defer server.Close()
+
+	var priv, pub [crypto.KeySize]byte
+	priv[0] = 7
+	curve25519.ScalarBaseMult(&pub, &priv)
+
+	client := NewClient(server.URL)
+	client.SetAuthToken("fleet-token")
+	if _, err := client.RegisterWithProof(context.Background(), priv, pub, "CLIENT_ORIGIN", nil, CapabilityDesc{}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if seen["/v4/control/register"] != "Bearer fleet-token" {
+		t.Errorf("register sent %q", seen["/v4/control/register"])
+	}
+
+	_, err := client.SendHeartbeat(context.Background(), "pk_x", nil, 0, 0, 0, 0, false)
+	if seen["/v4/control/heartbeat"] != "Bearer nnt1_node" {
+		t.Errorf("heartbeat sent %q, want the node credential", seen["/v4/control/heartbeat"])
+	}
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("a refused credential must surface as ErrUnauthorized, got %v", err)
+	}
+
+	// The refused credential is dropped, and the next registration still carries the
+	// enrolment token rather than the stale credential.
+	if _, err := client.RegisterWithProof(context.Background(), priv, pub, "CLIENT_ORIGIN", nil, CapabilityDesc{}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if seen["/v4/control/register"] != "Bearer fleet-token" {
+		t.Errorf("re-registration sent %q", seen["/v4/control/register"])
 	}
 }

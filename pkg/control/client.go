@@ -31,11 +31,24 @@ const ClientVersion = "v4.0.0"
 // It is recoverable: the node still holds its identity and can enrol again.
 var ErrNodeUnknown = errors.New("control plane has no record of this node")
 
+// ErrUnauthorized is returned when the control plane refuses the node credential:
+// it expired, was revoked, or belongs to a registration the control plane no longer
+// has. Also recoverable by enrolling again, which proves possession of the key.
+var ErrUnauthorized = errors.New("control plane refused the node credential")
+
 // Client interacts with the SovereignMesh Control Plane Service
 type Client struct {
 	serverURL  string
 	httpClient *http.Client
-	authToken  string
+
+	// enrolToken is the fleet-wide enrolment token. It authorises enrolling a key
+	// and listing exit bridges; it does not identify a node, and the control plane
+	// refuses it on the per-node endpoints.
+	enrolToken string
+
+	// authToken is this node's own credential, issued by registration and rotated
+	// by heartbeats. It is what the per-node endpoints accept.
+	authToken string
 
 	// The heartbeat loop and any caller that issues requests concurrently both
 	// touch this, so it is guarded. Heartbeats are sent from one goroutine today,
@@ -79,13 +92,22 @@ func NewClient(serverURL string) *Client {
 	}
 }
 
-// newRequest builds a POST carrying the enrolment token.
+// newRequest builds a POST carrying the node credential, or the enrolment token
+// until the node has a credential.
 //
 // The token travels in an Authorization header rather than in each request struct.
 // Only RegisterRequest has an AuthToken field, so a body-only scheme would leave
 // every other endpoint unauthenticated -- which is what left discovery open to any
 // caller that could reach the port.
 func (c *Client) newRequest(ctx context.Context, path string, body any) (*http.Request, error) {
+	token := c.authToken
+	if token == "" {
+		token = c.enrolToken
+	}
+	return c.newRequestWithToken(ctx, path, body, token)
+}
+
+func (c *Client) newRequestWithToken(ctx context.Context, path string, body any, token string) (*http.Request, error) {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -97,60 +119,35 @@ func (c *Client) newRequest(ctx context.Context, path string, body any) (*http.R
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if c.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	return req, nil
 }
 
-// SetAuthToken sets the shared enrolment token sent with registration requests.
+// SetAuthToken sets the fleet-wide enrolment token.
 //
-// RegisterRequest has always carried an AuthToken field, but nothing ever populated
-// it, so the control plane had no way to tell an authorised node from any process
-// that could reach the port.
+// It is sent when enrolling and when listing exit bridges. Once registration has
+// issued this node its own credential, every other request carries that instead:
+// the enrolment token names no node, and the control plane does not accept it as
+// one.
 func (c *Client) SetAuthToken(token string) {
-	c.authToken = token
+	c.enrolToken = token
 }
 
-// Register registers a local node with the control plane
-func (c *Client) Register(
-	ctx context.Context,
-	pubKey [crypto.KeySize]byte,
-	role string,
-	endpoints []EndpointDesc,
-	capability CapabilityDesc,
-) (*RegisterResponse, error) {
-	reqBody := RegisterRequest{
-		PublicKeyHex:  hex.EncodeToString(pubKey[:]),
-		Role:          role,
-		Endpoints:     endpoints,
-		AuthToken:     c.authToken,
-		ClientVersion: ClientVersion,
-		Capability:    capability,
+// errorFromResponse turns a refused request into an error that carries the control
+// plane's reason, so an operator reading the node log sees "this key has been
+// revoked" rather than a bare status code.
+func errorFromResponse(what string, resp *http.Response) error {
+	var body struct {
+		Error string `json:"error"`
 	}
-
-	req, err := c.newRequest(ctx, "/v4/control/register", reqBody)
-	if err != nil {
-		return nil, err
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&body)
+	if body.Error != "" {
+		return fmt.Errorf("%s: status %d: %s", what, resp.StatusCode, body.Error)
 	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("control plane register failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("control plane returned error status %d", resp.StatusCode)
-	}
-
-	var regResp RegisterResponse
-	if err := json.NewDecoder(resp.Body).Decode(&regResp); err != nil {
-		return nil, err
-	}
-
-	return &regResp, nil
+	return fmt.Errorf("%s: status %d", what, resp.StatusCode)
 }
 
 // SendHeartbeat sends periodic telemetry and liveness heartbeats
@@ -216,6 +213,13 @@ func (c *Client) SendHeartbeatWithPosture(
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNodeUnknown
 	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		c.authToken = ""
+		return nil, ErrUnauthorized
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, errorFromResponse("heartbeat refused", resp)
+	}
 
 	var hbResp HeartbeatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&hbResp); err != nil {
@@ -254,7 +258,23 @@ func (c *Client) GetChallenge(ctx context.Context) (*ChallengeResponse, error) {
 	return &chResp, nil
 }
 
-// RegisterWithProof enrols a node using the ADR 0017 challenge-response proof of possession
+// registrationProof is HMAC-SHA256(key, nonce || node public key || role). The role
+// is covered so that a proof made for one role cannot enrol the key as another.
+func registrationProof(derivedKey, nonce []byte, nodePub [crypto.KeySize]byte, role string) []byte {
+	mac := hmac.New(sha256.New, derivedKey)
+	mac.Write(nonce)
+	mac.Write(nodePub[:])
+	mac.Write([]byte(role))
+	return mac.Sum(nil)
+}
+
+// RegisterWithProof enrols a node using the ADR 0017 challenge-response proof of
+// possession. It is the only way to register: the control plane refuses a
+// registration that does not prove the node holds its private key.
+//
+// enrolmentString is a pre-auth key, optionally as "nnk1:<key>:<control plane
+// fingerprint>". It may be empty when the fleet enrolment token is set, or when this
+// key is already enrolled.
 func (c *Client) RegisterWithProof(
 	ctx context.Context,
 	nodePriv [crypto.KeySize]byte,
@@ -314,15 +334,13 @@ func (c *Client) RegisterWithProof(
 		return nil, fmt.Errorf("invalid nonce hex: %w", err)
 	}
 
-	mac := hmac.New(sha256.New, derivedKey)
-	mac.Write(append(nonceBytes, nodePub[:]...))
-	proofHex := hex.EncodeToString(mac.Sum(nil))
+	proofHex := hex.EncodeToString(registrationProof(derivedKey, nonceBytes, nodePub, role))
 
 	reqBody := RegisterRequest{
 		PublicKeyHex:  hex.EncodeToString(nodePub[:]),
 		Role:          role,
 		Endpoints:     endpoints,
-		AuthToken:     c.authToken,
+		AuthToken:     c.enrolToken,
 		ClientVersion: ClientVersion,
 		Capability:    capability,
 		PreAuthKey:    preauthKey,
@@ -330,7 +348,10 @@ func (c *Client) RegisterWithProof(
 		Proof:         proofHex,
 	}
 
-	req, err := c.newRequest(ctx, "/v4/control/register", reqBody)
+	// Registration always carries the enrolment token, never a credential from an
+	// earlier registration: that one may belong to a registration the control plane
+	// no longer has, and the proof, not the credential, is what identifies the node.
+	req, err := c.newRequestWithToken(ctx, "/v4/control/register", reqBody, c.enrolToken)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +363,7 @@ func (c *Client) RegisterWithProof(
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("control plane returned error status %d", resp.StatusCode)
+		return nil, errorFromResponse("control plane refused registration", resp)
 	}
 
 	var regResp RegisterResponse

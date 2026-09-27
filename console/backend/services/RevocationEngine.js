@@ -102,6 +102,19 @@ async function revokeNodeKeys(nodeIds, { reason = 'manual', actorId = null } = {
   return revoked;
 }
 
+/** True when this public key has an active revocation. */
+async function isRevoked(publicKeyHex) {
+  const keyHex = normalisePublicKeyHex(publicKeyHex);
+  if (!keyHex) return false;
+  const rows = await query(
+    'SELECT 1 FROM revoked_keys WHERE public_key_hex = $1 AND expires_at > NOW()',
+    [keyHex],
+    "SELECT 1 FROM revoked_keys WHERE public_key_hex = ? AND expires_at > datetime('now')",
+    [keyHex]
+  );
+  return rows.length > 0;
+}
+
 /** Revoke every node belonging to a user. Used when a user is destroyed. */
 async function revokeUserNodes(userId, { reason = 'user_destroyed', actorId = null } = {}) {
   const rows = await query(
@@ -144,5 +157,6 @@ module.exports = {
   revokeNodeKeys,
   revokeUserNodes,
   activeRevocations,
+  isRevoked,
   purgeExpired
 };

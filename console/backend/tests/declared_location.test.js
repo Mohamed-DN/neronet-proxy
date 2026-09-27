@@ -5,6 +5,7 @@ const request = require('supertest');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
+const enrolment = require('./helpers/nodeEnrolment');
 
 /**
  * A node can state a city and coordinates. Nothing verifies them, so the control plane
@@ -12,10 +13,10 @@ const { createApp } = require('../server');
  * and null for a node that stated nothing.
  */
 
-const KEY_SYDNEY = 'c1'.repeat(32);
-const KEY_NONE = 'c2'.repeat(32);
-const KEY_LATE = 'c3'.repeat(32);
-const KEY_BAD = 'c4'.repeat(32);
+const KEY_SYDNEY = enrolment.nodeKey();
+const KEY_NONE = enrolment.nodeKey();
+const KEY_LATE = enrolment.nodeKey();
+const KEY_BAD = enrolment.nodeKey();
 
 const SYDNEY = { city: 'Sydney', latitude: -33.8688, longitude: 151.2093 };
 
@@ -33,10 +34,7 @@ function registerBody(publicKeyHex, capability) {
 }
 
 function register(app, publicKeyHex, capability) {
-  return request(app)
-    .post('/v4/control/register')
-    .set('Authorization', `Bearer ${REGISTRATION_TOKEN}`)
-    .send(registerBody(publicKeyHex, capability));
+  return enrolment.register(app, registerBody(publicKeyHex, capability), { token: REGISTRATION_TOKEN });
 }
 
 describe('Declared node location', () => {
@@ -109,7 +107,7 @@ describe('Declared node location', () => {
   });
 
   it('accepts the declaration of 0,0 as a position', async () => {
-    const key = 'c5'.repeat(32);
+    const key = enrolment.nodeKey();
     const res = await register(app, key, { city: 'Null Island', latitude: 0, longitude: 0 });
     assert.strictEqual(res.status, 200);
 
@@ -183,7 +181,7 @@ describe('Declared node location', () => {
   });
 
   it('keeps other metadata when it marks the position as declared', async () => {
-    const key = 'c6'.repeat(32);
+    const key = enrolment.nodeKey();
     await register(app, key, {});
     await dbHelper.pool.query('UPDATE nodes SET metadata = $1::jsonb WHERE id = $2', [
       JSON.stringify({ label: 'kept' }),

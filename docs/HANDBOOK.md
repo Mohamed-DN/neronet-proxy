@@ -165,11 +165,25 @@ There are two roles: `super-admin` and `user`. Nodes do not use JWTs; see sectio
 
 ## 3. The node protocol
 
-Six endpoints under `/v4/control` serve the Go node. All of them are implemented in
-`console/backend/routes/goBridge.js` and all of them require the enrolment token
-(`SOVEREIGN_REGISTRATION_TOKEN`) in the `Authorization: Bearer` header. The token is one
-value shared by the whole fleet. Per-node credentials and proof that a node holds its
-private key are not implemented.
+Endpoints under `/v4/control` serve the Go node, implemented in
+`console/backend/routes/goBridge.js` with authentication in
+`console/backend/middleware/nodeAuth.js` (ADR 0017).
+
+- **Registration proves possession of the node key.** The node asks
+  `/v4/control/challenge` for a single-use nonce and sends
+  `HMAC(HKDF(X25519(node key, control plane key)), nonce || public key || role)`. A
+  registration without a valid proof is refused, whatever else it carries. A key with
+  an active revocation is refused.
+- **What authorises a registration:** a pre-auth key from the console
+  (`SOVEREIGN_ENROLMENT_KEY` on the node), or the fleet enrolment token
+  (`SOVEREIGN_REGISTRATION_TOKEN`) for a key the control plane does not know yet. A
+  key that is already enrolled re-registers with the proof alone, keeping its owner,
+  organisation, role and country.
+- **Everything else takes the node credential** (`nnt1_...`) that registration returns
+  and heartbeats rotate, bound to one node id. The fleet token names no node and is
+  refused there; it is still accepted by `/v4/control/discover`, which lists exit
+  bridges rather than serving one node. With no fleet token configured, outside
+  production only, node requests pass unauthenticated.
 
 | Endpoint | Purpose |
 |---|---|
@@ -587,7 +601,7 @@ container. To try the data plane spike, see `scripts/dev/dataplane-spike-lab.sh`
 | Variable | Effect if wrong |
 |---|---|
 | `SOVEREIGN_TRUST_PROXY_HOPS` | Too low: every request reports the proxy address, so rate limiting buckets the whole world together. Too high: a client forges `X-Forwarded-For` and bypasses the limiter |
-| `SOVEREIGN_REGISTRATION_TOKEN` | Unset in production: no node can enrol, and no node endpoint answers. Every node needs the same value |
+| `SOVEREIGN_REGISTRATION_TOKEN` | Unset in production: nodes enrol only with a pre-auth key. It authorises enrolling new keys, nothing else: nodes still prove possession of their key, and use their own credential afterwards |
 | `SOVEREIGN_VALKEY_NAMESPACE` | Unset with a shared Valkey: deployments cross-talk. `{pid}` is substituted |
 | `SOVEREIGN_DATA_DIR` | Wrong: the federation identity lands outside the volume and is destroyed on container recreation |
 | `SOVEREIGN_FEATURE_CLOUD_PC` | Off by default. Turning it on exposes a feature that cannot stream and is not supported |

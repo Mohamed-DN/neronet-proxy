@@ -207,9 +207,17 @@ async function consumeChallenge(nonce) {
  * Verifies proof of possession for a given node public key and nonce.
  *
  * Formula:
- * proof = HMAC-SHA256(HKDF-SHA256(X25519(cp_priv, node_pub), info="neronet/v4/register"), nonce || node_pub)
+ * proof = HMAC-SHA256(HKDF-SHA256(X25519(cp_priv, node_pub), info="neronet/v4/register"), nonce || node_pub || role)
+ *
+ * The role is covered so that a proof made for one role cannot be replayed, or
+ * rewritten in transit, to enrol the same key as another -- EXIT_BRIDGE puts a node
+ * on other nodes' exit path.
  */
-function verifyProof(nodePublicKeyHex, nonceHex, proofHex) {
+function proofMessage(nonceHex, rawNodePub, role) {
+  return Buffer.concat([Buffer.from(nonceHex.trim(), 'hex'), rawNodePub, Buffer.from(String(role), 'utf8')]);
+}
+
+function verifyProof(nodePublicKeyHex, nonceHex, proofHex, role = 'CLIENT_ORIGIN') {
   if (!nodePublicKeyHex || !nonceHex || !proofHex) {
     return false;
   }
@@ -236,7 +244,7 @@ function verifyProof(nodePublicKeyHex, nonceHex, proofHex) {
     );
 
     const hmac = crypto.createHmac('sha256', derivedKey);
-    hmac.update(Buffer.concat([Buffer.from(nonceHex.trim(), 'hex'), rawNodePub]));
+    hmac.update(proofMessage(nonceHex, rawNodePub, role));
     const expectedProof = hmac.digest();
     const actualProof = Buffer.from(proofHex.trim(), 'hex');
 
@@ -254,7 +262,7 @@ function verifyProof(nodePublicKeyHex, nonceHex, proofHex) {
 /**
  * Computes client-side proof (helper for testing and Go client parity).
  */
-function computeClientProof(nodePrivateKeyHex, cpPublicKeyHex, nonceHex) {
+function computeClientProof(nodePrivateKeyHex, cpPublicKeyHex, nonceHex, role = 'CLIENT_ORIGIN') {
   const rawNodePriv = Buffer.from(nodePrivateKeyHex.trim(), 'hex');
   const rawCpPub = Buffer.from(cpPublicKeyHex.trim(), 'hex');
 
@@ -275,7 +283,7 @@ function computeClientProof(nodePrivateKeyHex, cpPublicKeyHex, nonceHex) {
   );
 
   const hmac = crypto.createHmac('sha256', derivedKey);
-  hmac.update(Buffer.concat([Buffer.from(nonceHex.trim(), 'hex'), rawNodePub]));
+  hmac.update(proofMessage(nonceHex, rawNodePub, role));
   return hmac.digest('hex');
 }
 

@@ -168,7 +168,8 @@ SOVEREIGN_NODE_KEY_PATH=./node_identity.key \
   go run ./cmd/sovereign-node -control-url http://127.0.0.1:8443 -country IT
 ```
 
-The node reads `SOVEREIGN_REGISTRATION_TOKEN` from the environment. Without a writable
+The node reads `SOVEREIGN_REGISTRATION_TOKEN` (or a pre-auth key in
+`SOVEREIGN_ENROLMENT_KEY`) from the environment. Without a writable
 `SOVEREIGN_NODE_KEY_PATH` it stops, because an identity that changes on every start is
 not an identity. The console lists the node once it enrols.
 
@@ -202,7 +203,8 @@ stack uses; only the variables below matter to the running stack.
 | Variable | Flag | Default | Meaning |
 |---|---|---|---|
 | `SOVEREIGN_CONTROL_PLANE_URL` | `-control-url` | `http://127.0.0.1:8443` | Where to enrol. In the stack: `http://frontend:8443` |
-| `SOVEREIGN_REGISTRATION_TOKEN` | none | none | Enrolment token, sent as a bearer credential. The same value for the whole fleet |
+| `SOVEREIGN_REGISTRATION_TOKEN` | none | none | Fleet enrolment token. Authorises enrolling a new key; the node still proves it holds the key, and uses its own credential afterwards |
+| `SOVEREIGN_ENROLMENT_KEY` | none | none | Pre-auth key from the console (`nnk1:<key>:<fingerprint>`), instead of the fleet token. The fingerprint pins the control plane key. Not needed once the node is enrolled |
 | `SOVEREIGN_NODE_KEY_PATH` | `-identity` | `/var/lib/neronet/node_identity.key` | Persistent identity key, created on first start |
 | `SOVEREIGN_COUNTRY_CODE` | `-country` | `US` | Self-declared country. Not measured |
 | `SOVEREIGN_ENABLE_EXIT_BRIDGE` | `-enable-exit` | `false` | Register as an exit bridge |

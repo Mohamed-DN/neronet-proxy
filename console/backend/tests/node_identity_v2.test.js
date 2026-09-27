@@ -54,7 +54,7 @@ describe('WP-103: Node Identity and Authentication v2', () => {
     assert.strictEqual(chRes.status, 200, `Challenge failed: ${JSON.stringify(chRes.body)}`);
     const { nonce, cp_public_key } = chRes.body;
 
-    const proof = ControlPlaneKeyService.computeClientProof(keypair.privateKeyHex, cp_public_key, nonce);
+    const proof = ControlPlaneKeyService.computeClientProof(keypair.privateKeyHex, cp_public_key, nonce, role);
 
     const regRes = await request(app).post('/v4/control/register').send({
       public_key_hex: keypair.publicKeyHex,

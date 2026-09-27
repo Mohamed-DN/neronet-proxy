@@ -8,7 +8,9 @@
  * - Attaches req.node to the express request object
  */
 
+const crypto = require('crypto');
 const { validateCredential } = require('../services/NodeCredentialService');
+const config = require('../config/env');
 const logger = require('../utils/logger');
 
 function requireNodeCredential(req, res, next) {
@@ -60,11 +62,7 @@ function requireNodeCredential(req, res, next) {
     });
 }
 
-/**
- * Validates request authentication for node control plane endpoints.
- * Supports both Node Credential Bearer tokens and legacy enrolment token.
- */
-async function checkNodeAuth(req) {
+function bearerOf(req) {
   const header = String(req.get('authorization') || '').trim();
   let bearer = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
   if (!bearer && req.body && req.body.credential) {
@@ -73,6 +71,31 @@ async function checkNodeAuth(req) {
   if (!bearer && req.body && req.body.auth_token) {
     bearer = String(req.body.auth_token).trim();
   }
+  return bearer;
+}
+
+function matchesFleetToken(bearer, expected) {
+  const a = Buffer.from(String(bearer), 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+/**
+ * Authenticates node requests on /v4/control/* endpoints.
+ *
+ * Implements ADR 0017 (Node Identity v2):
+ * - Accepts 256-bit bearer node credentials (nnt1_<hex>)
+ * - Enforces node ID invariance: request body node_id must match authenticated identity (403 Forbidden)
+ * - Validates credential revocation and expiration (401 Unauthorized)
+ *
+ * The fleet-wide enrolment token identifies no node, so it is not a node credential:
+ * accepted as one, it let any holder read any node's netmap and forge any node's
+ * heartbeat. It is accepted only where `allowFleetToken` says so -- the fleet
+ * inventory, which is not about one node. With no token configured outside
+ * production, requests pass unauthenticated, as the development default always has.
+ */
+async function checkNodeAuth(req, { allowFleetToken = false } = {}) {
+  const bearer = bearerOf(req);
 
   // 1. Node Credential (nnt1_...)
   if (bearer && bearer.startsWith('nnt1_')) {
@@ -95,9 +118,7 @@ async function checkNodeAuth(req) {
     return { ok: true, node, token: bearer };
   }
 
-  // 2. Shared Registration Token fallback
   const expected = process.env.SOVEREIGN_REGISTRATION_TOKEN;
-  const config = require('../config/env');
   if (!expected) {
     if (config.IS_PRODUCTION) {
       return { ok: false, status: 401, error: 'node credential required (Authorization: Bearer <token>)' };
@@ -107,17 +128,37 @@ async function checkNodeAuth(req) {
   }
 
   if (!bearer) {
-    return { ok: false, status: 401, error: 'node credential or enrolment token required' };
+    return { ok: false, status: 401, error: 'node credential required' };
   }
-
-  if (bearer !== expected) {
-    return { ok: false, status: 401, error: 'invalid enrolment token' };
+  if (!allowFleetToken || !matchesFleetToken(bearer, expected)) {
+    return { ok: false, status: 401, error: 'node credential required' };
   }
-
   return { ok: true, legacy: true };
+}
+
+/**
+ * Whether the caller may enrol a key the control plane does not know yet with the
+ * fleet token. Only enrolment: the token says the caller may add nodes, not which
+ * node it is. Possession of the key is proved separately.
+ */
+function checkEnrolmentToken(req) {
+  const expected = process.env.SOVEREIGN_REGISTRATION_TOKEN;
+  if (!expected) {
+    if (config.IS_PRODUCTION) {
+      return { ok: false, status: 401, error: 'a pre-auth key or the enrolment token is required' };
+    }
+    logger.warn('SOVEREIGN_REGISTRATION_TOKEN is not set - enrolment permitted in dev.');
+    return { ok: true };
+  }
+  const bearer = bearerOf(req);
+  if (!bearer || !matchesFleetToken(bearer, expected)) {
+    return { ok: false, status: 401, error: 'a pre-auth key or the enrolment token is required' };
+  }
+  return { ok: true };
 }
 
 module.exports = {
   requireNodeCredential,
-  checkNodeAuth
+  checkNodeAuth,
+  checkEnrolmentToken
 };

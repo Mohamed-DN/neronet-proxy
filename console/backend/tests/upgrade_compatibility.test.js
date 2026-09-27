@@ -4,13 +4,14 @@ const request = require('supertest');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
+const { nodeKey, register } = require('./helpers/nodeEnrolment');
 
 describe('WP-505: N-1 to N Upgrade Compatibility & Mixed-Fleet Coexistence', () => {
   let dbHelper;
   let app;
 
-  const LEGACY_NODE_PUBKEY = 'c'.repeat(64);
-  const MODERN_NODE_PUBKEY = 'd'.repeat(64);
+  const LEGACY_NODE_PUBKEY = nodeKey();
+  const MODERN_NODE_PUBKEY = nodeKey();
   const AUTH_HEADER = { Authorization: 'Bearer valid-test-token' };
 
   let legacyNodeId;
@@ -26,7 +27,7 @@ describe('WP-505: N-1 to N Upgrade Compatibility & Mixed-Fleet Coexistence', () 
   });
 
   describe('1. N-1 Node Registration (Version v3.9.0 / v4.0.0-rc1)', () => {
-    it('accepts registration from an N-1 legacy node with minimal capability metadata', async () => {
+    it('accepts the metadata of an N-1 node once it proves its key, and refuses it without', async () => {
       const legacyPayload = {
         public_key_hex: LEGACY_NODE_PUBKEY,
         role: 'CLIENT_ORIGIN',
@@ -49,7 +50,14 @@ describe('WP-505: N-1 to N Upgrade Compatibility & Mixed-Fleet Coexistence', () 
         }
       };
 
-      const res = await request(app).post('/v4/control/register').send(legacyPayload);
+      // A node older than proof of possession cannot enrol: registration without a
+      // proof was how the fleet token let anyone take over another node's identity.
+      // Nodes and control plane are upgraded together.
+      const unproven = await request(app).post('/v4/control/register').send(legacyPayload);
+      assert.strictEqual(unproven.status, 401);
+
+      // What an older node declares is still accepted once it proves its key.
+      const res = await register(app, legacyPayload);
 
       assert.strictEqual(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.body)}`);
       assert.ok(res.body.assigned_node_id, 'assigned_node_id must be assigned for legacy node');
@@ -136,7 +144,7 @@ describe('WP-505: N-1 to N Upgrade Compatibility & Mixed-Fleet Coexistence', () 
         }
       };
 
-      const modernRes = await request(app).post('/v4/control/register').send(modernPayload);
+      const modernRes = await register(app, modernPayload);
 
       assert.strictEqual(modernRes.status, 200);
       modernNodeId = modernRes.body.assigned_node_id;

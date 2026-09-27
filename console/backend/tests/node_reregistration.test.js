@@ -3,13 +3,13 @@ const assert = require('node:assert');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
-const request = require('supertest');
 
 const REGISTRATION_TOKEN = crypto.randomBytes(24).toString('hex');
 process.env.SOVEREIGN_REGISTRATION_TOKEN = REGISTRATION_TOKEN;
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
+const enrolment = require('./helpers/nodeEnrolment');
 
 /**
  * Registration is authenticated by one fleet-wide token and public keys are not
@@ -19,8 +19,8 @@ const { createApp } = require('../server');
  * role, ip_class and country_code and records the attempt.
  */
 
-const PUBKEY = 'd'.repeat(64);
-const PUBKEY_REENROL = 'e'.repeat(64);
+const PUBKEY = enrolment.nodeKey();
+const PUBKEY_REENROL = enrolment.nodeKey();
 
 let dbHelper;
 
@@ -35,7 +35,7 @@ function registerBody(publicKeyHex, { role, country, ipClass, endpoints }) {
 }
 
 function register(app, body) {
-  return request(app).post('/v4/control/register').set('Authorization', `Bearer ${REGISTRATION_TOKEN}`).send(body);
+  return enrolment.register(app, body, { token: REGISTRATION_TOKEN });
 }
 
 async function storedNode(nodeId) {

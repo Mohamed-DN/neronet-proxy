@@ -61,3 +61,31 @@ We adopt **Node Identity v2** using pre-auth keys, Diffie-Hellman proof of posse
 - All nodes must support the challenge-response handshake and persist the issued bearer credential with file mode 0600.
 - Valkey is required to hold ephemeral challenge nonces (with in-memory fallback for local single-process test runs).
 - Attack surface is dramatically reduced: eavesdropping registration traffic does not yield replayable proofs; compromising a node credential compromises only that specific node for up to 24 hours.
+
+## Amendment, September 2026: what is implemented
+
+Points 5 and 7 above were not implemented as written, and until this amendment the
+node binary did not use proof of possession at all: it registered with the fleet
+token and a public key, and used the fleet token on every endpoint. Anyone holding
+the token could register another node's public key, receive that node's credential,
+and read any node's netmap. A revoked key could register again.
+
+What the code does now:
+
+- Every registration carries a proof. The proof also covers the requested role:
+  `HMAC(key, nonce || public key || role)`.
+- A key with an active entry in `revoked_keys` cannot register.
+- A registration is authorised by a pre-auth key, or by the fleet token
+  (`SOVEREIGN_REGISTRATION_TOKEN`, kept for automated fleets) for a key the control
+  plane does not know. An enrolled key re-registers with its proof alone. This
+  replaces point 5's "valid pre-auth key belonging to the same owner": a single-use
+  key is spent at first enrolment, and a node must be able to restart.
+- Role, country and IP class are still fixed at first enrolment (point 5).
+- The per-node endpoints accept only the node credential. The fleet token is
+  accepted by `/v4/control/discover` only.
+- The node sends the fleet token only to enrol, keeps its credential separately, and
+  registers again when a heartbeat is refused with 401 or 404.
+
+Nodes older than this change cannot register with a control plane that has it:
+upgrade the control plane and the nodes together.
+
