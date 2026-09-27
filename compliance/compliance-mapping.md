@@ -1,51 +1,31 @@
-# NeroNet v4 - Compliance Mapping Summary
+# Controls relevant to DORA, NIS2, the GDPR and the AgID measures
 
-## DORA (Regulation EU 2022/2554)
+No assessment of NeroNet against any of these frameworks has been made, and nothing
+here is a claim of conformity. Conformity is a property of an operator's deployment,
+processes and organisation, not of a codebase. This page lists the controls in the
+code that such an assessment would look at, and states for each whether it exists and
+how far it goes, so that an operator can start from facts.
 
-| Article | Requirement | NeroNet Implementation |
-|---------|-------------|------------------------|
-| Art. 5  | ICT Risk Management Framework | RBAC + threat model (WP-101) |
-| Art. 9  | Protection and prevention | WireGuard E2E, TLS 1.3, MFA |
-| Art. 10 | Detection | Prometheus metrics + HMAC audit log |
-| Art. 11 | Response and recovery | HA Patroni + automated backup (WP-307) |
-| Art. 13 | ICT testing | Fuzzing (WP-501), load (WP-502), pentest (WP-503) |
-| Art. 17 | ICT-related incident reporting | SIEM export, JSON structured logs |
-| Art. 19 | Information sharing | Audit log export API |
-| Art. 28 | ICT third-party risk | SBOM (WP-504), SLSA provenance |
+States: **in place** (implemented and covered by tests), **partial** (exists with the
+limits given), **missing**.
 
-## NIS2 (Directive EU 2022/2555)
-
-| Measure Category | Implementation |
-|-----------------|----------------|
-| Risk analysis and information security policies | docs/isms/ |
-| Incident handling | 24h audit trail, SIEM integration |
-| Business continuity and crisis management | HA cluster + backup + runbooks |
-| Supply chain security | SBOM, cosign, SLSA (WP-504) |
-| Security in network and information systems | WireGuard, TLS 1.3, zero-trust |
-| Policies and procedures for access control | RBAC, OIDC, MFA, session tokens |
-| Use of cryptography | AES-256, Noise protocol, BLAKE2s |
-| Human resources security and training | Admin guide + operator training (WP-604) |
-| Multi-factor authentication | TOTP + hardware key support |
-
-## GDPR (Regulation EU 2016/679)
-
-| Article | Requirement | Implementation |
-|---------|-------------|----------------|
-| Art. 5  | Data minimization | Minimal node metadata only |
-| Art. 17 | Right to erasure | NeroNuke crypto-shredding (WP-302) |
-| Art. 20 | Data portability | API export endpoints |
-| Art. 25 | Privacy by design | Zero-knowledge relay, no content inspection |
-| Art. 32 | Security of processing | AES-256, audit log, access control |
-| Art. 33 | Notification of breach | Incident response runbook (WP-604) |
-
-## AgID - Misure Minime di Sicurezza ICT (AGID/ACSC)
-
-| Controllo | Stato |
-|-----------|-------|
-| ABSC 1 - Inventario dispositivi | Controllo plane con DB nodi |
-| ABSC 5 - Configurazione sicura | Hardened containers, no-new-privileges |
-| ABSC 6 - Manutenzione / patching | Renovate + SBOM + Cosign |
-| ABSC 8 - Difesa malware | Honeypot v2 + tarpit eBPF |
-| ABSC 10 - Copie di sicurezza | Backup automatizzato (WP-306) |
-| ABSC 13 - Protezione dei dati | Crypto-shredding, AES-256 |
-| ABSC 14 - Accesso controllato | RBAC + MFA + OIDC |
+| Control | State | Notes |
+|---|---|---|
+| Role-based access control | in place | Platform role plus a per-organisation role (`owner`, `admin`, `network_admin`, `auditor`, `member`) |
+| Multi-factor authentication | partial | TOTP. Mandatory only where configured; no hardware keys |
+| Single sign-on (OIDC) | partial | Code flow with PKCE, verified ID tokens. No API or console page to configure it; not tested against a production identity provider |
+| Tamper-evident audit trail | in place | HMAC chain with a dedicated key and signed checkpoints. The checkpoint public key has to be kept outside the server for the checkpoints to mean anything |
+| Audit export to a SIEM | partial | UDP, TCP and webhook sinks. Platform super-admin only, because events are not tagged by organisation |
+| Encryption in transit, between nodes | partial | WireGuard. The data plane status is in `docs/HANDBOOK.md` |
+| Encryption in transit, to the console and API | missing | Containers serve HTTP; TLS must be terminated in front by the operator |
+| Encryption at rest | missing | Left to the operator (volume encryption) |
+| Erasure of a user's data | partial | Account self-destruct deletes the account and devices and revokes device keys. Backups and the audit trail keep what they recorded |
+| Crypto-shredding | missing | The key service exists, but no stored data is encrypted with its keys |
+| Backup and restore | partial | A restore verification service and `scripts/dr_backup_recovery_proof.sh` exist. No scheduled backups, no documented procedure |
+| High availability | missing | Designed (ADR 0001), not built. Periodic jobs are not yet coordinated across instances |
+| Vulnerability management | partial | `govulncheck`, gitleaks and CodeQL in CI. No dependency update automation, no external audit, no penetration test |
+| Software bill of materials | partial | Direct dependencies only, not generated from lockfiles |
+| Build provenance and signed artefacts | missing | Releases carry SHA-256 checksums only |
+| Incident response procedure | missing | |
+| Threat model | missing | |
+| Accessibility (WCAG 2.1 AA) | missing | Not assessed; see `accessibility-statement.md` |
