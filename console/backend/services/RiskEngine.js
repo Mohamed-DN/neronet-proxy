@@ -346,13 +346,24 @@ async function ingestTelemetry(nodeId, telemetry) {
 /**
  * Lists risk scores for all nodes.
  */
-async function getAllRiskScores() {
+/**
+ * Risk scores, for one organisation's nodes or, without one, for every node (the
+ * platform super-admin's view).
+ */
+async function getAllRiskScores(organizationId) {
   let rows = [];
   if (isPostgres()) {
     const pool = getPgPool();
-    const res = await pool.query(
-      'SELECT id, name, user_id, risk_score, is_quarantined, is_healthy, latency_ms FROM nodes ORDER BY risk_score DESC'
-    );
+    const res =
+      organizationId === undefined
+        ? await pool.query(
+            'SELECT id, name, user_id, risk_score, is_quarantined, is_healthy, latency_ms FROM nodes ORDER BY risk_score DESC'
+          )
+        : await pool.query(
+            `SELECT id, name, user_id, risk_score, is_quarantined, is_healthy, latency_ms FROM nodes
+              WHERE COALESCE(organization_id, 'org-default') = $1 ORDER BY risk_score DESC`,
+            [organizationId]
+          );
     rows = res.rows;
   } else {
     const db = getDatabase();
@@ -385,8 +396,8 @@ async function getAllRiskScores() {
 /**
  * Gets aggregated behavioral risk dashboard data.
  */
-async function getRiskDashboard() {
-  const scores = await getAllRiskScores();
+async function getRiskDashboard(organizationId) {
+  const scores = await getAllRiskScores(organizationId);
   const total = scores.length;
   const lowRisk = scores.filter((s) => s.risk_score < 40).length;
   const mediumRisk = scores.filter((s) => s.risk_score >= 40 && s.risk_score <= 75).length;

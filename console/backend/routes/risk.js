@@ -8,10 +8,17 @@ const { readPostureCounts } = require('../services/MetricsCollector');
 
 router.use(authenticateToken);
 
+// Node names, owners and scores are tenant data. These overviews listed every node on
+// the platform to any signed-in user; they now cover the caller's organisation, and
+// the whole platform for the platform super-admin only.
+function scopeOf(req) {
+  return req.user.role === 'super-admin' ? undefined : req.user.organization_id || 'org-default';
+}
+
 // 2. List All Node Risk Scores
 router.get('/scores', async (req, res, next) => {
   try {
-    const risk_scores = await RiskEngine.getAllRiskScores();
+    const risk_scores = await RiskEngine.getAllRiskScores(scopeOf(req));
     return res.status(200).json({ risk_scores });
   } catch (err) {
     next(err);
@@ -21,7 +28,7 @@ router.get('/scores', async (req, res, next) => {
 // 3. Behavioral Risk Dashboard Summary
 router.get('/dashboard', async (req, res, next) => {
   try {
-    const dashboard = await RiskEngine.getRiskDashboard();
+    const dashboard = await RiskEngine.getRiskDashboard(scopeOf(req));
     return res.status(200).json(dashboard);
   } catch (err) {
     next(err);
@@ -37,8 +44,8 @@ router.get('/dashboard', async (req, res, next) => {
 // backs /dashboard.
 router.get('/summary', async (req, res, next) => {
   try {
-    const d = await RiskEngine.getRiskDashboard();
-    const anomalies = await countRecentAnomalies();
+    const d = await RiskEngine.getRiskDashboard(scopeOf(req));
+    const anomalies = await countRecentAnomalies(scopeOf(req));
 
     // Risk and posture are separate facts. A low risk score says nothing was seen
     // going wrong; it is not evidence that the host is hardened, and the dashboard
@@ -65,7 +72,7 @@ router.get('/summary', async (req, res, next) => {
 router.get('/events', async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 100, 500);
-    const events = await recentRiskEvents(limit);
+    const events = await recentRiskEvents(limit, scopeOf(req));
     return res.status(200).json({ events });
   } catch (err) {
     next(err);
@@ -77,7 +84,7 @@ router.get('/events', async (req, res, next) => {
 router.get('/leaderboard', async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 10, 100);
-    const d = await RiskEngine.getRiskDashboard();
+    const d = await RiskEngine.getRiskDashboard(scopeOf(req));
 
     const ranked = d.nodes
       .filter((n) => Number(n.risk_score) > 0)
@@ -110,15 +117,19 @@ const RISK_EVENT_TYPES = [
   'RISK_ATTESTATION'
 ];
 
-async function recentRiskEvents(limit) {
+async function recentRiskEvents(limit, organizationId) {
+  // Audit events carry no organisation; a risk event names its node as target, so an
+  // organisation's view is the events about its nodes.
+  const scoped = organizationId !== undefined && isPostgres();
   const rows = await runRiskQuery(
     `SELECT id, event_type, actor_username, target_id, severity, message, created_at
        FROM audit_events
       WHERE event_type = ANY($1)
         AND created_at > now() - interval '24 hours'
+        ${scoped ? "AND target_id IN (SELECT id FROM nodes WHERE COALESCE(organization_id, 'org-default') = $3)" : ''}
       ORDER BY created_at DESC
       LIMIT $2`,
-    [RISK_EVENT_TYPES, limit],
+    scoped ? [RISK_EVENT_TYPES, limit, organizationId] : [RISK_EVENT_TYPES, limit],
     `SELECT id, event_type, actor_username, target_id, severity, message, created_at
        FROM audit_events
       WHERE event_type IN (${RISK_EVENT_TYPES.map(() => '?').join(',')})
@@ -139,8 +150,8 @@ async function recentRiskEvents(limit) {
   }));
 }
 
-async function countRecentAnomalies() {
-  const rows = await recentRiskEvents(500);
+async function countRecentAnomalies(organizationId) {
+  const rows = await recentRiskEvents(500, organizationId);
   return rows.length;
 }
 
