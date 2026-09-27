@@ -324,9 +324,30 @@ With Go on the host: `make test` runs `go test -v -race ./pkg/...` and `make lin
 
 CI (`.github/workflows/ci.yml`) runs the Go suite, the backend suite three times, the
 frontend build and tests, the compose stack with six nodes and a smoke check
-(`scripts/dev/smoke.sh`), the console security headers check, linters, the legacy tool
-tests and the image builds. Secret scanning, CodeQL and dependency audits run from
-`security-scan.yml`.
+(`scripts/dev/smoke.sh`), the console security headers check, the overlay scenarios
+below, linters, the legacy tool tests and the image builds. Secret scanning, CodeQL and
+dependency audits run from `security-scan.yml`.
+
+### The fleet, end to end
+
+```bash
+sh scripts/dev/e2e.sh                 # every scenario on a throw-away stack, then down
+sh scripts/dev/e2e.sh --keep matrix   # one scenario, and leave the stack running
+```
+
+`e2e.sh` starts its own stack (`COMPOSE_PROJECT_NAME=neronet-e2e`, ports offset by
+3000), the six nodes, and runs `scripts/dev/scenarios/overlay.sh` for each scenario:
+
+| Scenario | What it checks, with real traffic between containers |
+|---|---|
+| `matrix` | every node reaches every other one over the overlay |
+| `rule-deny` | a deny rule written through the API blocks one pair and nothing else; deleting it restores the pair |
+| `quarantine` | a quarantined node is cut off from every peer, and comes back when lifted |
+| `fail-static` | the overlay keeps running with the backend stopped, fails closed past the staleness bound, recovers when the backend returns |
+| `revoke` | a revoked node is gone from every peer, and the rest of the mesh is unaffected |
+
+It forces `SOVEREIGN_MFA_MANDATORY=off` (the scenarios sign in with the admin password)
+and a 60 second netmap staleness bound for the run.
 
 ### Documentation links
 
