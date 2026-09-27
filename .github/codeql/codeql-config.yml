@@ -1,0 +1,10 @@
+name: NeroNet CodeQL configuration
+
+query-filters:
+  # js/missing-rate-limiting recognises packages such as express-rate-limit only. The
+  # control plane meters every route itself: apiLimiter on /api and the enrolment and
+  # node limits on /v4/control (console/backend/middleware/rateLimit.js, mounted in
+  # server.js), with counters shared across instances through Valkey. The query cannot
+  # see that middleware and reports every handler that reads the database.
+  - exclude:
+      id: js/missing-rate-limiting
