@@ -1052,27 +1052,9 @@ export function TopologyRoute() {
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-chart-1" /> {t('topology.legend.direct')}
                   </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-chart-2" /> {t('topology.legend.derp')}
-                    <GlossaryHint
-                      text={t('glossary.derp.body')}
-                      label={t('glossary.ariaLabel', {
-                        term: t('glossary.derp.term')
-                      })}
-                    />
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-chart-3" /> {t('topology.legend.onion')}
-                    <GlossaryHint
-                      text={t('glossary.onion.body')}
-                      label={t('glossary.ariaLabel', {
-                        term: t('glossary.onion.term')
-                      })}
-                    />
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-chart-4" /> {t('topology.legend.openvpn')}
-                  </span>
+                  {/* Only what the view can know. Nothing measures whether a pair is
+                      relayed or onion-routed, and there is no OpenVPN transport, so
+                      those used to sit here describing paths the mesh never took. */}
                   <span className="flex items-center gap-1.5">
                     <span className="w-4 border-t-2 border-dashed border-danger" /> {t('topology.canvas.cutBadge')}
                   </span>
