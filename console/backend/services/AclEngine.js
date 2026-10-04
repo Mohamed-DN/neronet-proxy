@@ -195,6 +195,20 @@ async function deleteRule(id) {
 // --- Compilation -------------------------------------------------------------
 
 /**
+ * Whether an organisation's open default still applies on top of its rules.
+ *
+ * An open mesh becomes an allow-list when the first ACCEPT rule is written, which is
+ * how Tailscale behaves. DROP rules do not do that: they can only subtract, so a rule
+ * set made of DROPs alone is read as "open, except these". Treating it as an
+ * allow-list instead -- which is what this engine used to do -- turned one DROP into
+ * an outage: nothing permitted anything, and pkg/acl denied every peer of every node.
+ */
+function opensByDefault(rules, defaultPolicy) {
+  if (defaultPolicy !== 'open') return false;
+  return !rules.some((r) => String(r.action).toUpperCase() === 'ACCEPT');
+}
+
+/**
  * Compile the policy a single node should enforce.
  *
  * Returns null when the node is unknown.
@@ -202,8 +216,8 @@ async function deleteRule(id) {
  * When no rules are configured the result permits every mesh peer. This is a
  * deliberate choice and the alternative is worse: pkg/acl defaults to deny, so an
  * empty rule set delivered to a fleet would black-hole all traffic the moment ACL
- * delivery was switched on. A mesh with no policy written is open, and becomes
- * closed when the first rule is written -- which is also how Tailscale behaves.
+ * delivery was switched on. A mesh with no policy written is open; it becomes an
+ * allow-list when the first ACCEPT rule is written. See opensByDefault for DROPs.
  */
 async function compilePolicyFor(nodeId) {
   return compileFor(nodeId);
@@ -309,6 +323,15 @@ async function compileFor(nodeId, { candidateRule = null } = {}) {
           ...tag
         });
       }
+    }
+  }
+
+  // The open default, after every rule. pkg/acl takes the first entry that matches,
+  // so a DROP written above still wins for its pair and everything else stays open.
+  if (opensByDefault(rules, self.default_policy)) {
+    for (const peer of peers) {
+      outbound.push(allowAll(peer.overlay_ipv4));
+      inbound.push(allowAll(peer.overlay_ipv4));
     }
   }
 
@@ -435,20 +458,26 @@ async function simulatePacket({
     };
   }
 
-  // No rule matched. This mirrors compileFor: the default policy decides only while
-  // no rule applies; once one does, whatever no rule permits is dropped. The simulator
-  // used to apply an open default even with rules in place, and so reported traffic
-  // as permitted that nodes were dropping.
-  const verdict = rules.length === 0 && defaultPolicy === 'open' ? 'ACCEPT' : 'DROP';
+  // No rule matched. This mirrors compileFor through opensByDefault: an open default
+  // holds until the first ACCEPT rule, and after that whatever no rule permits is
+  // dropped. The simulator used to apply an open default even with ACCEPT rules in
+  // place, and so reported traffic as permitted that nodes were dropping.
+  const open = opensByDefault(rules, defaultPolicy);
+  const verdict = open ? 'ACCEPT' : 'DROP';
+  let reason;
+  if (rules.length === 0) {
+    reason = open
+      ? 'No rules apply — organization default policy is OPEN (Permit)'
+      : 'No rules apply — organization default policy is DENY (Drop)';
+  } else if (open) {
+    reason = 'No rule matched — the organization is OPEN and its rules only drop, so the default permits';
+  } else {
+    reason = 'No rule matched — DENY: once an ACCEPT rule exists, anything no rule permits is dropped';
+  }
   return {
     verdict,
     matched_rule: null,
-    reason:
-      rules.length === 0
-        ? defaultPolicy === 'open'
-          ? 'No rules apply — organization default policy is OPEN (Permit)'
-          : 'No rules apply — organization default policy is DENY (Drop)'
-        : 'No rule matched — DENY: with rules in place, anything no rule permits is dropped',
+    reason,
     packet: {
       source_ip,
       destination_ip,

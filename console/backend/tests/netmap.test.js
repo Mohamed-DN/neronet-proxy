@@ -182,10 +182,9 @@ describe('Netmap delivery', () => {
 
   describe('a denied pair', () => {
     beforeEach(async () => {
-      // A single DROP rule would take the whole fleet dark: with no rules at all the
-      // compiled policy is allow-all, and the first rule written replaces that with
-      // exactly the rules present. An operator denying one pair therefore writes the
-      // deny and the allow-all it is carving out of, which is what this does.
+      // The pair denied on top of an explicit allow-all: once an ACCEPT rule exists the
+      // rules alone decide, so this is the allow-list form of the same cut. The form
+      // without the allow-all is covered by "an open organisation whose rules only drop".
       await AclEngine.createRule({
         priority: 10,
         source_cidr: alpha.vip,
@@ -236,6 +235,63 @@ describe('Netmap delivery', () => {
 
       const a = await fetchNetmap(app, alpha.id);
       assert.deepStrictEqual(peerIds(a.body), [beta.id, gamma.id].sort());
+    });
+  });
+
+  describe('an open organisation whose rules only drop', () => {
+    async function setDefaultPolicy(policy) {
+      await dbHelper.pool.query("UPDATE organizations SET default_policy = $1 WHERE id = 'org-default'", [policy]);
+      await AclEngine.bumpEpoch('acl');
+    }
+
+    beforeEach(async () => {
+      await setDefaultPolicy('open');
+      // What the console's "cut connection" writes: a DROP each way and nothing else.
+      // This used to compile to an empty allow-list, and pkg/acl then denied every
+      // peer of every node: cutting one link took the whole mesh down.
+      await AclEngine.createRule({ priority: 50, source_cidr: `${alpha.vip}/32`, destination_cidr: `${beta.vip}/32`, action: 'DROP' });
+      await AclEngine.createRule({ priority: 50, source_cidr: `${beta.vip}/32`, destination_cidr: `${alpha.vip}/32`, action: 'DROP' });
+    });
+
+    it('cuts that pair and keeps every other pair', async () => {
+      assert.deepStrictEqual(peerIds((await fetchNetmap(app, alpha.id)).body), [gamma.id]);
+      assert.deepStrictEqual(peerIds((await fetchNetmap(app, beta.id)).body), [gamma.id]);
+      assert.deepStrictEqual(peerIds((await fetchNetmap(app, gamma.id)).body), [alpha.id, beta.id].sort());
+    });
+
+    it('puts the DROP ahead of the open default, because pkg/acl takes the first match', async () => {
+      const compiled = await AclEngine.compilePolicyFor(alpha.id);
+      const forBeta = compiled.outbound_rules.filter((r) => r.allowed_peer_vip === beta.vip);
+      assert.deepStrictEqual(
+        forBeta.map((r) => r.action),
+        ['DROP', 'ACCEPT'],
+        'the open default must come after the DROP it is carved by'
+      );
+      const forGamma = compiled.outbound_rules.filter((r) => r.allowed_peer_vip === gamma.vip);
+      assert.deepStrictEqual(forGamma.map((r) => r.action), ['ACCEPT']);
+    });
+
+    it('gives the simulator the same answer the nodes enforce', async () => {
+      const toGamma = await AclEngine.simulatePacket({ source_ip: alpha.vip, destination_ip: gamma.vip, defaultPolicy: 'open' });
+      const toBeta = await AclEngine.simulatePacket({ source_ip: alpha.vip, destination_ip: beta.vip, defaultPolicy: 'open' });
+      assert.strictEqual(toGamma.verdict, 'ACCEPT');
+      assert.strictEqual(toBeta.verdict, 'DROP');
+    });
+
+    it('stops falling through to the default once an ACCEPT rule exists', async () => {
+      await AclEngine.createRule({ priority: 100, source_cidr: `${alpha.vip}/32`, destination_cidr: `${gamma.vip}/32`, action: 'ACCEPT' });
+      // An allow-list now: beta was only ever reachable through the open default.
+      assert.deepStrictEqual(peerIds((await fetchNetmap(app, beta.id)).body), []);
+      assert.deepStrictEqual(peerIds((await fetchNetmap(app, alpha.id)).body), [gamma.id]);
+    });
+
+    it('keeps a deny organisation closed', async () => {
+      await setDefaultPolicy('deny');
+      try {
+        assert.deepStrictEqual(peerIds((await fetchNetmap(app, gamma.id)).body), []);
+      } finally {
+        await setDefaultPolicy('open');
+      }
     });
   });
 
