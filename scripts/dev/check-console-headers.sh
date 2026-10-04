@@ -87,8 +87,9 @@ expect_contains() { # headers label header substring
 }
 
 fetch() { # url -> headers on stdout, non-zero if the request failed
+  # REVOKE is empty or one option, so it is left unquoted on purpose.
+  # shellcheck disable=SC2086
   case "$1" in
-    # shellcheck disable=SC2086 # REVOKE is empty or one option
     https://*) MSYS_NO_PATHCONV=1 curl -sS -I --max-time 10 --cacert "$CA" $REVOKE "$1" ;;
     *) curl -sS -I --max-time 10 "$1" ;;
   esac

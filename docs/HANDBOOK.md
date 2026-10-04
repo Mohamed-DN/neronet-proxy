@@ -593,7 +593,8 @@ sh scripts/dev/stack.sh status   # health, and nodes with a heartbeat under 60 s
 ```
 
 The API refuses to start without those secrets. That is intentional. On Windows, run the
-scripts from Git Bash. The console is on `http://127.0.0.1:8443`.
+scripts from Git Bash. The console is on `https://127.0.0.1:8443`, TLS only, with a
+certificate from the development CA `stack.sh` writes to `certs/`.
 
 A second stack on the same host needs its own project name and ports:
 `COMPOSE_PROJECT_NAME=other NERONET_PORT_OFFSET=100 sh scripts/dev/stack.sh up`.
@@ -604,7 +605,7 @@ To run a node outside the stack against it:
 
 ```bash
 set -a && . ./.env && set +a
-go run ./cmd/sovereign-node -control-url http://127.0.0.1:8443 -country IT
+go run ./cmd/sovereign-node -control-url https://127.0.0.1:8443 -control-ca certs/ca.crt -country IT
 ```
 
 The identity key is written to `SOVEREIGN_NODE_KEY_PATH`, which defaults to

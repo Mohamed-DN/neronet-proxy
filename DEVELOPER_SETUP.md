@@ -120,8 +120,11 @@ sh scripts/dev/stack.sh status
 
 ### Using the stack
 
-- Console: `http://127.0.0.1:8443`. User `admin`; the password is `SOVEREIGN_ADMIN_PASS`
-  in `.env`.
+- Console: `https://127.0.0.1:8443`, TLS only (plain HTTP on that port is redirected).
+  User `admin`; the password is `SOVEREIGN_ADMIN_PASS` in `.env`. The certificate is
+  signed by a development CA that `stack.sh` writes to `certs/` on the first `up`
+  (`scripts/dev/gen-certs.sh`). Import `certs/ca.crt` into the browser's trusted
+  authorities, or accept the warning once. The nodes pin that CA.
 - API: `http://127.0.0.1:8081/api/health`.
 - `status` should report 6 of 6 nodes within about a minute of `nodes` finishing.
 - PostgreSQL and Valkey are not published to the host. To reach them, start the stack
@@ -165,7 +168,7 @@ stack first, then:
 ```bash
 set -a && . ./.env && set +a
 SOVEREIGN_NODE_KEY_PATH=./node_identity.key \
-  go run ./cmd/sovereign-node -control-url http://127.0.0.1:8443 -country IT
+  go run ./cmd/sovereign-node -control-url https://127.0.0.1:8443 -control-ca certs/ca.crt -country IT
 ```
 
 The node reads `SOVEREIGN_REGISTRATION_TOKEN` (or a pre-auth key in
@@ -173,11 +176,12 @@ The node reads `SOVEREIGN_REGISTRATION_TOKEN` (or a pre-auth key in
 `SOVEREIGN_NODE_KEY_PATH` it stops, because an identity that changes on every start is
 not an identity. The console lists the node once it enrols.
 
-The command line tool talks to the same address:
+The command line tool has no CA option yet, so on the development machine it talks to
+the API port, which serves the same `/v4` endpoints on the loopback interface only:
 
 ```bash
-go run ./cmd/sovereign-cli peers DE --control-url http://127.0.0.1:8443
-go run ./cmd/sovereign-cli circuit US --control-url http://127.0.0.1:8443
+go run ./cmd/sovereign-cli peers DE --control-url http://127.0.0.1:8081
+go run ./cmd/sovereign-cli circuit US --control-url http://127.0.0.1:8081
 go run ./cmd/sovereign-cli keygen
 go run ./cmd/sovereign-cli stun-ping 127.0.0.1:3478   # needs the nodes profile
 ```
@@ -202,7 +206,8 @@ stack uses; only the variables below matter to the running stack.
 
 | Variable | Flag | Default | Meaning |
 |---|---|---|---|
-| `SOVEREIGN_CONTROL_PLANE_URL` | `-control-url` | `http://127.0.0.1:8443` | Where to enrol. In the stack: `http://frontend:8443` |
+| `SOVEREIGN_CONTROL_PLANE_URL` | `-control-url` | `http://127.0.0.1:8443` | Where to enrol. In the stack: `https://frontend:8443` |
+| `SOVEREIGN_CONTROL_PLANE_CA` | `-control-ca` | none | PEM file of the CA that signs the control plane's certificate. When set, only that CA is trusted, and the URL must be https. In the stack: the development CA, as a compose secret |
 | `SOVEREIGN_REGISTRATION_TOKEN` | none | none | Fleet enrolment token. Authorises enrolling a new key; the node still proves it holds the key, and uses its own credential afterwards |
 | `SOVEREIGN_ENROLMENT_KEY` | none | none | Pre-auth key from the console (`nnk1:<key>:<fingerprint>`), instead of the fleet token. The fingerprint pins the control plane key. Not needed once the node is enrolled |
 | `SOVEREIGN_NODE_KEY_PATH` | `-identity` | `/var/lib/neronet/node_identity.key` | Persistent identity key, created on first start |
@@ -365,7 +370,7 @@ path that does not exist. CI runs it in the `lint` job. It does not check anchor
 sh scripts/dev/stack.sh status                   # service health and live node count
 sh scripts/dev/stack.sh logs backend             # last 200 lines of one service
 sh scripts/dev/smoke.sh 6 180                    # wait for 6 nodes, check /api/health
-sh scripts/dev/check-console-headers.sh http://127.0.0.1:8443
+sh scripts/dev/check-console-headers.sh https://127.0.0.1:8443
 ```
 
 ---

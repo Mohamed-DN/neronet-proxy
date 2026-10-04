@@ -214,7 +214,9 @@ command from Git Bash.
    sh scripts/dev/smoke.sh 6 240    # waits for six nodes with a heartbeat, checks /api/health
    ```
 
-7. **Sign in.** Open <http://127.0.0.1:8443> and sign in as `admin` with the password
+7. **Sign in.** Open <https://127.0.0.1:8443> (TLS only; the certificate is signed by the
+   development CA in `certs/ca.crt`, which you can import into the browser) and sign in
+   as `admin` with the password
    `SOVEREIGN_ADMIN_PASS` from `.env`. With `SOVEREIGN_MFA_MANDATORY=admins` or `all`,
    the console asks you to set up an authenticator app first.
 
@@ -252,7 +254,8 @@ Needs Go on the host. Load the environment first: `set -a && . ./.env && set +a`
 | `keygen` | Generates a Curve25519 keypair and a node id. |
 | `stun-ping <host:port>` | Sends a STUN binding request and prints the mapped address and round trip. |
 
-Example: `go run ./cmd/sovereign-cli peers DE --control-url http://127.0.0.1:8443`.
+Example: `go run ./cmd/sovereign-cli peers DE --control-url http://127.0.0.1:8081` (the
+API port on the loopback interface; the CLI has no option for the console's CA yet).
 
 ## Repository layout
 

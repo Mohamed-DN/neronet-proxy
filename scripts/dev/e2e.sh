@@ -59,7 +59,7 @@ cleanup() {
     echo "== tearing down $COMPOSE_PROJECT_NAME"
     $STACK down -v > /dev/null 2>&1 || true
   else
-    echo "== left running: COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME, console http://127.0.0.1:$((8443 + NERONET_PORT_OFFSET))"
+    echo "== left running: COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME, console https://127.0.0.1:$((8443 + NERONET_PORT_OFFSET))"
   fi
 }
 trap cleanup EXIT INT TERM

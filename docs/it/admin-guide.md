@@ -8,7 +8,7 @@ questa pagina è la versione breve.
 
 | Cosa | Dove |
 |---|---|
-| Console | `http://127.0.0.1:8443` nello stack compose. Per qualunque uso oltre la singola macchina mettete TLS davanti: i container servono HTTP in chiaro |
+| Console | `https://127.0.0.1:8443` nello stack compose, solo TLS. Lo stack di sviluppo usa una CA generata da `scripts/dev/gen-certs.sh`; un'installazione monta il proprio certificato, chiave e CA con gli stessi nomi di secret compose (`console_tls_cert`, `console_tls_key`, `control_plane_ca`) |
 | API | `http://127.0.0.1:8081`, anche sotto `/api` attraverso la console. Il contratto è [`api/openapi.yaml`](../../api/openapi.yaml); il server non pubblica documentazione interattiva |
 | Primo account | `admin`, password da `SOVEREIGN_ADMIN_PASS` nel `.env` |
 | Accesso | `POST /api/auth/login`. Il token di accesso dura 15 minuti; il refresh token è un cookie HttpOnly |
