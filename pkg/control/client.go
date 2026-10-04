@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -90,6 +92,30 @@ func NewClient(serverURL string) *Client {
 			Timeout: 10 * time.Second,
 		},
 	}
+}
+
+// NewClientWithCA is NewClient for a control plane whose TLS certificate is signed by
+// the CA in caPEM rather than by one the system trusts: a deployment's own CA, or the
+// development CA scripts/dev/gen-certs.sh writes.
+//
+// Only the CAs in caPEM are trusted, not the system roots as well. A node pinned to
+// its control plane's CA must not accept a certificate some other CA issued for the
+// same name, which is what adding to the system pool would allow.
+func NewClientWithCA(serverURL string, caPEM []byte) (*Client, error) {
+	if !strings.HasPrefix(serverURL, "https://") {
+		return nil, fmt.Errorf("a control plane CA was given, but %s is not an https URL", serverURL)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, errors.New("the control plane CA file holds no PEM certificate")
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+
+	c := NewClient(serverURL)
+	c.httpClient.Transport = transport
+	return c, nil
 }
 
 // newRequest builds a POST carrying the node credential, or the enrolment token

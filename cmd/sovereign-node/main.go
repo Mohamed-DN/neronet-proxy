@@ -31,6 +31,7 @@ func main() {
 	socksAddr := config.BindStringFlag(flag.CommandLine, "socks-addr", "SOVEREIGN_SOCKS5_LISTEN_ADDR", "127.0.0.1:1080", "Local SOCKS5 proxy inbound listen address")
 	httpAddr := config.BindStringFlag(flag.CommandLine, "http-addr", "SOVEREIGN_HTTP_LISTEN_ADDR", "127.0.0.1:8080", "Local HTTP CONNECT proxy inbound listen address")
 	controlURL := config.BindStringFlag(flag.CommandLine, "control-url", "SOVEREIGN_CONTROL_PLANE_URL", "http://127.0.0.1:8443", "SovereignMesh Control Plane URL")
+	controlCA := config.BindStringFlag(flag.CommandLine, "control-ca", "SOVEREIGN_CONTROL_PLANE_CA", "", "PEM file of the CA that signs the control plane's TLS certificate; only that CA is trusted. Empty uses the system roots")
 	enableExit := config.BindBoolFlag(flag.CommandLine, "enable-exit", "SOVEREIGN_ENABLE_EXIT_BRIDGE", false, "Enable sandboxed egress exit node bridge")
 	countryCode := config.BindStringFlag(flag.CommandLine, "country", "SOVEREIGN_COUNTRY_CODE", "US", "Self-declared ISO country code for bridge registration (not measured)")
 	declaredLocationOf := bindLocationFlags(flag.CommandLine)
@@ -114,7 +115,10 @@ func main() {
 	}
 
 	// Register with Control Plane
-	ctrlClient := control.NewClient(*controlURL)
+	ctrlClient, err := newControlClient(*controlURL, *controlCA)
+	if err != nil {
+		log.Fatalf("Cannot set up the control plane connection: %v", err)
+	}
 	ctrlClient.SetAuthToken(os.Getenv("SOVEREIGN_REGISTRATION_TOKEN"))
 	// A pre-auth key from the console, as issued ("nnk1:<key>:<fingerprint>"). Either
 	// this or the fleet token above enrols a new key; an enrolled node re-registers
@@ -495,6 +499,21 @@ func loadOrCreateIdentity(path string) (*crypto.Keypair, error) {
 // curve25519Basepoint is the generator, used to recover a public key from a stored
 // private one.
 var curve25519Basepoint = [crypto.KeySize]byte{9}
+
+// newControlClient builds the control plane client, pinned to the CA in caPath when one
+// is given. A CA file that cannot be read is fatal rather than a fall back to the
+// system roots: an operator who named a CA expects the connection to be checked
+// against it, and a silent fall back would not tell them it is not.
+func newControlClient(url, caPath string) (*control.Client, error) {
+	if caPath == "" {
+		return control.NewClient(url), nil
+	}
+	pemBytes, err := os.ReadFile(caPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the control plane CA at %s: %w", caPath, err)
+	}
+	return control.NewClientWithCA(url, pemBytes)
+}
 
 // nodeEnrolment is what a registration needs besides the role and capability: the
 // keypair, whose private half proves the node holds it, and the pre-auth key, if any.
