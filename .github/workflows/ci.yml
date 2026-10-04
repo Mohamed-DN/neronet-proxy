@@ -213,6 +213,10 @@ jobs:
       - name: Overlay deny rule
         run: sh scripts/dev/scenarios/overlay.sh rule-deny
 
+      # A sub-network isolates its nodes from the rest, a peering joins them back.
+      - name: Overlay sub-network
+        run: sh scripts/dev/scenarios/overlay.sh subnet
+
       - name: Overlay quarantine
         run: sh scripts/dev/scenarios/overlay.sh quarantine
 

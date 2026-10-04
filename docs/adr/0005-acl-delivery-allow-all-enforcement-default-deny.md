@@ -1,5 +1,8 @@
 # ADR 0005: ACL delivery is allow-all when no rules exist; enforcement is default-deny
 
+> Amended by [ADR 0021](0021-sub-networks-and-drop-rules.md): an open mesh closes when the
+> first ACCEPT rule is written. DROP rules on their own subtract from the open default.
+
 - Status: Accepted as the current behaviour. Superseded in part by the organisation
   setting in the target architecture (see Consequences).
 - Date: 2026-09-13

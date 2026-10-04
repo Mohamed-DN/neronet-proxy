@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: overlay.sh [matrix|rule-deny|quarantine|revoke|fail-static]
+# Usage: overlay.sh [matrix|rule-deny|subnet|quarantine|revoke|fail-static]
 #
 # Measures the overlay between the fleet nodes of a running stack. Every cell of the
 # matrix is a real TCP exchange: node A dials node B's overlay address through node
@@ -8,6 +8,8 @@
 #
 #   matrix        N x N of ok / denied / timeout with the measured round trips
 #   rule-deny     deny one pair through the API, re-measure, delete the rule, re-measure
+#   subnet        put two nodes in a sub-network, re-measure; connect it to the default
+#                 sub-network, re-measure; delete it, re-measure
 #   quarantine    quarantine one node through the API, re-measure, lift it, re-measure
 #   revoke        revoke one node through the API and re-measure
 #   fail-static   stop the backend, re-measure, restart it, re-measure
@@ -275,14 +277,13 @@ case "$SCENARIO" in
     measure_matrix "before the deny rule"
     expect_all ok || rc=1
 
-    # An empty rule set compiles to allow-all, and the first rule written replaces
-    # that with exactly the rules present. Denying one pair therefore means writing
-    # the deny and the allow-all it is being carved out of, which is what an operator
-    # has to do and what this does.
-    echo "creating the deny rules and the allow-all they are carved out of"
+    # The two DROPs alone, as the console's "cut connection" writes them. An open
+    # organisation whose rules only drop stays open around them; until that was fixed
+    # this exact rule set took every pair of the mesh down, and this scenario hid it by
+    # also writing an allow-all.
+    echo "creating the deny rules, one each way"
     DENY_AB=$(api POST /api/acl/rules "{\"priority\":10,\"source_cidr\":\"$A_VIP\",\"destination_cidr\":\"$B_VIP\",\"action\":\"DROP\",\"description\":\"WP-202 scenario\"}" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
     DENY_BA=$(api POST /api/acl/rules "{\"priority\":11,\"source_cidr\":\"$B_VIP\",\"destination_cidr\":\"$A_VIP\",\"action\":\"DROP\",\"description\":\"WP-202 scenario\"}" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
-    ALLOW=$(api POST /api/acl/rules '{"priority":100,"source_cidr":"0.0.0.0/0","destination_cidr":"0.0.0.0/0","action":"ACCEPT","description":"WP-202 scenario mesh default"}' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
     converge
 
     measure_matrix "with $A and $B denied"
@@ -307,12 +308,62 @@ case "$SCENARIO" in
     done
 
     echo "deleting the scenario rules"
-    for id in "$DENY_AB" "$DENY_BA" "$ALLOW"; do
+    for id in "$DENY_AB" "$DENY_BA"; do
       [ -n "$id" ] && api DELETE "/api/acl/rules/$id" > /dev/null
     done
     converge
 
     measure_matrix "after deleting the rules"
+    expect_all ok || rc=1
+    ;;
+
+  subnet)
+    A=$(first_service)
+    B=$(second_service)
+
+    measure_matrix "before the sub-network"
+    expect_all ok || rc=1
+
+    # The organisation's default compartment, which every enrolled node starts in.
+    api GET /api/compartments > "$WORK/compartments.json"
+    DEFAULT_CMP=$(tr '}' '\n' < "$WORK/compartments.json" | grep '"slug":"default"' \
+      | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
+    [ -n "$DEFAULT_CMP" ] || die "no default compartment in the API's answer"
+
+    echo "creating a sub-network with $A and $B"
+    LAB=$(api POST /api/compartments '{"name":"overlay scenario"}' \
+      | sed -n 's/.*"compartment":{"id":"\([^"]*\)".*/\1/p')
+    [ -n "$LAB" ] || die "the sub-network was not created"
+    api POST "/api/compartments/$LAB/members" \
+      "{\"node_ids\":[\"$(node_id_of "$A")\",\"$(node_id_of "$B")\"]}" > /dev/null
+    converge
+
+    # Inside each side the mesh is whole; across the boundary nothing passes.
+    measure_matrix "with $A and $B in their own sub-network"
+    while read -r src dst state rest; do
+      in_src=0
+      in_dst=0
+      { [ "$src" = "$A" ] || [ "$src" = "$B" ]; } && in_src=1
+      { [ "$dst" = "$A" ] || [ "$dst" = "$B" ]; } && in_dst=1
+      want=ok
+      [ "$in_src" = "$in_dst" ] || want=timeout
+      [ "$state" = "$want" ] || { echo "unexpected: $src -> $dst is $state, expected $want" >&2; rc=1; }
+    done < "$WORK/matrix"
+
+    echo "connecting the sub-network to the default one"
+    api POST /api/compartments/peerings/create \
+      "{\"src_compartment_id\":\"$LAB\",\"dst_compartment_id\":\"$DEFAULT_CMP\",\"policy\":\"allow\"}" > /dev/null
+    converge
+
+    measure_matrix "with the two sub-networks connected"
+    expect_all ok || rc=1
+
+    # Deleting it removes its peering with it and returns its nodes to the default.
+    echo "deleting the sub-network"
+    api DELETE "/api/compartments/$LAB" > /dev/null
+    converge
+
+    measure_matrix "after deleting the sub-network"
     expect_all ok || rc=1
     ;;
 
