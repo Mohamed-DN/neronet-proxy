@@ -394,3 +394,166 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
     expect(screen.getByText('Enroll sovereign nodes to construct the overlay topology.')).toBeInTheDocument();
   });
 });
+
+describe('Topology canvas: cutting links and staying readable at scale', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('7. Cutting a connection writes a DROP rule in each direction between the two overlay IPs', async () => {
+    const posted: Array<Record<string, unknown>> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes('/api/acl/rules') && init?.method === 'POST') {
+          const body = JSON.parse((init.body as string) || '{}');
+          posted.push(body);
+          return jsonResponse({ rule: { id: `acl-${posted.length}`, ...body }, epoch: 2 });
+        }
+        if (url.includes('/api/acl/rules')) {
+          return jsonResponse({ rules: [], epoch: 1, policy_is_open: true, count: 0 });
+        }
+        if (url.includes('/api/stats/topology')) {
+          return jsonResponse({ nodes: mockStandardNodes, links: mockLinks, total_nodes: 2, policy_is_open: true });
+        }
+        if (url.includes('/api/compartments')) {
+          return jsonResponse({ compartments: mockStandardCompartments });
+        }
+        return jsonResponse({});
+      }) as unknown as typeof fetch
+    );
+
+    const user = userEvent.setup();
+    renderTopology();
+
+    await user.click(await screen.findByRole('button', { name: 'Connection: Rome Gateway Alpha — Berlin Exit Bravo' }));
+    await user.click(screen.getByRole('button', { name: 'Cut connection' }));
+
+    await waitFor(() => expect(posted).toHaveLength(2));
+    expect(posted).toEqual([
+      expect.objectContaining({
+        source_cidr: '10.200.0.1/32',
+        destination_cidr: '10.200.0.2/32',
+        protocol: 'ALL',
+        action: 'DROP'
+      }),
+      expect.objectContaining({
+        source_cidr: '10.200.0.2/32',
+        destination_cidr: '10.200.0.1/32',
+        protocol: 'ALL',
+        action: 'DROP'
+      })
+    ]);
+  });
+
+  it('8. Restoring a cut connection deletes the DROP rules for that pair and no other', async () => {
+    const deleted: string[] = [];
+    const rules = [
+      { id: 'acl-a', source_cidr: '10.200.0.1/32', destination_cidr: '10.200.0.2/32', action: 'DROP', protocol: 'ALL' },
+      { id: 'acl-b', source_cidr: '10.200.0.2/32', destination_cidr: '10.200.0.1/32', action: 'DROP', protocol: 'ALL' },
+      // Same source, different peer: it must survive the restore.
+      {
+        id: 'acl-other',
+        source_cidr: '10.200.0.1/32',
+        destination_cidr: '10.200.0.9/32',
+        action: 'DROP',
+        protocol: 'ALL'
+      }
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes('/api/acl/rules/') && init?.method === 'DELETE') {
+          const id = decodeURIComponent(url.split('/').pop() ?? '');
+          deleted.push(id);
+          return jsonResponse({ deleted: id, epoch: 3, policy_is_open: true });
+        }
+        if (url.includes('/api/acl/rules')) {
+          return jsonResponse({ rules, epoch: 2, policy_is_open: true, count: rules.length });
+        }
+        if (url.includes('/api/stats/topology')) {
+          return jsonResponse({
+            nodes: mockStandardNodes,
+            links: [{ ...mockLinks[0], is_visible: false }],
+            total_nodes: 2,
+            policy_is_open: true
+          });
+        }
+        if (url.includes('/api/compartments')) {
+          return jsonResponse({ compartments: mockStandardCompartments });
+        }
+        return jsonResponse({});
+      }) as unknown as typeof fetch
+    );
+
+    const user = userEvent.setup();
+    renderTopology();
+
+    await user.click(await screen.findByRole('button', { name: 'Connection: Rome Gateway Alpha — Berlin Exit Bravo' }));
+    const restore = screen.getByRole('button', { name: 'Restore connection' });
+    // Disabled until the rule list has loaded and the pair's rules are known.
+    await waitFor(() => expect(restore).toBeEnabled());
+    await user.click(restore);
+
+    await waitFor(() => expect([...deleted].sort()).toEqual(['acl-a', 'acl-b']));
+  });
+
+  it("9. A large fleet is grouped into clusters and shows a node's connections only once it is selected", async () => {
+    const many: TopologyNode[] = Array.from({ length: 30 }, (_, i) => ({
+      id: `n-${i}`,
+      name: `Node ${i}`,
+      role: 'CLIENT_ORIGIN',
+      country: i % 2 === 0 ? 'DE' : 'IT',
+      overlay_ipv4: `100.64.1.${i + 1}`,
+      is_healthy: true,
+      is_quarantined: false,
+      latency_ms: null,
+      compartment_id: null,
+      compartment_name: '',
+      is_ghost_vault: false
+    }));
+    const fullMesh: TopologyLink[] = [];
+    for (let a = 0; a < many.length; a += 1) {
+      for (let b = a + 1; b < many.length; b += 1) {
+        // One pair has been cut: that is the kind of exception that must stay visible.
+        const cut = a === 1 && b === 2;
+        fullMesh.push({ source: many[a]!.id, target: many[b]!.id, mode: 'direct', is_visible: !cut });
+      }
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/api/acl/rules')) {
+          return jsonResponse({ rules: [], epoch: 1, policy_is_open: true, count: 0 });
+        }
+        if (url.includes('/api/stats/topology')) {
+          return jsonResponse({ nodes: many, links: fullMesh, total_nodes: many.length, policy_is_open: true });
+        }
+        if (url.includes('/api/compartments')) {
+          return jsonResponse({ compartments: [] });
+        }
+        return jsonResponse({});
+      }) as unknown as typeof fetch
+    );
+
+    const user = userEvent.setup();
+    renderTopology();
+
+    const node0 = await screen.findByRole('button', { name: 'Node 0 — CLIENT_ORIGIN' });
+
+    // 435 links exist; only the cut one is drawn. The full mesh would be a hairball.
+    expect(screen.getAllByRole('button', { name: /^Connection:/ })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Connection: Node 1 — Node 2' })).toBeInTheDocument();
+    expect(screen.getByText(/Select a node to reveal its connections/)).toBeInTheDocument();
+
+    // Grouped by region by default: two clusters of fifteen.
+    expect(screen.getByText('DE · 15')).toBeInTheDocument();
+    expect(screen.getByText('IT · 15')).toBeInTheDocument();
+
+    node0.focus();
+    await user.keyboard('{Enter}');
+
+    // Node 0's 29 links join the cut one; the other 405 stay hidden.
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Connection:/ })).toHaveLength(30));
+  });
+});
