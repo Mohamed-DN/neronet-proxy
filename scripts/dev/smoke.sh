@@ -38,15 +38,43 @@ while :; do
 done
 echo "PASS  $alive of $EXPECTED nodes have a heartbeat"
 
-rc=0
-for port in "$API_PORT" "$CONSOLE_PORT"; do
-  body=$(curl -fsS --max-time 10 "http://127.0.0.1:$port/api/health" 2>&1) || body=""
+# The console is TLS-only and its certificate is checked against the stack's CA, not
+# skipped: an unverified request would pass against any certificate at all.
+CA="$(HOST_PATH "$REPO_ROOT/certs")/ca.crt"
+# Windows' curl (Schannel) also demands a revocation answer, which a development CA
+# has no list for. Best effort keeps the chain check and skips only that lookup.
+TLS_OPTS="--cacert $CA"
+if curl -V 2>/dev/null | grep -qi schannel; then
+  TLS_OPTS="$TLS_OPTS --ssl-revoke-best-effort"
+fi
+
+check_health() { # label url [curl options]
+  label=$1
+  url=$2
+  shift 2
+  body=$(curl -fsS --max-time 10 "$@" "$url" 2>&1) || body=""
   case "$body" in
-    *'"status":"ok"'*) echo "PASS  /api/health on port $port" ;;
+    *'"status":"ok"'*) echo "PASS  /api/health $label" ;;
     *)
-      echo "FAIL  /api/health on port $port did not return status ok" >&2
+      echo "FAIL  /api/health $label did not return status ok" >&2
       rc=1
       ;;
   esac
-done
+}
+
+rc=0
+check_health "on the API port $API_PORT" "http://127.0.0.1:$API_PORT/api/health"
+# shellcheck disable=SC2086 # TLS_OPTS is a list of options, split on purpose
+check_health "through the console over TLS (port $CONSOLE_PORT)" "https://127.0.0.1:$CONSOLE_PORT/api/health" $TLS_OPTS
+
+# Plain HTTP on the console port must be sent to TLS, never answered in the clear.
+# The status comes after the body rather than through -o /dev/null, a path Windows'
+# curl cannot open with Git Bash's path rewriting off.
+code=$(curl -s --max-time 10 -w '\n%{http_code}' "http://127.0.0.1:$CONSOLE_PORT/api/health" | tail -n 1) || code=000
+if [ "$code" = "301" ]; then
+  echo "PASS  plain HTTP on the console port is redirected to TLS"
+else
+  echo "FAIL  plain HTTP on the console port answered $code, expected a 301 to https" >&2
+  rc=1
+fi
 exit $rc

@@ -1,7 +1,9 @@
 #!/bin/sh
 # Usage: stack.sh up | nodes | fleet | down [compose args] | status | logs [compose args] [service]
 #
-#   up      build and start postgres, valkey, backend and console, wait until healthy
+#   up      build and start postgres, valkey, backend and console, wait until healthy.
+#           The console is https://127.0.0.1:8443; certs/ca.crt is the CA to trust,
+#           written by gen-certs.sh on the first run
 #   nodes   start the two DERP relays and six Go nodes (starts the core first if needed)
 #   fleet   start the simulated fleet written by scripts/sim/fleet.mjs (see scripts/sim/README.md)
 #   down    stop and remove the stack's containers and network; add -v to drop its volumes
@@ -68,6 +70,11 @@ need_env() {
   if [ ! -f .env ] && [ -z "${POSTGRES_PASSWORD:-}" ]; then
     die "no .env in $REPO_ROOT; run scripts/dev/gen-env.sh first"
   fi
+  # The console is TLS-only and the nodes pin its CA. A fresh checkout has neither,
+  # so the development pair is written on first use (see gen-certs.sh).
+  if [ ! -f certs/ca.crt ] || [ ! -f certs/server.crt ] || [ ! -f certs/server.key ]; then
+    sh "$REPO_ROOT/scripts/dev/gen-certs.sh" "$REPO_ROOT/certs"
+  fi
 }
 
 case "$cmd" in
@@ -120,7 +127,7 @@ case "$cmd" in
     $COMPOSE $PROFILES logs --tail 200 "$@"
     ;;
   *)
-    sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac

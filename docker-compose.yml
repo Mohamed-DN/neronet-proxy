@@ -38,6 +38,11 @@ x-node: &node
     # it is behind the same filter as everything else, so it answers only what the
     # policy permits.
     - SOVEREIGN_OVERLAY_ECHO_PORT=${NERONET_OVERLAY_ECHO_PORT:-9999}
+    # The control plane is reached over TLS, and only a certificate this CA signed
+    # is accepted (scripts/dev/gen-certs.sh writes it).
+    - SOVEREIGN_CONTROL_PLANE_CA=/run/secrets/control_plane_ca
+  secrets:
+    - control_plane_ca
   depends_on:
     frontend:
       condition: service_healthy
@@ -132,8 +137,8 @@ services:
       - SOVEREIGN_DATA_DIR=/app/data
       - SOVEREIGN_CONTRACT_SCHEMA_DIR=/app/api/contract/v4
       - SOVEREIGN_FEATURE_CLOUD_PC=${SOVEREIGN_FEATURE_CLOUD_PC:-false}
-      # The browser origins that reach the console and the API on the host.
-      - CORS_ORIGIN=http://127.0.0.1:${NERONET_CONSOLE_PORT:-8443},http://localhost:${NERONET_CONSOLE_PORT:-8443},http://127.0.0.1:${NERONET_API_PORT:-8081},http://localhost:${NERONET_API_PORT:-8081}
+      # The browser origins that reach the console (TLS) and the API on the host.
+      - CORS_ORIGIN=https://127.0.0.1:${NERONET_CONSOLE_PORT:-8443},https://localhost:${NERONET_CONSOLE_PORT:-8443},http://127.0.0.1:${NERONET_API_PORT:-8081},http://localhost:${NERONET_API_PORT:-8081}
     # Unprivileged, with a read-only root filesystem. Only /app/data is writable,
     # and only because the federation identity and the SQLite file live there.
     user: "10001:10001"
@@ -158,7 +163,7 @@ services:
     networks:
       - neronet-isolated-mesh
 
-  # 4. Console SPA (nginx). Also the entry point Go nodes enrol through.
+  # 4. Console SPA (nginx), TLS only. Also the entry point Go nodes enrol through.
   frontend:
     build:
       context: ./console/frontend
@@ -166,11 +171,15 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:${NERONET_CONSOLE_PORT:-8443}:8443"
+    secrets:
+      - console_tls_cert
+      - console_tls_key
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8443/ || exit 1"]
+      # 8443 is TLS-only; this is the loopback health listener inside the container.
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8090/healthz || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -203,79 +212,79 @@ services:
 
   relay-de:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "DE", "-enable-exit=true"]
+    command: ["-control-url", "https://frontend:8443", "-country", "DE", "-enable-exit=true"]
     volumes:
       - identity-relay-de:/var/lib/neronet
 
   relay-fr:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "FR", "-enable-exit=true"]
+    command: ["-control-url", "https://frontend:8443", "-country", "FR", "-enable-exit=true"]
     volumes:
       - identity-relay-fr:/var/lib/neronet
 
   relay-us:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "US", "-enable-exit=true"]
+    command: ["-control-url", "https://frontend:8443", "-country", "US", "-enable-exit=true"]
     volumes:
       - identity-relay-us:/var/lib/neronet
 
   relay-nl:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "NL", "-enable-exit=true"]
+    command: ["-control-url", "https://frontend:8443", "-country", "NL", "-enable-exit=true"]
     volumes:
       - identity-relay-nl:/var/lib/neronet
 
   client-it:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "IT"]
+    command: ["-control-url", "https://frontend:8443", "-country", "IT"]
     volumes:
       - identity-client-it:/var/lib/neronet
 
   client-es:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "ES"]
+    command: ["-control-url", "https://frontend:8443", "-country", "ES"]
     volumes:
       - identity-client-es:/var/lib/neronet
 
   client-uk:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "GB"]
+    command: ["-control-url", "https://frontend:8443", "-country", "GB"]
     volumes:
       - identity-client-uk:/var/lib/neronet
 
   client-us:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "US"]
+    command: ["-control-url", "https://frontend:8443", "-country", "US"]
     volumes:
       - identity-client-us:/var/lib/neronet
 
   client-de:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "DE"]
+    command: ["-control-url", "https://frontend:8443", "-country", "DE"]
     volumes:
       - identity-client-de:/var/lib/neronet
 
   client-fr:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "FR"]
+    command: ["-control-url", "https://frontend:8443", "-country", "FR"]
     volumes:
       - identity-client-fr:/var/lib/neronet
 
   client-jp:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "JP"]
+    command: ["-control-url", "https://frontend:8443", "-country", "JP"]
     volumes:
       - identity-client-jp:/var/lib/neronet
 
   client-ch:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "CH"]
+    command: ["-control-url", "https://frontend:8443", "-country", "CH"]
     volumes:
       - identity-client-ch:/var/lib/neronet
 
   relay-se:
     <<: *node
-    command: ["-control-url", "http://frontend:8443", "-country", "SE", "-enable-exit=true"]
+    command: ["-control-url", "https://frontend:8443", "-country", "SE", "-enable-exit=true"]
     volumes:
       - identity-relay-se:/var/lib/neronet
 
@@ -315,6 +324,16 @@ services:
 networks:
   neronet-isolated-mesh:
     driver: bridge
+
+# Written by scripts/dev/gen-certs.sh (stack.sh runs it when they are missing). A
+# deployment points these at its own certificate, key and CA.
+secrets:
+  console_tls_cert:
+    file: ./certs/server.crt
+  console_tls_key:
+    file: ./certs/server.key
+  control_plane_ca:
+    file: ./certs/ca.crt
 
 volumes:
   backend_data:

@@ -16,5 +16,6 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 EXPOSE 8443
-HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8443/ || exit 1
+# 8443 is TLS-only; the probe uses the loopback health listener in the template.
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8090/healthz || exit 1
 CMD ["nginx", "-g", "daemon off;"]

@@ -1,6 +1,21 @@
+# The console and the node control API, TLS only. The certificate and key come in as
+# compose secrets: scripts/dev/gen-certs.sh writes a development pair, a deployment
+# mounts its own under the same names.
 server {
-    listen 8443;
-    server_name localhost 127.0.0.1;
+    listen 8443 ssl;
+    server_name localhost 127.0.0.1 frontend;
+
+    ssl_certificate     /run/secrets/console_tls_cert;
+    ssl_certificate_key /run/secrets/console_tls_key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1h;
+    ssl_session_tickets off;
+
+    # Plain HTTP sent to this port: send the browser to the same address over TLS
+    # rather than answer with nginx's bare 400.
+    error_page 497 =301 https://$http_host$request_uri;
 
     root /usr/share/nginx/html;
     index index.html;
@@ -59,5 +74,20 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+
+# Liveness for the container runtime, which has no TLS client to probe 8443 with.
+# Loopback inside the container only, never published, and it serves nothing else.
+server {
+    listen 127.0.0.1:8090;
+
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+    }
+
+    location / {
+        return 404;
     }
 }

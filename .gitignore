@@ -48,6 +48,8 @@ data/*.db-shm
 # Environment Local Overrides
 .env
 .env.local
+# Development CA and console certificate written by scripts/dev/gen-certs.sh.
+/certs/
 **/.env
 **/.env.local
 !.env.example

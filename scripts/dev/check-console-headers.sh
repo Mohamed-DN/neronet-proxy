@@ -9,13 +9,27 @@
 #
 # This cannot run in the backend test suite, which never goes through nginx.
 #
-# Usage: check-console-headers.sh [base-url]        (default http://127.0.0.1:8443)
+# Usage: check-console-headers.sh [base-url]        (default https://127.0.0.1:8443)
 #
-# Exits non-zero if any check fails. Prints one line per check.
+# An https URL is checked against the stack's CA, certs/ca.crt, or the file named by
+# NERONET_CONSOLE_CA. Exits non-zero if any check fails. Prints one line per check.
 
 set -u
 
-BASE=${1:-http://127.0.0.1:8443}
+BASE=${1:-https://127.0.0.1:8443}
+
+# curl is a native program on Windows, so the CA path is handed over in the form it
+# reads. cygpath exists only under Git Bash and MSYS.
+CA=${NERONET_CONSOLE_CA:-$(cd "$(dirname "$0")/../.." && pwd)/certs/ca.crt}
+if command -v cygpath >/dev/null 2>&1; then
+  CA=$(cygpath -m "$CA")
+fi
+# Windows' curl (Schannel) also demands a revocation answer, which a development CA
+# has no list for. Best effort keeps the chain check and skips only that lookup.
+REVOKE=""
+if curl -V 2>/dev/null | grep -qi schannel; then
+  REVOKE="--ssl-revoke-best-effort"
+fi
 
 EXPECTED_CSP="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:"
 
@@ -73,7 +87,11 @@ expect_contains() { # headers label header substring
 }
 
 fetch() { # url -> headers on stdout, non-zero if the request failed
-  curl -sS -I --max-time 10 "$1"
+  case "$1" in
+    # shellcheck disable=SC2086 # REVOKE is empty or one option
+    https://*) MSYS_NO_PATHCONV=1 curl -sS -I --max-time 10 --cacert "$CA" $REVOKE "$1" ;;
+    *) curl -sS -I --max-time 10 "$1" ;;
+  esac
 }
 
 echo "== SPA document: $BASE/"
@@ -96,7 +114,9 @@ done
 
 # Deprecated, and on some browsers it reintroduced the hole it claimed to close.
 expect_absent "$doc" document 'X-XSS-Protection'
-# The edge serves plain HTTP. HSTS arrives with TLS.
+# Not from the development template, although it serves TLS: a browser would pin HSTS
+# to "localhost" for every port and break other local projects served over HTTP. A
+# deployment's edge sets it for its real hostname.
 expect_absent "$doc" document 'Strict-Transport-Security'
 
 echo
