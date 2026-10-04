@@ -1,7 +1,11 @@
 #!/bin/sh
-# Usage: test-backend.sh
+# Usage: test-backend.sh [test file ...]
 #
-# Backend suite (`npm ci && npm test`) in node:22 against a private, throw-away Valkey.
+# With no argument, the backend suite (`npm ci && npm test`). With paths relative to
+# console/backend (tests/netmap.test.js), only those files, under the same environment
+# the `test` script in console/backend/package.json sets; keep the two in step.
+#
+# Backend suite in node:22 against a private, throw-away Valkey.
 # Each run creates its own network and Valkey container, so runs started together do
 # not share state. Never point the suite at another stack's Valkey: the tests key their
 # data by process id, and ids collide across containers.
@@ -51,6 +55,8 @@ done
 
 LOG=${TEST_LOG:-${TMPDIR:-/tmp}/neronet-backend-$RUN_ID.log}
 rc=0
+# The single-quoted script is expanded by the container's shell, not this one.
+# shellcheck disable=SC2016
 $ENGINE run --rm --network "$NET" \
   -e VALKEY_URL=redis://valkey:6379 -e VALKEY_HOST=valkey \
   -e DATABASE_URL=postgresql://neronet:neronet_dev_password@postgres:5432/neronet_test \
@@ -59,8 +65,14 @@ $ENGINE run --rm --network "$NET" \
   -v /repo/console/backend/node_modules \
   --tmpfs /repo/console/data \
   -v neronet-npmcache:/root/.npm \
+  -e NERONET_TEST_FILES="$*" \
   -w /repo/console/backend docker.io/library/node:22 \
-  sh -c 'npm ci --no-audit --no-fund >/dev/null && npm test' >"$LOG" 2>&1 || rc=$?
+  sh -c 'npm ci --no-audit --no-fund >/dev/null && if [ -n "$NERONET_TEST_FILES" ]; then
+           SOVEREIGN_RATE_LIMIT_DISABLED=true SOVEREIGN_VALKEY_NAMESPACE="test-{pid}" \
+             node --test --test-concurrency=1 $NERONET_TEST_FILES
+         else
+           npm test
+         fi' >"$LOG" 2>&1 || rc=$?
 
 grep -E '^# (tests|pass|fail|cancelled|skipped)' "$LOG" || true
 grep -E '^\s*not ok' "$LOG" | head -20 || true

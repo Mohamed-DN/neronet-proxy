@@ -664,5 +664,6 @@ module.exports = {
   validateEndpoints,
   recordEndpoints,
   buildNetmap,
-  goIPNetToCidr
+  goIPNetToCidr,
+  permittedPeerVIPs
 };

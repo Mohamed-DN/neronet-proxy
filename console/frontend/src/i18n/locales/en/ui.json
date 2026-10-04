@@ -318,7 +318,7 @@
       "viewDetails": "Inspect Node Specs",
       "close": "Close"
     },
-    "policyOpenNotice": "Global mesh routing policy is currently permissive (Default Allow).",
+    "policyOpenNotice": "The mesh is open by default: every node can reach every other, except the connections you have cut.",
     "empty": {
       "title": "No nodes found in topology",
       "desc": "No nodes match the selected compartment or search filters.",

@@ -318,7 +318,7 @@
       "viewDetails": "Ispeziona Specifiche Nodo",
       "close": "Chiudi"
     },
-    "policyOpenNotice": "La policy di routing mesh globale è attualmente permissiva (Consenti tutto).",
+    "policyOpenNotice": "La mesh è aperta per default: ogni nodo raggiunge tutti gli altri, tranne i collegamenti che hai tagliato.",
     "empty": {
       "title": "Nessun nodo trovato nella topologia",
       "desc": "Nessun nodo corrisponde al compartimento selezionato o ai filtri di ricerca.",

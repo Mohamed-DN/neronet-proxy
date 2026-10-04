@@ -8,6 +8,7 @@ const { resolveUserOrg, requireSuperAdmin } = require('../middleware/rbac');
 const { readFleetState, readPostureCounts, LIVENESS_WINDOW_SECONDS } = require('../services/MetricsCollector');
 const { COUNTRY_NAMES } = require('../utils/countries');
 const AclEngine = require('../services/AclEngine');
+const NetmapService = require('../services/NetmapService');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -304,10 +305,10 @@ async function topologyHandler(req, res, next) {
       nodes,
       links,
       total_nodes: nodes.length,
-      // True when no ACL rule exists. pkg/acl is default-deny, so the control plane
-      // compiles allow-all in that case: the mesh is open until the first rule is
-      // written, and the console should say so rather than presenting a full mesh
-      // as a configured one.
+      // True while the organisation's open default is in force: it is open and no
+      // ACCEPT rule has turned the policy into an allow-list yet (DROP rules only
+      // carve pairs out of it). The console says so rather than presenting a full
+      // mesh as a configured one.
       policy_is_open: policyIsOpen,
       mesh_scope: req.user.role === 'super-admin' ? 'global' : 'user_isolated'
     });
@@ -320,16 +321,26 @@ async function topologyHandler(req, res, next) {
  * Derives the edges of the topology from the compiled ACL policy.
  *
  * One compile per node is the same work the control plane does when a node syncs,
- * and it is bounded by the number of nodes the caller can see. An edge is added
- * once per unordered pair: A permitted to reach B and B permitted to reach A is one
- * line on screen, not two.
+ * and it is bounded by the number of nodes the caller can see. An edge is one per
+ * unordered pair: A permitted to reach B and B permitted to reach A is one line on
+ * screen, not two.
+ *
+ * The compiled lists are read with NetmapService.permittedPeerVIPs, the same first-
+ * match reading pkg/acl applies, so a pair is drawn live exactly when the netmap
+ * gives the two nodes each other's keys. Reading "is there an ACCEPT entry" instead
+ * drew a cut pair as connected, because an open organisation compiles its default
+ * ACCEPT after the DROP that wins.
+ *
+ *   live   the policy permits traffic in at least one direction
+ *   cut    it permits none, and a DROP names the pair: an operator took it away
+ *   absent it permits none and nothing names it: an allow-list that never granted
+ *          it. Not drawn, or a deny organisation of a thousand nodes would be a
+ *          thousand nodes of red lines.
+ *
+ * mesh_link_configs still supplies the transport label; it no longer decides
+ * whether a pair is shown as connected, because nothing in the data plane reads it.
  */
 async function compileTopologyLinks(nodes) {
-  const byVip = new Map();
-  for (const n of nodes) {
-    if (n.overlay_ipv4) byVip.set(n.overlay_ipv4, n.id);
-  }
-
   const pool = getPgPool();
   const cfgMap = new Map();
   try {
@@ -344,88 +355,52 @@ async function compileTopologyLinks(nodes) {
     // Ignore in environments without table
   }
 
-  const seen = new Set();
-  const links = [];
+  const permittedBy = new Map();
+  const droppedBy = new Map();
   let policyIsOpen = false;
 
   for (const node of nodes) {
     const policy = await AclEngine.compilePolicyFor(node.id);
     if (!policy) continue;
 
-    if (policy.outbound_rules.some((r) => r.is_directional === false)) {
+    const entries = [...policy.outbound_rules, ...policy.inbound_rules];
+    // The open default is compiled as non-directional allow-alls.
+    if (entries.some((r) => r.is_directional === false)) {
       policyIsOpen = true;
     }
 
-    for (const rule of policy.outbound_rules) {
-      if (rule.action !== 'ACCEPT') continue;
-
-      const peerId = byVip.get(rule.allowed_peer_vip);
-      if (!peerId || peerId === node.id) continue;
-
-      const key = node.id < peerId ? `${node.id}|${peerId}` : `${peerId}|${node.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      const cfg = cfgMap.get(`${node.id}|${peerId}`);
-      const mode = cfg ? cfg.mode : 'direct';
-      const relayId = cfg ? cfg.relay_id : null;
-      const isVisible = cfg ? Boolean(cfg.is_visible) : true;
-
-      links.push({
-        source: node.id,
-        target: peerId,
-        protocol: rule.protocol,
-        mode,
-        relay_id: relayId,
-        is_visible: isVisible
-      });
-    }
+    permittedBy.set(node.id, NetmapService.permittedPeerVIPs(policy));
+    droppedBy.set(
+      node.id,
+      new Set(
+        entries
+          .filter((r) => String(r.action).toUpperCase() === 'DROP' && r.allowed_peer_vip)
+          .map((r) => String(r.allowed_peer_vip))
+      )
+    );
   }
 
-  // In NeroNet Sovereign Mesh, all registered peers communicate in a WireGuard mesh.
-  // When policy is open (default mesh) or no custom explicit ACCEPT rules are defined,
-  // we synthesize the full mesh spiderweb connections between all active nodes.
-  if (links.length === 0 || policyIsOpen) {
-    const dropSet = new Set();
-    try {
-      const dropRes = await pool.query(
-        "SELECT source_cidr, destination_cidr FROM acl_rules WHERE action = 'DROP' AND enabled = TRUE"
-      );
-      for (const dr of dropRes.rows) {
-        const sVip = (dr.source_cidr || '').split('/')[0];
-        const dVip = (dr.destination_cidr || '').split('/')[0];
-        const sId = byVip.get(sVip);
-        const dId = byVip.get(dVip);
-        if (sId && dId) {
-          dropSet.add(`${sId}|${dId}`);
-          dropSet.add(`${dId}|${sId}`);
-        }
-      }
-    } catch {}
+  const names = (fromId, toVip, sets) => Boolean(toVip) && Boolean(sets.get(fromId)?.has(toVip));
 
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const u = nodes[i];
-        const v = nodes[j];
-        const key = u.id < v.id ? `${u.id}|${v.id}` : `${v.id}|${u.id}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
+  const links = [];
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const u = nodes[i];
+      const v = nodes[j];
 
-        const isDropped = dropSet.has(`${u.id}|${v.id}`) || dropSet.has(`${v.id}|${u.id}`);
-        const cfg = cfgMap.get(`${u.id}|${v.id}`);
-        const mode = cfg ? cfg.mode : 'direct';
-        const relayId = cfg ? cfg.relay_id : null;
-        const isVisible = cfg ? Boolean(cfg.is_visible) : !isDropped;
+      const live = names(u.id, v.overlay_ipv4, permittedBy) || names(v.id, u.overlay_ipv4, permittedBy);
+      const cut = !live && (names(u.id, v.overlay_ipv4, droppedBy) || names(v.id, u.overlay_ipv4, droppedBy));
+      if (!live && !cut) continue;
 
-        links.push({
-          source: u.id,
-          target: v.id,
-          protocol: 'WG',
-          mode,
-          relay_id: relayId,
-          is_visible: isVisible
-        });
-      }
+      const cfg = cfgMap.get(`${u.id}|${v.id}`);
+      links.push({
+        source: u.id,
+        target: v.id,
+        protocol: 'WG',
+        mode: cfg ? cfg.mode : 'direct',
+        relay_id: cfg ? cfg.relay_id : null,
+        is_visible: live
+      });
     }
   }
 

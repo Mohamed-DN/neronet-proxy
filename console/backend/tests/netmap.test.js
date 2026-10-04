@@ -249,8 +249,18 @@ describe('Netmap delivery', () => {
       // What the console's "cut connection" writes: a DROP each way and nothing else.
       // This used to compile to an empty allow-list, and pkg/acl then denied every
       // peer of every node: cutting one link took the whole mesh down.
-      await AclEngine.createRule({ priority: 50, source_cidr: `${alpha.vip}/32`, destination_cidr: `${beta.vip}/32`, action: 'DROP' });
-      await AclEngine.createRule({ priority: 50, source_cidr: `${beta.vip}/32`, destination_cidr: `${alpha.vip}/32`, action: 'DROP' });
+      await AclEngine.createRule({
+        priority: 50,
+        source_cidr: `${alpha.vip}/32`,
+        destination_cidr: `${beta.vip}/32`,
+        action: 'DROP'
+      });
+      await AclEngine.createRule({
+        priority: 50,
+        source_cidr: `${beta.vip}/32`,
+        destination_cidr: `${alpha.vip}/32`,
+        action: 'DROP'
+      });
     });
 
     it('cuts that pair and keeps every other pair', async () => {
@@ -268,18 +278,34 @@ describe('Netmap delivery', () => {
         'the open default must come after the DROP it is carved by'
       );
       const forGamma = compiled.outbound_rules.filter((r) => r.allowed_peer_vip === gamma.vip);
-      assert.deepStrictEqual(forGamma.map((r) => r.action), ['ACCEPT']);
+      assert.deepStrictEqual(
+        forGamma.map((r) => r.action),
+        ['ACCEPT']
+      );
     });
 
     it('gives the simulator the same answer the nodes enforce', async () => {
-      const toGamma = await AclEngine.simulatePacket({ source_ip: alpha.vip, destination_ip: gamma.vip, defaultPolicy: 'open' });
-      const toBeta = await AclEngine.simulatePacket({ source_ip: alpha.vip, destination_ip: beta.vip, defaultPolicy: 'open' });
+      const toGamma = await AclEngine.simulatePacket({
+        source_ip: alpha.vip,
+        destination_ip: gamma.vip,
+        defaultPolicy: 'open'
+      });
+      const toBeta = await AclEngine.simulatePacket({
+        source_ip: alpha.vip,
+        destination_ip: beta.vip,
+        defaultPolicy: 'open'
+      });
       assert.strictEqual(toGamma.verdict, 'ACCEPT');
       assert.strictEqual(toBeta.verdict, 'DROP');
     });
 
     it('stops falling through to the default once an ACCEPT rule exists', async () => {
-      await AclEngine.createRule({ priority: 100, source_cidr: `${alpha.vip}/32`, destination_cidr: `${gamma.vip}/32`, action: 'ACCEPT' });
+      await AclEngine.createRule({
+        priority: 100,
+        source_cidr: `${alpha.vip}/32`,
+        destination_cidr: `${gamma.vip}/32`,
+        action: 'ACCEPT'
+      });
       // An allow-list now: beta was only ever reachable through the open default.
       assert.deepStrictEqual(peerIds((await fetchNetmap(app, beta.id)).body), []);
       assert.deepStrictEqual(peerIds((await fetchNetmap(app, alpha.id)).body), [gamma.id]);
