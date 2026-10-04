@@ -2,8 +2,76 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 
 import { apiRequest } from '../apiClient';
 import { storeAccessToken } from '../authToken';
-import type { Compartment, TopologyData } from '../types';
+import type { Compartment, CompartmentPeering, TopologyData } from '../types';
 import { queryKeys } from './keys';
+
+/**
+ * Sub-networks. A compartment is enforced in the data plane (ADR 0021): its devices
+ * reach each other, and another compartment only through an "allow" peering. Every
+ * change below alters who reaches whom, so each one refreshes the topology and the
+ * compiled-policy views along with the compartment lists.
+ */
+function useSubnetMutation<TVariables, TResult>(mutationFn: (vars: TVariables) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.compartments });
+      queryClient.invalidateQueries({ queryKey: queryKeys.statsTopology });
+      queryClient.invalidateQueries({ queryKey: queryKeys.acl });
+    }
+  });
+}
+
+export function useCompartmentPeerings(): UseQueryResult<CompartmentPeering[], Error> {
+  return useQuery({
+    queryKey: queryKeys.compartmentPeerings,
+    queryFn: async ({ signal }) => {
+      const res = await apiRequest<{ peerings: CompartmentPeering[] }>('/compartments/peerings/list', { signal });
+      return res?.peerings ?? [];
+    },
+    staleTime: 15_000
+  });
+}
+
+export function useCreateCompartment() {
+  return useSubnetMutation(async (name: string) => {
+    const res = await apiRequest<{ compartment: Compartment }>('/compartments', { method: 'POST', body: { name } });
+    return res.compartment;
+  });
+}
+
+export function useDeleteCompartment() {
+  return useSubnetMutation((id: string) =>
+    apiRequest<{ success: boolean }>(`/compartments/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  );
+}
+
+/** Move devices into a compartment. Moving them into the default one takes them out of a sub-network. */
+export function useMoveToCompartment() {
+  return useSubnetMutation(async ({ compartmentId, nodeIds }: { compartmentId: string; nodeIds: string[] }) => {
+    const res = await apiRequest<{ moved: string[] }>(`/compartments/${encodeURIComponent(compartmentId)}/members`, {
+      method: 'POST',
+      body: { node_ids: nodeIds }
+    });
+    return res.moved;
+  });
+}
+
+export function useConnectCompartments() {
+  return useSubnetMutation(({ a, b }: { a: string; b: string }) =>
+    apiRequest<{ peering: CompartmentPeering }>('/compartments/peerings/create', {
+      method: 'POST',
+      body: { src_compartment_id: a, dst_compartment_id: b, policy: 'allow' }
+    })
+  );
+}
+
+export function useDisconnectCompartments() {
+  return useSubnetMutation((peeringId: string) =>
+    apiRequest<{ success: boolean }>(`/compartments/peerings/${encodeURIComponent(peeringId)}`, { method: 'DELETE' })
+  );
+}
 
 /**
  * List L2 network compartments.

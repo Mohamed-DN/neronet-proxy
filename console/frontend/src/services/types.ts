@@ -84,6 +84,18 @@ export interface Compartment {
   updated_at?: string;
 }
 
+/** A connection between two compartments. "allow" joins them both ways (ADR 0021). */
+export interface CompartmentPeering {
+  id: string;
+  organization_id: string;
+  src_compartment_id: string;
+  dst_compartment_id: string;
+  policy: 'allow' | 'deny';
+  src_name?: string;
+  dst_name?: string;
+  created_at?: string;
+}
+
 export interface AclRule {
   id: string;
   organization_id?: string;

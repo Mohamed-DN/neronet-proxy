@@ -8,6 +8,7 @@ import {
   Cpu,
   FileText,
   Globe2,
+  Boxes,
   LayoutDashboard,
   Monitor,
   Network,
@@ -130,6 +131,7 @@ export default function Sidebar({
       items: [
         { id: 'overview', icon: LayoutDashboard },
         { id: 'topology', icon: Globe2, badge: '3D' },
+        { id: 'subnets', icon: Boxes },
         { id: 'nodes', icon: Server, count: nodeCount },
         { id: 'onion', icon: Shield, badge: '3-hop' },
         { id: 'peering', icon: Network, badge: 'Ed25519' }

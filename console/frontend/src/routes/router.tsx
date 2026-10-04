@@ -16,6 +16,7 @@ const LoginRoute = lazy(() => import('./LoginRoute'));
 const NotFoundRoute = lazy(() => import('./NotFoundRoute'));
 const OverviewRoute = lazy(() => import('./pages/OverviewRoute'));
 const TopologyRoute = lazy(() => import('./pages/TopologyRoute'));
+const SubnetsRoute = lazy(() => import('./pages/SubnetsRoute'));
 const NodesRoute = lazy(() => import('./pages/NodesRoute'));
 const OnionRoute = lazy(() => import('./pages/OnionRoute'));
 const PeeringRoute = lazy(() => import('./pages/PeeringRoute'));
@@ -60,6 +61,7 @@ export const routes: RouteObject[] = [
           { index: true, element: <Navigate to={DEFAULT_PATH} replace /> },
           page(ROUTES.overview, <OverviewRoute />, 'nav.items.overview'),
           page(ROUTES.topology, <TopologyRoute />, 'nav.items.topology'),
+          page(ROUTES.subnets, <SubnetsRoute />, 'nav.items.subnets'),
           page(ROUTES.nodes, <NodesRoute />, 'nav.items.nodes'),
           page(`${ROUTES.nodes}/:id`, <NodesRoute />, 'nav.items.nodes'),
           page(ROUTES.onion, <OnionRoute />, 'nav.items.onion'),

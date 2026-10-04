@@ -224,6 +224,72 @@
       "quarantineConfirmAction": "Conferma Quarantena"
     }
   },
+  "subnets": {
+    "title": "Sotto-reti",
+    "description": "Raggruppa i dispositivi in reti separate. I dispositivi della stessa sotto-rete si vedono tra loro; per raggiungere un'altra sotto-rete devi collegarle. Il blocco lo applicano i nodi, non è solo un'etichetta.",
+    "create": "Nuova sotto-rete",
+    "stats": {
+      "subnets": "Sotto-reti",
+      "connections": "Collegamenti",
+      "outsideDefault": "Dispositivi in sotto-reti dedicate"
+    },
+    "defaultBadge": "Predefinita",
+    "hiddenBadge": "Nascosta",
+    "devices_one": "{{count}} dispositivo",
+    "devices_other": "{{count}} dispositivi",
+    "noDevices": "Nessun dispositivo. Aggiungine per formare la sotto-rete.",
+    "connectedTo": "Collegata a",
+    "isolated": "Isolata: non raggiunge nessun'altra sotto-rete.",
+    "addDevices": "Aggiungi dispositivi",
+    "connectTo": "Collega a…",
+    "remove": "Elimina",
+    "disconnect": "Scollega {{name}}",
+    "moveOut": "Sposta {{name}} nella sotto-rete predefinita",
+    "moreDevices": "+{{count}} altri",
+    "picker": {
+      "search": "Cerca per nome, paese o IP overlay",
+      "selected_one": "{{count}} selezionato",
+      "selected_other": "{{count}} selezionati",
+      "currentlyIn": "ora in {{name}}"
+    },
+    "createDialog": {
+      "title": "Nuova sotto-rete",
+      "description": "Scegli un nome e i dispositivi da metterci dentro. Lasciano la sotto-rete in cui sono ora.",
+      "nameLabel": "Nome",
+      "namePlaceholder": "Es. Laboratorio, Ufficio Roma, Ospiti",
+      "devicesLabel": "Dispositivi",
+      "submit": "Crea sotto-rete",
+      "nameRequired": "Dai un nome alla sotto-rete."
+    },
+    "addDialog": {
+      "title": "Aggiungi dispositivi a {{name}}",
+      "description": "I dispositivi scelti lasciano la sotto-rete in cui sono ora.",
+      "submit": "Sposta dispositivi",
+      "none": "Tutti i dispositivi sono già qui."
+    },
+    "connectDialog": {
+      "title": "Collega {{name}}",
+      "description": "Due sotto-reti collegate si raggiungono in entrambe le direzioni. Le regole ACL continuano a valere anche attraverso il collegamento.",
+      "targetLabel": "Sotto-rete da collegare",
+      "submit": "Collega",
+      "none": "È già collegata a tutte le altre sotto-reti."
+    },
+    "deleteDialog": {
+      "title": "Eliminare {{name}}?",
+      "description": "I suoi dispositivi tornano nella sotto-rete predefinita e i suoi collegamenti vengono rimossi.",
+      "confirm": "Elimina sotto-rete"
+    },
+    "done": {
+      "created": "Sotto-rete {{name}} creata.",
+      "moved_one": "{{count}} dispositivo spostato.",
+      "moved_other": "{{count}} dispositivi spostati.",
+      "connected": "Sotto-reti collegate.",
+      "disconnected": "Collegamento rimosso.",
+      "deleted": "Sotto-rete eliminata."
+    },
+    "failed": "Operazione non riuscita: {{message}}",
+    "empty": "Nessun dispositivo registrato. Registra dei nodi per creare sotto-reti."
+  },
   "topology": {
     "title": "Topologia Mesh",
     "description": "Topologia interattiva della rete overlay sovrana, collegamenti peer e compartimenti logici L2.",

@@ -224,6 +224,72 @@
       "quarantineConfirmAction": "Confirm Quarantine"
     }
   },
+  "subnets": {
+    "title": "Sub-networks",
+    "description": "Group devices into separate networks. Devices in the same sub-network reach each other; to reach another sub-network, connect the two. The nodes enforce this; it is not just a label.",
+    "create": "New sub-network",
+    "stats": {
+      "subnets": "Sub-networks",
+      "connections": "Connections",
+      "outsideDefault": "Devices in dedicated sub-networks"
+    },
+    "defaultBadge": "Default",
+    "hiddenBadge": "Hidden",
+    "devices_one": "{{count}} device",
+    "devices_other": "{{count}} devices",
+    "noDevices": "No devices. Add some to form the sub-network.",
+    "connectedTo": "Connected to",
+    "isolated": "Isolated: reaches no other sub-network.",
+    "addDevices": "Add devices",
+    "connectTo": "Connect to…",
+    "remove": "Delete",
+    "disconnect": "Disconnect {{name}}",
+    "moveOut": "Move {{name}} to the default sub-network",
+    "moreDevices": "+{{count}} more",
+    "picker": {
+      "search": "Search by name, country or overlay IP",
+      "selected_one": "{{count}} selected",
+      "selected_other": "{{count}} selected",
+      "currentlyIn": "now in {{name}}"
+    },
+    "createDialog": {
+      "title": "New sub-network",
+      "description": "Pick a name and the devices to put in it. They leave the sub-network they are in now.",
+      "nameLabel": "Name",
+      "namePlaceholder": "E.g. Lab, Rome office, Guests",
+      "devicesLabel": "Devices",
+      "submit": "Create sub-network",
+      "nameRequired": "Give the sub-network a name."
+    },
+    "addDialog": {
+      "title": "Add devices to {{name}}",
+      "description": "The devices you pick leave the sub-network they are in now.",
+      "submit": "Move devices",
+      "none": "Every device is already here."
+    },
+    "connectDialog": {
+      "title": "Connect {{name}}",
+      "description": "Two connected sub-networks reach each other in both directions. ACL rules still apply across the connection.",
+      "targetLabel": "Sub-network to connect",
+      "submit": "Connect",
+      "none": "It is already connected to every other sub-network."
+    },
+    "deleteDialog": {
+      "title": "Delete {{name}}?",
+      "description": "Its devices go back to the default sub-network and its connections are removed.",
+      "confirm": "Delete sub-network"
+    },
+    "done": {
+      "created": "Sub-network {{name}} created.",
+      "moved_one": "{{count}} device moved.",
+      "moved_other": "{{count}} devices moved.",
+      "connected": "Sub-networks connected.",
+      "disconnected": "Connection removed.",
+      "deleted": "Sub-network deleted."
+    },
+    "failed": "That did not work: {{message}}",
+    "empty": "No devices are enrolled. Enrol nodes to build sub-networks."
+  },
   "topology": {
     "title": "Mesh Topology",
     "description": "Interactive sovereign overlay network topology, peer connections, and L2 logical compartments.",

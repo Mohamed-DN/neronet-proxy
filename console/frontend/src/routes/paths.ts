@@ -9,6 +9,7 @@
 export const ROUTES = {
   overview: '/overview',
   topology: '/topology',
+  subnets: '/subnets',
   nodes: '/nodes',
   onion: '/onion',
   peering: '/peering',

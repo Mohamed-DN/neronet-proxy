@@ -17,6 +17,8 @@ export const queryKeys = {
   aclDefaultPolicy: ['acl', 'default-policy'] as const,
   aclCompiled: (nodeId: string) => ['acl', 'compiled', nodeId] as const,
   compartments: ['compartments'] as const,
+  // Under the compartments prefix, so invalidating compartments refreshes it too.
+  compartmentPeerings: ['compartments', 'peerings'] as const,
   compartment: (id: string) => ['compartments', id] as const,
   auditEvents: (limit?: number) => ['audit', 'events', limit ?? 100] as const,
   auditVerify: ['audit', 'verify'] as const,

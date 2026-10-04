@@ -299,18 +299,30 @@ router.delete('/:id', requireOrgRole('owner', 'admin'), async (req, res, next) =
   }
 });
 
+// Errors CompartmentService raises with a status: refusals the caller can act on.
+function sendServiceError(res, err) {
+  if (err && Number.isInteger(err.status) && err.status >= 400 && err.status < 500) {
+    res.status(err.status).json({ error: err.message });
+    return true;
+  }
+  return false;
+}
+
+const accessTierOf = (req) => req.user.compartment_access || req.user.access_tier || 'standard';
+
 // 6. List Compartment Peering Rules
 router.get('/peerings/list', async (req, res, next) => {
   try {
     const orgId = req.user.organization_id || 'org-default';
-    const peerings = await CompartmentService.listPeeringRules(orgId);
+    const peerings = await CompartmentService.listPeeringRules(orgId, accessTierOf(req));
     return res.status(200).json({ peerings });
   } catch (err) {
     next(err);
   }
 });
 
-// 7. Create Compartment Peering Rule
+// 7. Create Compartment Peering Rule. A peering with policy "allow" connects the two
+// compartments both ways in the data plane (ADR 0021).
 router.post('/peerings/create', requireOrgRole('owner', 'admin', 'network_admin'), async (req, res, next) => {
   try {
     const orgId = req.user.organization_id || 'org-default';
@@ -327,11 +339,49 @@ router.post('/peerings/create', requireOrgRole('owner', 'admin', 'network_admin'
         dstCompartmentId: dst_compartment_id,
         policy: policy || 'allow'
       },
-      req.user
+      req.user,
+      accessTierOf(req)
     );
 
     return res.status(201).json({ peering });
   } catch (err) {
+    if (sendServiceError(res, err)) return undefined;
+    next(err);
+  }
+});
+
+// 8. Remove a peering: the two compartments stop reaching each other.
+router.delete('/peerings/:peeringId', requireOrgRole('owner', 'admin', 'network_admin'), async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id || 'org-default';
+    const deleted = await CompartmentService.deletePeeringRule(req.params.peeringId, orgId, req.user);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Peering not found' });
+    }
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 9. Move nodes into a compartment: { node_ids: [...] }. Moving them into the default
+// compartment is how a node leaves a sub-network.
+router.post('/:id/members', requireOrgRole('owner', 'admin', 'network_admin'), async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id || 'org-default';
+    const moved = await CompartmentService.setMembers(
+      req.params.id,
+      orgId,
+      (req.body || {}).node_ids,
+      accessTierOf(req),
+      req.user
+    );
+    if (moved === null) {
+      return res.status(404).json({ error: 'Compartment not found' });
+    }
+    return res.status(200).json({ moved });
+  } catch (err) {
+    if (sendServiceError(res, err)) return undefined;
     next(err);
   }
 });

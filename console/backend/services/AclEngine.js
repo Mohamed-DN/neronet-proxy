@@ -223,18 +223,26 @@ async function compilePolicyFor(nodeId) {
   return compileFor(nodeId);
 }
 
+// A node with no compartment is in its organisation's default one, `cmp-<org>`, the id
+// migration 019 gives it. Nodes enrolled over the control plane carry none, so without
+// this they would be a compartment of their own, cut off from every backfilled node.
+const EFFECTIVE_COMPARTMENT = `COALESCE(n.compartment_id, 'cmp-' || COALESCE(n.organization_id, '${DEFAULT_ORG}'))`;
+
 /**
- * The organisation a node belongs to and that organisation's default policy.
+ * The organisation a node belongs to, that organisation's default policy, and the
+ * compartment the node counts as being in.
  * Nodes enrolled before organisations existed have none and belong to the default one.
  */
 async function nodeScope(nodeId) {
   const rows = await query(
-    `SELECT n.id, n.overlay_ipv4, COALESCE(n.organization_id, '${DEFAULT_ORG}') AS organization_id, o.default_policy
+    `SELECT n.id, n.overlay_ipv4, COALESCE(n.organization_id, '${DEFAULT_ORG}') AS organization_id,
+            ${EFFECTIVE_COMPARTMENT} AS compartment_id, o.default_policy
        FROM nodes n
        LEFT JOIN organizations o ON o.id = COALESCE(n.organization_id, '${DEFAULT_ORG}')
       WHERE n.id = $1`,
     [nodeId],
-    `SELECT n.id, n.overlay_ipv4, COALESCE(n.organization_id, '${DEFAULT_ORG}') AS organization_id, o.default_policy
+    `SELECT n.id, n.overlay_ipv4, COALESCE(n.organization_id, '${DEFAULT_ORG}') AS organization_id,
+            ${EFFECTIVE_COMPARTMENT} AS compartment_id, o.default_policy
        FROM nodes n
        LEFT JOIN organizations o ON o.id = COALESCE(n.organization_id, '${DEFAULT_ORG}')
       WHERE n.id = ?`,
@@ -246,31 +254,48 @@ async function nodeScope(nodeId) {
 /**
  * Compile a node's policy, optionally with a candidate rule added (for a preview).
  *
- * Only nodes of the same organisation are peers, and only the organisation's rules and
- * the platform's apply. Before this, every node on the platform was a candidate peer
- * and every rule applied everywhere, so two organisations with no rules could reach
- * each other's nodes.
+ * Two boundaries come before any rule, and a node outside them is not a candidate peer
+ * at all -- no rule and no default can reach it, and the netmap never names it:
  *
- * With no applicable rule, the organisation's default policy decides: "open" permits
- * every peer in the organisation, "deny" none, and so does an organisation whose policy
- * cannot be read. Once a rule applies, the rules alone decide.
+ *   - the organisation. Before this, every node on the platform was a candidate peer
+ *     and every rule applied everywhere, so two organisations with no rules could
+ *     reach each other's nodes.
+ *   - the compartment (ADR 0021). A sub-network: its nodes reach each other, and reach
+ *     another compartment only through a peering with policy "allow", which connects
+ *     the two both ways. Compartments existed for months as labels that changed
+ *     nothing; a node in "Finance" reached a node in "Guests" as if they were one.
+ *
+ * Within those boundaries, with no applicable rule, the organisation's default policy
+ * decides: "open" permits every peer, "deny" none, and so does an organisation whose
+ * policy cannot be read. See opensByDefault for how rules change that.
  */
 async function compileFor(nodeId, { candidateRule = null } = {}) {
   const self = await nodeScope(nodeId);
   if (!self) return null;
 
+  const peerCompartment = EFFECTIVE_COMPARTMENT;
   // Ordered because the compiled policy is now part of the netmap, and the netmap has
   // to serialise to the same bytes for the same inputs: an unordered scan is free to
   // return the rows in a different sequence on the same data.
   const peers = await query(
-    `SELECT id, overlay_ipv4 FROM nodes
-      WHERE id <> $1 AND is_quarantined = FALSE AND COALESCE(organization_id, '${DEFAULT_ORG}') = $2
-      ORDER BY id ASC`,
-    [nodeId, self.organization_id],
-    `SELECT id, overlay_ipv4 FROM nodes
-      WHERE id <> ? AND is_quarantined = 0 AND COALESCE(organization_id, '${DEFAULT_ORG}') = ?
-      ORDER BY id ASC`,
-    [nodeId, self.organization_id]
+    `SELECT n.id, n.overlay_ipv4 FROM nodes n
+      WHERE n.id <> $1 AND n.is_quarantined = FALSE AND COALESCE(n.organization_id, '${DEFAULT_ORG}') = $2
+        AND (${peerCompartment} = $3
+             OR EXISTS (SELECT 1 FROM compartment_peerings p
+                         WHERE p.policy = 'allow'
+                           AND ((p.src_compartment_id = $3 AND p.dst_compartment_id = ${peerCompartment})
+                             OR (p.dst_compartment_id = $3 AND p.src_compartment_id = ${peerCompartment}))))
+      ORDER BY n.id ASC`,
+    [nodeId, self.organization_id, self.compartment_id],
+    `SELECT n.id, n.overlay_ipv4 FROM nodes n
+      WHERE n.id <> ? AND n.is_quarantined = 0 AND COALESCE(n.organization_id, '${DEFAULT_ORG}') = ?
+        AND (${peerCompartment} = ?
+             OR EXISTS (SELECT 1 FROM compartment_peerings p
+                         WHERE p.policy = 'allow'
+                           AND ((p.src_compartment_id = ? AND p.dst_compartment_id = ${peerCompartment})
+                             OR (p.dst_compartment_id = ? AND p.src_compartment_id = ${peerCompartment}))))
+      ORDER BY n.id ASC`,
+    [nodeId, self.organization_id, self.compartment_id, self.compartment_id, self.compartment_id]
   );
 
   let rules = await listRules(self.organization_id);
@@ -403,6 +428,37 @@ async function updateRule(id, updates = {}) {
 }
 
 /**
+ * Whether two overlay addresses sit in compartments that may reach each other: the
+ * same compartment, or two joined by an "allow" peering. Null when either address is
+ * not a node of the organisation, since the compartment boundary then says nothing.
+ */
+async function compartmentsConnected(organizationId, vipA, vipB) {
+  const org = organizationId || DEFAULT_ORG;
+  const rows = await query(
+    `SELECT n.overlay_ipv4, ${EFFECTIVE_COMPARTMENT} AS compartment_id FROM nodes n
+      WHERE COALESCE(n.organization_id, '${DEFAULT_ORG}') = $1 AND n.overlay_ipv4 IN ($2, $3)`,
+    [org, vipA, vipB],
+    `SELECT n.overlay_ipv4, ${EFFECTIVE_COMPARTMENT} AS compartment_id FROM nodes n
+      WHERE COALESCE(n.organization_id, '${DEFAULT_ORG}') = ? AND n.overlay_ipv4 IN (?, ?)`,
+    [org, vipA, vipB]
+  );
+  const a = rows.find((r) => r.overlay_ipv4 === vipA);
+  const b = rows.find((r) => r.overlay_ipv4 === vipB);
+  if (!a || !b) return null;
+  if (a.compartment_id === b.compartment_id) return true;
+
+  const peered = await query(
+    `SELECT 1 FROM compartment_peerings WHERE policy = 'allow'
+       AND ((src_compartment_id = $1 AND dst_compartment_id = $2) OR (src_compartment_id = $2 AND dst_compartment_id = $1))`,
+    [a.compartment_id, b.compartment_id],
+    `SELECT 1 FROM compartment_peerings WHERE policy = 'allow'
+       AND ((src_compartment_id = ? AND dst_compartment_id = ?) OR (src_compartment_id = ? AND dst_compartment_id = ?))`,
+    [a.compartment_id, b.compartment_id, b.compartment_id, a.compartment_id]
+  );
+  return peered.length > 0;
+}
+
+/**
  * Simulate packet evaluation against current ACL rules and mesh default policy.
  */
 async function simulatePacket({
@@ -416,6 +472,16 @@ async function simulatePacket({
   const rules = await listRules(organizationId);
   const proto = String(protocol).toUpperCase();
   const portNum = Number(port) || 0;
+
+  // The compartment boundary comes before every rule, as it does in compileFor.
+  if ((await compartmentsConnected(organizationId, source_ip, destination_ip)) === false) {
+    return {
+      verdict: 'DROP',
+      matched_rule: null,
+      reason: 'The two nodes are in different sub-networks that are not connected; no rule reaches across',
+      packet: { source_ip, destination_ip, protocol: proto, port: portNum }
+    };
+  }
 
   for (const rule of rules) {
     if (!rule.enabled) continue;
