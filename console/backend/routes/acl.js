@@ -29,6 +29,57 @@ async function policyIsOpen(req, rules) {
   return orgRes.rows.length > 0 && orgRes.rows[0].default_policy === 'open';
 }
 
+const accessTierOf = (req) => req.user.compartment_access || req.user.access_tier || 'standard';
+
+// Organisation roles that read every node of the organisation. A member reads their own.
+const READ_ALL_ROLES = new Set(['owner', 'admin', 'network_admin', 'auditor']);
+
+/**
+ * The node the caller may read the policy of, or null: unknown, in another
+ * organisation, in a hidden compartment below the root tier, or somebody else's when
+ * the caller is a plain member. All four read as "no such node", as they do on
+ * /api/nodes, so the answer does not say which one it was.
+ */
+async function readableNode(req, nodeId, { adminView = false } = {}) {
+  const res = await getPgPool().query(
+    `SELECT n.id, n.user_id, COALESCE(n.organization_id, 'org-default') AS organization_id,
+            COALESCE(c.is_hidden, FALSE) AS is_hidden
+       FROM nodes n LEFT JOIN compartments c ON c.id = n.compartment_id
+      WHERE n.id = $1`,
+    [nodeId]
+  );
+  const node = res.rows[0];
+  if (!node) return null;
+  if (node.is_hidden && accessTierOf(req) !== 'root') return null;
+  if (isSuperAdmin(req)) return node;
+  if (node.organization_id !== orgOf(req)) return null;
+  // adminView: the caller already passed the ACL administration check.
+  if (adminView || READ_ALL_ROLES.has(req.user.org_role)) return node;
+  return node.user_id === req.user.id ? node : null;
+}
+
+/**
+ * A compiled policy names its peers by address. Below the root tier a hidden node is
+ * not a peer anyone can see, so its entries are left out: a visible node peered with a
+ * hidden compartment would otherwise give the hidden node's address away.
+ */
+async function withoutHiddenPeers(req, policy) {
+  if (!policy || accessTierOf(req) === 'root') return policy;
+  const res = await getPgPool().query(
+    `SELECT n.overlay_ipv4 FROM nodes n JOIN compartments c ON c.id = n.compartment_id
+      WHERE c.is_hidden = TRUE AND COALESCE(n.organization_id, 'org-default') = $1`,
+    [policy.organization_id || (await AclEngine.nodeOrganization(policy.node_id))]
+  );
+  const hidden = new Set(res.rows.map((r) => String(r.overlay_ipv4)));
+  if (hidden.size === 0) return policy;
+  const keep = (entry) => !hidden.has(String(entry.allowed_peer_vip));
+  return {
+    ...policy,
+    inbound_rules: policy.inbound_rules.filter(keep),
+    outbound_rules: policy.outbound_rules.filter(keep)
+  };
+}
+
 async function findManageableRule(req, id) {
   const rules = await AclEngine.listRules();
   const rule = rules.find((r) => r.id === id);
@@ -246,7 +297,8 @@ router.post('/simulate', async (req, res, next) => {
       protocol: protocol || 'ALL',
       port: port !== undefined ? Number(port) : 0,
       defaultPolicy,
-      organizationId: orgId
+      organizationId: orgId,
+      accessTier: accessTierOf(req)
     });
 
     return res.status(200).json(result);
@@ -258,11 +310,12 @@ router.post('/simulate', async (req, res, next) => {
 // 8. The policy a given node will enforce
 router.get('/compiled/:nodeId', async (req, res, next) => {
   try {
+    const notFound = () => res.status(404).json({ error: `no node ${req.params.nodeId}` });
+    if (!(await readableNode(req, req.params.nodeId))) return notFound();
+
     const policy = await AclEngine.compilePolicyFor(req.params.nodeId);
-    if (!policy) {
-      return res.status(404).json({ error: `no node ${req.params.nodeId}` });
-    }
-    return res.status(200).json(policy);
+    if (!policy) return notFound();
+    return res.status(200).json(await withoutHiddenPeers(req, policy));
   } catch (err) {
     next(err);
   }
@@ -276,7 +329,7 @@ router.post('/preview', requireAclAdmin, async (req, res, next) => {
       return res.status(400).json({ error: 'node_id is required' });
     }
 
-    if (!isSuperAdmin(req) && (await AclEngine.nodeOrganization(node_id)) !== orgOf(req)) {
+    if (!(await readableNode(req, node_id, { adminView: true }))) {
       return res.status(404).json({ error: `no node ${node_id}` });
     }
     const preview = await AclEngine.compilePreview(node_id, candidate_rule);
@@ -284,7 +337,7 @@ router.post('/preview', requireAclAdmin, async (req, res, next) => {
       return res.status(404).json({ error: `no node ${node_id}` });
     }
 
-    return res.status(200).json(preview);
+    return res.status(200).json(await withoutHiddenPeers(req, preview));
   } catch (err) {
     next(err);
   }

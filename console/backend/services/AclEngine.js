@@ -431,19 +431,25 @@ async function updateRule(id, updates = {}) {
  * Whether two overlay addresses sit in compartments that may reach each other: the
  * same compartment, or two joined by an "allow" peering. Null when either address is
  * not a node of the organisation, since the compartment boundary then says nothing.
+ *
+ * Below the root tier a node in a hidden compartment is not a node of the organisation
+ * as far as the caller can tell: answering "different sub-networks" for its address and
+ * something else for an unused one would confirm that it exists.
  */
-async function compartmentsConnected(organizationId, vipA, vipB) {
+async function compartmentsConnected(organizationId, vipA, vipB, accessTier = 'standard') {
   const org = organizationId || DEFAULT_ORG;
+  const hiddenOf = `EXISTS (SELECT 1 FROM compartments hc WHERE hc.id = ${EFFECTIVE_COMPARTMENT} AND hc.is_hidden = TRUE)`;
   const rows = await query(
-    `SELECT n.overlay_ipv4, ${EFFECTIVE_COMPARTMENT} AS compartment_id FROM nodes n
+    `SELECT n.overlay_ipv4, ${EFFECTIVE_COMPARTMENT} AS compartment_id, ${hiddenOf} AS is_hidden FROM nodes n
       WHERE COALESCE(n.organization_id, '${DEFAULT_ORG}') = $1 AND n.overlay_ipv4 IN ($2, $3)`,
     [org, vipA, vipB],
-    `SELECT n.overlay_ipv4, ${EFFECTIVE_COMPARTMENT} AS compartment_id FROM nodes n
+    `SELECT n.overlay_ipv4, ${EFFECTIVE_COMPARTMENT} AS compartment_id, ${hiddenOf} AS is_hidden FROM nodes n
       WHERE COALESCE(n.organization_id, '${DEFAULT_ORG}') = ? AND n.overlay_ipv4 IN (?, ?)`,
     [org, vipA, vipB]
   );
-  const a = rows.find((r) => r.overlay_ipv4 === vipA);
-  const b = rows.find((r) => r.overlay_ipv4 === vipB);
+  const visible = (r) => accessTier === 'root' || !r.is_hidden;
+  const a = rows.find((r) => r.overlay_ipv4 === vipA && visible(r));
+  const b = rows.find((r) => r.overlay_ipv4 === vipB && visible(r));
   if (!a || !b) return null;
   if (a.compartment_id === b.compartment_id) return true;
 
@@ -467,14 +473,15 @@ async function simulatePacket({
   protocol = 'ALL',
   port = 0,
   defaultPolicy = 'deny',
-  organizationId
+  organizationId,
+  accessTier = 'standard'
 }) {
   const rules = await listRules(organizationId);
   const proto = String(protocol).toUpperCase();
   const portNum = Number(port) || 0;
 
   // The compartment boundary comes before every rule, as it does in compileFor.
-  if ((await compartmentsConnected(organizationId, source_ip, destination_ip)) === false) {
+  if ((await compartmentsConnected(organizationId, source_ip, destination_ip, accessTier)) === false) {
     return {
       verdict: 'DROP',
       matched_rule: null,
