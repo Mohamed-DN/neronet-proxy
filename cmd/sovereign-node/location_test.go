@@ -132,7 +132,7 @@ func registerAndCapture(t *testing.T, capability control.CapabilityDesc) map[str
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := enrolmentFor(keypair, "").register(context.Background(), control.NewClient(server.URL), "CLIENT_ORIGIN", capability); err != nil {
+	if _, err := enrolmentFor(keypair, "").register(context.Background(), control.NewClient(server.URL), "CLIENT_ORIGIN", capability, nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 

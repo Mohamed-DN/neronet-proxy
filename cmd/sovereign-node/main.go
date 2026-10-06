@@ -233,7 +233,7 @@ func main() {
 						// credential check: it expired while the node was cut off, or the
 						// control plane lost the registration it belonged to.
 						if errors.Is(hbErr, control.ErrNodeUnknown) || errors.Is(hbErr, control.ErrUnauthorized) {
-							newID, reErr := reregister(ctx, ctrlClient, enrolment, role, withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location))
+							newID, reErr := reregister(ctx, ctrlClient, enrolment, role, withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), netmaps.endpoints())
 							if reErr != nil {
 								log.Printf("[SOVEREIGN-NODE] Re-enrolment failed: %v", reErr)
 								continue
@@ -526,8 +526,11 @@ func enrolmentFor(keypair *crypto.Keypair, preauthKey string) nodeEnrolment {
 	return nodeEnrolment{keypair: keypair, preauthKey: strings.TrimSpace(preauthKey)}
 }
 
-func (e nodeEnrolment) register(ctx context.Context, client *control.Client, role string, cap control.CapabilityDesc) (*control.RegisterResponse, error) {
-	return client.RegisterWithProof(ctx, e.keypair.PrivateKey, e.keypair.PublicKey, role, nil, cap, e.preauthKey)
+// register enrols the key. endpoints are where the node can be reached right now, nil
+// before the data plane has discovered any; the control plane keeps what it already
+// stores when the list is empty.
+func (e nodeEnrolment) register(ctx context.Context, client *control.Client, role string, cap control.CapabilityDesc, endpoints []control.EndpointDesc) (*control.RegisterResponse, error) {
+	return client.RegisterWithProof(ctx, e.keypair.PrivateKey, e.keypair.PublicKey, role, endpoints, cap, e.preauthKey)
 }
 
 // registerWithRetry enrols the node, retrying while the control plane is not answering
@@ -555,7 +558,7 @@ func registerWithRetry(
 
 	for attempt := 1; attempt <= attempts; attempt++ {
 		regCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		resp, err := enrolment.register(regCtx, client, role, cap)
+		resp, err := enrolment.register(regCtx, client, role, cap, nil)
 		cancel()
 		if err == nil {
 			if attempt > 1 {
@@ -596,11 +599,15 @@ func reregister(
 	enrolment nodeEnrolment,
 	role string,
 	cap control.CapabilityDesc,
+	endpoints []control.EndpointDesc,
 ) (string, error) {
 	regCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	resp, err := enrolment.register(regCtx, client, role, cap)
+	// The endpoints the data plane already knows go with it. Without them the control
+	// plane had no address for this node until its next heartbeat, and every peer that
+	// fetched its netmap in between could not start a handshake with it.
+	resp, err := enrolment.register(regCtx, client, role, cap, endpoints)
 	if err != nil {
 		return "", err
 	}
