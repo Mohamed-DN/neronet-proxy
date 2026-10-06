@@ -6,8 +6,11 @@ const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const {
   NODES,
+  USERS,
   DEFAULT_COMPARTMENT,
   HIDDEN_COMPARTMENT,
+  LAB_COMPARTMENT,
+  tokenFor,
   tokens: makeTokens,
   seedHiddenTier
 } = require('./helpers/hiddenTier');
@@ -26,6 +29,14 @@ describe('ACL read endpoints stay inside the caller organisation and tier', () =
 
   const get = (path, token) => request(app).get(path).set('Authorization', `Bearer ${token}`);
   const post = (path, token, body) => request(app).post(path).set('Authorization', `Bearer ${token}`).send(body);
+
+  async function setDefaultHidden(hidden) {
+    const res = await request(app)
+      .put(`/api/compartments/${DEFAULT_COMPARTMENT}`)
+      .set('Authorization', `Bearer ${t.rootOwner}`)
+      .send({ is_hidden: hidden });
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+  }
 
   before(async () => {
     dbHelper = await setupTestDatabase();
@@ -104,6 +115,75 @@ describe('ACL read endpoints stay inside the caller organisation and tier', () =
 
     const root = await post('/api/acl/preview', t.rootAdmin, { node_id: NODES.v1.id });
     assert.ok(JSON.stringify(root.body).includes(NODES.h1.vip), 'the root tier must see its own hidden peer');
+  });
+
+  it('refuses a preview of a node in another organisation', async () => {
+    const res = await post('/api/acl/preview', t.admin, { node_id: NODES.b1.id });
+    assert.strictEqual(res.status, 404, JSON.stringify(res.body));
+  });
+
+  it('lets a platform super-admin cross organisations while respecting the access tier', async () => {
+    const visible = await get(`/api/acl/compiled/${NODES.b1.id}`, t.superAdmin);
+    assert.strictEqual(visible.status, 200, JSON.stringify(visible.body));
+
+    const hidden = await get(`/api/acl/compiled/${NODES.h1.id}`, t.superAdmin);
+    assert.strictEqual(hidden.status, 404);
+
+    const rootToken = tokenFor(USERS.superAdmin, { compartment_access: 'root' });
+    const root = await get(`/api/acl/compiled/${NODES.h1.id}`, rootToken);
+    assert.strictEqual(root.status, 200, JSON.stringify(root.body));
+  });
+
+  it('treats a node that inherits a hidden default compartment as absent below the root tier', async () => {
+    // Enrolled nodes carry no compartment_id; the data plane places them in their
+    // organisation's default compartment. Its hidden status must apply to reads too.
+    try {
+      await setDefaultHidden(true);
+
+      const standard = await get(`/api/acl/compiled/${NODES.v1.id}`, t.owner);
+      assert.strictEqual(standard.status, 404, 'a node inheriting the hidden default was readable');
+      const preview = await post('/api/acl/preview', t.admin, { node_id: NODES.v1.id });
+      assert.strictEqual(preview.status, 404, 'a node inheriting the hidden default could be previewed');
+
+      const root = await get(`/api/acl/compiled/${NODES.v1.id}`, t.rootOwner);
+      assert.strictEqual(root.status, 200, JSON.stringify(root.body));
+      const rootPreview = await post('/api/acl/preview', t.rootAdmin, { node_id: NODES.v1.id });
+      assert.strictEqual(rootPreview.status, 200, JSON.stringify(rootPreview.body));
+    } finally {
+      await setDefaultHidden(false);
+    }
+  });
+
+  it('omits peers that inherit a hidden default compartment from a visible node policy and preview', async () => {
+    // The visible Lab node may reach the default compartment, but a standard console
+    // session must not learn the addresses of peers that inherit its hidden status.
+    await dbHelper.pool.query('UPDATE nodes SET compartment_id = $1 WHERE id = $2', [LAB_COMPARTMENT, NODES.v1.id]);
+    await dbHelper.pool.query(
+      `INSERT INTO compartment_peerings (id, organization_id, src_compartment_id, dst_compartment_id, policy)
+       VALUES ('peer-sec-hidden-default', 'org-sec-a', $1, $2, 'allow')`,
+      [LAB_COMPARTMENT, DEFAULT_COMPARTMENT]
+    );
+    try {
+      await setDefaultHidden(true);
+
+      const standard = await get(`/api/acl/compiled/${NODES.v1.id}`, t.owner);
+      assert.strictEqual(standard.status, 200, JSON.stringify(standard.body));
+      assert.ok(!JSON.stringify(standard.body).includes(NODES.v2.vip), 'the inherited hidden peer was named');
+      const preview = await post('/api/acl/preview', t.admin, { node_id: NODES.v1.id });
+      assert.strictEqual(preview.status, 200, JSON.stringify(preview.body));
+      assert.ok(
+        !JSON.stringify(preview.body).includes(NODES.v2.vip),
+        'the inherited hidden peer was named in a preview'
+      );
+
+      const root = await get(`/api/acl/compiled/${NODES.v1.id}`, t.rootOwner);
+      assert.strictEqual(root.status, 200, JSON.stringify(root.body));
+      assert.ok(JSON.stringify(root.body).includes(NODES.v2.vip), 'the root tier lost the inherited hidden peer');
+    } finally {
+      await setDefaultHidden(false);
+      await dbHelper.pool.query('DELETE FROM compartment_peerings WHERE id = $1', ['peer-sec-hidden-default']);
+      await dbHelper.pool.query('UPDATE nodes SET compartment_id = NULL WHERE id = $1', [NODES.v1.id]);
+    }
   });
 
   it('answers a packet to a hidden node as it does for an address nobody holds', async () => {

@@ -30,6 +30,9 @@ async function policyIsOpen(req, rules) {
 }
 
 const accessTierOf = (req) => req.user.compartment_access || req.user.access_tier || 'standard';
+// Enrolled nodes inherit the default compartment while compartment_id is empty. Its
+// visibility follows the same effective compartment the data plane uses.
+const EFFECTIVE_COMPARTMENT = "COALESCE(n.compartment_id, 'cmp-' || COALESCE(n.organization_id, 'org-default'))";
 
 // Organisation roles that read every node of the organisation. A member reads their own.
 const READ_ALL_ROLES = new Set(['owner', 'admin', 'network_admin', 'auditor']);
@@ -44,7 +47,7 @@ async function readableNode(req, nodeId, { adminView = false } = {}) {
   const res = await getPgPool().query(
     `SELECT n.id, n.user_id, COALESCE(n.organization_id, 'org-default') AS organization_id,
             COALESCE(c.is_hidden, FALSE) AS is_hidden
-       FROM nodes n LEFT JOIN compartments c ON c.id = n.compartment_id
+       FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT}
       WHERE n.id = $1`,
     [nodeId]
   );
@@ -66,7 +69,7 @@ async function readableNode(req, nodeId, { adminView = false } = {}) {
 async function withoutHiddenPeers(req, policy) {
   if (!policy || accessTierOf(req) === 'root') return policy;
   const res = await getPgPool().query(
-    `SELECT n.overlay_ipv4 FROM nodes n JOIN compartments c ON c.id = n.compartment_id
+    `SELECT n.overlay_ipv4 FROM nodes n JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT}
       WHERE c.is_hidden = TRUE AND COALESCE(n.organization_id, 'org-default') = $1`,
     [policy.organization_id || (await AclEngine.nodeOrganization(policy.node_id))]
   );
