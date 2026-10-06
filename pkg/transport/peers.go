@@ -236,19 +236,36 @@ func (m *Mux) dropAttempt(ps *peerState) {
 	}
 }
 
-// onAnswer is called for every handshake response or cookie reply received on a
-// transport. A match with the outstanding initiation of a peer means that transport
-// works in both directions: the delayed copies on the other transports are cancelled.
-func (m *Mux) onAnswer(tr string, index uint32) {
-	m.peers.mu.RLock()
-	ps := m.peers.pending[index]
-	m.peers.mu.RUnlock()
+// ConfirmAuthenticated is called only by the WireGuard state sampler after a new
+// authenticated handshake or receive counter. A wire type or receiver index is public
+// and cannot prove liveness, so the receive path never calls this method.
+func (m *Mux) ConfirmAuthenticated(key, address string) bool {
+	k, _, err := normaliseKey(key)
+	if err != nil {
+		return false
+	}
+	ps := m.peerByKey(k)
 	if ps == nil {
-		return
+		return false
 	}
 
 	ps.mu.Lock()
-	if a := ps.attempt; a != nil && a.index == index && !a.answered {
+	defer ps.mu.Unlock()
+	tr, addr, ok := strings.Cut(address, "://")
+	if !ok || !m.Allows(tr) {
+		return false
+	}
+	permitted := false
+	for _, path := range ps.paths {
+		if path.tr == tr && path.ep.DstToString() == addr {
+			permitted = true
+			break
+		}
+	}
+	if !permitted {
+		return false
+	}
+	if a := ps.attempt; a != nil && !a.answered {
 		a.answered = true
 		for _, t := range a.timers {
 			t.Stop()
@@ -257,7 +274,7 @@ func (m *Mux) onAnswer(tr string, index uint32) {
 		ps.fails = 0
 		ps.winner = tr
 	}
-	ps.mu.Unlock()
+	return true
 }
 
 // candidates is the peer's paths for one initiation, in the order to try them: the

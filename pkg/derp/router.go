@@ -46,6 +46,16 @@ func (r *Router) Unregister(pubKey [PubKeySize]byte) {
 	delete(r.sessions, pubKey)
 }
 
+// UnregisterSession removes only this connection. A replaced reader can finish after
+// the new connection was installed and must not delete the new routing entry.
+func (r *Router) UnregisterSession(sess Session) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.sessions[sess.PublicKey()] == sess {
+		delete(r.sessions, sess.PublicKey())
+	}
+}
+
 // RouteForward forwards an opaque encrypted frame to the destination public key
 func (r *Router) RouteForward(srcPub [PubKeySize]byte, destPub [PubKeySize]byte, payload []byte) error {
 	r.mu.RLock()

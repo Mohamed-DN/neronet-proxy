@@ -416,8 +416,7 @@ func (m *Mux) sendOne(tr string, inner conn.Endpoint, bufs [][]byte) error {
 	return err
 }
 
-// wrapReceive tags what a transport receives with the transport, drops it if the
-// transport has been withdrawn since it was opened, and notes handshake answers.
+// wrapReceive tags encrypted packets; only WireGuard may authenticate a path.
 func (m *Mux) wrapReceive(name string, fn conn.ReceiveFunc) conn.ReceiveFunc {
 	c := &m.stats[Rank(name)]
 
@@ -443,11 +442,6 @@ func (m *Mux) wrapReceive(name string, fn conn.ReceiveFunc) conn.ReceiveFunc {
 			c.rxPackets.Add(1)
 			c.rxBytes.Add(uint64(len(pkt)))
 
-			if len(pkt) == sizeResponse || len(pkt) == sizeCookie {
-				if idx, ok := answerIndex(pkt); ok {
-					m.onAnswer(name, idx)
-				}
-			}
 			eps[i] = newConcrete(name, eps[i])
 		}
 		return n, nil
