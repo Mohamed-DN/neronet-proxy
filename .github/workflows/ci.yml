@@ -262,6 +262,9 @@ jobs:
       - name: Start periodic restic backup and wait for success
         run: sh scripts/dev/stack.sh backup
 
+      - name: Check canonical manifests against real PostgreSQL mutations
+        run: sh scripts/dev/test-backup-manifest.sh
+
       - name: Destroy test data and restore from controlled REST copy
         run: sh scripts/ops/backup-drill.sh --destroy-test-data --secondary-test
 
