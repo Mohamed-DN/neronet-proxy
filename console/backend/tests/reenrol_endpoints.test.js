@@ -40,7 +40,11 @@ describe('Registering again keeps a node reachable', () => {
   const credentials = new Map();
 
   async function enrol(key, body = {}) {
-    const res = await register(app, { public_key_hex: key, role: 'CLIENT_ORIGIN', ...body }, { token: REGISTRATION_TOKEN });
+    const res = await register(
+      app,
+      { public_key_hex: key, role: 'CLIENT_ORIGIN', ...body },
+      { token: REGISTRATION_TOKEN }
+    );
     assert.strictEqual(res.status, 200, `registration: ${res.status} ${JSON.stringify(res.body)}`);
     credentials.set(res.body.assigned_node_id, res.body.credential);
     return res.body.assigned_node_id;
@@ -177,7 +181,11 @@ describe('Registering again keeps a node reachable', () => {
     await enrol(key, { endpoints: [ENDPOINT_A] });
     await enrol(key);
 
-    assert.strictEqual(await NetmapService.getVersion(), before, 'an unchanged re-registration made the fleet re-fetch');
+    assert.strictEqual(
+      await NetmapService.getVersion(),
+      before,
+      'an unchanged re-registration made the fleet re-fetch'
+    );
   });
 
   it('tells the peers when a node that was marked unhealthy registers again', async () => {

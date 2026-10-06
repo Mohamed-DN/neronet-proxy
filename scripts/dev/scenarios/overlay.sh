@@ -251,6 +251,47 @@ converge() {
   sleep "$CONVERGE"
 }
 
+# Quarantine revokes the credential. Recovery needs a refused heartbeat, a new
+# registration and then another heartbeat to fetch the netmap; a fixed sleep can
+# measure halfway through that sequence. Wait for the actual TCP exchange in both
+# directions, and for a fresh successful registration before measuring recovery.
+QUARANTINE_TIMEOUT=${NERONET_OVERLAY_QUARANTINE_TIMEOUT_SECONDS:-180}
+reenrol_count() {
+  node_logs "$1" 2>/dev/null < /dev/null | grep -c 'Re-enrolled after the control plane lost this node:' || true
+}
+
+wait_quarantine_pair() {
+  q_want=$1
+  q_source=$2
+  q_target=$3
+  q_previous_reenrols=$4
+  q_started=$(date +%s)
+  echo "waiting up to ${QUARANTINE_TIMEOUT}s for $q_source <-> $q_target to be $q_want"
+
+  while :; do
+    if [ "$q_want" = ok ] && [ "$(reenrol_count "$q_target")" -le "$q_previous_reenrols" ]; then
+      q_forward=registration-pending
+      q_reverse=registration-pending
+    else
+      q_forward=$(dial "$q_source" "$(vip_of "$q_target")")
+      q_forward=${q_forward%% *}
+      q_reverse=$(dial "$q_target" "$(vip_of "$q_source")")
+      q_reverse=${q_reverse%% *}
+    fi
+
+    q_elapsed=$(($(date +%s) - q_started))
+    if [ "$q_forward" = "$q_want" ] && [ "$q_reverse" = "$q_want" ]; then
+      echo "observed $q_source <-> $q_target $q_want after ${q_elapsed}s"
+      return 0
+    fi
+    if [ "$q_elapsed" -ge "$QUARANTINE_TIMEOUT" ]; then
+      echo "quarantine convergence timed out: $q_source -> $q_target $q_forward, reverse $q_reverse" >&2
+      return 1
+    fi
+    sleep 2
+  done
+}
+
 # --- Scenarios ---------------------------------------------------------------
 
 api_login
@@ -368,6 +409,7 @@ case "$SCENARIO" in
     ;;
 
   quarantine)
+    SOURCE=$(first_service)
     TARGET=$(second_service)
     TARGET_ID=$(node_id_of "$TARGET")
 
@@ -376,7 +418,7 @@ case "$SCENARIO" in
 
     echo "quarantining $TARGET ($TARGET_ID)"
     api POST "/api/nodes/$TARGET_ID/action" '{"action":"quarantine","reason":"WP-202 scenario"}' > /dev/null
-    converge
+    wait_quarantine_pair timeout "$SOURCE" "$TARGET" 0 || rc=1
 
     measure_matrix "with $TARGET quarantined"
     while read -r src dst state rest; do
@@ -387,9 +429,12 @@ case "$SCENARIO" in
       fi
     done < "$WORK/matrix"
 
+    # Take the baseline at the lift, so an earlier registration during the initial
+    # matrix cannot be mistaken for this recovery.
+    TARGET_REENROLS=$(reenrol_count "$TARGET")
     echo "lifting the quarantine"
     api POST "/api/nodes/$TARGET_ID/action" '{"action":"lift_quarantine"}' > /dev/null
-    converge
+    wait_quarantine_pair ok "$SOURCE" "$TARGET" "$TARGET_REENROLS" || rc=1
 
     measure_matrix "after lifting the quarantine"
     expect_all ok || rc=1

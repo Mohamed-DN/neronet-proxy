@@ -101,7 +101,9 @@ describe('Node re-registration', () => {
     // re-registration is for. They are stored in the shape the heartbeat stores, after
     // the same validation: registration used to keep the raw strings it was sent.
     const ep = typeof stored.endpoints === 'string' ? JSON.parse(stored.endpoints) : stored.endpoints;
-    assert.deepStrictEqual(ep, [{ ip_address: '203.0.113.7', port: 51820, protocol: 'udp', is_stun_discovered: false }]);
+    assert.deepStrictEqual(ep, [
+      { ip_address: '203.0.113.7', port: 51820, protocol: 'udp', is_stun_discovered: false }
+    ]);
     assert.ok(stored.is_healthy, 'a re-registered node must be marked healthy');
   });
 
