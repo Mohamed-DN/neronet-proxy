@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: overlay.sh [matrix|rule-deny|subnet|quarantine|revoke|fail-static]
+# Usage: overlay.sh [matrix|rule-deny|discovery|subnet|quarantine|revoke|fail-static]
 #
 # Measures the overlay between the fleet nodes of a running stack. Every cell of the
 # matrix is a real TCP exchange: node A dials node B's overlay address through node
@@ -8,6 +8,7 @@
 #
 #   matrix        N x N of ok / denied / timeout with the measured round trips
 #   rule-deny     deny one pair through the API, re-measure, delete the rule, re-measure
+#   discovery     rule-deny plus authenticated discovery checked against real TCP
 #   subnet        put two nodes in a sub-network, re-measure; connect it to the default
 #                 sub-network, re-measure; delete it, re-measure
 #   quarantine    quarantine one node through the API, re-measure, lift it, re-measure
@@ -251,6 +252,14 @@ converge() {
   sleep "$CONVERGE"
 }
 
+probe_discovery() {
+  [ "$SCENARIO" = discovery ] || return 0
+  # The probe mints a short-lived additional credential and deletes only that
+  # credential in finally. It never revokes the running node's own credentials.
+  $COMPOSE exec -T backend node - "$(node_id_of "$A")" "$(node_id_of "$B")" "$1" \
+    < "$REPO_ROOT/scripts/dev/scenarios/discovery-probe.cjs"
+}
+
 # Quarantine revokes the credential. Recovery needs a refused heartbeat, a new
 # registration and then another heartbeat to fetch the netmap; a fixed sleep can
 # measure halfway through that sequence. Wait for the actual TCP exchange in both
@@ -297,6 +306,15 @@ wait_quarantine_pair() {
 api_login
 build_inventory
 
+if [ "$SCENARIO" = discovery ]; then
+  [ -n "${COMPOSE_PROJECT_NAME:-}" ] && [ "$COMPOSE_PROJECT_NAME" != neronet ] \
+    && [ "${NERONET_PORT_OFFSET:-0}" -ne 0 ] || die "discovery requires a dedicated stack and nonzero port offset"
+  backend_id=$($COMPOSE ps -q backend)
+  [ -n "$backend_id" ] || die "backend is not running"
+  backend_project=$($ENGINE inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$backend_id")
+  [ "$backend_project" = "$COMPOSE_PROJECT_NAME" ] || die "backend project label does not match"
+fi
+
 echo "== fleet"
 printf '%-12s %-16s %s\n' SERVICE OVERLAY 'NODE ID'
 while read -r svc vip id; do printf '%-12s %-16s %s\n' "$svc" "$vip" "$id"; done < "$WORK/fleet"
@@ -309,7 +327,7 @@ case "$SCENARIO" in
     expect_all ok || rc=1
     ;;
 
-  rule-deny)
+  rule-deny|discovery)
     A=$(first_service)
     B=$(second_service)
     A_VIP=$(vip_of "$A")
@@ -317,6 +335,7 @@ case "$SCENARIO" in
 
     measure_matrix "before the deny rule"
     expect_all ok || rc=1
+    probe_discovery allowed || rc=1
 
     # The two DROPs alone, as the console's "cut connection" writes them. An open
     # organisation whose rules only drop stays open around them; until that was fixed
@@ -329,6 +348,7 @@ case "$SCENARIO" in
 
     measure_matrix "with $A and $B denied"
     expect_all ok "$A" "$B" timeout || rc=1
+    probe_discovery blocked || rc=1
 
     # Read the peer set from the node itself rather than from the control plane: what
     # the node holds is what decides, and it is the only place the two can be seen to
@@ -356,6 +376,7 @@ case "$SCENARIO" in
 
     measure_matrix "after deleting the rules"
     expect_all ok || rc=1
+    probe_discovery allowed || rc=1
     ;;
 
   subnet)

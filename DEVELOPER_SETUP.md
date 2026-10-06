@@ -348,6 +348,7 @@ sh scripts/dev/e2e.sh --keep matrix   # one scenario, and leave the stack runnin
 |---|---|
 | `matrix` | every node reaches every other one over the overlay |
 | `rule-deny` | a deny rule written through the API blocks one pair and nothing else; deleting it restores the pair |
+| `discovery` | the same TCP deny/restore check, with node-authenticated discovery agreeing before, during and after the block; requires a dedicated project and nonzero port offset |
 | `quarantine` | a quarantined node is cut off from every peer, and comes back when lifted |
 | `fail-static` | the overlay keeps running with the backend stopped, fails closed past the staleness bound, recovers when the backend returns |
 | `revoke` | a revoked node is gone from every peer, and the rest of the mesh is unaffected |

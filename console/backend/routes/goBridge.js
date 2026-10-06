@@ -619,6 +619,19 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
       filters.push(clause.replace('$$', `$${params.length}`));
     };
 
+    if (auth.node) {
+      // A node credential names one overlay participant, not the whole fleet.
+      // Use the same peer set its WireGuard device receives: organisation,
+      // compartment peering, compiled policy and key revocation all apply before
+      // ranking or LIMIT, including requests for an explicit foreign relay.
+      const netmap = await NetmapService.buildNetmap(auth.node.id);
+      if (!netmap) return res.status(401).json({ error: 'invalid node credential' });
+      add(
+        'id = ANY($$::text[])',
+        netmap.peers.map((peer) => peer.node_id)
+      );
+    }
+
     if (explicitHostId) add('id = $$', explicitHostId);
     if (targetCountry) add('country_code = $$', targetCountry);
     if (targetAsn) add('asn = $$', targetAsn);
