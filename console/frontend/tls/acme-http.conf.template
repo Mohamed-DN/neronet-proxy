@@ -1,0 +1,24 @@
+# Port 80, acme mode only. Rendered by neronet-tls.sh into /etc/nginx/neronet/http01.conf.
+#
+# A certificate authority validates HTTP-01 on port 80 and nowhere else, so this is the
+# only plain-HTTP listener the console has. It serves the challenge tokens the acme
+# service writes, and sends everything else to the console over TLS.
+#
+# This is a different listener from the console's (8443), so the challenge path and the
+# console's own /.well-known/ (proxied to the backend there) cannot shadow each other.
+server {
+    listen 80 default_server;
+    server_name _;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /acme/webroot;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
+    # The configured name, not $host: a request's Host header is the client's to choose,
+    # and an open redirect is not something a certificate service should add.
+    location / {
+        return 301 https://${NERONET_REDIRECT_AUTHORITY}$request_uri;
+    }
+}

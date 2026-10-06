@@ -11,7 +11,10 @@
 # `name:`, because an existing stack keeps its data only while its project name stays
 # the same.
 #
-# Every host port is bound to 127.0.0.1.
+# Every host port is bound to 127.0.0.1. The console's address can be changed with
+# NERONET_CONSOLE_BIND, which a deployment that serves a public domain needs; with
+# NERONET_TLS_MODE=acme, docker-compose.acme.yml also publishes port 80, which the
+# certificate authority has to reach.
 
 x-node-build: &node-build
   # Every node-image service builds from the same recipe. Naming the image once
@@ -39,8 +42,11 @@ x-node: &node
     # policy permits.
     - SOVEREIGN_OVERLAY_ECHO_PORT=${NERONET_OVERLAY_ECHO_PORT:-9999}
     # The control plane is reached over TLS, and only a certificate this CA signed
-    # is accepted (scripts/dev/gen-certs.sh writes it).
-    - SOVEREIGN_CONTROL_PLANE_CA=/run/secrets/control_plane_ca
+    # is accepted (scripts/dev/gen-certs.sh writes it). With NERONET_TLS_MODE=acme,
+    # stack.sh sets NERONET_NODE_CA to the empty string unless a CA file was given
+    # (NERONET_CONTROL_PLANE_CA_FILE): the console's certificate then comes from a CA
+    # the system roots already trust. `-` and not `:-`, so that empty stays empty.
+    - SOVEREIGN_CONTROL_PLANE_CA=${NERONET_NODE_CA-/run/secrets/control_plane_ca}
   secrets:
     - control_plane_ca
   depends_on:
@@ -170,7 +176,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${NERONET_CONSOLE_PORT:-8443}:8443"
+      - "${NERONET_CONSOLE_BIND:-127.0.0.1}:${NERONET_CONSOLE_PORT:-8443}:8443"
     secrets:
       - console_tls_cert
       - console_tls_key
@@ -326,14 +332,16 @@ networks:
     driver: bridge
 
 # Written by scripts/dev/gen-certs.sh (stack.sh runs it when they are missing). A
-# deployment points these at its own certificate, key and CA.
+# deployment points these at its own certificate, key and CA. With NERONET_TLS_MODE=acme
+# the console does not use the first two (docker-compose.acme.yml), and the third only
+# matters to the node fleet, when the ACME CA is not one the system roots trust.
 secrets:
   console_tls_cert:
     file: ./certs/server.crt
   console_tls_key:
     file: ./certs/server.key
   control_plane_ca:
-    file: ./certs/ca.crt
+    file: ${NERONET_CONTROL_PLANE_CA_FILE:-./certs/ca.crt}
 
 volumes:
   backend_data:
