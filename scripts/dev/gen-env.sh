@@ -1,13 +1,23 @@
 #!/bin/sh
 # Usage: gen-env.sh [path]
+#        gen-env.sh --append-missing [path]
 #
 # Writes a .env file with fresh random values for every secret the compose stack
 # requires. Default path: <repo>/.env. Refuses to overwrite an existing file, so a
 # stack's database password can never be replaced by accident. The values are never
 # printed; read them from the file.
+#
+# --append-missing is for a .env that was written before a secret existed (the backup
+# password, for one): it adds the secrets the file lacks and touches nothing else. A
+# value that is already there is never replaced.
 set -eu
 . "$(dirname "$0")/engine.sh"
 
+MODE=create
+if [ "${1:-}" = "--append-missing" ]; then
+  MODE=append
+  shift
+fi
 TARGET=${1:-$REPO_ROOT/.env}
 
 # Hex characters only: safe in a compose .env file and inside a connection URL.
@@ -20,6 +30,28 @@ rand_hex() {
 }
 
 umask 077
+
+if [ "$MODE" = append ]; then
+  [ -f "$TARGET" ] || die "$TARGET does not exist; run gen-env.sh without --append-missing to create it"
+  added=0
+  # Only secrets introduced after the first release of this script belong here: a
+  # missing database password is a different problem, and a new one would not open the
+  # database that already exists.
+  for entry in RESTIC_PASSWORD:32; do
+    key=${entry%%:*}
+    if ! grep -q "^$key=." "$TARGET"; then
+      # A file that does not end in a newline would join the new line to its last one.
+      if [ -s "$TARGET" ] && [ "$(tail -c 1 "$TARGET" | od -An -c | tr -d ' ')" != '\n' ]; then
+        echo >> "$TARGET"
+      fi
+      echo "$key=$(rand_hex "${entry#*:}")" >> "$TARGET"
+      added=$((added + 1))
+      echo "added $key to $TARGET (value not shown)"
+    fi
+  done
+  [ "$added" -gt 0 ] || echo "nothing to add: $TARGET already has every generated secret"
+  exit 0
+fi
 
 # noclobber makes the redirection fail if the file already exists, and the check and
 # the creation are one step, so two runs cannot both succeed.
@@ -36,6 +68,9 @@ fi
   echo "SOVEREIGN_SHRED_KEK_SECRET=$(rand_hex 32)"
   echo "SOVEREIGN_ADMIN_PASS=$(rand_hex 16)"
   echo "SOVEREIGN_REGISTRATION_TOKEN=$(rand_hex 32)"
+  echo "# Encrypts the backups (profile backup). Without it no backup can be read, and it"
+  echo "# cannot be recovered from the backups themselves: keep a copy outside this host."
+  echo "RESTIC_PASSWORD=$(rand_hex 32)"
   echo "# The scenario scripts sign in as the admin with the password alone. A stack"
   echo "# other people can reach should use 'admins' (the production default) or 'all'."
   echo "SOVEREIGN_MFA_MANDATORY=off"
@@ -44,4 +79,4 @@ fi
 # No effect on filesystems without POSIX modes (NTFS through Git Bash).
 chmod 600 "$TARGET" 2>/dev/null || true
 
-echo "wrote $TARGET (7 secrets, not shown)"
+echo "wrote $TARGET (8 secrets, not shown)"

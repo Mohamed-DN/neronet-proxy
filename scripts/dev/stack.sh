@@ -1,13 +1,16 @@
 #!/bin/sh
-# Usage: stack.sh up | nodes | fleet | down [compose args] | status | logs [compose args] [service]
+# Usage: stack.sh up | nodes | fleet | backup | down [compose args] | status | logs [compose args] [service]
 #
 #   up      build and start postgres, valkey, backend and console, wait until healthy.
 #           The console is https://127.0.0.1:8443; certs/ca.crt is the CA to trust,
 #           written by gen-certs.sh on the first run
 #   nodes   start the two DERP relays and six Go nodes (starts the core first if needed)
 #   fleet   start the simulated fleet written by scripts/sim/fleet.mjs (see scripts/sim/README.md)
+#   backup  start the backup service and wait for its first backup (needs RESTIC_PASSWORD
+#           in .env: gen-env.sh --append-missing adds it to an older .env)
 #   down    stop and remove the stack's containers and network; add -v to drop its volumes
-#   status  service health, and how many nodes sent a heartbeat in the last 60 s
+#   status  service health, how many nodes sent a heartbeat in the last 60 s, and what the
+#           backup service last did
 #   logs    last 200 lines of every service, or of one; pass -f to follow
 #
 # Environment:

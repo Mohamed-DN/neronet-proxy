@@ -3,6 +3,10 @@
 #   core services (always):  postgres, valkey, backend, frontend
 #   profile "nodes":         two DERP relays and six Go nodes enrolling through nginx
 #   profile "debug-ports":   publishes PostgreSQL and Valkey on the host loopback
+#   profile "backup":        encrypted, periodic backups of the database and the backend
+#                            data volume, copied to a second repository
+#   profile "restore":       what scripts/ops/restore.sh starts for a restore or a
+#                            verification; never started by `up`
 #
 # Several stacks can run side by side on one host. Set COMPOSE_PROJECT_NAME and the
 # NERONET_*_PORT variables to different values for each; scripts/dev/stack.sh does
@@ -51,6 +55,56 @@ x-derp: &derp
   <<: *node-build
   profiles: ["nodes"]
   entrypoint: ["/bin/sovereign-derp-relay"]
+
+x-backup: &backup
+  # One image for the periodic backup and for restore.sh: pg_dump/pg_restore of the
+  # same major version as the server, and restic. See docker/backup/.
+  build:
+    context: ./docker/backup
+  image: ${NERONET_BACKUP_IMAGE:-neronet-backup:dev}
+  # The uid the backend runs as: the key files in its data volume are mode 0600.
+  user: "10001:10001"
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  environment:
+    # Not `:?`. Compose evaluates `:?` for every service of the file, whatever its
+    # profile, so a required value here would stop every existing stack from starting
+    # until its .env had one. The service itself refuses to run without it.
+    RESTIC_PASSWORD: ${RESTIC_PASSWORD:-}
+    # The second repository: any restic repository URL. A path (/secondary is the
+    # volume or directory mounted below), sftp:user@host:/path, s3:https://host/bucket,
+    # rest:https://host:8000/. Empty: backups exist on this host only, and the service
+    # says so on every cycle.
+    NERONET_BACKUP_SECONDARY: ${NERONET_BACKUP_SECONDARY:-}
+    # The password of the second repository. Empty: the same as RESTIC_PASSWORD.
+    RESTIC_SECONDARY_PASSWORD: ${RESTIC_SECONDARY_PASSWORD:-}
+    NERONET_BACKUP_INTERVAL: ${NERONET_BACKUP_INTERVAL:-6h}
+    NERONET_BACKUP_RETRY: ${NERONET_BACKUP_RETRY:-15m}
+    NERONET_BACKUP_KEEP_LAST: ${NERONET_BACKUP_KEEP_LAST:-4}
+    NERONET_BACKUP_KEEP_DAILY: ${NERONET_BACKUP_KEEP_DAILY:-7}
+    NERONET_BACKUP_KEEP_WEEKLY: ${NERONET_BACKUP_KEEP_WEEKLY:-4}
+    NERONET_BACKUP_KEEP_MONTHLY: ${NERONET_BACKUP_KEEP_MONTHLY:-6}
+    NERONET_BACKUP_SECONDARY_PRUNE: ${NERONET_BACKUP_SECONDARY_PRUNE:-true}
+    NERONET_BACKUP_CHECK_SUBSET: ${NERONET_BACKUP_CHECK_SUBSET:-5%}
+    # Credentials of the restic backends that use them. Empty ones are dropped.
+    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-}
+    B2_ACCOUNT_ID: ${B2_ACCOUNT_ID:-}
+    B2_ACCOUNT_KEY: ${B2_ACCOUNT_KEY:-}
+    RESTIC_REST_USERNAME: ${RESTIC_REST_USERNAME:-}
+    RESTIC_REST_PASSWORD: ${RESTIC_REST_PASSWORD:-}
+    PGHOST: postgres
+    PGUSER: neronet
+    PGDATABASE: neronet_db
+    PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+  networks:
+    - neronet-isolated-mesh
 
 services:
   # 1. PostgreSQL 18
@@ -290,6 +344,76 @@ services:
 
 
   # ---------------------------------------------------------------------------
+  # Profile "backup": a pg_dump of the database and a copy of the backend data volume
+  # (the federation identity lives there: without it every peering is lost) go into
+  # an encrypted restic repository every NERONET_BACKUP_INTERVAL, and from there to a
+  # second repository. Start it with `scripts/dev/stack.sh backup`, or
+  # `docker compose --profile backup up -d backup`. Restore with scripts/ops/restore.sh.
+  #
+  # The primary repository is the volume backup_repo, which lives on the same disk as
+  # the database: it protects against a mistake, not against losing the disk. Point
+  # NERONET_BACKUP_DIR at a directory on another disk (owned by uid 10001) and set
+  # NERONET_BACKUP_SECONDARY to somewhere else again.
+  # ---------------------------------------------------------------------------
+
+  backup:
+    <<: *backup
+    profiles: ["backup"]
+    restart: unless-stopped
+    # Long enough for a running cycle to finish; restic copes with being killed, but a
+    # cycle that is allowed to end leaves nothing for the next one to clean up.
+    stop_grace_period: 60s
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ${NERONET_BACKUP_DIR:-backup_repo}:/repo
+      - ${NERONET_BACKUP_SECONDARY_DIR:-backup_secondary}:/secondary
+      - backup_cache:/cache
+      # Read-only: the backup never changes what it backs up.
+      - backend_data:/source/backend_data:ro
+    healthcheck:
+      # Healthy once a backup has completed, and again only while the last one is
+      # recent (and the last copy to the second repository, when one is configured).
+      test: ["CMD", "neronet-backup", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+  # What restore.sh runs: the same image with the backend data volume writable. Run
+  # with an explicit command, never started by `up`.
+  backup-restore:
+    <<: *backup
+    profiles: ["restore"]
+    command: ["status"]
+    volumes:
+      - ${NERONET_BACKUP_DIR:-backup_repo}:/repo
+      - ${NERONET_BACKUP_SECONDARY_DIR:-backup_secondary}:/secondary
+      - backup_cache:/cache
+      - backend_data:/source/backend_data
+
+  # A throw-away PostgreSQL for `restore.sh --verify`: the backup is restored into it
+  # and compared with the live database. Its data is in memory and is gone with it.
+  verify-db:
+    profiles: ["restore"]
+    image: postgres:18.6-alpine3.24
+    environment:
+      - POSTGRES_USER=neronet
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      - POSTGRES_DB=neronet_db
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neronet -d neronet_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+    networks:
+      - neronet-isolated-mesh
+
+  # ---------------------------------------------------------------------------
   # Profile "debug-ports": PostgreSQL and Valkey are not published by default. A
   # service cannot gain a port mapping from a profile, so each of these forwards a
   # loopback host port to the database inside the network.
@@ -342,6 +466,11 @@ volumes:
     driver: local
   valkey_data:
     driver: local
+  # The backup repositories, used unless NERONET_BACKUP_DIR and
+  # NERONET_BACKUP_SECONDARY_DIR point at a directory, and restic's cache.
+  backup_repo:
+  backup_secondary:
+  backup_cache:
   # One volume per node. The identity key inside it is what ties a container to the
   # device row it already has in the control plane; delete a volume and that
   # container comes back as a different node.
