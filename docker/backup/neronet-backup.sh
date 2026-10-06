@@ -25,12 +25,13 @@ SECONDARY=${NERONET_BACKUP_SECONDARY:-}
 SOURCE=${NERONET_BACKUP_SOURCE:-/source/backend_data}
 STATE=${NERONET_BACKUP_STATE:-/tmp/neronet-backup.state}
 SHARE=${NERONET_BACKUP_SHARE:-/usr/local/share/neronet-backup}
-LOCK=/tmp/neronet-backup.lock
+LOCK=/work/neronet-backup.lock
 # A constant, not the container's hostname: restic groups snapshots by host when it
 # applies the retention policy, and a hostname that changes with every container would
 # turn every recreation into a new group that nothing ever expires.
 TAG=neronet
 DUMP=neronet-db.dump
+MANIFEST=neronet-db.manifest
 
 INTERVAL=${NERONET_BACKUP_INTERVAL:-6h}
 RETRY=${NERONET_BACKUP_RETRY:-15m}
@@ -86,6 +87,12 @@ require_number() { # name value
 require_password() {
   [ -n "${RESTIC_PASSWORD:-}" ] ||
     die "RESTIC_PASSWORD is empty. The repositories are encrypted with it: set it in .env (scripts/dev/gen-env.sh writes one) and keep a copy outside this host, because without it no backup can be read"
+}
+
+require_project() {
+  case ${NERONET_BACKUP_PROJECT:-} in
+    '' | neronet | *[!a-z0-9_-]*) die "restore requires an explicit safe COMPOSE_PROJECT_NAME; the owner stack neronet is protected" ;;
+  esac
 }
 
 # --- repositories -------------------------------------------------------------
@@ -177,12 +184,25 @@ backup_volume() {
 }
 
 backup_database() {
-  # --stdin-from-command, not a pipe into restic: a pipe hides pg_dump's exit status,
-  # and a truncated dump would be stored as a good snapshot. Here restic runs pg_dump,
-  # and a non-zero exit means no snapshot.
-  primary backup --host "$TAG" --tag "$TAG" --tag db --tag "set:$SET" \
-    --stdin-from-command --stdin-filename "$DUMP" -- \
-    pg_dump --format=custom --compress="$PGDUMP_COMPRESS" --no-owner --no-acl
+  # Compute the manifest from this dump, not from a source that keeps changing.
+  # A private local PostgreSQL also proves the dump can actually be restored.
+  (
+    set -e
+    work=$(mktemp -d /work/backup.XXXXXX)
+    trap 'pg_ctl -D "$work/pg" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT INT TERM
+    pg_dump --format=custom --compress="$PGDUMP_COMPRESS" --no-owner --no-acl --file="$work/$DUMP"
+    initdb -D "$work/pg" --auth=trust --no-locale -E UTF8 >/dev/null
+    pg_ctl -D "$work/pg" -l "$work/pg.log" -o "-k $work -p 5544 -c listen_addresses=''" -w start >/dev/null
+    env PGHOST="$work" PGPORT=5544 PGDATABASE=postgres pg_restore \
+      --no-owner --no-acl --exit-on-error --single-transaction --dbname=postgres "$work/$DUMP"
+    env PGHOST="$work" PGPORT=5544 PGDATABASE=postgres psql -X -q -v ON_ERROR_STOP=1 \
+      -f "$SHARE/digest-all.sql" >"$work/$MANIFEST"
+    pg_ctl -D "$work/pg" -m fast -w stop >/dev/null
+    primary backup --host "$TAG" --tag "$TAG" --tag db --tag "set:$SET" \
+      --stdin-from-command --stdin-filename "$DUMP" -- cat "$work/$DUMP"
+    primary backup --host "$TAG" --tag "$TAG" --tag manifest --tag "set:$SET" \
+      --stdin-from-command --stdin-filename "$MANIFEST" -- cat "$work/$MANIFEST"
+  )
 }
 
 # Read the dump back and list it. A snapshot that cannot be restored is worse than no
@@ -225,8 +245,20 @@ copy_to_secondary() {
 
 secondary_has_set() {
   _n=$(secondary snapshots --tag "$TAG,set:$SET" --json | jq 'length') || return 1
-  [ "$_n" -ge 2 ] || {
-    echo "the secondary repository holds $_n of the 2 snapshots of set $SET"
+  [ "$_n" -ge 3 ] || {
+    echo "the secondary repository holds $_n of the 3 snapshots of set $SET"
+    return 1
+  }
+  for _kind in volume db manifest; do
+    snapshot_of secondary "$SET" "$_kind" >/dev/null || return 1
+  done
+}
+
+distinct_repositories() {
+  _primary_id=$(primary cat config | jq -r .id) || return 1
+  _secondary_id=$(secondary cat config | jq -r .id) || return 1
+  [ "$_primary_id" != "$_secondary_id" ] || {
+    err "primary and secondary refer to the same repository; this is not a second copy"
     return 1
   }
 }
@@ -264,7 +296,7 @@ cycle() {
     warn "an S3 bucket (any restic repository URL) to keep a copy elsewhere."
     warn "################################################################"
   else
-    if ensure_repo secondary &&
+    if ensure_repo secondary && distinct_repositories &&
       step "copy to the secondary repository" copy_to_secondary &&
       step "set $SET present in the secondary" secondary_has_set; then
       state_put secondary ok
@@ -319,7 +351,7 @@ cmd_run() {
   if [ -z "$SECONDARY" ]; then
     warn "NERONET_BACKUP_SECONDARY is not set: backups will exist on this host only"
   else
-    info "secondary repository: $SECONDARY"
+    info "secondary repository configured"
   fi
 
   trap 'info "stopping"; exit 0' TERM INT
@@ -346,6 +378,10 @@ cmd_once() {
 }
 
 cmd_healthcheck() {
+  [ "$(state_get last_result)" = ok ] || {
+    echo "the latest backup cycle did not complete successfully"
+    exit 1
+  }
   _interval=$(to_seconds "$INTERVAL") || _interval=21600
   _max=$((_interval * 2 + 900))
   _now=$(date +%s)
@@ -400,7 +436,7 @@ resolve_set() {
   _spec_repo=$2
   case $_spec in
     latest)
-      _set=$(repo "$_spec_repo" snapshots --tag "$TAG,db" --json | jq -r "sort_by(.time) | last | $SET_TAG_JQ") || return 1
+      _set=$(repo "$_spec_repo" snapshots --tag "$TAG,manifest" --json | jq -r "sort_by(.time) | last | $SET_TAG_JQ") || return 1
       [ -n "$_set" ] || {
         err "the $_spec_repo repository has no backup set yet"
         return 1
@@ -418,6 +454,8 @@ resolve_set() {
       ;;
   esac
   snapshot_of "$_spec_repo" "$_set" db >/dev/null || return 1
+  snapshot_of "$_spec_repo" "$_set" volume >/dev/null || return 1
+  snapshot_of "$_spec_repo" "$_set" manifest >/dev/null || return 1
   echo "$_set"
 }
 
@@ -471,6 +509,7 @@ psql_admin() { psql -X -q -v ON_ERROR_STOP=1 -d postgres "$@"; }
 
 cmd_restore_db() {
   require_password
+  require_project
   parse_restore_args "$@"
   _db=$OPT_DATABASE
   case $_db in
@@ -510,6 +549,7 @@ cmd_restore_db() {
 
 cmd_restore_volume() {
   require_password
+  require_project
   parse_restore_args "$@"
   _snap=$(snapshot_of "$OPT_REPO" "$OPT_SET" volume) || exit 1
   [ -d "$SOURCE" ] || die "$SOURCE is not mounted"
@@ -536,8 +576,26 @@ cmd_verify_volume() {
     _rc=0
   else
     echo "DIFFERENT"
-    diff -r "$_tmp" "$SOURCE" || true
     _rc=1
+  fi
+  rm -rf "$_tmp"
+  return "$_rc"
+}
+
+cmd_verify_db() {
+  require_password
+  parse_restore_args "$@"
+  _snap=$(snapshot_of "$OPT_REPO" "$OPT_SET" manifest) || exit 1
+  _tmp=$(mktemp -d /tmp/verify-db.XXXXXX)
+  repo "$OPT_REPO" dump "$_snap" "/$MANIFEST" >"$_tmp/expected"
+  psql -X -q -v ON_ERROR_STOP=1 -f "$SHARE/digest-all.sql" >"$_tmp/actual"
+  _rc=0
+  if ! cmp -s "$_tmp/expected" "$_tmp/actual"; then
+    err "restored schema or data differ from the backup manifest"
+    _rc=1
+  else
+    info "restored schema, all public tables and sequences match the backup manifest"
+    sha256sum "$_tmp/actual" | cut -d ' ' -f 1
   fi
   rm -rf "$_tmp"
   return "$_rc"
@@ -566,9 +624,11 @@ case $cmd in
   healthcheck) cmd_healthcheck ;;
   status) cmd_status ;;
   sets) cmd_sets "$@" ;;
+  resolve-set) require_password; resolve_set "${2:-latest}" "${1:-primary}" ;;
   restore-db) cmd_restore_db "$@" ;;
   restore-volume) cmd_restore_volume "$@" ;;
   verify-volume) cmd_verify_volume "$@" ;;
+  verify-db) cmd_verify_db "$@" ;;
   digest) cmd_digest "$@" ;;
   *)
     sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2

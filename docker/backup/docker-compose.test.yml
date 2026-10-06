@@ -1,0 +1,12 @@
+# Controlled REST backend on the test network. This is not an offsite deployment.
+services:
+  backup-test-rest:
+    image: docker.io/restic/rest-server:0.14.0
+    environment:
+      OPTIONS: --no-auth --path /data
+    volumes:
+      - backup_test_remote:/data
+    networks:
+      - neronet-isolated-mesh
+volumes:
+  backup_test_remote:

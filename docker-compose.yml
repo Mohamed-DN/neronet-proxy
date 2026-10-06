@@ -76,6 +76,7 @@ x-backup: &backup
     # profile, so a required value here would stop every existing stack from starting
     # until its .env had one. The service itself refuses to run without it.
     RESTIC_PASSWORD: ${RESTIC_PASSWORD:-}
+    NERONET_BACKUP_PROJECT: ${COMPOSE_PROJECT_NAME:-}
     # The second repository: any restic repository URL. A path (/secondary is the
     # volume or directory mounted below), sftp:user@host:/path, s3:https://host/bucket,
     # rest:https://host:8000/. Empty: backups exist on this host only, and the service
@@ -370,6 +371,7 @@ services:
       - ${NERONET_BACKUP_DIR:-backup_repo}:/repo
       - ${NERONET_BACKUP_SECONDARY_DIR:-backup_secondary}:/secondary
       - backup_cache:/cache
+      - backup_work:/work
       # Read-only: the backup never changes what it backs up.
       - backend_data:/source/backend_data:ro
     healthcheck:
@@ -391,6 +393,7 @@ services:
       - ${NERONET_BACKUP_DIR:-backup_repo}:/repo
       - ${NERONET_BACKUP_SECONDARY_DIR:-backup_secondary}:/secondary
       - backup_cache:/cache
+      - backup_work:/work
       - backend_data:/source/backend_data
 
   # A throw-away PostgreSQL for `restore.sh --verify`: the backup is restored into it
@@ -471,6 +474,7 @@ volumes:
   backup_repo:
   backup_secondary:
   backup_cache:
+  backup_work:
   # One volume per node. The identity key inside it is what ties a container to the
   # device row it already has in the control plane; delete a volume and that
   # container comes back as a different node.

@@ -11,7 +11,7 @@ FROM docker.io/restic/restic:0.19.1 AS restic
 FROM docker.io/library/alpine:3.24.2
 
 # jq reads restic's JSON, openssh-client is what restic's sftp backend runs.
-RUN apk add --no-cache postgresql18-client jq openssh-client-default \
+RUN apk add --no-cache postgresql18 postgresql18-client postgresql18-contrib jq openssh-client-default \
  && adduser -D -u 10001 neronet
 
 COPY --from=restic /usr/bin/restic /usr/bin/restic
@@ -27,8 +27,8 @@ COPY digest-key.sql digest-all.sql /usr/local/share/neronet-backup/
 #   /source/backend_data  the backend's data volume; 10001 is the uid the backend runs as,
 #                         which is what lets this service read the key files (mode 0600)
 RUN chmod 0755 /usr/local/bin/neronet-backup \
- && mkdir -p /repo /secondary /cache /source/backend_data /home/neronet/.ssh \
- && chown -R 10001:10001 /repo /secondary /cache /source /home/neronet \
+ && mkdir -p /repo /secondary /cache /work /source/backend_data /home/neronet/.ssh \
+ && chown -R 10001:10001 /repo /secondary /cache /work /source /home/neronet \
  && chmod 700 /home/neronet/.ssh
 
 ENV RESTIC_CACHE_DIR=/cache

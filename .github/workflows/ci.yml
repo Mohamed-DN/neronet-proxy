@@ -238,6 +238,43 @@ jobs:
         if: always()
         run: sh scripts/dev/stack.sh down -v
 
+  backup-drill:
+    name: backup-drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NERONET_ENGINE: docker
+      COMPOSE_PROJECT_NAME: neronet-backup-ci
+      NERONET_PORT_OFFSET: "400"
+      NERONET_NODE_SERVICES: relay-de client-it
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Generate test secrets
+        run: sh scripts/dev/gen-env.sh
+
+      - name: Start core and two real netstack nodes
+        run: |
+          sh scripts/dev/stack.sh up
+          sh scripts/dev/stack.sh nodes derp-eu relay-de client-it
+          sh scripts/dev/smoke.sh 2 180
+
+      - name: Start periodic restic backup and wait for success
+        run: sh scripts/dev/stack.sh backup
+
+      - name: Destroy test data and restore from controlled REST copy
+        run: sh scripts/ops/backup-drill.sh --destroy-test-data --secondary-test
+
+      - name: Service logs
+        if: failure()
+        run: sh scripts/dev/stack.sh logs
+
+      - name: Tear down the exact test project including REST volume
+        if: always()
+        env:
+          NERONET_FLEET_FILE: docker/backup/docker-compose.test.yml
+        run: sh scripts/dev/stack.sh down -v
+
   legacy-tools:
     name: legacy-tools
     runs-on: ubuntu-latest
@@ -310,6 +347,9 @@ jobs:
           - name: frontend
             context: console/frontend
             file: console/frontend/Dockerfile
+          - name: backup
+            context: docker/backup
+            file: docker/backup/Dockerfile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

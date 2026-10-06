@@ -52,12 +52,13 @@ default_port NERONET_VALKEY_PORT 6379
 _project=${COMPOSE_PROJECT_NAME:-$(basename "$REPO_ROOT")}
 _project=$(printf '%s' "$_project" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9_-' | sed 's/^[-_]*//')
 export NERONET_NODE_IMAGE="${_project}-node:dev"
+export NERONET_BACKUP_IMAGE="${NERONET_BACKUP_IMAGE:-${_project}-backup:dev}"
 
 # Compose reads .env and docker-compose.yml from the working directory; relative
 # paths also sidestep the Windows path notation mismatch with the compose provider.
 cd "$REPO_ROOT"
 
-PROFILES="--profile nodes --profile debug-ports"
+PROFILES="--profile nodes --profile debug-ports --profile backup --profile restore"
 
 # The fleet override is generated, not committed. When it exists it joins every command,
 # so `down` and `status` see the fleet's containers too.
@@ -105,6 +106,11 @@ case "$cmd" in
     $COMPOSE --profile fleet build "$first"
     # shellcheck disable=SC2086
     $COMPOSE --profile fleet $UP_PROFILES up -d "$@"
+    ;;
+  backup)
+    need_env
+    # shellcheck disable=SC2086
+    $COMPOSE --profile backup up -d --build --wait backup "$@"
     ;;
   down)
     # shellcheck disable=SC2086

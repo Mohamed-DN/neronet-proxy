@@ -66,6 +66,6 @@ cluster Patroni a tre nodi con HAProxy e due istanze del control plane; non è m
 provato come cluster, e Valkey vi è un'istanza singola. I job periodici girano solo sul
 leader eletto.
 
-Non ci sono backup programmati. Salvate il volume PostgreSQL con lo strumento che usate
-per PostgreSQL, e tenete il `.env` (in particolare `SOVEREIGN_SHRED_KEK_SECRET`, senza il
-quale i segreti cifrati delle organizzazioni non si leggono) fuori dall'host.
+Il servizio restic opzionale esegue backup cifrati ogni sei ore e li copia nel
+repository secondario configurato. La guida [backup e ripristino](backup-restore.md)
+descrive verifica, segreti di recupero, retention e drill distruttivo di test.

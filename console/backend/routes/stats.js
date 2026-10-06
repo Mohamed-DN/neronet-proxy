@@ -827,33 +827,34 @@ router.post('/recovery-proof/verify', async (req, res, next) => {
       return res.status(403).json({ error: 'Forbidden: only super-admin can trigger disaster recovery verification' });
     }
 
-    const { targetDbUrl, targetDbName = 'ephemeral_recovery' } = req.body || {};
+    const { targetDbUrl } = req.body || {};
+    if (typeof targetDbUrl !== 'string' || !targetDbUrl.trim()) {
+      return res.status(400).json({ error: 'targetDbUrl is required and must name a separate restored database' });
+    }
+    try {
+      const url = new URL(targetDbUrl);
+      if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('Invalid protocol');
+    } catch {
+      return res.status(400).json({ error: 'targetDbUrl must be a PostgreSQL connection URL' });
+    }
     const { BackupRecoveryProofService } = require('../services/BackupRecoveryProofService');
     const { Pool } = require('pg');
     const pool = getPgPool();
 
-    let targetPool = pool;
-    let customTarget = false;
-    if (targetDbUrl) {
-      targetPool = new Pool({ connectionString: targetDbUrl });
-      customTarget = true;
-    }
+    const targetPool = new Pool({ connectionString: targetDbUrl.trim(), connectionTimeoutMillis: 10000 });
 
     try {
       const proof = await BackupRecoveryProofService.verifyRestoredDatabase({
         sourcePool: pool,
         targetPool,
-        sourceDbName: 'primary',
-        targetDbName,
         actorUserId: req.user.id
       });
       return res.status(201).json({ proof });
     } finally {
-      if (customTarget) {
-        await targetPool.end().catch(() => {});
-      }
+      await targetPool.end().catch(() => {});
     }
   } catch (err) {
+    if (err.code === 'DR_INVALID_TARGET') return res.status(400).json({ error: err.message });
     next(err);
   }
 });

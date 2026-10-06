@@ -66,6 +66,6 @@ describes a three-node Patroni cluster with HAProxy and two control plane instan
 it has not been exercised as a cluster, and Valkey in it is a single instance.
 Periodic jobs run on the elected leader only.
 
-There are no scheduled backups. Back up the PostgreSQL volume with the tool you use
-for PostgreSQL, and keep `.env` (in particular `SOVEREIGN_SHRED_KEK_SECRET`, without
-which sealed organisation secrets cannot be read) outside the host.
+The optional restic service takes encrypted backups every six hours and copies them
+to a configured secondary repository. See [backup and restore](backup-restore.md)
+for verification, recovery secrets, retention and the destructive test drill.

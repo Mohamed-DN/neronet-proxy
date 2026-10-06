@@ -1,0 +1,110 @@
+#!/bin/sh
+# Usage: COMPOSE_PROJECT_NAME=neronet-backup-<test> NERONET_PORT_OFFSET=<nonzero>
+#        NERONET_NODE_SERVICES='relay-de client-it' backup-drill.sh --destroy-test-data [--secondary-test]
+# Destroys only this test project's neronet_db and backend_data, after taking a backup.
+# Nodes stay running; their identities and credentials must resume without re-enrolment.
+set -eu
+NERONET_REPO_ROOT=${NERONET_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
+export NERONET_REPO_ROOT
+. "$(dirname "$0")/../dev/engine.sh"
+case ${COMPOSE_PROJECT_NAME:-} in
+  neronet-backup-*) ;;
+  *) die "drill requires an explicit disposable project named neronet-backup-<test>" ;;
+esac
+case $COMPOSE_PROJECT_NAME in *[!a-z0-9_-]*) die "invalid project name" ;; esac
+case ${NERONET_PORT_OFFSET:-0} in 0 | '' | *[!0-9]*) die "drill requires a nonzero numeric port offset" ;; esac
+[ "${1:-}" = --destroy-test-data ] || die "pass --destroy-test-data to authorize destruction of this test project's data"
+shift
+secondary=false
+if [ "${1:-}" = --secondary-test ]; then secondary=true; shift; fi
+[ $# -eq 0 ] || die "unknown drill option"
+export NERONET_BACKUP_IMAGE=${NERONET_BACKUP_IMAGE:-${COMPOSE_PROJECT_NAME}-backup:dev}
+export NERONET_NODE_SERVICES=${NERONET_NODE_SERVICES:-relay-de client-it}
+cd "$REPO_ROOT"
+node_count=0
+for service in $NERONET_NODE_SERVICES; do
+  case $service in *[!a-z0-9_-]* | '') die "drill accepts compose node services only" ;; esac
+  node_count=$((node_count + 1))
+done
+[ "$node_count" -ge 2 ] || die "at least two real nodes are required"
+
+checked_id() {
+  # shellcheck disable=SC2086
+  id=$($COMPOSE --profile nodes ps -q "$1")
+  [ -n "$id" ] || die "$1 is not running"
+  project=$($ENGINE inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$id")
+  [ "$project" = "$COMPOSE_PROJECT_NAME" ] || die "$1 belongs to another project"
+  echo "$id"
+}
+postgres_id=$(checked_id postgres)
+backend_id=$(checked_id backend)
+mounts=$($ENGINE inspect --format '{{range .Mounts}}{{.Name}}:{{.Destination}} {{end}}' "$backend_id")
+case $mounts in *"${COMPOSE_PROJECT_NAME}_backend_data:/app/data"*) ;;
+  *) die "backend does not mount the exact test backend_data volume" ;;
+esac
+for service in $NERONET_NODE_SERVICES; do checked_id "$service" >/dev/null; done
+echo "checked project $COMPOSE_PROJECT_NAME, database neronet_db, volume ${COMPOSE_PROJECT_NAME}_backend_data"
+
+reenrol_count() {
+  for service in $NERONET_NODE_SERVICES; do
+    # shellcheck disable=SC2086
+    $COMPOSE --profile nodes logs --no-color "$service"
+  done | awk '/Re-enrolled after the control plane lost this node/ { n++ } END { print n+0 }'
+}
+tool() {
+  # shellcheck disable=SC2086
+  $COMPOSE --profile restore run --rm --no-deps "$@"
+}
+echo "before restore: TCP overlay matrix"
+sh scripts/dev/scenarios/overlay.sh matrix
+# shellcheck disable=SC2086
+$COMPOSE exec -T -e BACKUP_FIXTURE_MODE=seed backend node < scripts/ops/backup-fixture.cjs
+baseline_reenrol=$(reenrol_count)
+# Stop writers before the exact source digest and backup. Node processes keep their state.
+# shellcheck disable=SC2086
+$COMPOSE --profile backup stop backend backup
+if [ "$secondary" = true ]; then
+  export NERONET_BACKUP_SECONDARY=rest:http://backup-test-rest:8000/neronet/
+  # shellcheck disable=SC2086
+  $COMPOSE -f docker-compose.yml -f docker/backup/docker-compose.test.yml up -d backup-test-rest
+  echo "secondary test: controlled REST backend on this host; not offsite"
+fi
+before=$(tool backup-restore digest --scope all | sha256sum | cut -d ' ' -f 1)
+tool backup-restore once
+set_id=$(tool backup-restore resolve-set primary latest | tail -n 1)
+echo "backup set $set_id; source manifest SHA-256 $before; re-enrolment baseline $baseline_reenrol"
+sh scripts/ops/restore.sh --verify --set "$set_id"
+if [ "$secondary" = true ]; then
+  sh scripts/ops/restore.sh --verify --repo secondary --set "$set_id"
+fi
+
+# Recheck the exact container and project immediately before the irreversible SQL.
+[ "$(checked_id postgres)" = "$postgres_id" ] || die "PostgreSQL container changed during backup"
+echo "destroying only $COMPOSE_PROJECT_NAME neronet_db and ${COMPOSE_PROJECT_NAME}_backend_data"
+# shellcheck disable=SC2086
+$COMPOSE exec -T postgres psql -X -U neronet -d postgres -v ON_ERROR_STOP=1 \
+  -c 'DROP DATABASE neronet_db WITH (FORCE)'
+tool --entrypoint sh backup-restore -c 'find /source/backend_data -mindepth 1 -delete'
+repo=primary
+[ "$secondary" = false ] || repo=secondary
+sh scripts/ops/restore.sh --replace --repo "$repo" --set "$set_id"
+after=$(tool backup-restore digest --scope all | sha256sum | cut -d ' ' -f 1)
+[ "$before" = "$after" ] || die "full source/restored schema and data digest differs"
+echo "source/restored canonical SHA-256 identical: $after"
+# shellcheck disable=SC2086
+$COMPOSE start backend
+# nginx resolves backend IP at start. Restart after the stopped backend is started.
+# shellcheck disable=SC2086
+$COMPOSE restart frontend
+sh scripts/dev/smoke.sh "$node_count" 180
+# shellcheck disable=SC2086
+$COMPOSE exec -T backend node < scripts/ops/backup-fixture.cjs
+
+deadline=$(($(date +%s) + 180))
+until sh scripts/dev/scenarios/overlay.sh matrix; do
+  [ "$(date +%s)" -lt "$deadline" ] || die "TCP did not resume within 180 s"
+  sleep 2
+done
+after_reenrol=$(reenrol_count)
+[ "$baseline_reenrol" = "$after_reenrol" ] || die "nodes re-enrolled during the drill"
+echo "backup drill passed: canonical schema/data, sealed secret, audit keys, TCP and zero new re-enrolments ($after_reenrol)"

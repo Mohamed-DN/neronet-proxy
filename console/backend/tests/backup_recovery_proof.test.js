@@ -1,195 +1,242 @@
 const { describe, it, before, after } = require('node:test');
-const assert = require('node:assert');
+const assert = require('node:assert/strict');
+const { Pool } = require('pg');
+const { spawnSync } = require('node:child_process');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
-
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const config = require('../config/env');
-const { logAuditEvent } = require('../utils/audit');
+const { logAuditEvent, settleAuditWrites } = require('../utils/audit');
+const { AuditChainService } = require('../services/AuditChainService');
 const { BackupRecoveryProofService } = require('../services/BackupRecoveryProofService');
 
-describe('WP-306: Automated Disaster Recovery Backup & Recovery Proof Verification', () => {
-  let dbHelper;
-  let pool;
-  let app;
-  let superAdminToken;
-  let memberToken;
+describe('Disaster recovery proof against a separate restored database', () => {
+  let dbHelper, pool, app, maintenancePool, sourceUrl, superAdminToken, memberToken;
 
   before(async () => {
+    const baseUrl = process.env.DATABASE_URL;
     dbHelper = await setupTestDatabase();
     pool = dbHelper.pool;
+    sourceUrl = process.env.DATABASE_URL;
+    maintenancePool = new Pool({ connectionString: baseUrl });
     app = createApp();
-
-    // Clean tables
     await pool.query('DELETE FROM recovery_proofs');
     await pool.query('DELETE FROM audit_checkpoints');
     await pool.query('DELETE FROM audit_events');
-
-    // Create a super-admin user in database to satisfy foreign keys
     await pool.query(
-      `INSERT INTO users (id, username, email, password_hash, role)
-       VALUES ('11111111-1111-1111-1111-111111111111', 'dr_admin', 'dr_admin@neronet.internal', 'hash', 'super-admin')
-       ON CONFLICT (id) DO NOTHING`
+      'INSERT INTO users (id, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5),($6,$7,$8,$9,$10) ON CONFLICT (id) DO NOTHING',
+      [
+        '11111111-1111-1111-1111-111111111111',
+        'dr_admin',
+        'dr_admin@neronet.internal',
+        'hash',
+        'super-admin',
+        '22222222-2222-2222-2222-222222222222',
+        'dr_member',
+        'dr_member@neronet.internal',
+        'hash',
+        'member'
+      ]
     );
-
-    // Create a normal member user
-    await pool.query(
-      `INSERT INTO users (id, username, email, password_hash, role)
-       VALUES ('22222222-2222-2222-2222-222222222222', 'dr_member', 'dr_member@neronet.internal', 'hash', 'member')
-       ON CONFLICT (id) DO NOTHING`
-    );
-
     superAdminToken = jwt.sign(
       { id: '11111111-1111-1111-1111-111111111111', username: 'dr_admin', role: 'super-admin' },
       config.JWT_SECRET,
       { expiresIn: '1h' }
     );
-
     memberToken = jwt.sign(
       { id: '22222222-2222-2222-2222-222222222222', username: 'dr_member', role: 'member' },
       config.JWT_SECRET,
       { expiresIn: '1h' }
     );
-
-    // Seed verifiable audit trail
-    await logAuditEvent({
-      eventType: 'SYSTEM_BOOTSTRAP',
-      severity: 'info',
-      actorUsername: 'dr_admin',
-      message: 'Initial DR test event'
-    });
-
-    await logAuditEvent({
-      eventType: 'KEY_ROTATION',
-      severity: 'warn',
-      actorUsername: 'dr_admin',
-      message: 'Secondary DR test event'
-    });
+    await pool.query('CREATE TABLE dr_payloads (value text, metadata jsonb)');
+    await pool.query('INSERT INTO dr_payloads VALUES ($1,$2),($3,$4),($3,$4)', [
+      'first',
+      '{"nested":{"b":2,"a":1}}',
+      'second',
+      '{}'
+    ]);
+    await logAuditEvent({ eventType: 'SYSTEM_BOOTSTRAP', message: 'DR test event' });
+    await AuditChainService.createCheckpoint();
   });
 
   after(async () => {
-    if (dbHelper) await dbHelper.cleanup();
+    await maintenancePool?.end();
+    await dbHelper?.cleanup();
   });
 
-  it('1. collects accurate table statistics across all base tables', async () => {
-    const stats = await BackupRecoveryProofService.collectTableStats(pool);
-    assert.ok(stats, 'Table stats must be returned');
-    assert.ok(stats.users >= 2, 'Should count at least 2 users');
-    assert.ok(stats.audit_events >= 2, 'Should count at least 2 audit events');
-    assert.ok(stats._migrations >= 1, 'Should count migrations');
-  });
+  // A PostgreSQL template copy gives each test independent schema, rows and
+  // sequences. The backup drill, separately, exercises pg_dump and restic.
+  async function withRestoredDatabase(check) {
+    await settleAuditWrites();
+    const targetName = 'neronet_dr_' + process.pid + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    await maintenancePool.query(
+      'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
+      [dbHelper.dbName]
+    );
+    await maintenancePool.query('CREATE DATABASE "' + targetName + '" TEMPLATE "' + dbHelper.dbName + '"');
+    const targetUrl = new URL(sourceUrl);
+    targetUrl.pathname = '/' + targetName;
+    const targetPool = new Pool({ connectionString: targetUrl.toString() });
+    try {
+      await check(targetPool, targetUrl.toString());
+    } finally {
+      await targetPool.end();
+      await settleAuditWrites();
+      await maintenancePool.query('DROP DATABASE "' + targetName + '" WITH (FORCE)');
+    }
+  }
 
-  it('2. verifies matching restored database with PASS and valid HMAC proof', async () => {
-    // When source and target pools are identical (simulating successful clean restore)
-    const proof = await BackupRecoveryProofService.verifyRestoredDatabase({
-      sourcePool: pool,
-      targetPool: pool,
-      sourceDbName: 'neronet_primary',
-      targetDbName: 'neronet_ephemeral_restore',
-      actorUserId: '11111111-1111-1111-1111-111111111111'
+  function verify(targetPool, options = {}) {
+    return BackupRecoveryProofService.verifyRestoredDatabase({ sourcePool: pool, targetPool, ...options });
+  }
+
+  it('rejects a changed value even when every table has the same row count', async () => {
+    await withRestoredDatabase(async (targetPool) => {
+      await targetPool.query('UPDATE users SET email = $1 WHERE id = $2', [
+        'changed@neronet.internal',
+        '22222222-2222-2222-2222-222222222222'
+      ]);
+      await assert.rejects(verify(targetPool), /data mismatch.*users/);
     });
-
-    assert.strictEqual(proof.status, 'VERIFIED_PASS');
-    assert.ok(proof.integrity_hash);
-    assert.strictEqual(proof.audit_chain.valid, true);
-    assert.strictEqual(proof.audit_chain.events_count >= 2, true);
-    assert.ok(proof.tables_verified.users >= 2);
-    assert.ok(proof.total_records_verified > 0);
   });
 
-  it('3. stores proof certificate in recovery_proofs and retrieves latest proof', async () => {
-    const latest = await BackupRecoveryProofService.getLatestProof(pool);
-    assert.ok(latest, 'Latest proof must exist');
-    assert.strictEqual(latest.status, 'VERIFIED_PASS');
-    assert.strictEqual(latest.source_database, 'neronet_primary');
-    assert.ok(latest.integrity_hash);
+  it('verifies all public tables, schema and sequences of a real separate copy', async () => {
+    await withRestoredDatabase(async (targetPool) => {
+      const proof = await verify(targetPool);
+      assert.equal(proof.status, 'VERIFIED_PASS');
+      assert.equal(proof.source_database, dbHelper.dbName);
+      assert.notEqual(proof.target_database, proof.source_database);
+      assert.equal(proof.audit_chain.valid, true);
+      assert.ok(proof.audit_chain.checkpoints_verified > 0);
+      assert.ok(proof.tables_verified.acl_rules !== undefined);
+      assert.ok(proof.tables_verified.node_credentials !== undefined);
+      assert.equal(proof.tables_verified.dr_payloads, 3);
+      for (const key of ['integrity_hash', 'schema_hash', 'data_hash', 'sequence_hash'])
+        assert.match(proof[key], /^[a-f0-9]{64}$/);
+      assert.equal((await BackupRecoveryProofService.getLatestProof(pool)).status, 'VERIFIED_PASS');
+    });
   });
 
-  it('4. fails closed when target database has row count mismatch', async () => {
-    // Mock target pool with mismatching row count
-    const mockTargetPool = {
-      query: async (sql, params) => {
-        if (sql.includes('information_schema.tables')) {
-          return pool.query(sql, params);
-        }
-        if (sql.includes('"users"')) {
-          // Return forged count (1 instead of 2+)
-          return { rows: [{ c: '1' }] };
-        }
-        return pool.query(sql, params);
-      }
-    };
+  it('ignores row order and JSON object key order while preserving duplicates', async () => {
+    await withRestoredDatabase(async (targetPool) => {
+      await targetPool.query('DELETE FROM dr_payloads');
+      await targetPool.query('INSERT INTO dr_payloads VALUES ($1,$2),($1,$2),($3,$4)', [
+        'second',
+        '{}',
+        'first',
+        '{"nested":{"a":1,"b":2}}'
+      ]);
+      assert.equal((await verify(targetPool)).status, 'VERIFIED_PASS');
+    });
+  });
 
-    await assert.rejects(async () => {
-      await BackupRecoveryProofService.verifyRestoredDatabase({
-        sourcePool: pool,
-        targetPool: mockTargetPool,
-        sourceDbName: 'primary',
-        targetDbName: 'tampered_target'
+  it('rejects data changes outside the former critical-table list', async () => {
+    await withRestoredDatabase(async (targetPool) => {
+      await targetPool.query("UPDATE dr_payloads SET value = 'altered' WHERE value = 'first'");
+      await assert.rejects(verify(targetPool), /data mismatch.*dr_payloads/);
+    });
+  });
+
+  it('rejects a changed default, a removed constraint and an extra table', async () => {
+    const mutations = [
+      "ALTER TABLE users ALTER COLUMN email SET DEFAULT 'unexpected@neronet.internal'",
+      'ALTER TABLE users DROP CONSTRAINT users_email_key',
+      'CREATE TABLE unexpected_table (value text)'
+    ];
+    for (const sql of mutations) {
+      await withRestoredDatabase(async (targetPool) => {
+        await targetPool.query(sql);
+        await assert.rejects(verify(targetPool), /schema mismatch/);
       });
-    }, /row count mismatch/);
-
-    // Verify failure was recorded in recovery_proofs
-    const latest = await BackupRecoveryProofService.getLatestProof(pool);
-    assert.strictEqual(latest.status, 'VERIFIED_FAIL');
-    assert.ok(latest.error_message.includes('row count mismatch'));
+    }
   });
 
-  it('5. fails closed when target database audit chain has tampered HMAC hash', async () => {
-    // Mock target pool with tampered audit event
-    const mockTargetPool = {
-      query: async (sql, params) => {
-        if (sql.includes('SELECT * FROM audit_events')) {
-          const res = await pool.query(sql, params);
-          const forgedRows = res.rows.map((r) => ({ ...r }));
-          // Tamper with payload message without updating entry_hash
-          if (forgedRows.length > 0) {
-            forgedRows[0].message = 'MALICIOUS_TAMPERED_CONTENT';
-          }
-          return { rows: forgedRows };
-        }
-        return pool.query(sql, params);
-      }
-    };
-
-    await assert.rejects(async () => {
-      await BackupRecoveryProofService.verifyRestoredDatabase({
-        sourcePool: pool,
-        targetPool: mockTargetPool,
-        sourceDbName: 'primary',
-        targetDbName: 'tampered_audit_target'
-      });
-    }, /audit chain validation error.*HASH_TAMPERED/);
+  it('rejects sequence is_called changes with identical last_value', async () => {
+    await withRestoredDatabase(async (targetPool) => {
+      const state = (await pool.query('SELECT last_value, is_called FROM overlay_vip_seq')).rows[0];
+      await targetPool.query("SELECT setval('overlay_vip_seq', $1, $2)", [state.last_value, !state.is_called]);
+      await assert.rejects(verify(targetPool), /sequence mismatch/);
+    });
   });
 
-  it('6. API: GET /api/audit/recovery-proof/latest returns proof to authenticated users', async () => {
-    const res = await request(app)
-      .get('/api/audit/recovery-proof/latest')
-      .set('Authorization', `Bearer ${memberToken}`);
-
-    assert.strictEqual(res.statusCode, 200);
-    assert.ok(res.body.proof);
+  it('rejects tampered audit content, a wrong HMAC key and unverifiable checkpoints', async () => {
+    await withRestoredDatabase(async (targetPool) => {
+      await targetPool.query("UPDATE audit_events SET message = 'tampered' WHERE sequence_num = 1");
+      await assert.rejects(verify(targetPool), /audit chain validation error.*HASH_TAMPERED/);
+    });
+    await withRestoredDatabase(async (targetPool) => {
+      await assert.rejects(
+        verify(targetPool, { secret: 'wrong-audit-key' }),
+        /audit chain validation error.*UNKNOWN_KEY/
+      );
+    });
+    await withRestoredDatabase(async (targetPool) => {
+      await targetPool.query("UPDATE audit_checkpoints SET signature = repeat('0', 128)");
+      await assert.rejects(verify(targetPool), /audit.*checkpoint/i);
+    });
   });
 
-  it('7. API: POST /api/audit/recovery-proof/verify rejects non-admin users with 403', async () => {
-    const res = await request(app)
+  it('rejects missing target, same pool and same database via another pool', async () => {
+    await assert.rejects(verify(undefined), /target.*required/i);
+    await assert.rejects(verify(pool), /separate.*database/i);
+    const sameDatabasePool = new Pool({ connectionString: sourceUrl });
+    try {
+      await assert.rejects(verify(sameDatabasePool), /separate.*database/i);
+    } finally {
+      await sameDatabasePool.end();
+    }
+  });
+
+  it('API rejects missing target and source URL without issuing PASS', async () => {
+    for (const body of [{}, { targetDbUrl: ' ' }, { targetDbUrl: sourceUrl, targetDbName: 'fake_restore' }]) {
+      const res = await request(app)
+        .post('/api/audit/recovery-proof/verify')
+        .set('Authorization', 'Bearer ' + superAdminToken)
+        .send(body);
+      assert.equal(res.statusCode, 400);
+      assert.equal(res.body.proof, undefined);
+    }
+  });
+
+  it('API rejects members and verifies a separate target for a super-admin', async () => {
+    const denied = await request(app)
       .post('/api/audit/recovery-proof/verify')
-      .set('Authorization', `Bearer ${memberToken}`)
+      .set('Authorization', 'Bearer ' + memberToken)
       .send({});
-
-    assert.strictEqual(res.statusCode, 403);
-    assert.ok(res.body.error.includes('Forbidden'));
+    assert.equal(denied.statusCode, 403);
+    await withRestoredDatabase(async (_targetPool, targetDbUrl) => {
+      const res = await request(app)
+        .post('/api/audit/recovery-proof/verify')
+        .set('Authorization', 'Bearer ' + superAdminToken)
+        .send({ targetDbUrl });
+      assert.equal(res.statusCode, 201, JSON.stringify(res.body));
+      assert.equal(res.body.proof.status, 'VERIFIED_PASS');
+    });
+    const latest = await request(app)
+      .get('/api/audit/recovery-proof/latest')
+      .set('Authorization', 'Bearer ' + memberToken);
+    assert.equal(latest.statusCode, 200);
+    assert.ok(latest.body.proof);
   });
 
-  it('8. API: POST /api/audit/recovery-proof/verify succeeds for super-admin', async () => {
-    const res = await request(app)
-      .post('/api/audit/recovery-proof/verify')
-      .set('Authorization', `Bearer ${superAdminToken}`)
-      .send({ targetDbName: 'api_triggered_verification' });
-
-    assert.strictEqual(res.statusCode, 201);
-    assert.strictEqual(res.body.proof.status, 'VERIFIED_PASS');
-    assert.ok(res.body.proof.integrity_hash);
+  it('CLI verifies with an audit HMAC key distinct from its JWT key', async () => {
+    await withRestoredDatabase(async (_targetPool, targetUrl) => {
+      const result = spawnSync(process.execPath, [require.resolve('../scripts/dr-prover')], {
+        encoding: 'utf8',
+        timeout: 30000,
+        env: {
+          ...process.env,
+          DATABASE_URL: sourceUrl,
+          RESTORE_DATABASE_URL: targetUrl,
+          SOVEREIGN_DATA_DIR: config.DATA_DIR,
+          SOVEREIGN_AUDIT_HMAC_SECRET: config.AUDIT_HMAC_SECRET,
+          SOVEREIGN_JWT_SECRET: 'a-different-cli-jwt-signing-secret'
+        }
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /PASS: separate quiescent databases match/);
+      assert.ok(!result.stdout.includes(config.AUDIT_HMAC_SECRET));
+    });
   });
 });
