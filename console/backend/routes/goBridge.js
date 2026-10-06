@@ -164,7 +164,7 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
 
     // Check if node exists already (needed for owner check & role check)
     const existing = await runQuery(
-      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code, latitude, longitude, user_id FROM nodes WHERE id = $1',
+      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code, latitude, longitude, user_id, is_healthy, is_quarantined FROM nodes WHERE id = $1',
       [nodeId]
     );
 
@@ -246,7 +246,16 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       return res.status(400).json({ error: declared.error });
     }
     const asn = Number.isFinite(capability.asn) ? capability.asn : 0;
-    const endpoints = Array.isArray(req.body.endpoints) ? req.body.endpoints : [];
+    // Checked exactly as a heartbeat's are. The list used to be stored as received, so
+    // a loopback or link-local address reached /v4/control/discover, which hands
+    // stored endpoints to other nodes as they are.
+    const offered = NetmapService.validateEndpoints(req.body.endpoints);
+    if (offered.rejected.length > 0) {
+      logger.warn(
+        `[GO-BRIDGE] ${nodeId} registered with ${offered.rejected.length} unusable endpoint(s): ` +
+          offered.rejected.map((r) => `${r.entry} (${r.reason})`).join(', ')
+      );
+    }
 
     const name = `Go-Node-${publicKeyHex.slice(0, 8)}`;
 
@@ -265,18 +274,25 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       overlayIpv6 = vip.overlayIpv6;
     }
 
-    const endpointsJson = JSON.stringify(endpoints);
+    // A new row gets the validated list in the shape the heartbeat stores. An enrolled
+    // node's endpoints are written below, through the heartbeat's own intake.
+    const endpointsJson = JSON.stringify(
+      offered.endpoints.map((e) => ({
+        ip_address: e.ip_address,
+        port: e.port,
+        protocol: e.protocol,
+        is_stun_discovered: e.is_stun_discovered
+      }))
+    );
 
-    // On conflict only is_healthy, endpoints and updated_at are written.
+    // On conflict only is_healthy and updated_at are written.
     //
     // Registration is authenticated by one fleet-wide token and a public key is not
     // a secret, so re-registering somebody else's key used to rewrite that node's
     // role -- to EXIT_BRIDGE, which puts it on the exit path -- and its country,
     // which is what geofencing decides on. Until WP-103 makes a node prove
     // possession of its key, those three columns are set at first enrolment and
-    // changed only through the authenticated console API. Endpoints are different:
-    // they change whenever the node moves, and a wrong one costs reachability
-    // rather than policy.
+    // changed only through the authenticated console API.
     const mismatch =
       existing.length > 0 ? describeMismatch(existing[0], { role, ipClass, countryCode, declared }) : null;
 
@@ -294,7 +310,6 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb, $13)
        ON CONFLICT (id) DO UPDATE SET
          is_healthy = TRUE,
-         endpoints = EXCLUDED.endpoints,
          updated_at = NOW()`,
       [
         nodeId,
@@ -312,6 +327,21 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
         organizationId
       ]
     );
+
+    // An enrolled node's stored endpoints are replaced only by a registration that
+    // carries a usable one. A node registers again whenever its credential stops
+    // working (a lifted quarantine, an expired credential, a restored database), and
+    // it does so from a state where it may have nothing to report yet: an empty list
+    // says that, not that the node has no address. Writing it over the stored
+    // endpoints left every peer that fetched its netmap before the node's next
+    // heartbeat with a peer it could not send a handshake to.
+    let endpointsChanged = false;
+    let versionAdvanced = false;
+    if (existing.length > 0 && offered.endpoints.length > 0) {
+      const recorded = await NetmapService.recordEndpoints(nodeId, req.body.endpoints);
+      endpointsChanged = recorded.changed;
+      versionAdvanced = recorded.bumped;
+    }
 
     // The declared position is written only while the row has none, which is the
     // same rule the country follows: a re-registration cannot move an enrolled node.
@@ -358,6 +388,15 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
     // rules stay identical while the peers they expand to do not.
     if (existing.length === 0) {
       await AclEngine.bumpEpoch('acl');
+    } else if (!versionAdvanced) {
+      // The peers re-fetch only when the version moves. A node that moved, or that was
+      // unhealthy and is now back in every peer set (registration marks it healthy),
+      // changed what they must hold. The heartbeat's debounce does not apply: it is
+      // there for an address that flaps every 15 s, and registration is not periodic.
+      const revived = !existing[0].is_healthy && !existing[0].is_quarantined;
+      if (endpointsChanged || revived) {
+        await NetmapService.bumpVersion();
+      }
     }
 
     const cred = await NodeCredentialService.mintCredential(nodeId);
