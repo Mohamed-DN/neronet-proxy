@@ -4,6 +4,9 @@ Le operazioni di tutti i giorni, con gli endpoint come esistono. Il manuale
 ([`docs/HANDBOOK.md`](../HANDBOOK.md), in inglese) spiega come funziona ogni parte;
 questa pagina è la versione breve.
 
+Per CA interna, emissione ACME e rinnovo, vedi
+[Certificati della console e dei nodi](tls-certificates.md).
+
 ## Accesso
 
 | Cosa | Dove |

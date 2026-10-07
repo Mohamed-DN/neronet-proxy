@@ -1,0 +1,23 @@
+# Local ACME authority for test-acme.sh. Real HTTP-01 validation remains enabled.
+services:
+  pebble:
+    image: ghcr.io/letsencrypt/pebble:2.10.1
+    command: ["-config", "/test/config/pebble-config.json", "-strict=false"]
+    environment:
+      PEBBLE_VA_NOSLEEP: "1"
+      PEBBLE_WFE_NONCEREJECT: "0"
+    volumes:
+      - ./docker/acme/pebble-config.json:/test/config/pebble-config.json:ro
+      - ./${NERONET_ACME_TEST_CERTS_DIR:?test-acme.sh sets the directory}:/test/certs:ro
+    ports:
+      - "127.0.0.1:${NERONET_ACME_MANAGEMENT_PORT:-15000}:15000"
+    networks:
+      - neronet-isolated-mesh
+
+# Optional suffix allows a second bootstrap drill in the same dedicated project
+# while preserving the account keys and published certificates from the first.
+volumes:
+  acme_state:
+    name: "${COMPOSE_PROJECT_NAME:?dedicated test project}_acme_state${NERONET_ACME_TEST_VOLUME_SUFFIX:-}"
+  acme_public:
+    name: "${COMPOSE_PROJECT_NAME:?dedicated test project}_acme_public${NERONET_ACME_TEST_VOLUME_SUFFIX:-}"

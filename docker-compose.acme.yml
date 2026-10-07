@@ -1,0 +1,61 @@
+# Included by stack.sh only when NERONET_TLS_MODE=acme. HTTP-01 needs this
+# listener reachable on public port 80; the default binding remains loopback.
+services:
+  frontend:
+    environment:
+      NERONET_TLS_MODE: acme
+      NERONET_PUBLIC_DOMAIN: ${NERONET_PUBLIC_DOMAIN:?set NERONET_PUBLIC_DOMAIN}
+      NERONET_CONSOLE_PUBLIC_PORT: ${NERONET_CONSOLE_PUBLIC_PORT:-8443}
+      NERONET_TLS_WATCH_INTERVAL: ${NERONET_TLS_WATCH_INTERVAL:-30}
+    ports:
+      - "${NERONET_CONSOLE_BIND:-127.0.0.1}:${NERONET_HTTP_PORT:-8080}:80"
+    volumes:
+      - acme_public:/acme:ro
+    networks:
+      neronet-isolated-mesh:
+        aliases:
+          - ${NERONET_PUBLIC_DOMAIN:?set NERONET_PUBLIC_DOMAIN}
+    healthcheck:
+      start_period: 120s
+  backend:
+    environment:
+      CORS_ORIGIN: ${NERONET_CONSOLE_ORIGIN:-https://${NERONET_PUBLIC_DOMAIN}}
+  acme:
+    build:
+      context: ./docker/acme
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        # The first certificate needs nginx's HTTP-01 listener, which also works
+        # while TLS is still pending. Waiting for TLS health would deadlock.
+        condition: service_started
+    environment:
+      NERONET_PUBLIC_DOMAIN: ${NERONET_PUBLIC_DOMAIN:?set NERONET_PUBLIC_DOMAIN}
+      NERONET_ACME_AGREE_TOS: ${NERONET_ACME_AGREE_TOS:-false}
+      NERONET_ACME_DIRECTORY: ${NERONET_ACME_DIRECTORY:-https://acme-v02.api.letsencrypt.org/directory}
+      NERONET_ACME_EMAIL: ${NERONET_ACME_EMAIL:-}
+      NERONET_ACME_PROFILE: ${NERONET_ACME_PROFILE:-}
+      NERONET_ACME_CHECK_INTERVAL: ${NERONET_ACME_CHECK_INTERVAL:-43200}
+      NERONET_ACME_RETRY_INTERVAL: ${NERONET_ACME_RETRY_INTERVAL:-300}
+      LEGO_CA_CERTIFICATES: ${NERONET_ACME_CA_CERTIFICATES:-}
+    secrets:
+      - acme_directory_ca
+    volumes:
+      - acme_state:/var/lib/acme
+      - acme_public:/acme
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - neronet-isolated-mesh
+secrets:
+  acme_directory_ca:
+    # Public CAs use the image's system roots; this secret is only selected by
+    # LEGO_CA_CERTIFICATES when an operator supplies a private ACME endpoint.
+    file: ${NERONET_ACME_DIRECTORY_CA_FILE:-./certs/ca.crt}
+volumes:
+  acme_state:
+  acme_public:
