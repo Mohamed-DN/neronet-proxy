@@ -58,6 +58,36 @@ check_tls() {
   case "$body" in *'"status":"ok"'*) return 0 ;; *) return 1 ;; esac
 }
 
+recover_unhealthy_frontend() {
+  # Compose --wait fails immediately for an existing unhealthy container. Start
+  # issuance without that gate, then measure the watcher's actual TLS recovery.
+  # The same frontend process must recover; a restart would hide this regression.
+  acme_compose up -d --no-deps acme
+  start=$(date +%s)
+  # This authenticates Pebble's management endpoint with its distinct endpoint CA.
+  # Only a successful response replaces the issuance trust root used below.
+  # shellcheck disable=SC2086
+  until curl -fsS --max-time 5 $TLS_REVOCATION --cacert "$TEST_HOST/endpoint-ca.crt" \
+    "https://127.0.0.1:$NERONET_ACME_MANAGEMENT_PORT/roots/0" > "$TEST_DIR/issuer-ca.crt.tmp"; do
+    [ "$(($(date +%s) - start))" -lt 30 ] || die "the verified Pebble management endpoint did not recover"
+    sleep 1
+  done
+  mv "$TEST_DIR/issuer-ca.crt.tmp" "$TEST_DIR/issuer-ca.crt"
+  start=$(date +%s)
+  until check_tls; do
+    [ "$(($(date +%s) - start))" -lt 60 ] || die "the unhealthy frontend did not recover verified TLS"
+    sleep 1
+  done
+  until [ "$($ENGINE inspect --format '{{.State.Health.Status}}' "$frontend_id")" = healthy ]; do
+    [ "$(($(date +%s) - start))" -lt 60 ] || die "the frontend stayed unhealthy after TLS recovered"
+    sleep 1
+  done
+  [ "$(acme_compose ps -q frontend)" = "$frontend_id" ] || die "bootstrap recovery replaced the frontend"
+  [ "$($ENGINE inspect --format '{{.State.StartedAt}}' "$frontend_id")" = "$frontend_started" ] ||
+    die "bootstrap recovery restarted the frontend"
+  echo "PASS  the same unhealthy frontend recovers verified TLS and healthy status without restarting"
+}
+
 serial() {
   openssl s_client -connect "127.0.0.1:$NERONET_CONSOLE_PORT" \
     -servername "$NERONET_PUBLIC_DOMAIN" -CAfile "$TEST_HOST/issuer-ca.crt" \
@@ -231,6 +261,16 @@ handshake=$(openssl s_client -connect "127.0.0.1:$NERONET_CONSOLE_PORT" \
   -servername "$NERONET_PUBLIC_DOMAIN" < /dev/null 2>&1 || true)
 echo "$handshake" | grep -q 'unrecognized name' || die "nginx did not reject the pending TLS handshake"
 echo "PASS  pending certificate refuses TLS and reports unhealthy"
+frontend_id=$(acme_compose ps -q frontend)
+[ -n "$frontend_id" ] || die "the pending frontend container is missing"
+frontend_started=$($ENGINE inspect --format '{{.State.StartedAt}}' "$frontend_id")
+elapsed=0
+until [ "$($ENGINE inspect --format '{{.State.Health.Status}}' "$frontend_id")" = unhealthy ]; do
+  [ "$elapsed" -lt 30 ] || die "the pending frontend did not become unhealthy"
+  sleep 1
+  elapsed=$((elapsed + 1))
+done
+echo "PASS  frontend is unhealthy before first-issuance recovery"
 
 # Reproduce a first-run CA outage. Lego must later register the existing key,
 # rather than strand the saved-but-unregistered account or generate a replacement.
@@ -246,13 +286,10 @@ account_key_hash() {
 key_before=$(account_key_hash)
 [ -n "$key_before" ] || die "the failed first attempt did not persist its account key"
 acme_compose start pebble
+recover_unhealthy_frontend
 sh scripts/dev/stack.sh up
 [ "$(account_key_hash)" = "$key_before" ] || die "bootstrap recovery replaced the account key"
 echo "PASS  first CA outage recovers using the same account key"
-# This certificate authenticates the Pebble endpoint, distinct from the issuance CA.
-# shellcheck disable=SC2086
-curl -fsS --max-time 15 $TLS_REVOCATION --cacert "$TEST_HOST/endpoint-ca.crt" \
-  "https://127.0.0.1:$NERONET_ACME_MANAGEMENT_PORT/roots/0" > "$TEST_DIR/issuer-ca.crt"
 check_tls || die "nginx's issued certificate did not verify against the Pebble root"
 echo "PASS  HTTP-01 issuance and nginx's served certificate"
 
