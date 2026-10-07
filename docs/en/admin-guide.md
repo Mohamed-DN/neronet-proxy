@@ -4,6 +4,9 @@ What an operator does day to day, with the endpoints as they exist. The handbook
 ([`docs/HANDBOOK.md`](../HANDBOOK.md)) explains how each part works; this page is the
 short version.
 
+For internal CA certificates, ACME issuance and renewal, see
+[Console and node certificates](tls-certificates.md).
+
 ## Access
 
 | What | Where |

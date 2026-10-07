@@ -43,6 +43,7 @@ default_port NERONET_STUN_EU_PORT 3478
 default_port NERONET_STUN_US_PORT 3479
 default_port NERONET_POSTGRES_PORT 5432
 default_port NERONET_VALKEY_PORT 6379
+default_port NERONET_HTTP_PORT 8080
 
 # The node image is tagged per stack. A shared tag would let two checkouts overwrite
 # each other's image.
@@ -55,6 +56,45 @@ export NERONET_NODE_IMAGE="${_project}-node:dev"
 cd "$REPO_ROOT"
 
 PROFILES="--profile nodes --profile debug-ports"
+
+# Read only these non-secret settings from .env, without executing it. Environment
+# values take precedence, as they do for Compose. Shell expansion inside .env is
+# deliberately not supported here; use a literal value or export the setting.
+dotenv_setting() {
+  [ -f .env ] || return 0
+  sed -n "s/^$1=//p" .env | tail -n 1 | sed 's/^"\(.*\)"$/\1/;s/^'"'"'\(.*\)'"'"'$/\1/'
+}
+export NERONET_TLS_MODE="${NERONET_TLS_MODE:-$(dotenv_setting NERONET_TLS_MODE)}"
+case "${NERONET_TLS_MODE:-internal}" in
+  internal) ;;
+  acme)
+    export NERONET_PUBLIC_DOMAIN="${NERONET_PUBLIC_DOMAIN:-$(dotenv_setting NERONET_PUBLIC_DOMAIN)}"
+    [ -n "$NERONET_PUBLIC_DOMAIN" ] || die "ACME needs NERONET_PUBLIC_DOMAIN"
+    export NERONET_CONSOLE_PUBLIC_PORT="${NERONET_CONSOLE_PUBLIC_PORT:-$NERONET_CONSOLE_PORT}"
+    if [ "$NERONET_CONSOLE_PUBLIC_PORT" = 443 ]; then
+      export NERONET_CONSOLE_ORIGIN="https://$NERONET_PUBLIC_DOMAIN"
+    else
+      export NERONET_CONSOLE_ORIGIN="https://$NERONET_PUBLIC_DOMAIN:$NERONET_CONSOLE_PUBLIC_PORT"
+    fi
+    export NERONET_CONTROL_PLANE_URL="https://$NERONET_PUBLIC_DOMAIN:8443"
+    _ca=${NERONET_CONTROL_PLANE_CA_FILE:-$(dotenv_setting NERONET_CONTROL_PLANE_CA_FILE)}
+    if [ -n "$_ca" ]; then
+      export NERONET_CONTROL_PLANE_CA_FILE="$_ca"
+      export NERONET_NODE_CA=/run/secrets/control_plane_ca
+    else
+      # Public ACME certificates use the node image's normal system roots.
+      export NERONET_NODE_CA=""
+    fi
+    COMPOSE="$COMPOSE -f docker-compose.yml -f docker-compose.acme.yml"
+    ;;
+  *) die "NERONET_TLS_MODE must be internal or acme" ;;
+esac
+
+# The ACME test adds a private Pebble CA without changing the deployment files.
+if [ -n "${NERONET_EXTRA_COMPOSE_FILE:-}" ]; then
+  [ -f "$NERONET_EXTRA_COMPOSE_FILE" ] || die "no $NERONET_EXTRA_COMPOSE_FILE"
+  COMPOSE="$COMPOSE -f $NERONET_EXTRA_COMPOSE_FILE"
+fi
 
 # The fleet override is generated, not committed. When it exists it joins every command,
 # so `down` and `status` see the fleet's containers too.

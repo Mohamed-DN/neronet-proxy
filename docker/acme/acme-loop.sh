@@ -99,14 +99,17 @@ publish() {
   log "published $(basename "$dir") for $DOMAIN"
 
   # Keep the three newest. An older directory may still be what a reload in progress read.
-  ls -1 "$LIVE" | grep -v '^current$' | sort -r | tail -n +4 | while read -r old; do
+  for old in "$LIVE"/*; do
+    [ -d "$old" ] && [ ! -L "$old" ] || continue
+    printf '%s\n' "${old##*/}"
+  done | sort -r | tail -n +4 | while read -r old; do
     rm -rf "${LIVE:?}/$old"
   done
 }
 
 # One pass of lego, then publish. $1 may be --force.
 run_once() {
-  set -- --log.format text --path "$STATE" run --accept-tos --server "$DIRECTORY" \
+  set -- --log.format text run --path "$STATE" --accept-tos --server "$DIRECTORY" \
     -d "$DOMAIN" --http --http.webroot "$WEBROOT" --no-random-sleep "$@"
   [ -z "$EMAIL" ] || set -- "$@" --email "$EMAIL"
   [ -z "$PROFILE" ] || set -- "$@" --profile "$PROFILE"

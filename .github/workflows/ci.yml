@@ -237,6 +237,36 @@ jobs:
         if: always()
         run: sh scripts/dev/stack.sh down -v
 
+  tls-acme:
+    name: tls-acme
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NERONET_ENGINE: docker
+      COMPOSE_PROJECT_NAME: neronet-acme-ci
+      NERONET_PORT_OFFSET: "500"
+      NERONET_PUBLIC_DOMAIN: console.neronet.test
+      NERONET_ACME_TEST_CERTS_DIR: certs/acme-test-neronet-acme-ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Internal CA, Pebble HTTP-01 issuance, served renewal and overlay
+        run: sh scripts/dev/test-acme.sh
+
+      - name: Service logs
+        if: failure()
+        env:
+          NERONET_TLS_MODE: acme
+          NERONET_EXTRA_COMPOSE_FILE: docker/acme/docker-compose.test.yml
+        run: sh scripts/dev/stack.sh logs
+
+      - name: Tear down the test project
+        if: always()
+        env:
+          NERONET_TLS_MODE: acme
+          NERONET_EXTRA_COMPOSE_FILE: docker/acme/docker-compose.test.yml
+        run: sh scripts/dev/stack.sh down -v
+
   legacy-tools:
     name: legacy-tools
     runs-on: ubuntu-latest

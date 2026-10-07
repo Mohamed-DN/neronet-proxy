@@ -72,8 +72,8 @@ EOF
 
 tls_ready() {
   put tls.conf << EOF
-ssl_certificate     $LIVE/fullchain.pem;
-ssl_certificate_key $LIVE/privkey.pem;
+ssl_certificate     $1/fullchain.pem;
+ssl_certificate_key $1/privkey.pem;
 EOF
   put healthz.conf << 'EOF'
 return 200 "ok\n";
@@ -94,6 +94,7 @@ acme_static() {
   [ "$port" = 443 ] || authority=$authority:$port
 
   # Only the authority is substituted: $uri and $request_uri are nginx's.
+  # shellcheck disable=SC2016 # envsubst expands the literal placeholder, not this shell.
   NERONET_REDIRECT_AUTHORITY=$authority envsubst '${NERONET_REDIRECT_AUTHORITY}' \
     < "$LIB/acme-http.conf.template" | put http01.conf
 
@@ -108,24 +109,28 @@ EOF
 # The identity of the published certificate: which directory "current" points at, and
 # the size and time of the certificate in it. Fails when there is no usable pair.
 cert_id() {
-  [ -s "$LIVE/fullchain.pem" ] && [ -s "$LIVE/privkey.pem" ] || return 1
-  printf '%s %s\n' "$(readlink "$LIVE" 2> /dev/null || echo "$LIVE")" \
-    "$(stat -L -c '%s:%Y' "$LIVE/fullchain.pem")"
+  candidate=$(readlink -f "${1:-$LIVE}") || return 1
+  [ -s "$candidate/fullchain.pem" ] && [ -s "$candidate/privkey.pem" ] || return 1
+  printf '%s %s\n' "$candidate" "$(stat -L -c '%s:%Y' "$candidate/fullchain.pem")"
 }
 
 # Points nginx's configuration at the published certificate, and keeps it only if nginx
 # accepts it: a certificate that does not match its key, or one that cannot be parsed,
 # must not be what the next reload or the next restart trips over.
 apply() {
-  was_pending=$(grep -c ssl_reject_handshake "$DIR/tls.conf" || true)
-  tls_ready
+  candidate=$(readlink -f "${1:-$LIVE}") || return 1
+  # Pin this immutable generation: a later switch of "current" must not change
+  # the configuration which passed validation. Keep both includes on rejection.
+  cp "$DIR/tls.conf" "$DIR/.tls.previous" || return 1
+  cp "$DIR/healthz.conf" "$DIR/.healthz.previous" || return 1
+  tls_ready "$candidate"
   if out=$(nginx -t 2>&1); then
+    rm -f "$DIR/.tls.previous" "$DIR/.healthz.previous"
     return 0
   fi
-  log "nginx rejects the certificate in $LIVE: $out"
-  if [ "$was_pending" -gt 0 ]; then
-    tls_pending
-  fi
+  log "nginx rejects the certificate in $candidate: $out"
+  mv -f "$DIR/.tls.previous" "$DIR/tls.conf"
+  mv -f "$DIR/.healthz.previous" "$DIR/healthz.conf"
   return 1
 }
 
@@ -172,7 +177,20 @@ setup() {
         echo "$id" > "$APPLIED"
         log "serving the certificate published in $LIVE"
       else
-        log "no certificate published yet: TLS handshakes are refused until the acme service has one"
+        # A rejected newest generation must not strand a restart/recreated
+        # container. The publisher retains three generations; try the previous
+        # complete pairs using nginx's real parser and key matching check.
+        find "$(dirname "$LIVE")" -mindepth 1 -maxdepth 1 -type d 2>/dev/null |
+          sort -r | while IFS= read -r previous; do
+          if id=$(cert_id "$previous") && apply "$previous"; then
+            echo "$id" > "$APPLIED"
+            log "serving retained certificate $previous after rejecting the current generation"
+            break
+          fi
+        done
+        if [ ! -s "$APPLIED" ]; then
+          log "no usable certificate published yet: TLS handshakes are refused until the acme service has one"
+        fi
       fi
       # Detached from the entrypoint's stdin, which is the list of scripts it is running.
       "$0" watch < /dev/null &

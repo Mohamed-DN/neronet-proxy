@@ -81,6 +81,7 @@ They are POSIX `sh` and run everything in containers.
 | `test-go.sh` | `gofmt -l`, `go vet`, `go test ./... -race` and the tests of `cmd/sovereign-security-daemon`. |
 | `test-backend.sh` | Backend suite against a Valkey created for the run and removed afterwards. |
 | `test-frontend.sh` | `npm ci`, production build and unit tests of the console. |
+| `test-acme.sh` | Internal CA and two-node overlay, real Pebble HTTP-01, nginx certificate renewal and failure retention. Uses a fresh dedicated test project. |
 
 ### Windows 11 (Git Bash and Podman)
 
@@ -126,6 +127,8 @@ sh scripts/dev/stack.sh status
   (`scripts/dev/gen-certs.sh`). Import `certs/ca.crt` into the browser's trusted
   authorities, or accept the warning once. The nodes pin that CA.
 - API: `http://127.0.0.1:8081/api/health`.
+- Public domains can use `NERONET_TLS_MODE=acme`; see
+  [certificate setup and renewal](docs/en/tls-certificates.md).
 - `status` should report 6 of 6 nodes within about a minute of `nodes` finishing.
 - PostgreSQL and Valkey are not published to the host. To reach them, start the stack
   with `NERONET_DEBUG_PORTS=1 sh scripts/dev/stack.sh up`; they listen on
