@@ -41,11 +41,23 @@ echo "PASS  $alive of $EXPECTED nodes have a heartbeat"
 # The console is TLS-only and its certificate is checked against the stack's CA, not
 # skipped: an unverified request would pass against any certificate at all.
 CA="$(HOST_PATH "$REPO_ROOT/certs")/ca.crt"
+CONSOLE_HOST=127.0.0.1
+if [ "${NERONET_TLS_MODE:-internal}" = acme ]; then
+  CONSOLE_HOST=${NERONET_PUBLIC_DOMAIN:?ACME needs NERONET_PUBLIC_DOMAIN}
+  CA=${NERONET_CONTROL_PLANE_CA_FILE:-}
+  if [ -n "$CA" ]; then
+    case "$CA" in
+      /* | [A-Za-z]:*) ;;
+      *) CA="$(HOST_PATH "$REPO_ROOT")/$CA" ;;
+    esac
+  fi
+fi
 # Windows' curl (Schannel) also demands a revocation answer, which a development CA
 # has no list for. Best effort keeps the chain check and skips only that lookup.
-TLS_OPTS="--cacert $CA"
+set -- --resolve "$CONSOLE_HOST:$CONSOLE_PORT:127.0.0.1"
+[ -z "$CA" ] || set -- "$@" --cacert "$CA"
 if curl -V 2>/dev/null | grep -qi schannel; then
-  TLS_OPTS="$TLS_OPTS --ssl-revoke-best-effort"
+  set -- "$@" --ssl-revoke-best-effort
 fi
 
 check_health() { # label url [curl options]
@@ -64,8 +76,7 @@ check_health() { # label url [curl options]
 
 rc=0
 check_health "on the API port $API_PORT" "http://127.0.0.1:$API_PORT/api/health"
-# shellcheck disable=SC2086 # TLS_OPTS is a list of options, split on purpose
-check_health "through the console over TLS (port $CONSOLE_PORT)" "https://127.0.0.1:$CONSOLE_PORT/api/health" $TLS_OPTS
+check_health "through the console over TLS (port $CONSOLE_PORT)" "https://$CONSOLE_HOST:$CONSOLE_PORT/api/health" "$@"
 
 # Plain HTTP on the console port must be sent to TLS, never answered in the clear.
 # The status comes after the body rather than through -o /dev/null, a path Windows'

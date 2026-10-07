@@ -1,0 +1,11 @@
+--- a/cmd/cmd_accounts_register.go
++++ b/cmd/cmd_accounts_register.go
+@@ -65,0 +66,8 @@
++		if err != nil && allowRegister {
++			var problem *acme.ProblemDetails
++			if errors.As(err, &problem) && problem.Type == acme.AccountDoesNotExistErrorType {
++				// A first CA outage can leave the local account saved before remote
++				// registration. Keep its key, and honour the normal TOS/EAB checks.
++				reg, err = registerAccount(ctx, cmd, client)
++			}
++		}
