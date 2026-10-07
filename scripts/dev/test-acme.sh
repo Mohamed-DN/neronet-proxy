@@ -72,6 +72,9 @@ recover_unhealthy_frontend() {
     [ "$(($(date +%s) - start))" -lt 30 ] || die "the verified Pebble management endpoint did not recover"
     sleep 1
   done
+  # The redirected response inherits umask 077. This public CA is mounted into
+  # unprivileged nodes, so preserve readability when replacing the placeholder.
+  chmod 644 "$TEST_DIR/issuer-ca.crt.tmp"
   mv "$TEST_DIR/issuer-ca.crt.tmp" "$TEST_DIR/issuer-ca.crt"
   start=$(date +%s)
   until check_tls; do
