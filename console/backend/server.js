@@ -192,20 +192,20 @@ if (require.main === module) {
       process.exit(1);
     });
 
-  const shutdown = () => {
+  const shutdown = async () => {
     // Hand leadership over at once rather than when the lock's session times out.
     getDistributedLeaderService()
       .stop()
       .catch(() => {});
     logger.info('Gracefully stopping NeroNet Console Control Plane...');
     if (server) {
-      server.close(() => {
-        closeDatabase();
+      server.close(async () => {
+        await closeDatabase();
         closeValkey();
         process.exit(0);
       });
     } else {
-      closeDatabase();
+      await closeDatabase();
       closeValkey();
       process.exit(0);
     }

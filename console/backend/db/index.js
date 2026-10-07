@@ -46,15 +46,15 @@ function getDatabase() {
   return getPgPool();
 }
 
-function closeDatabase() {
+async function closeDatabase() {
   if (pgPoolInstance) {
+    const pool = pgPoolInstance;
+    pgPoolInstance = null;
     try {
-      pgPoolInstance.end();
+      await pool.end();
       logger.info('PostgreSQL connection pool closed.');
     } catch (err) {
       logger.error('Error closing PostgreSQL pool:', err);
-    } finally {
-      pgPoolInstance = null;
     }
   }
 }

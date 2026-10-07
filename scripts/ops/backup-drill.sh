@@ -132,7 +132,13 @@ if [ "$before" != "$after" ]; then
         if (a[2] != b[2]) detail = detail " type"
         if (a[3] != b[3]) detail = detail " validation-state"
         if (a[4] != b[4]) detail = detail " definition"
-        if (detail != "") print key " differs in" detail
+        if (detail != "") {
+          print key " differs in" detail
+          if (a[4] != b[4]) {
+            print "  source definition: " a[4]
+            print "  restored definition: " b[4]
+          }
+        }
       }
       for (key in restored) if (!(key in source)) print key
     }

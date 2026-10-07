@@ -124,7 +124,7 @@ async function setupTestDatabase() {
   process.env.DB_TYPE = 'postgres';
 
   setUsePostgres(true);
-  closeDatabase(); // Discard any prior pool instance
+  await closeDatabase(); // Discard any prior pool instance
 
   const pool = getPgPool();
 
@@ -134,7 +134,7 @@ async function setupTestDatabase() {
     await settleAuditWrites();
 
     try {
-      closeDatabase();
+      await closeDatabase();
     } catch (e) {
       // ignore
     }

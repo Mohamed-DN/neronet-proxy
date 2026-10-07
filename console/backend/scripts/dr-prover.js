@@ -28,7 +28,7 @@ async function main() {
     process.exitCode = 1;
   } finally {
     await Promise.allSettled([sourcePool.end(), targetPool.end()]);
-    closeDatabase();
+    await closeDatabase();
   }
 }
 
