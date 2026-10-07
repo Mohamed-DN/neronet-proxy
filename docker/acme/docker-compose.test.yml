@@ -1,5 +1,12 @@
 # Local ACME authority for test-acme.sh. Real HTTP-01 validation remains enabled.
 services:
+  frontend:
+    # Reach the real unhealthy state during the deliberate first-issuance outage.
+    # The production grace period must not hide the bootstrap recovery race.
+    healthcheck:
+      start_period: 0s
+      interval: 1s
+      retries: 1
   pebble:
     image: ghcr.io/letsencrypt/pebble:2.10.1
     command: ["-config", "/test/config/pebble-config.json", "-strict=false"]
