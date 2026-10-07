@@ -11,6 +11,21 @@ SET DateStyle = 'ISO, YMD';
 SET search_path = public, pg_catalog;
 SET row_security = off;
 
+-- pg_dump may distribute a varchar-array to text-array cast over its literal
+-- elements. Normalize only that enum CHECK shape, preserving quoted contents.
+-- The temporary helper never enters the public application-schema manifest.
+CREATE OR REPLACE FUNCTION pg_temp.neronet_normalize_constraint(definition text)
+RETURNS text LANGUAGE plpgsql IMMUTABLE AS $body$
+DECLARE parts text[];
+BEGIN
+  parts := regexp_match(definition,
+    $re$^CHECK \(((?:"(?:[^"]|"")*"|[a-zA-Z_][a-zA-Z0-9_$]*)::text) = ANY \(ARRAY\[('(?:[^']|'')*'::character varying(?:::text)?(?:, '(?:[^']|'')*'::character varying(?:::text)?)*)\](?:::text\[\])?\)\)$$re$);
+  IF parts IS NULL THEN RETURN definition; END IF;
+  RETURN format('CHECK (%s = ANY (ARRAY[%s]))', parts[1],
+    regexp_replace(parts[2], $re$('(?:[^']|'')*')::character varying(?:::text)?$re$, E'\\1::text', 'g'));
+END
+$body$;
+
 SELECT 'schema:relations', count(*), encode(sha256(convert_to(coalesce(string_agg(
        to_jsonb(r)::text, E'\n' ORDER BY name), ''), 'UTF8')), 'hex')
   FROM (SELECT c.relname AS name, c.relkind AS kind, c.relpersistence AS persistence,
@@ -44,7 +59,7 @@ SELECT 'schema:columns', count(*), encode(sha256(convert_to(coalesce(string_agg(
           FROM information_schema.columns c WHERE table_schema = 'public') c;
 
 SELECT 'schema:constraints', count(*), encode(sha256(convert_to(coalesce(string_agg(
-       r.relname || ':' || c.conname || ':' || pg_get_constraintdef(c.oid, true) || ':' || c.convalidated,
+       r.relname || ':' || c.conname || ':' || pg_temp.neronet_normalize_constraint(pg_get_constraintdef(c.oid, true)) || ':' || c.convalidated,
        E'\n' ORDER BY r.relname, c.conname), ''), 'UTF8')), 'hex')
   FROM pg_constraint c JOIN pg_class r ON r.oid = c.conrelid
   JOIN pg_namespace n ON n.oid = r.relnamespace WHERE n.nspname = 'public';

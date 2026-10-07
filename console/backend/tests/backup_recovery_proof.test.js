@@ -11,6 +11,7 @@ const config = require('../config/env');
 const { logAuditEvent, settleAuditWrites } = require('../utils/audit');
 const { AuditChainService } = require('../services/AuditChainService');
 const { BackupRecoveryProofService } = require('../services/BackupRecoveryProofService');
+const { normalizeConstraintDefinition } = require('../services/DatabaseRecoverySnapshot');
 
 describe('Disaster recovery proof against a separate restored database', () => {
   let dbHelper, pool, app, maintenancePool, sourceUrl, superAdminToken, memberToken;
@@ -114,6 +115,32 @@ describe('Disaster recovery proof against a separate restored database', () => {
       ]);
       await assert.rejects(verify(targetPool), /data mismatch.*users/);
     });
+  });
+
+  it('canonicalizes equivalent varchar CHECK definitions returned before and after pg_dump restore', () => {
+    const source = "CHECK (action::text = ANY (ARRAY['ACCEPT'::character varying, 'DROP'::character varying]::text[]))";
+    const restored =
+      "CHECK (action::text = ANY (ARRAY['ACCEPT'::character varying::text, 'DROP'::character varying::text]))";
+    const changed =
+      "CHECK (action::text = ANY (ARRAY['ACCEPT'::character varying::text, 'BLOCK'::character varying::text]))";
+
+    assert.equal(normalizeConstraintDefinition(source), normalizeConstraintDefinition(restored));
+    assert.notEqual(normalizeConstraintDefinition(source), normalizeConstraintDefinition(changed));
+  });
+
+  it('preserves quoted CHECK values and leaves unsupported expressions strict', () => {
+    const source =
+      "CHECK (action::text = ANY (ARRAY['QUOTE''S'::character varying, '::character varying::text], ::text[]'::character varying]::text[]))";
+    const restored =
+      "CHECK (action::text = ANY (ARRAY['QUOTE''S'::character varying::text, '::character varying::text], ::text[]'::character varying::text]))";
+    assert.equal(normalizeConstraintDefinition(source), normalizeConstraintDefinition(restored));
+    assert.ok(normalizeConstraintDefinition(source).includes("'::character varying::text], ::text[]'"));
+    const unrelated = "CHECK (other = '::character varying::text')";
+    assert.equal(normalizeConstraintDefinition(unrelated), unrelated);
+    assert.notEqual(
+      normalizeConstraintDefinition(source),
+      normalizeConstraintDefinition(source.replace("'::character varying::text], ::text[]'", "'different'"))
+    );
   });
 
   it('verifies all public tables, schema and sequences of a real separate copy', async () => {

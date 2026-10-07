@@ -43,6 +43,20 @@ before=$(digest)
 sql "DELETE FROM manifest_rows; INSERT INTO manifest_rows VALUES (2, '{\"value\":2}', 'stale'), (1, '{\"value\":1}', 'ready');"
 [ "$before" = "$(digest)" ] || { echo 'FAIL: row order changed the manifest' >&2; exit 1; }
 echo 'PASS: row order does not change the manifest'
+fixture
+sql "ALTER TABLE manifest_rows ADD COLUMN action varchar(128) DEFAULT 'ACCEPT'
+  CONSTRAINT manifest_action CHECK (action IN ('ACCEPT', 'DROP', 'QUOTE''S', '::character varying::text', '], ::text[]'))"
+before=$(digest)
+pg_dump -Fc --no-owner --no-acl >"$work/roundtrip.dump"
+sql 'DROP SCHEMA public CASCADE; CREATE SCHEMA public'
+pg_restore --exit-on-error --no-owner --no-acl -d "$PGDATABASE" "$work/roundtrip.dump"
+[ "$before" = "$(digest)" ] || { echo 'FAIL: dump/restore changed an equivalent CHECK manifest' >&2; exit 1; }
+echo 'PASS: dump/restore preserves the CHECK manifest'
+before=$(digest)
+sql "ALTER TABLE manifest_rows DROP CONSTRAINT manifest_action;
+  ALTER TABLE manifest_rows ADD CONSTRAINT manifest_action CHECK (action IN ('ACCEPT', 'BLOCK'))"
+[ "$before" != "$(digest)" ] || { echo 'FAIL: manifest ignored a changed CHECK value' >&2; exit 1; }
+echo 'PASS: manifest detects a changed CHECK value'
 changed 'row content with unchanged count' "UPDATE manifest_rows SET payload = '{\"value\":3}' WHERE id = 1"
 changed 'sequence is_called' "SELECT setval('manifest_seq', 1, false)"
 changed 'enum labels' "ALTER TYPE manifest_status ADD VALUE 'new'"

@@ -194,7 +194,7 @@ if (require.main === module) {
 
   const shutdown = async () => {
     // Hand leadership over at once rather than when the lock's session times out.
-    getDistributedLeaderService()
+    await getDistributedLeaderService()
       .stop()
       .catch(() => {});
     logger.info('Gracefully stopping NeroNet Console Control Plane...');

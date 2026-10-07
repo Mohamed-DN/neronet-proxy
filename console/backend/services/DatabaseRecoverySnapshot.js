@@ -8,6 +8,20 @@ function digest(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
+function normalizeConstraintDefinition(definition) {
+  // PostgreSQL can deparse the same varchar CHECK as either a text[] cast
+  // over the literal array or text casts on each varchar literal after pg_dump
+  // and restore. These casts are binary-coercible and do not change the CHECK.
+  // Restrict normalization to literal enum checks. Global replacements would
+  // also alter quoted values, hiding real changes to a constraint.
+  const match = definition.match(
+    /^CHECK \(((?:"(?:[^"]|"")*"|[a-zA-Z_][a-zA-Z0-9_$]*)::text) = ANY \(ARRAY\[('(?:[^']|'')*'::character varying(?:::text)?(?:, '(?:[^']|'')*'::character varying(?:::text)?)*)\](?:::text\[\])?\)\)$/
+  );
+  if (!match) return definition;
+  const values = match[2].replace(/('(?:[^']|'')*')::character varying(?:::text)?/g, '$1::text');
+  return `CHECK (${match[1]} = ANY (ARRAY[${values}]))`;
+}
+
 // Ownership and grants are outside this comparison: pg_restore uses --no-owner
 // and --no-acl. Catalog OIDs identify local objects and must not enter the digest.
 async function collectSchema(client) {
@@ -65,7 +79,13 @@ async function collectSchema(client) {
       JOIN pg_namespace n ON n.oid = e.extnamespace WHERE n.nspname = 'public' ORDER BY e.extname COLLATE "C"`
   };
   const schema = {};
-  for (const [kind, sql] of Object.entries(queries)) schema[kind] = (await client.query(sql)).rows;
+  for (const [kind, sql] of Object.entries(queries)) {
+    const rows = (await client.query(sql)).rows;
+    schema[kind] =
+      kind === 'constraints'
+        ? rows.map((row) => ({ ...row, definition: normalizeConstraintDefinition(row.definition) }))
+        : rows;
+  }
   return schema;
 }
 
@@ -107,4 +127,11 @@ async function collectData(client, schema) {
   return tables;
 }
 
-module.exports = { collectSchema, collectSequences, collectData, digest, quoteIdentifier };
+module.exports = {
+  collectSchema,
+  collectSequences,
+  collectData,
+  digest,
+  normalizeConstraintDefinition,
+  quoteIdentifier
+};

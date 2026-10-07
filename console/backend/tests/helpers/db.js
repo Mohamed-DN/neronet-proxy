@@ -4,6 +4,7 @@ const { seedPostgresDatabase } = require('../../db/seed');
 const { getPgPool, closeDatabase, setUsePostgres } = require('../../db/index');
 const logger = require('../../utils/logger');
 const { settleAuditWrites } = require('../../utils/audit');
+const { getDistributedLeaderService } = require('../../services/DistributedLeaderService');
 
 const TEMPLATE_DB_NAME = 'neronet_test_template';
 const ADVISORY_LOCK_ID = 7429148;
@@ -124,6 +125,7 @@ async function setupTestDatabase() {
   process.env.DB_TYPE = 'postgres';
 
   setUsePostgres(true);
+  await getDistributedLeaderService().stop();
   await closeDatabase(); // Discard any prior pool instance
 
   const pool = getPgPool();
@@ -132,6 +134,10 @@ async function setupTestDatabase() {
     // Audit writes are not awaited by the code under test. Dropping the database
     // under one that is still running kills its connection mid-transaction.
     await settleAuditWrites();
+
+    // The leader holds an advisory lock on a checked-out client. pool.end()
+    // waits for that client, so release leadership before draining the pool.
+    await getDistributedLeaderService().stop();
 
     try {
       await closeDatabase();
