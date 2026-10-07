@@ -86,9 +86,9 @@ function nonNegativeInt(raw, fallback) {
   return Number.isInteger(n) && n >= 0 ? n : fallback;
 }
 
-async function query(pgSql, pgParams, sqliteSql, sqliteParams) {
+async function query(pgSql, pgParams, sqliteSql, sqliteParams, client = null) {
   if (isPostgres()) {
-    return (await getPgPool().query(pgSql, pgParams)).rows;
+    return (await (client || getPgPool()).query(pgSql, pgParams)).rows;
   }
 
   const db = getDatabase();
@@ -106,8 +106,8 @@ async function getVersion() {
 }
 
 /** Advance the version so every node re-fetches. */
-async function bumpVersion() {
-  return AclEngine.bumpNetmap();
+async function bumpVersion(client = null) {
+  return AclEngine.bumpNetmap(client);
 }
 
 // --- Endpoint intake ---------------------------------------------------------
@@ -304,14 +304,15 @@ function parseJsonColumn(value, fallback) {
  * at its new address as soon as anything else bumps the version. What the debounce
  * holds back is only the bump, which is what costs the fleet a re-fetch.
  */
-async function recordEndpoints(nodeId, reported, now = new Date()) {
+async function recordEndpoints(nodeId, reported, now = new Date(), client = null) {
   const { endpoints, rejected, truncated } = validateEndpoints(reported);
 
   const rows = await query(
     'SELECT endpoints, endpoints_bumped_at FROM nodes WHERE id = $1',
     [nodeId],
     'SELECT endpoints, endpoints_bumped_at FROM nodes WHERE id = ?',
-    [nodeId]
+    [nodeId],
+    client
   );
 
   if (rows.length === 0) {
@@ -337,15 +338,17 @@ async function recordEndpoints(nodeId, reported, now = new Date()) {
       'UPDATE nodes SET endpoints = $1::jsonb, endpoints_bumped_at = $2, updated_at = NOW() WHERE id = $3',
       [json, now.toISOString(), nodeId],
       "UPDATE nodes SET endpoints = ?, endpoints_bumped_at = ?, updated_at = datetime('now') WHERE id = ?",
-      [json, now.toISOString(), nodeId]
+      [json, now.toISOString(), nodeId],
+      client
     );
-    await bumpVersion();
+    await bumpVersion(client);
   } else {
     await query(
       'UPDATE nodes SET endpoints = $1::jsonb, updated_at = NOW() WHERE id = $2',
       [json, nodeId],
       "UPDATE nodes SET endpoints = ?, updated_at = datetime('now') WHERE id = ?",
-      [json, nodeId]
+      [json, nodeId],
+      client
     );
   }
 

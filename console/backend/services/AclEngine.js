@@ -60,9 +60,9 @@ function cidrContains(cidr, ip) {
 
 // --- Storage -----------------------------------------------------------------
 
-async function query(pgSql, pgParams, sqliteSql, sqliteParams) {
+async function query(pgSql, pgParams, sqliteSql, sqliteParams, client = null) {
   if (isPostgres()) {
-    return (await getPgPool().query(pgSql, pgParams)).rows;
+    return (await (client || getPgPool()).query(pgSql, pgParams)).rows;
   }
 
   const db = getDatabase();
@@ -72,12 +72,13 @@ async function query(pgSql, pgParams, sqliteSql, sqliteParams) {
   return [];
 }
 
-async function getEpoch(name) {
+async function getEpoch(name, client = null) {
   const rows = await query(
     'SELECT epoch FROM mesh_epochs WHERE name = $1',
     [name],
     'SELECT epoch FROM mesh_epochs WHERE name = ?',
-    [name]
+    [name],
+    client
   );
   return rows.length > 0 ? Number(rows[0].epoch) : 1;
 }
@@ -89,12 +90,13 @@ async function getEpoch(name) {
  * nodes changed. Missing the second case is the subtle failure -- rules stay
  * identical while the peers they expand to do not.
  */
-async function bumpEpoch(name) {
+async function bumpEpoch(name, client = null) {
   await query(
     'UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = NOW() WHERE name = $1',
     [name],
     'UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = CURRENT_TIMESTAMP WHERE name = ?',
-    [name]
+    [name],
+    client
   );
 
   // The netmap is derived from the compiled policy and the route set, so anything
@@ -103,10 +105,10 @@ async function bumpEpoch(name) {
   // netmap version that fails to advance leaves a revoked peer reachable. An extra
   // bump costs one re-fetch of a document the node finds identical.
   if (name !== 'netmap') {
-    await bumpEpoch('netmap');
+    await bumpEpoch('netmap', client);
   }
 
-  return getEpoch(name);
+  return getEpoch(name, client);
 }
 
 /**
@@ -115,8 +117,8 @@ async function bumpEpoch(name) {
  * For the changes that do not touch a rule or a route: quarantine, health, and a
  * node's reported endpoints.
  */
-async function bumpNetmap() {
-  return bumpEpoch('netmap');
+async function bumpNetmap(client = null) {
+  return bumpEpoch('netmap', client);
 }
 
 const DEFAULT_ORG = 'org-default';

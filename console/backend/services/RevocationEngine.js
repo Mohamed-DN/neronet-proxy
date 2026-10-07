@@ -120,14 +120,15 @@ async function revokeNodeKeys(nodeIds, { reason = 'manual', actorId = null, clie
 }
 
 /** True when this public key has an active revocation. */
-async function isRevoked(publicKeyHex) {
+async function isRevoked(publicKeyHex, client = null) {
   const keyHex = normalisePublicKeyHex(publicKeyHex);
   if (!keyHex) return false;
   const rows = await query(
     'SELECT 1 FROM revoked_keys WHERE public_key_hex = $1 AND expires_at > NOW()',
     [keyHex],
     "SELECT 1 FROM revoked_keys WHERE public_key_hex = ? AND expires_at > datetime('now')",
-    [keyHex]
+    [keyHex],
+    client
   );
   return rows.length > 0;
 }

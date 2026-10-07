@@ -70,7 +70,12 @@ async function createPreAuthKey({
 /**
  * Validates and atomically increments/consumes a pre-auth key.
  */
-async function validateAndConsumePreAuthKey(secret, requestedRole = null, targetOwnerId = null) {
+async function validateAndConsumePreAuthKey(
+  secret,
+  requestedRole = null,
+  targetOwnerId = null,
+  transactionClient = null
+) {
   if (!secret || typeof secret !== 'string') {
     return { ok: false, status: 401, error: 'pre-auth key is required' };
   }
@@ -78,35 +83,35 @@ async function validateAndConsumePreAuthKey(secret, requestedRole = null, target
   const keyHash = hashSecret(secret);
   const pool = getPgPool();
 
-  const client = await pool.connect();
+  const client = transactionClient || (await pool.connect());
   try {
-    await client.query('BEGIN');
+    if (!transactionClient) await client.query('BEGIN');
 
     const res = await client.query('SELECT * FROM preauth_keys WHERE key_hash = $1 FOR UPDATE', [keyHash]);
     if (res.rows.length === 0) {
-      await client.query('ROLLBACK');
+      if (!transactionClient) await client.query('ROLLBACK');
       return { ok: false, status: 401, error: 'invalid pre-auth key' };
     }
 
     const key = res.rows[0];
 
     if (key.revoked_at) {
-      await client.query('ROLLBACK');
+      if (!transactionClient) await client.query('ROLLBACK');
       return { ok: false, status: 401, error: 'pre-auth key has been revoked' };
     }
 
     if (key.expires_at && new Date(key.expires_at) < new Date()) {
-      await client.query('ROLLBACK');
+      if (!transactionClient) await client.query('ROLLBACK');
       return { ok: false, status: 401, error: 'pre-auth key has expired' };
     }
 
     if (!key.is_reusable && key.used_count >= (key.max_uses || 1)) {
-      await client.query('ROLLBACK');
+      if (!transactionClient) await client.query('ROLLBACK');
       return { ok: false, status: 401, error: 'single-use pre-auth key has already been consumed' };
     }
 
     if (key.allowed_role && requestedRole && key.allowed_role !== requestedRole) {
-      await client.query('ROLLBACK');
+      if (!transactionClient) await client.query('ROLLBACK');
       return {
         ok: false,
         status: 403,
@@ -115,7 +120,7 @@ async function validateAndConsumePreAuthKey(secret, requestedRole = null, target
     }
 
     if (targetOwnerId && key.owner_id !== targetOwnerId) {
-      await client.query('ROLLBACK');
+      if (!transactionClient) await client.query('ROLLBACK');
       return {
         ok: false,
         status: 403,
@@ -125,15 +130,17 @@ async function validateAndConsumePreAuthKey(secret, requestedRole = null, target
 
     // Increment used count
     await client.query('UPDATE preauth_keys SET used_count = used_count + 1 WHERE id = $1', [key.id]);
-    await client.query('COMMIT');
+    if (!transactionClient) await client.query('COMMIT');
 
     return { ok: true, key };
   } catch (err) {
+    // The caller owns a borrowed transaction, including rollback after SQL errors.
+    if (transactionClient) throw err;
     await client.query('ROLLBACK');
     logger.error(`Error validating pre-auth key: ${err.message}`);
     return { ok: false, status: 500, error: 'internal database error during key validation' };
   } finally {
-    client.release();
+    if (!transactionClient) client.release();
   }
 }
 

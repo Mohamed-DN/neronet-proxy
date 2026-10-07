@@ -34,6 +34,7 @@ const NetmapService = require('../services/NetmapService');
 const ControlPlaneKeyService = require('../services/ControlPlaneKeyService');
 const PreAuthKeyService = require('../services/PreAuthKeyService');
 const NodeCredentialService = require('../services/NodeCredentialService');
+const EnrollmentService = require('../services/EnrollmentService');
 const logger = require('../utils/logger');
 const { logAuditEvent } = require('../utils/audit');
 const { checkNodeAuth, checkEnrolmentToken } = require('../middleware/nodeAuth');
@@ -74,16 +75,11 @@ const PUBLIC_KEY_RE = /^[0-9a-f]{64}$/i;
  * super-admin works on any deployment; the env override is for installations that
  * want enrolled nodes attributed elsewhere.
  */
-async function resolveOwnerId() {
+async function resolveOwnerId(client) {
   const configured = process.env.SOVEREIGN_GO_BRIDGE_OWNER_ID;
 
   if (configured) {
-    const rows = await runQuery(
-      'SELECT id FROM users WHERE id = $1',
-      [configured],
-      'SELECT id FROM users WHERE id = ?',
-      [configured]
-    );
+    const { rows } = await client.query('SELECT id FROM users WHERE id = $1', [configured]);
     if (rows.length > 0) {
       return rows[0].id;
     }
@@ -92,11 +88,8 @@ async function resolveOwnerId() {
     );
   }
 
-  const admins = await runQuery(
-    "SELECT id FROM users WHERE role = 'super-admin' ORDER BY created_at LIMIT 1",
-    [],
-    "SELECT id FROM users WHERE role = 'super-admin' ORDER BY created_at LIMIT 1",
-    []
+  const { rows: admins } = await client.query(
+    "SELECT id FROM users WHERE role = 'super-admin' ORDER BY created_at LIMIT 1"
   );
 
   if (admins.length === 0) {
@@ -156,18 +149,6 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
     }
 
     const nodeId = deriveNodeId(publicKeyHex);
-    let ownerId = null;
-    // The organisation the node joins: the pre-auth key's, else its owner's. Nodes used
-    // to be inserted with none, so a key issued for one organisation enrolled a node
-    // outside it.
-    let organizationId = null;
-
-    // Check if node exists already (needed for owner check & role check)
-    const existing = await runQuery(
-      'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code, latitude, longitude, user_id, is_healthy, is_quarantined FROM nodes WHERE id = $1',
-      [nodeId]
-    );
-
     // Proof of possession, for every registration. A public key is not a secret --
     // every peer receives it in its netmap -- so a registration that only named a key
     // let anyone holding the fleet token be issued the credential of a node they did
@@ -189,240 +170,267 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       return res.status(401).json({ error: 'invalid proof of possession' });
     }
 
-    // A revoked key stays out. It used to register again and get a new credential.
-    if (await RevocationEngine.isRevoked(publicKeyHex)) {
-      await logAuditEvent({
-        eventType: 'node.revoked_key_register_refused',
-        severity: 'warn',
-        targetId: nodeId,
-        targetType: 'node',
-        message: `Registration refused for ${nodeId}: its key is revoked`,
-        ipAddress: req.ip
-      });
-      return res.status(403).json({ error: 'this key has been revoked' });
-    }
-
-    if (preauthKey) {
-      const preauthResult = await PreAuthKeyService.validateAndConsumePreAuthKey(preauthKey, requestedRole);
-      if (!preauthResult.ok) {
-        return res.status(preauthResult.status || 401).json({ error: preauthResult.error });
-      }
-
-      ownerId = preauthResult.key.owner_id;
-      organizationId = preauthResult.key.organization_id || null;
-
-      // Invariance: if node already exists, owner must match
-      if (existing.length > 0 && existing[0].user_id && existing[0].user_id !== ownerId) {
-        return res.status(403).json({ error: 'pre-auth key owner does not match existing node owner' });
-      }
-    } else if (existing.length > 0) {
-      // A node that is already enrolled and has just proved it holds its key needs no
-      // enrolment secret to come back: that is how it restarts after its single-use
-      // pre-auth key has been spent. Owner and organisation stay as enrolled.
-      ownerId = existing[0].user_id || (await resolveOwnerId());
-    } else {
-      const auth = checkEnrolmentToken(req);
-      if (!auth.ok) {
-        return res.status(auth.status).json({ error: auth.error });
-      }
-      ownerId = await resolveOwnerId();
-    }
-
-    const role = requestedRole;
-    const capability = req.body.capability || {};
-    const countryCode = String(capability.country_code || 'US')
-      .slice(0, 2)
-      .toUpperCase();
-    // UNKNOWN, not RESIDENTIAL. Nothing classifies a node's uplink, and a node that
-    // does not declare one is not evidence of a domestic line.
-    const ipClass = String(capability.ip_class || 'UNKNOWN');
-    const city = String(capability.city || '')
-      .trim()
-      .slice(0, 128);
-    // City and coordinates are what the operator typed into the node's configuration.
-    // Nothing verifies them, so they are stored as declared and reported as such.
-    const declared = parseDeclaredCoordinates(capability);
-    if (declared.error) {
-      return res.status(400).json({ error: declared.error });
-    }
-    const asn = Number.isFinite(capability.asn) ? capability.asn : 0;
-    // Checked exactly as a heartbeat's are. The list used to be stored as received, so
-    // a loopback or link-local address reached /v4/control/discover, which hands
-    // stored endpoints to other nodes as they are.
-    const offered = NetmapService.validateEndpoints(req.body.endpoints);
-    if (offered.rejected.length > 0) {
-      logger.warn(
-        `[GO-BRIDGE] ${nodeId} registered with ${offered.rejected.length} unusable endpoint(s): ` +
-          offered.rejected.map((r) => `${r.entry} (${r.reason})`).join(', ')
+    const result = await EnrollmentService.transaction(async (client, afterCommit) => {
+      let ownerId = null;
+      let organizationId = null;
+      // Re-read only after the lifecycle barrier. A shred must see this entire
+      // enrollment, or finish before any authorization or credential is consumed.
+      const { rows: existing } = await client.query(
+        'SELECT overlay_ipv4, overlay_ipv6, role, ip_class, country_code, latitude, longitude, user_id, organization_id, is_healthy, is_quarantined FROM nodes WHERE id = $1 FOR UPDATE',
+        [nodeId]
       );
-    }
 
-    const name = `Go-Node-${publicKeyHex.slice(0, 8)}`;
-
-    // Re-registration must return the addresses the node already holds rather than
-    // allocating new ones, otherwise every restart burns an address and orphans the
-    // previous lease.
-    let overlayIpv4;
-    let overlayIpv6;
-
-    if (existing.length > 0) {
-      overlayIpv4 = existing[0].overlay_ipv4;
-      overlayIpv6 = existing[0].overlay_ipv6;
-    } else {
-      const vip = await allocateNextVip(getPgPool());
-      overlayIpv4 = vip.overlayIpv4;
-      overlayIpv6 = vip.overlayIpv6;
-    }
-
-    // A new row gets the validated list in the shape the heartbeat stores. An enrolled
-    // node's endpoints are written below, through the heartbeat's own intake.
-    const endpointsJson = JSON.stringify(
-      offered.endpoints.map((e) => ({
-        ip_address: e.ip_address,
-        port: e.port,
-        protocol: e.protocol,
-        is_stun_discovered: e.is_stun_discovered
-      }))
-    );
-
-    // On conflict only is_healthy and updated_at are written.
-    //
-    // Registration is authenticated by one fleet-wide token and a public key is not
-    // a secret, so re-registering somebody else's key used to rewrite that node's
-    // role -- to EXIT_BRIDGE, which puts it on the exit path -- and its country,
-    // which is what geofencing decides on. Until WP-103 makes a node prove
-    // possession of its key, those three columns are set at first enrolment and
-    // changed only through the authenticated console API.
-    const mismatch =
-      existing.length > 0 ? describeMismatch(existing[0], { role, ipClass, countryCode, declared }) : null;
-
-    const pool = getPgPool();
-    if (!organizationId && ownerId) {
-      const ownerRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [ownerId]);
-      organizationId = (ownerRes.rows[0] && ownerRes.rows[0].organization_id) || null;
-    }
-
-    // organization_id, like role and country, is set at first enrolment only.
-    await pool.query(
-      `INSERT INTO nodes (
-         id, user_id, name, role, ip_class, country_code, city, asn,
-         is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints, organization_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb, $13)
-       ON CONFLICT (id) DO UPDATE SET
-         is_healthy = TRUE,
-         updated_at = NOW()`,
-      [
-        nodeId,
-        ownerId,
-        name,
-        role,
-        ipClass,
-        countryCode,
-        city,
-        asn,
-        publicKeyHex,
-        overlayIpv4,
-        overlayIpv6,
-        endpointsJson,
-        organizationId
-      ]
-    );
-
-    // An enrolled node's stored endpoints are replaced only by a registration that
-    // carries a usable one. A node registers again whenever its credential stops
-    // working (a lifted quarantine, an expired credential, a restored database), and
-    // it does so from a state where it may have nothing to report yet: an empty list
-    // says that, not that the node has no address. Writing it over the stored
-    // endpoints left every peer that fetched its netmap before the node's next
-    // heartbeat with a peer it could not send a handshake to.
-    let endpointsChanged = false;
-    let versionAdvanced = false;
-    if (existing.length > 0 && offered.endpoints.length > 0) {
-      const recorded = await NetmapService.recordEndpoints(nodeId, req.body.endpoints);
-      endpointsChanged = recorded.changed;
-      versionAdvanced = recorded.bumped;
-    }
-
-    // The declared position is written only while the row has none, which is the
-    // same rule the country follows: a re-registration cannot move an enrolled node.
-    // A node enrolled before it could declare a position gets one the first time it
-    // does; a different value later is recorded by describeMismatch and not applied.
-    if (declared.latitude !== null) {
-      await runQuery(
-        `UPDATE nodes SET
-           latitude = $1,
-           longitude = $2,
-           city = CASE WHEN city IS NULL OR city = '' THEN $3 ELSE city END,
-           metadata = metadata || '{"location_source":"declared"}'::jsonb
-         WHERE id = $4 AND latitude IS NULL AND longitude IS NULL`,
-        [declared.latitude, declared.longitude, city, nodeId],
-        `UPDATE nodes SET
-           latitude = ?,
-           longitude = ?,
-           city = CASE WHEN city IS NULL OR city = '' THEN ? ELSE city END,
-           metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.location_source', 'declared')
-         WHERE id = ? AND latitude IS NULL AND longitude IS NULL`,
-        [declared.latitude, declared.longitude, city, nodeId]
-      );
-    }
-
-    // Recorded rather than refused: the node is told nothing and keeps running with
-    // the attributes the control plane holds, so a node with a stale configuration
-    // still enrols, while an attempt to move a node onto the exit path leaves a
-    // trace. Written after the upsert, so a failed write does not leave an event
-    // describing a change that did not happen.
-    if (mismatch) {
-      await logAuditEvent({
-        eventType: 'node.reregister_mismatch',
-        severity: 'warn',
-        targetId: nodeId,
-        targetType: 'node',
-        message: `Re-registration of ${nodeId} asked for ${mismatch.changed.join(', ')} different from the stored value; the stored values were kept`,
-        ipAddress: req.ip,
-        metadata: mismatch
-      });
-    }
-
-    // Rules expand to one entry per peer, so the compiled policy changes when the
-    // fleet changes, not only when the rules do. Missing this is the subtle failure:
-    // rules stay identical while the peers they expand to do not.
-    if (existing.length === 0) {
-      await AclEngine.bumpEpoch('acl');
-    } else if (!versionAdvanced) {
-      // The peers re-fetch only when the version moves. A node that moved, or that was
-      // unhealthy and is now back in every peer set (registration marks it healthy),
-      // changed what they must hold. The heartbeat's debounce does not apply: it is
-      // there for an address that flaps every 15 s, and registration is not periodic.
-      const revived = !existing[0].is_healthy && !existing[0].is_quarantined;
-      if (endpointsChanged || revived) {
-        await NetmapService.bumpVersion();
+      // A revoked key stays out. It used to register again and get a new credential.
+      if (await RevocationEngine.isRevoked(publicKeyHex, client)) {
+        const refusal = EnrollmentService.denied(403, 'this key has been revoked');
+        refusal.auditEvent = {
+          eventType: 'node.revoked_key_register_refused',
+          severity: 'warn',
+          targetId: nodeId,
+          targetType: 'node',
+          message: `Registration refused for ${nodeId}: its key is revoked`,
+          ipAddress: req.ip
+        };
+        throw refusal;
       }
-    }
 
-    const cred = await NodeCredentialService.mintCredential(nodeId);
+      if (preauthKey) {
+        const preauthResult = await PreAuthKeyService.validateAndConsumePreAuthKey(
+          preauthKey,
+          requestedRole,
+          existing[0]?.user_id,
+          client
+        );
+        if (!preauthResult.ok) {
+          throw EnrollmentService.denied(preauthResult.status || 401, preauthResult.error);
+        }
 
-    logger.info(`[GO-BRIDGE] Registered ${nodeId} (${role}) with overlay ${overlayIpv4} / ${overlayIpv6}`);
+        ownerId = preauthResult.key.owner_id;
+        organizationId = preauthResult.key.organization_id || null;
 
-    // Field names and shape must match control.RegisterResponse exactly.
-    return res.json({
-      assigned_node_id: nodeId,
-      overlay_ipv4: overlayIpv4,
-      overlay_ipv6: overlayIpv6,
-      relays: [],
-      lease_expiry_utc: Math.floor(Date.now() / 1000) + 86400,
-      network_psk_hex: '',
-      // Real epochs, not zero. The node stores these and compares later heartbeats
-      // against them; returning 0 here made `hbResp.PolicyEpoch > policyEpoch`
-      // permanently false, so a running node never learned that an ACL rule had
-      // changed. Policy delivery worked at enrolment and never again.
-      policy_epoch: await AclEngine.getEpoch('acl'),
-      route_epoch: await AclEngine.getEpoch('routes'),
-      credential: cred.credential,
-      credential_expires_at: cred.expiresAt
+        // Invariance: if node already exists, owner must match
+        if (existing.length > 0 && existing[0].user_id && existing[0].user_id !== ownerId) {
+          throw EnrollmentService.denied(403, 'pre-auth key owner does not match existing node owner');
+        }
+      } else if (existing.length > 0) {
+        // A node that is already enrolled and has just proved it holds its key needs no
+        // enrolment secret to come back: that is how it restarts after its single-use
+        // pre-auth key has been spent. Owner and organisation stay as enrolled.
+        ownerId = existing[0].user_id || (await resolveOwnerId(client));
+      } else {
+        const auth = checkEnrolmentToken(req);
+        if (!auth.ok) {
+          throw EnrollmentService.denied(auth.status, auth.error);
+        }
+        ownerId = await resolveOwnerId(client);
+      }
+
+      const role = requestedRole;
+      const capability = req.body.capability || {};
+      const countryCode = String(capability.country_code || 'US')
+        .slice(0, 2)
+        .toUpperCase();
+      // UNKNOWN, not RESIDENTIAL. Nothing classifies a node's uplink, and a node that
+      // does not declare one is not evidence of a domestic line.
+      const ipClass = String(capability.ip_class || 'UNKNOWN');
+      const city = String(capability.city || '')
+        .trim()
+        .slice(0, 128);
+      // City and coordinates are what the operator typed into the node's configuration.
+      // Nothing verifies them, so they are stored as declared and reported as such.
+      const declared = parseDeclaredCoordinates(capability);
+      if (declared.error) {
+        throw EnrollmentService.denied(400, declared.error);
+      }
+      const asn = Number.isFinite(capability.asn) ? capability.asn : 0;
+      // Checked exactly as a heartbeat's are. The list used to be stored as received, so
+      // a loopback or link-local address reached /v4/control/discover, which hands
+      // stored endpoints to other nodes as they are.
+      const offered = NetmapService.validateEndpoints(req.body.endpoints);
+      if (offered.rejected.length > 0) {
+        logger.warn(
+          `[GO-BRIDGE] ${nodeId} registered with ${offered.rejected.length} unusable endpoint(s): ` +
+            offered.rejected.map((r) => `${r.entry} (${r.reason})`).join(', ')
+        );
+      }
+
+      const name = `Go-Node-${publicKeyHex.slice(0, 8)}`;
+
+      // Re-registration must return the addresses the node already holds rather than
+      // allocating new ones, otherwise every restart burns an address and orphans the
+      // previous lease.
+      let overlayIpv4;
+      let overlayIpv6;
+
+      if (existing.length > 0) {
+        overlayIpv4 = existing[0].overlay_ipv4;
+        overlayIpv6 = existing[0].overlay_ipv6;
+      } else {
+        const vip = await allocateNextVip(client);
+        overlayIpv4 = vip.overlayIpv4;
+        overlayIpv6 = vip.overlayIpv6;
+      }
+
+      // A new row gets the validated list in the shape the heartbeat stores. An enrolled
+      // node's endpoints are written below, through the heartbeat's own intake.
+      const endpointsJson = JSON.stringify(
+        offered.endpoints.map((e) => ({
+          ip_address: e.ip_address,
+          port: e.port,
+          protocol: e.protocol,
+          is_stun_discovered: e.is_stun_discovered
+        }))
+      );
+
+      // On conflict only is_healthy and updated_at are written.
+      //
+      // Registration is authenticated by one fleet-wide token and a public key is not
+      // a secret, so re-registering somebody else's key used to rewrite that node's
+      // role -- to EXIT_BRIDGE, which puts it on the exit path -- and its country,
+      // which is what geofencing decides on. Until WP-103 makes a node prove
+      // possession of its key, those three columns are set at first enrolment and
+      // changed only through the authenticated console API.
+      const mismatch =
+        existing.length > 0 ? describeMismatch(existing[0], { role, ipClass, countryCode, declared }) : null;
+
+      if (existing.length > 0) {
+        const enrolledOrganization = existing[0].organization_id || 'org-default';
+        if (preauthKey && organizationId && organizationId !== enrolledOrganization) {
+          throw EnrollmentService.denied(403, 'pre-auth key organization does not match existing node organization');
+        }
+        organizationId = enrolledOrganization;
+      } else if (!organizationId && ownerId) {
+        const ownerRes = await client.query('SELECT organization_id FROM users WHERE id = $1', [ownerId]);
+        organizationId = (ownerRes.rows[0] && ownerRes.rows[0].organization_id) || null;
+      }
+      organizationId = organizationId || 'org-default';
+      await EnrollmentService.authorizeOwner(client, ownerId, organizationId);
+
+      // organization_id, like role and country, is set at first enrolment only.
+      await client.query(
+        `INSERT INTO nodes (
+           id, user_id, name, role, ip_class, country_code, city, asn,
+           is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints, organization_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb, $13)
+         ON CONFLICT (id) DO UPDATE SET
+           is_healthy = TRUE,
+           updated_at = NOW()`,
+        [
+          nodeId,
+          ownerId,
+          name,
+          role,
+          ipClass,
+          countryCode,
+          city,
+          asn,
+          publicKeyHex,
+          overlayIpv4,
+          overlayIpv6,
+          endpointsJson,
+          organizationId
+        ]
+      );
+
+      // An enrolled node's stored endpoints are replaced only by a registration that
+      // carries a usable one. A node registers again whenever its credential stops
+      // working (a lifted quarantine, an expired credential, a restored database), and
+      // it does so from a state where it may have nothing to report yet: an empty list
+      // says that, not that the node has no address. Writing it over the stored
+      // endpoints left every peer that fetched its netmap before the node's next
+      // heartbeat with a peer it could not send a handshake to.
+      let endpointsChanged = false;
+      let versionAdvanced = false;
+      if (existing.length > 0 && offered.endpoints.length > 0) {
+        const recorded = await NetmapService.recordEndpoints(nodeId, req.body.endpoints, new Date(), client);
+        endpointsChanged = recorded.changed;
+        versionAdvanced = recorded.bumped;
+      }
+
+      // The declared position is written only while the row has none, which is the
+      // same rule the country follows: a re-registration cannot move an enrolled node.
+      // A node enrolled before it could declare a position gets one the first time it
+      // does; a different value later is recorded by describeMismatch and not applied.
+      if (declared.latitude !== null) {
+        await client.query(
+          `UPDATE nodes SET
+             latitude = $1,
+             longitude = $2,
+             city = CASE WHEN city IS NULL OR city = '' THEN $3 ELSE city END,
+             metadata = metadata || '{"location_source":"declared"}'::jsonb
+           WHERE id = $4 AND latitude IS NULL AND longitude IS NULL`,
+          [declared.latitude, declared.longitude, city, nodeId]
+        );
+      }
+
+      // Recorded rather than refused: the node is told nothing and keeps running with
+      // the attributes the control plane holds, so a node with a stale configuration
+      // still enrols, while an attempt to move a node onto the exit path leaves a
+      // trace. Written after the upsert, so a failed write does not leave an event
+      // describing a change that did not happen.
+      if (mismatch) {
+        afterCommit.push(() =>
+          logAuditEvent({
+            eventType: 'node.reregister_mismatch',
+            severity: 'warn',
+            targetId: nodeId,
+            targetType: 'node',
+            message: `Re-registration of ${nodeId} asked for ${mismatch.changed.join(', ')} different from the stored value; the stored values were kept`,
+            ipAddress: req.ip,
+            metadata: mismatch
+          })
+        );
+      }
+
+      // Rules expand to one entry per peer, so the compiled policy changes when the
+      // fleet changes, not only when the rules do. Missing this is the subtle failure:
+      // rules stay identical while the peers they expand to do not.
+      if (existing.length === 0) {
+        await AclEngine.bumpEpoch('acl', client);
+      } else if (!versionAdvanced) {
+        // The peers re-fetch only when the version moves. A node that moved, or that was
+        // unhealthy and is now back in every peer set (registration marks it healthy),
+        // changed what they must hold. The heartbeat's debounce does not apply: it is
+        // there for an address that flaps every 15 s, and registration is not periodic.
+        const revived = !existing[0].is_healthy && !existing[0].is_quarantined;
+        if (endpointsChanged || revived) {
+          await NetmapService.bumpVersion(client);
+        }
+      }
+
+      const cred = await NodeCredentialService.mintCredential(nodeId, 24, client);
+
+      afterCommit.push(() =>
+        logger.info(`[GO-BRIDGE] Registered ${nodeId} (${role}) with overlay ${overlayIpv4} / ${overlayIpv6}`)
+      );
+
+      // Field names and shape must match control.RegisterResponse exactly.
+      return {
+        assigned_node_id: nodeId,
+        overlay_ipv4: overlayIpv4,
+        overlay_ipv6: overlayIpv6,
+        relays: [],
+        lease_expiry_utc: Math.floor(Date.now() / 1000) + 86400,
+        network_psk_hex: '',
+        // Real epochs, not zero. The node stores these and compares later heartbeats
+        // against them; returning 0 here made `hbResp.PolicyEpoch > policyEpoch`
+        // permanently false, so a running node never learned that an ACL rule had
+        // changed. Policy delivery worked at enrolment and never again.
+        policy_epoch: await AclEngine.getEpoch('acl', client),
+        route_epoch: await AclEngine.getEpoch('routes', client),
+        credential: cred.credential,
+        credential_expires_at: cred.expiresAt
+      };
     });
+    return res.json(result);
   } catch (err) {
+    if (err.auditEvent) {
+      await logAuditEvent(err.auditEvent).catch((auditError) =>
+        logger.error(`[GO-BRIDGE] Refused registration audit failed: ${auditError.message}`)
+      );
+    }
     logger.error(`[GO-BRIDGE] Registration failed: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(err.status || 500).json({ error: err.message });
   }
 });
 
