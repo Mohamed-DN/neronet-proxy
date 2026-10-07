@@ -68,7 +68,7 @@ constraint_manifest() {
   # Keep constraint expressions in a private temporary file, but report only
   # relation.constraint labels if they change across the restore.
   tool --entrypoint psql backup-restore -X -q -A -t -F "$(printf '\t')" -v ON_ERROR_STOP=1 \
-    -c "SELECT r.relname || '.' || c.conname, c.contype::text || ':' || c.convalidated::text || ':' || pg_get_constraintdef(c.oid, true) FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname='public' ORDER BY 1" >"$1"
+    -c "SELECT r.relname || '.' || c.conname, c.contype::text, c.convalidated::text, pg_get_constraintdef(c.oid, true) FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname='public' ORDER BY 1" >"$1"
 }
 echo "before restore: TCP overlay matrix"
 sh scripts/dev/scenarios/overlay.sh matrix
@@ -125,7 +125,15 @@ if [ "$before" != "$after" ]; then
     NR == FNR { source[$1] = $0; next }
     { restored[$1] = $0 }
     END {
-      for (key in source) if (!(key in restored) || source[key] != restored[key]) print key
+      for (key in source) {
+        if (!(key in restored)) { print key " [missing after restore]"; continue }
+        split(source[key], a, FS); split(restored[key], b, FS)
+        detail = ""
+        if (a[2] != b[2]) detail = detail " type"
+        if (a[3] != b[3]) detail = detail " validation-state"
+        if (a[4] != b[4]) detail = detail " definition"
+        if (detail != "") print key " differs in" detail
+      }
       for (key in restored) if (!(key in source)) print key
     }
   ' "$before_constraints" "$after_constraints" | sort -u
