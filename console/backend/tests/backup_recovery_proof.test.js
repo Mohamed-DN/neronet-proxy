@@ -63,30 +63,41 @@ describe('Disaster recovery proof against a separate restored database', () => {
   });
 
   after(async () => {
+    await settleAuditWrites();
     await closeDatabase();
+    if (maintenancePool && dbHelper) await waitForDatabaseDisconnect(dbHelper.dbName);
     await maintenancePool?.end();
     await dbHelper?.cleanup();
   });
+
+  async function waitForDatabaseDisconnect(name) {
+    const deadline = Date.now() + 5000;
+    while (true) {
+      const result = await maintenancePool.query(
+        'SELECT count(*)::integer AS clients FROM pg_stat_activity WHERE datname = $1',
+        [name]
+      );
+      if (result.rows[0].clients === 0) return;
+      assert.ok(Date.now() < deadline, `database ${name} retained clients after its pool drained`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
 
   // A PostgreSQL template copy gives each test independent schema, rows and
   // sequences. The backup drill, separately, exercises pg_dump and restic.
   async function withRestoredDatabase(check) {
     await settleAuditWrites();
     const targetName = 'neronet_dr_' + process.pid + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-    // Close and drain the shared source pool before PostgreSQL terminates
-    // connections to make the source database eligible for TEMPLATE cloning.
-    // Otherwise idle pool clients receive an asynchronous admin-termination
-    // error and intermittently fail this test outside the active assertion.
+    // pool.end() removes idle clients before their disconnect completes on the
+    // server. Wait for real quiescence instead of killing those connections:
+    // termination can still deliver an asynchronous error after the pool ended.
     const sourcePool = pool;
     let sourcePoolError;
     sourcePool.on('error', (err) => {
       sourcePoolError = err;
     });
     await closeDatabase();
-    await maintenancePool.query(
-      'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
-      [dbHelper.dbName]
-    );
+    await waitForDatabaseDisconnect(dbHelper.dbName);
     await maintenancePool.query('CREATE DATABASE "' + targetName + '" TEMPLATE "' + dbHelper.dbName + '"');
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(sourcePoolError, undefined, 'template cloning must not terminate idle clients in the source pool');
@@ -99,7 +110,8 @@ describe('Disaster recovery proof against a separate restored database', () => {
     } finally {
       await targetPool.end();
       await settleAuditWrites();
-      await maintenancePool.query('DROP DATABASE "' + targetName + '" WITH (FORCE)');
+      await waitForDatabaseDisconnect(targetName);
+      await maintenancePool.query('DROP DATABASE "' + targetName + '"');
     }
   }
 
@@ -157,6 +169,22 @@ describe('Disaster recovery proof against a separate restored database', () => {
       for (const key of ['integrity_hash', 'schema_hash', 'data_hash', 'sequence_hash'])
         assert.match(proof[key], /^[a-f0-9]{64}$/);
       assert.equal((await BackupRecoveryProofService.getLatestProof(pool)).status, 'VERIFIED_PASS');
+    });
+  });
+
+  it('waits for physical source disconnection before creating a template copy', async () => {
+    const client = await pool.connect();
+    const originalEnd = client.end;
+    // Delay only transport teardown. The connection, PostgreSQL process and
+    // template copy are real; pool.end() must not be mistaken for server-side
+    // quiescence while an idle client's disconnect is still in flight.
+    client.end = function (...args) {
+      client.end = originalEnd;
+      setTimeout(() => originalEnd.apply(client, args), 200);
+    };
+    client.release();
+    await withRestoredDatabase(async (targetPool) => {
+      assert.equal((await verify(targetPool)).status, 'VERIFIED_PASS');
     });
   });
 
