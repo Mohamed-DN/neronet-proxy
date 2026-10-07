@@ -56,14 +56,13 @@ tool() {
   $COMPOSE --profile restore run --rm --no-deps "$@"
 }
 digest_hash() {
-  manifest=$(mktemp)
+  manifest=$1
   # Preserve the database tool's failure; a pipeline would hash partial output.
   if ! tool backup-restore digest --scope all >"$manifest"; then
     rm -f "$manifest"
     return 1
   fi
   sha256sum "$manifest" | cut -d ' ' -f 1
-  rm -f "$manifest"
 }
 echo "before restore: TCP overlay matrix"
 sh scripts/dev/scenarios/overlay.sh matrix
@@ -79,7 +78,8 @@ if [ "$secondary" = true ]; then
   $COMPOSE -f docker-compose.yml -f docker/backup/docker-compose.test.yml up -d backup-test-rest
   echo "secondary test: controlled REST backend on this host; not offsite"
 fi
-before=$(digest_hash)
+before_manifest=$(mktemp)
+before=$(digest_hash "$before_manifest")
 tool backup-restore once
 set_id=$(tool backup-restore resolve-set primary latest | tail -n 1)
 echo "backup set $set_id; source manifest SHA-256 $before; re-enrolment baseline $baseline_reenrol"
@@ -98,8 +98,22 @@ tool --entrypoint sh backup-restore -c 'find /source/backend_data -mindepth 1 -d
 repo=primary
 [ "$secondary" = false ] || repo=secondary
 sh scripts/ops/restore.sh --replace --repo "$repo" --set "$set_id"
-after=$(digest_hash)
-[ "$before" = "$after" ] || die "full source/restored schema and data digest differs"
+after_manifest=$(mktemp)
+after=$(digest_hash "$after_manifest")
+if [ "$before" != "$after" ]; then
+  echo "source/restored digest differs ($before != $after); differing schema/data objects:"
+  awk -F '\t' '
+    NR == FNR { source[$1] = $0; next }
+    { restored[$1] = $0 }
+    END {
+      for (key in source) if (!(key in restored) || source[key] != restored[key]) print key
+      for (key in restored) if (!(key in source)) print key
+    }
+  ' "$before_manifest" "$after_manifest" | sort -u
+  rm -f "$before_manifest" "$after_manifest"
+  die "full source/restored schema and data digest differs"
+fi
+rm -f "$before_manifest" "$after_manifest"
 echo "source/restored canonical SHA-256 identical: $after"
 # shellcheck disable=SC2086
 $COMPOSE start backend
