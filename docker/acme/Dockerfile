@@ -19,7 +19,7 @@ FROM docker.io/goacme/lego:v5.5.2
 COPY --from=builder /out/lego /lego
 COPY --from=builder /src/LICENSE /usr/share/licenses/lego/LICENSE
 
-COPY acme-loop.sh /usr/local/bin/acme-loop
+COPY --chmod=0755 acme-loop.sh /usr/local/bin/acme-loop
 
 # No user is created: the volumes are shared with nginx, which reads them as root, and
 # the compose service drops every capability and mounts the root filesystem read-only.
