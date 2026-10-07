@@ -133,6 +133,19 @@ describe('Radial mesh uses policy and observations as distinct evidence', () => 
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it('reserves the workspace for the graph and opens details only on selection', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTopology();
+    await screen.findByText('Control plane');
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+    (await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).focus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('complementary')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Close details' }));
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+    expect(container.querySelector('svg[role="group"]')).toHaveFocus();
+  });
+
   it('places coordination at the centre without declaring configured links observed', async () => {
     const user = userEvent.setup();
     const { container } = renderTopology();
@@ -153,7 +166,7 @@ describe('Radial mesh uses policy and observations as distinct evidence', () => 
     expect(screen.getByText('Unhealthy')).toBeInTheDocument();
   });
 
-  it('keeps peer connections clear of the coordination disc', async () => {
+  it('keeps peer connections clear of the coordination annotation', async () => {
     renderTopology();
     const link = await screen.findByRole('button', { name: 'Connection: Rome Gateway Alpha — Berlin Exit Bravo' });
     const shape = link.querySelector('path, line')!;
@@ -172,15 +185,85 @@ describe('Radial mesh uses policy and observations as distinct evidence', () => 
       const y = quadratic
         ? (1 - t) ** 2 * y1! + 2 * (1 - t) * t * values[3]! + t * t * values[5]!
         : (1 - t) * y1! + t * values[3]!;
-      closest = Math.min(closest, Math.hypot(x - 400, y - 300));
+      closest = Math.min(closest, Math.hypot(x - 600, y - 320));
     }
     expect(closest).toBeGreaterThan(62);
+  });
+
+  it('draws a six-node mesh with straight peer segments rather than detour curves', async () => {
+    const nodes = Array.from({ length: 6 }, (_, index) => ({
+      ...mockStandardNodes[0],
+      id: `peer-${index}`,
+      name: `Peer ${index}`
+    }));
+    const links = nodes.flatMap((source, index) =>
+      nodes.slice(index + 1).map((target) => ({ source: source.id, target: target.id, is_visible: true }))
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/api/stats/topology')
+          ? jsonResponse({ nodes, links })
+          : url.includes('/api/compartments')
+            ? jsonResponse({ compartments: mockStandardCompartments })
+            : jsonResponse({})
+      )
+    );
+    const { container } = renderTopology();
+    await screen.findByText('Control plane');
+    const paths = [...container.querySelectorAll('[data-mesh-link] > path:last-child')];
+    expect(paths).toHaveLength(15);
+    for (const path of paths) {
+      const data = path.getAttribute('d')!;
+      expect(data).toMatch(/^[ML\s\d.-]+$/);
+      const points = data.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+      for (let segment = 0; segment < points.length; segment += 4) {
+        const [ax, ay, bx, by] = points.slice(segment, segment + 4) as [number, number, number, number];
+        for (let sample = 0; sample <= 20; sample++) {
+          const t = sample / 20;
+          const x = ax + (bx - ax) * t,
+            y = ay + (by - ay) * t;
+          expect(x > 542.1 && x < 657.9 && y > 290.1 && y < 389.9).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('keeps expanded groups separate in the hundred-node overview', async () => {
+    const nodes = Array.from({ length: 100 }, (_, index) => ({
+      ...mockStandardNodes[0],
+      id: `peer-${index}`,
+      compartment_id: `group-${index % 10}`,
+      compartment_name: `Group ${index % 10}`
+    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/api/stats/topology') ? jsonResponse({ nodes, links: [] }) : jsonResponse({})
+      )
+    );
+    const { container } = renderTopology();
+    await screen.findByText('Control plane');
+    const circles = [...container.querySelectorAll('.mesh-group-control')].map(
+      (control) => control.parentElement!.querySelector('circle')!
+    );
+    expect(circles).toHaveLength(10);
+    for (let i = 0; i < circles.length; i++)
+      for (let j = i + 1; j < circles.length; j++) {
+        const a = circles[i]!,
+          b = circles[j]!;
+        const distance = Math.hypot(
+          Number(a.getAttribute('cx')) - Number(b.getAttribute('cx')),
+          Number(a.getAttribute('cy')) - Number(b.getAttribute('cy'))
+        );
+        expect(distance).toBeGreaterThan(Number(a.getAttribute('r')) + Number(b.getAttribute('r')));
+      }
   });
 
   it('collapses a group without losing its count and search expands matching nodes', async () => {
     const user = userEvent.setup();
     renderTopology();
-    const collapse = await screen.findByRole('button', { name: 'Collapse Corporate Ops' });
+    const collapse = await screen.findByRole('button', { name: /^Collapse Corporate Ops/ });
     await user.click(collapse);
     expect(screen.queryByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Expand Corporate Ops/ })).toBeInTheDocument();
@@ -188,10 +271,13 @@ describe('Radial mesh uses policy and observations as distinct evidence', () => 
     expect(screen.getByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).toBeInTheDocument();
   });
 
-  it('keeps health warnings visible and accessible when a group is collapsed', async () => {
+  it('keeps health warnings visible and accessible before and after folding a group', async () => {
     const user = userEvent.setup();
     renderTopology();
-    await user.click(await screen.findByRole('button', { name: 'Collapse Corporate Ops' }));
+    const expanded = await screen.findByRole('button', { name: /^Collapse Corporate Ops/ });
+    expect(within(expanded).getByText('1 unhealthy')).toBeInTheDocument();
+    expect(within(expanded).getByText('1 quarantined')).toBeInTheDocument();
+    await user.click(expanded);
     const group = screen.getByRole('button', { name: /^Expand Corporate Ops/ });
     expect(within(group).getByText('1 unhealthy')).toBeInTheDocument();
     expect(within(group).getByText('1 quarantined')).toBeInTheDocument();

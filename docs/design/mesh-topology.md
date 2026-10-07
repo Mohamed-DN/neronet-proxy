@@ -2,11 +2,17 @@
 
 The topology page places coordination at the centre and groups peer nodes around
 it. This is a map layout: peer traffic does not pass through the control plane.
-Connections bend around the coordination disc to keep that distinction visible.
+Connections use straight segments with a clear gap behind the coordination
+annotation. They stop short of peer node bodies; they do not bend around the
+centre or attach to it.
 
 Groups default to compartments; region and role are alternatives. Groups with
 more than 16 members start collapsed. Search reveals matching nodes. Operators
 can expand groups, select nodes, pan, zoom, and use the accessible list.
+The graph uses the available page width. Selecting a peer or policy pair opens
+an inspector beside the graph, without covering neighbours. Closing it restores
+the overview and returns keyboard focus to the graph. Health warnings remain
+visible in both expanded and folded groups.
 
 ## What a connection means
 

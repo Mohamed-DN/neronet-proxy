@@ -409,7 +409,9 @@
       "coordination": "Coordination",
       "transport": "Observed transport",
       "allowed": "Allowed",
-      "allNodes": "All nodes"
+      "allNodes": "All nodes",
+      "closeDetails": "Close details",
+      "openPolicy": "Open policy"
     }
   },
   "acl": {

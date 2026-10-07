@@ -28,9 +28,9 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
   const isSuperAdmin = role === 'super-admin';
 
   return (
-    <header className="sticky top-0 z-sticky flex h-16 items-center justify-between border-b border-border bg-surface-raised px-6">
+    <header className="console-header sticky top-0 z-sticky flex h-16 items-center justify-between border-b border-border bg-surface-raised px-6">
       <div className="flex items-center gap-6">
-        <div className="relative">
+        <div className="console-header-search relative">
           <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle" />
           <input
             type="search"
@@ -42,7 +42,7 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
 
         <div
           aria-label={t('header.throughput')}
-          className="hidden items-center gap-4 rounded-control border border-border bg-surface-sunken px-3 py-1.5 font-mono text-caption lg:flex"
+          className="console-header-throughput hidden items-center gap-4 rounded-control border border-border bg-surface-sunken px-3 py-1.5 font-mono text-caption lg:flex"
         >
           <span className="flex items-center gap-1.5 text-content">
             <ArrowDownLeft aria-hidden="true" className="h-3.5 w-3.5 text-accent" />
@@ -75,7 +75,7 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="console-header-actions flex items-center gap-4">
         <button
           type="button"
           onClick={onOpenEnrollModal}

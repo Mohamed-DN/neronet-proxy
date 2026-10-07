@@ -409,7 +409,9 @@
       "coordination": "Coordinamento",
       "transport": "Trasporto osservato",
       "allowed": "Consentita",
-      "allNodes": "Tutti i nodi"
+      "allNodes": "Tutti i nodi",
+      "closeDetails": "Chiudi dettagli",
+      "openPolicy": "Policy aperta"
     }
   },
   "acl": {

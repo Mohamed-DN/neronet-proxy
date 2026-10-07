@@ -14,6 +14,9 @@ import {
   Scissors,
   Search,
   ShieldAlert,
+  Server,
+  Monitor,
+  X,
   ZoomIn,
   ZoomOut
 } from 'lucide-react';
@@ -51,8 +54,8 @@ export type ViewMode = 'CANVAS' | 'LIST';
 export type GroupBy = 'compartment' | 'country' | 'role' | 'none';
 export type EdgeMode = 'auto' | 'all' | 'selected' | 'none';
 
-const GRAPH_WIDTH = 800;
-const GRAPH_HEIGHT = 600;
+const GRAPH_WIDTH = 1200;
+const GRAPH_HEIGHT = 640;
 const BASE_NODE_RADIUS = 16;
 
 const MIN_SCALE = 0.3;
@@ -121,7 +124,7 @@ function groupValue(node: TopologyNode, groupBy: GroupBy): { key: string; label:
   return { key: '__all__', label: '' };
 }
 
-/** Stable radial groups: refresh order never moves an identity. Large groups
+/** Stable spatial groups: refresh order never moves an identity. Large groups
  * start folded, keeping the overview useful without rendering every peer. */
 function clusterLayout(
   nodes: TopologyNode[],
@@ -144,13 +147,13 @@ function clusterLayout(
   keys.forEach((key, index) => {
     const group = groups.get(key)!;
     const members = [...group.nodes].sort((a, b) => a.id.localeCompare(b.id));
-    const angle = -Math.PI / 2 + (index * Math.PI * 2) / keys.length;
+    const angle = -Math.PI / 2 + (index * Math.PI * 2) / keys.length + Math.sin(index * 2.1) * 0.15;
     const single = keys.length === 1;
-    const orbit = single ? 0 : 195;
+    const orbit = single ? 0 : 1;
     const expanded = revealMatches || (expansion[key] ?? members.length <= 16);
-    const cx = centre.x + Math.cos(angle) * orbit;
-    const cy = single && !expanded ? centre.y - 180 : centre.y + Math.sin(angle) * orbit;
-    const r = single ? 225 : Math.max(40, Math.min(85, 175 * Math.sin(Math.PI / keys.length)));
+    const cx = centre.x + Math.cos(angle) * orbit * (340 + (index % 3) * 35);
+    const cy = single && !expanded ? centre.y - 180 : centre.y + Math.sin(angle) * orbit * (162 + (index % 3) * 21);
+    const r = single ? 270 : Math.max(48, Math.min(92, 225 * Math.sin(Math.PI / keys.length)));
     clusters.push({
       key,
       label: group.label,
@@ -164,12 +167,52 @@ function clusterLayout(
     });
     if (!expanded) return;
     members.forEach((node, ni) => {
-      const theta = -Math.PI / 2 + (ni * Math.PI * 2) / members.length;
-      // A sole group surrounds coordination; satellites use their own local ring.
-      const radius = single ? 185 : members.length === 1 ? 0 : r - 25;
-      placed.push({ node, x: cx + Math.cos(theta) * radius, y: cy + Math.sin(theta) * radius });
+      // Golden-angle placement breaks the regular necklace without idle motion.
+      const theta = -1.1 + ni * 2.3999632297;
+      const radius = single
+        ? 150 + Math.sqrt((ni + 1) / members.length) * 100
+        : members.length === 1
+          ? 0
+          : Math.sqrt((ni + 0.5) / members.length) * (r - 22);
+      placed.push({
+        node,
+        x: cx + Math.cos(theta) * radius * (single ? 1.55 : 1),
+        y: cy + Math.sin(theta) * radius * (single ? 0.8 : 1)
+      });
     });
   });
+  if (clusters.length > 1 && clusters.length <= 100) {
+    const origins = new Map(clusters.map((cluster) => [cluster.key, { x: cluster.cx, y: cluster.cy }]));
+    for (let pass = 0; pass < 24; pass++) {
+      for (let i = 0; i < clusters.length; i++)
+        for (let j = i + 1; j < clusters.length; j++) {
+          const a = clusters[i]!,
+            b = clusters[j]!;
+          const dx = b.cx - a.cx,
+            dy = b.cy - a.cy;
+          const distance = Math.hypot(dx, dy) || 1;
+          const required = a.r + b.r + 30;
+          if (distance >= required) continue;
+          const shift = (required - distance) / 2;
+          a.cx -= (dx / distance) * shift;
+          a.cy -= (dy / distance) * shift;
+          b.cx += (dx / distance) * shift;
+          b.cy += (dy / distance) * shift;
+        }
+      for (const cluster of clusters) {
+        cluster.cx = clamp(cluster.cx, cluster.r + 90, GRAPH_WIDTH - cluster.r - 90);
+        cluster.cy = clamp(cluster.cy, cluster.r + 38, GRAPH_HEIGHT - cluster.r - 38);
+      }
+    }
+    const byKey = new Map(clusters.map((cluster) => [cluster.key, cluster]));
+    for (const point of placed) {
+      const key = groupValue(point.node, groupBy).key;
+      const origin = origins.get(key)!;
+      const cluster = byKey.get(key)!;
+      point.x += cluster.cx - origin.x;
+      point.y += cluster.cy - origin.y;
+    }
+  }
   return { placed, clusters };
 }
 
@@ -183,32 +226,38 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/** Peer edges go around coordination, so they never look like traffic to it. */
-function peerPath(a: Point, b: Point): string {
+/** Straight peer segments stop short of node bodies. Coordination is an
+ * annotation: leave a clear gap behind it rather than inventing a routed bend. */
+function peerPath(a: Point, b: Point, nodeRadius: number): string {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const lengthSquared = dx * dx + dy * dy;
+  const length = Math.hypot(dx, dy);
+  if (length <= 2 * (nodeRadius + 2)) return '';
+  const inset = (nodeRadius + 2) / length;
+  const start = inset;
+  const end = 1 - inset;
   const centre = { x: GRAPH_WIDTH / 2, y: GRAPH_HEIGHT / 2 };
-  const along = lengthSquared ? clamp(((centre.x - a.x) * dx + (centre.y - a.y) * dy) / lengthSquared, 0, 1) : 0;
-  const distance = Math.hypot(a.x + along * dx - centre.x, a.y + along * dy - centre.y);
-  if (distance >= 78 || !lengthSquared) return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
-  const length = Math.sqrt(lengthSquared);
-  const normal = { x: -dy / length, y: dx / length };
-  const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  const side = (midpoint.x - centre.x) * normal.x + (midpoint.y - centre.y) * normal.y >= 0 ? 1 : -1;
-  let control = midpoint;
-  for (let offset = 190; offset <= 650; offset *= 1.5) {
-    control = { x: midpoint.x + normal.x * offset * side, y: midpoint.y + normal.y * offset * side };
-    let closest = Infinity;
-    for (let sample = 0; sample <= 40; sample++) {
-      const t = sample / 40;
-      const x = (1 - t) ** 2 * a.x + 2 * (1 - t) * t * control.x + t * t * b.x;
-      const y = (1 - t) ** 2 * a.y + 2 * (1 - t) * t * control.y + t * t * b.y;
-      closest = Math.min(closest, Math.hypot(x - centre.x, y - centre.y));
+  const segment = (from: number, to: number) =>
+    `M ${a.x + from * dx} ${a.y + from * dy} L ${a.x + to * dx} ${a.y + to * dy}`;
+  // Clip only behind the visible coordination annotation, never bare canvas.
+  const halfWidth = 58;
+  let enter = start,
+    leave = end;
+  for (const [origin, delta, lower, upper] of [
+    [a.x, dx, centre.x - halfWidth, centre.x + halfWidth],
+    [a.y, dy, centre.y - 30, centre.y + 70]
+  ] as [number, number, number, number][]) {
+    if (Math.abs(delta) < 0.000001) {
+      if (origin < lower || origin > upper) return segment(start, end);
+      continue;
     }
-    if (closest >= 78) break;
+    const first = (lower - origin) / delta,
+      second = (upper - origin) / delta;
+    enter = Math.max(enter, Math.min(first, second));
+    leave = Math.min(leave, Math.max(first, second));
   }
-  return `M ${a.x} ${a.y} Q ${control.x} ${control.y} ${b.x} ${b.y}`;
+  if (enter >= leave) return segment(start, end);
+  return [enter > start ? segment(start, enter) : '', leave < end ? segment(leave, end) : ''].filter(Boolean).join(' ');
 }
 
 /** Scale the view by `factor` while keeping the scene point under `center`
@@ -292,11 +341,21 @@ export function TopologyRoute() {
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const [canvasWidth, setCanvasWidth] = useState(GRAPH_WIDTH);
   const [canvasElement, setCanvasElement] = useState<SVGSVGElement | null>(null);
   const bindCanvas = useCallback((element: SVGSVGElement | null) => {
     svgRef.current = element;
     setCanvasElement(element);
   }, []);
+  useEffect(() => {
+    if (!canvasElement || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setCanvasWidth(canvasElement.getBoundingClientRect().width || GRAPH_WIDTH);
+    const observer = new ResizeObserver(measure);
+    measure();
+    observer.observe(canvasElement);
+    return () => observer.disconnect();
+  }, [canvasElement]);
+  const labelUnit = Math.max(1, GRAPH_WIDTH / Math.max(1, canvasWidth));
   const sceneRef = useRef<SVGGElement | null>(null);
   const interactionRef = useRef<Interaction>(null);
 
@@ -355,7 +414,7 @@ export function TopologyRoute() {
 
   const nodeCount = filteredNodes.length;
   const nodeRadius = nodeRadiusFor(nodeCount);
-  const showLabels = nodeCount <= LABEL_LIMIT;
+  const showLabels = nodeCount <= LABEL_LIMIT || view.scale >= 1.8;
   // Stable positions make updates comparable and honour reduced motion.
   const renderPos = useMemo(() => new Map(placedNodes.map(({ node, x, y }) => [node.id, { x, y }])), [placedNodes]);
 
@@ -707,718 +766,791 @@ export function TopologyRoute() {
 
   return (
     <PageFrame>
-      <PageHeader
-        title={t('topology.title')}
-        description={t('topology.description')}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant={viewMode === 'CANVAS' ? 'primary' : 'secondary'}
-              size="sm"
-              icon={Network}
-              onClick={() => setViewMode('CANVAS')}
-            >
-              {t('topology.view.canvasMode')}
-            </Button>
-            <Button
-              variant={viewMode === 'LIST' ? 'primary' : 'secondary'}
-              size="sm"
-              icon={List}
-              onClick={() => setViewMode('LIST')}
-            >
-              {t('topology.view.listMode')}
-            </Button>
-            {isUnlocked ? (
+      <div className="mesh-route">
+        <PageHeader
+          title={t('topology.title')}
+          description={t('topology.description')}
+          actions={
+            <div className="flex items-center gap-2">
               <Button
-                variant="danger"
+                variant={viewMode === 'CANVAS' ? 'primary' : 'secondary'}
                 size="sm"
-                icon={Lock}
-                onClick={() => lockMutation.mutate()}
-                loading={lockMutation.isPending}
+                icon={Network}
+                onClick={() => setViewMode('CANVAS')}
               >
-                {t('topology.vault.lockAction')}
+                {t('topology.view.canvasMode')}
               </Button>
-            ) : (
               <Button
-                variant="secondary"
+                variant={viewMode === 'LIST' ? 'primary' : 'secondary'}
                 size="sm"
-                icon={KeyRound}
-                onClick={() => {
-                  setUnlockError(null);
-                  setVaultPassword('');
-                  setUnlockDialogOpen(true);
-                }}
+                icon={List}
+                onClick={() => setViewMode('LIST')}
               >
-                {t('topology.vault.unlockAction')}
+                {t('topology.view.listMode')}
               </Button>
-            )}
-          </div>
-        }
-      />
-
-      {topology?.policy_is_open && (
-        <div className="mb-4 flex items-center gap-2 rounded-card border border-warning/30 bg-warning-subtle px-3 py-2 text-caption text-warning">
-          <ShieldAlert aria-hidden="true" className="h-4 w-4 shrink-0" />
-          <span>{t('topology.policyOpenNotice')}</span>
-        </div>
-      )}
-
-      <div className="mesh-summary" aria-label={t('topology.radial.summary')}>
-        <span>
-          <strong>{filteredNodes.length}</strong> {t('topology.stats.nodes')}
-        </span>
-        <span>
-          <strong>{filteredLinks.filter((link) => link.is_visible !== false).length}</strong>{' '}
-          {t('topology.radial.allowedPairs')}
-        </span>
-        <span>
-          <strong>{compartments.length}</strong> {t('topology.stats.compartments')}
-        </span>
-        <span className="sm:ml-auto">
-          {isUnlocked ? t('topology.vault.unlockedBadge') : t('topology.vault.lockedBadge')}
-        </span>
-      </div>
-
-      {!noNodesAtAll && (
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative max-w-md flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t('topology.searchPlaceholder')}
-              className="pl-9"
-              aria-label={t('topology.searchPlaceholder')}
-            />
-          </div>
-          <div className="w-full sm:w-48">
-            <Select
-              value={selectedRole}
-              onValueChange={(v) => setSelectedRole(v as RoleFilter)}
-              options={roleOptions}
-              aria-label={t('topology.filterRoleAll')}
-            />
-          </div>
-          <div className="w-full sm:w-56">
-            <Select
-              value={selectedCompartment}
-              onValueChange={setSelectedCompartment}
-              options={compartmentOptions}
-              aria-label={t('topology.filterCompartmentAll')}
-            />
-          </div>
-        </div>
-      )}
-
-      {topologyQuery.isPending ? (
-        <div role="status" aria-label={t('topology.radial.loading')} className="p-6">
-          <Skeleton lines={8} />
-        </div>
-      ) : topologyQuery.isError ? (
-        <ErrorState onRetry={() => void topologyQuery.refetch()} />
-      ) : noNodesAtAll ? (
-        <Card>
-          <EmptyState title={t('topology.empty.title')} body={t('topology.empty.enrollFirst')} />
-        </Card>
-      ) : viewMode === 'CANVAS' ? (
-        <Card flush className="overflow-hidden">
-          {filteredNodes.length === 0 ? (
-            <div className="p-8">
-              <EmptyState title={t('topology.empty.title')} body={t('topology.empty.desc')} />
+              {isUnlocked ? (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={Lock}
+                  onClick={() => lockMutation.mutate()}
+                  loading={lockMutation.isPending}
+                >
+                  {t('topology.vault.lockAction')}
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={KeyRound}
+                  onClick={() => {
+                    setUnlockError(null);
+                    setVaultPassword('');
+                    setUnlockDialogOpen(true);
+                  }}
+                >
+                  {t('topology.vault.unlockAction')}
+                </Button>
+              )}
             </div>
-          ) : (
-            <div className="mesh-workspace">
-              <div className="mesh-map-panel">
-                <div className="mesh-evidence" aria-label={t('topology.radial.evidence')}>
-                  <button
-                    type="button"
-                    aria-pressed={evidenceView === 'policy'}
-                    onClick={() => setEvidenceView('policy')}
-                  >
-                    {t('topology.radial.policy')}
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={evidenceView === 'observed'}
-                    onClick={() => {
-                      setEvidenceView('observed');
-                      setSelectedLink(null);
-                    }}
-                  >
-                    {t('topology.radial.observed')}
-                  </button>
-                </div>
-                <p className="mb-4 text-caption text-subtle">
-                  {t(evidenceView === 'policy' ? 'topology.radial.policyExplain' : 'topology.radial.observedExplain')}
-                </p>
-                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="text-caption text-muted">{t('topology.canvas.groupByLabel')}</span>
-                    <div className="w-40">
-                      <Select
-                        value={groupBy}
-                        onValueChange={(v) => setGroupBy(v as GroupBy)}
-                        options={groupOptions}
-                        aria-label={t('topology.canvas.groupByLabel')}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-caption text-muted">{t('topology.canvas.edgesLabel')}</span>
-                    <div className="w-44">
-                      <Select
-                        value={edgeMode}
-                        onValueChange={(v) => setEdgeMode(v as EdgeMode)}
-                        options={edgeOptions}
-                        aria-label={t('topology.canvas.edgesLabel')}
-                      />
-                    </div>
-                  </div>
-                  <span className="text-caption text-muted sm:ml-auto">
-                    {t('topology.canvas.nodeCountBadge', { count: nodeCount })}
-                  </span>
-                </div>
+          }
+        />
 
-                <div className="relative">
-                  <svg
-                    ref={bindCanvas}
-                    viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
-                    className="mesh-canvas w-full touch-none select-none"
-                    preserveAspectRatio="xMidYMid meet"
-                    role="group"
-                    aria-label={t('topology.title')}
-                    style={{ cursor: 'grab' }}
-                    onPointerDown={onBackgroundPointerDown}
-                  >
-                    <defs>
-                      <pattern id="mesh-grid" width="24" height="24" patternUnits="userSpaceOnUse">
-                        <path d="M 24 0 L 0 0 0 24" fill="none" className="stroke-border" strokeWidth="0.5" />
-                      </pattern>
-                    </defs>
-                    <rect width={GRAPH_WIDTH} height={GRAPH_HEIGHT} fill="url(#mesh-grid)" opacity="0.5" />
-                    <g
-                      ref={sceneRef}
-                      transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}
-                      style={{ transition: animateView && prefersMotion ? 'transform 180ms ease-out' : 'none' }}
+        <div className="mesh-summary" aria-label={t('topology.radial.summary')}>
+          <span>
+            <strong>{filteredNodes.length}</strong> {t('topology.stats.nodes')}
+          </span>
+          <span>
+            <strong>{filteredLinks.filter((link) => link.is_visible !== false).length}</strong>{' '}
+            {t('topology.radial.allowedPairs')}
+          </span>
+          <span>
+            <strong>{compartments.length}</strong> {t('topology.stats.compartments')}
+          </span>
+          {topology?.policy_is_open && (
+            <details className="mesh-policy-disclosure">
+              <summary>
+                <ShieldAlert aria-hidden="true" size={14} />
+                {t('topology.radial.openPolicy')}
+              </summary>
+              <p>{t('topology.policyOpenNotice')}</p>
+            </details>
+          )}
+          <span className="sm:ml-auto">
+            {isUnlocked ? t('topology.vault.unlockedBadge') : t('topology.vault.lockedBadge')}
+          </span>
+        </div>
+
+        {!noNodesAtAll && (
+          <div className="mesh-filters flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative max-w-md flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t('topology.searchPlaceholder')}
+                className="pl-9"
+                aria-label={t('topology.searchPlaceholder')}
+              />
+            </div>
+            <div className="w-full sm:w-48">
+              <Select
+                value={selectedRole}
+                onValueChange={(v) => setSelectedRole(v as RoleFilter)}
+                options={roleOptions}
+                aria-label={t('topology.filterRoleAll')}
+              />
+            </div>
+            <div className="w-full sm:w-56">
+              <Select
+                value={selectedCompartment}
+                onValueChange={setSelectedCompartment}
+                options={compartmentOptions}
+                aria-label={t('topology.filterCompartmentAll')}
+              />
+            </div>
+          </div>
+        )}
+
+        {topologyQuery.isPending ? (
+          <div role="status" aria-label={t('topology.radial.loading')} className="p-6">
+            <Skeleton lines={8} />
+          </div>
+        ) : topologyQuery.isError ? (
+          <ErrorState onRetry={() => void topologyQuery.refetch()} />
+        ) : noNodesAtAll ? (
+          <Card>
+            <EmptyState title={t('topology.empty.title')} body={t('topology.empty.enrollFirst')} />
+          </Card>
+        ) : viewMode === 'CANVAS' ? (
+          <Card flush className="mesh-surface overflow-hidden">
+            {filteredNodes.length === 0 ? (
+              <div className="p-8">
+                <EmptyState title={t('topology.empty.title')} body={t('topology.empty.desc')} />
+              </div>
+            ) : (
+              <div className="mesh-workspace">
+                <div className="mesh-map-panel">
+                  <div className="mesh-toolbar">
+                    <div className="mesh-evidence" aria-label={t('topology.radial.evidence')}>
+                      <button
+                        type="button"
+                        aria-pressed={evidenceView === 'policy'}
+                        onClick={() => setEvidenceView('policy')}
+                      >
+                        {t('topology.radial.policy')}
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={evidenceView === 'observed'}
+                        onClick={() => {
+                          setEvidenceView('observed');
+                          setSelectedLink(null);
+                        }}
+                      >
+                        {t('topology.radial.observed')}
+                      </button>
+                    </div>
+                    <div className="mesh-options flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <div className="flex items-center gap-2">
+                        <span className="text-caption text-muted">{t('topology.canvas.groupByLabel')}</span>
+                        <div className="w-40">
+                          <Select
+                            value={groupBy}
+                            onValueChange={(v) => setGroupBy(v as GroupBy)}
+                            options={groupOptions}
+                            aria-label={t('topology.canvas.groupByLabel')}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-caption text-muted">{t('topology.canvas.edgesLabel')}</span>
+                        <div className="w-44">
+                          <Select
+                            value={edgeMode}
+                            onValueChange={(v) => setEdgeMode(v as EdgeMode)}
+                            options={edgeOptions}
+                            aria-label={t('topology.canvas.edgesLabel')}
+                          />
+                        </div>
+                      </div>
+                      <span className="text-caption text-muted sm:ml-auto">
+                        {t('topology.canvas.nodeCountBadge', { count: nodeCount })}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <svg
+                      ref={bindCanvas}
+                      viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
+                      className="mesh-canvas w-full touch-none select-none"
+                      preserveAspectRatio="xMidYMid meet"
+                      role="group"
+                      tabIndex={-1}
+                      aria-label={t('topology.title')}
+                      style={{ cursor: 'grab' }}
+                      onPointerDown={onBackgroundPointerDown}
                     >
-                      <circle
-                        cx={GRAPH_WIDTH / 2}
-                        cy={GRAPH_HEIGHT / 2}
-                        r={265}
-                        className="fill-none stroke-border"
-                        strokeDasharray="3 6"
-                      />
-                      {drawClusters &&
-                        clusters.map((cluster) => (
-                          <g key={`cluster-${cluster.key}`}>
-                            <circle
-                              cx={cluster.cx}
-                              cy={cluster.cy}
-                              r={cluster.expanded ? cluster.r : 32}
-                              className={
-                                !cluster.expanded && cluster.quarantined
-                                  ? 'fill-danger-subtle stroke-danger'
-                                  : !cluster.expanded && cluster.unhealthy
-                                    ? 'fill-warning-subtle stroke-warning'
-                                    : 'fill-surface stroke-border-strong'
-                              }
-                              fillOpacity={0.5}
-                              strokeDasharray={cluster.expanded ? '3 5' : undefined}
-                            />
+                      <defs>
+                        <pattern id="mesh-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+                          <path d="M 24 0 L 0 0 0 24" fill="none" className="stroke-border" strokeWidth="0.5" />
+                        </pattern>
+                      </defs>
+                      <rect width={GRAPH_WIDTH} height={GRAPH_HEIGHT} fill="url(#mesh-grid)" opacity="0.5" />
+                      <g
+                        ref={sceneRef}
+                        transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}
+                        style={{ transition: animateView && prefersMotion ? 'transform 180ms ease-out' : 'none' }}
+                      >
+                        {drawClusters &&
+                          clusters.map((cluster) => (
+                            <g key={`cluster-${cluster.key}`}>
+                              <circle
+                                cx={cluster.cx}
+                                cy={cluster.cy}
+                                r={cluster.expanded ? cluster.r : 32}
+                                className={
+                                  cluster.quarantined
+                                    ? 'fill-danger-subtle stroke-danger'
+                                    : cluster.unhealthy
+                                      ? 'fill-warning-subtle stroke-warning'
+                                      : 'fill-surface stroke-border-strong'
+                                }
+                                fillOpacity={cluster.expanded ? 0.12 : 0.8}
+                                strokeOpacity={cluster.expanded ? 0.35 : 1}
+                                strokeDasharray={cluster.expanded ? '3 5' : undefined}
+                              />
+                              <g
+                                role="button"
+                                tabIndex={0}
+                                aria-expanded={cluster.expanded}
+                                aria-label={[
+                                  t(cluster.expanded ? 'topology.radial.collapse' : 'topology.radial.expand', {
+                                    name: cluster.label
+                                  }),
+                                  cluster.unhealthy
+                                    ? t('topology.radial.groupUnhealthy', { count: cluster.unhealthy })
+                                    : '',
+                                  cluster.quarantined
+                                    ? t('topology.radial.groupQuarantined', { count: cluster.quarantined })
+                                    : ''
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                                className="mesh-group-control"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() =>
+                                  setExpandedGroups((previous) => ({ ...previous, [cluster.key]: !cluster.expanded }))
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    setExpandedGroups((previous) => ({
+                                      ...previous,
+                                      [cluster.key]: !cluster.expanded
+                                    }));
+                                  }
+                                }}
+                              >
+                                <rect
+                                  x={cluster.cx - 110}
+                                  y={cluster.expanded ? cluster.cy - cluster.r - 40 : cluster.cy - 28}
+                                  width={220}
+                                  height={cluster.expanded ? 56 : 116}
+                                  rx={5}
+                                  fill="transparent"
+                                />
+                                {cluster.expanded ? (
+                                  <Minus
+                                    x={cluster.cx - Math.min(100, cluster.label.length * 3.2 + 28)}
+                                    y={cluster.cy - cluster.r - 30}
+                                    width={14}
+                                    height={14}
+                                    className="text-content"
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <Plus
+                                    x={cluster.cx - Math.min(100, cluster.label.length * 3.2 + 28)}
+                                    y={cluster.cy + 41}
+                                    width={14}
+                                    height={14}
+                                    className="text-content"
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                {!cluster.expanded && (
+                                  <text
+                                    x={cluster.cx}
+                                    y={cluster.cy + 5}
+                                    textAnchor="middle"
+                                    className="fill-content text-[18px] font-semibold"
+                                  >
+                                    {cluster.count}
+                                  </text>
+                                )}
+                                <text
+                                  x={cluster.cx}
+                                  y={cluster.expanded ? cluster.cy - cluster.r - 18 : cluster.cy + 53}
+                                  textAnchor="middle"
+                                  className="fill-content text-[12px] font-medium"
+                                >
+                                  {cluster.label} · {cluster.count}
+                                </text>
+                                {cluster.unhealthy > 0 && (
+                                  <text
+                                    x={cluster.cx}
+                                    y={cluster.expanded ? cluster.cy - cluster.r - 2 : cluster.cy + 70}
+                                    textAnchor="middle"
+                                    className="fill-content text-[11px]"
+                                  >
+                                    {t('topology.radial.groupUnhealthy', { count: cluster.unhealthy })}
+                                  </text>
+                                )}
+                                {cluster.quarantined > 0 && (
+                                  <text
+                                    x={cluster.cx}
+                                    y={
+                                      cluster.expanded
+                                        ? cluster.cy - cluster.r + (cluster.unhealthy ? 14 : -2)
+                                        : cluster.cy + (cluster.unhealthy ? 85 : 70)
+                                    }
+                                    textAnchor="middle"
+                                    className="fill-content text-[11px]"
+                                  >
+                                    {t('topology.radial.groupQuarantined', { count: cluster.quarantined })}
+                                  </text>
+                                )}
+                              </g>
+                            </g>
+                          ))}
+
+                        {visibleLinks.map((link) => {
+                          const u = renderPos.get(link.source);
+                          const v = renderPos.get(link.target);
+                          if (!u || !v) return null;
+                          const isCut = link.is_visible === false;
+                          const path = peerPath(u, v, nodeRadius);
+                          const isSelectedLink =
+                            selectedLink &&
+                            ((selectedLink.source === link.source && selectedLink.target === link.target) ||
+                              (selectedLink.source === link.target && selectedLink.target === link.source));
+                          const isNeighbourLink = selectedNodeId === link.source || selectedNodeId === link.target;
+                          const modeClass = isCut
+                            ? 'stroke-danger'
+                            : isNeighbourLink
+                              ? 'stroke-accent'
+                              : 'stroke-border-strong';
+                          return (
                             <g
+                              key={`${link.source}-${link.target}`}
+                              data-mesh-link="policy"
                               role="button"
                               tabIndex={0}
-                              aria-expanded={cluster.expanded}
-                              aria-label={[
-                                t(cluster.expanded ? 'topology.radial.collapse' : 'topology.radial.expand', {
-                                  name: cluster.label
-                                }),
-                                !cluster.expanded && cluster.unhealthy
-                                  ? t('topology.radial.groupUnhealthy', { count: cluster.unhealthy })
-                                  : '',
-                                !cluster.expanded && cluster.quarantined
-                                  ? t('topology.radial.groupQuarantined', { count: cluster.quarantined })
-                                  : ''
-                              ]
-                                .filter(Boolean)
-                                .join(' · ')}
-                              className="mesh-group-control"
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={() =>
-                                setExpandedGroups((previous) => ({ ...previous, [cluster.key]: !cluster.expanded }))
-                              }
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault();
-                                  setExpandedGroups((previous) => ({ ...previous, [cluster.key]: !cluster.expanded }));
+                              aria-label={`${t('topology.canvas.linkTitle')}: ${positionById.get(link.source)?.node.name || link.source} — ${positionById.get(link.target)?.node.name || link.target}`}
+                              className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={() => selectLink(link)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  selectLink(link);
                                 }
                               }}
                             >
-                              <rect
-                                x={cluster.cx - 110}
-                                y={cluster.expanded ? cluster.cy - cluster.r - 28 : cluster.cy - 28}
-                                width={220}
-                                height={cluster.expanded ? 28 : 116}
-                                rx={5}
-                                fill="transparent"
+                              <title>{isCut ? t('topology.canvas.cutBadge') : t('topology.radial.policy')}</title>
+                              <path d={path} fill="none" stroke="transparent" strokeWidth={12} />
+                              <path
+                                d={path}
+                                fill="none"
+                                strokeWidth={isSelectedLink || isNeighbourLink ? 2 : 1}
+                                opacity={selectedNodeId && !isNeighbourLink ? 0.18 : 0.8}
+                                strokeDasharray={isCut ? '4 4' : undefined}
+                                className={isSelectedLink ? 'stroke-content' : modeClass}
                               />
-                              {cluster.expanded ? (
-                                <Minus
-                                  x={cluster.cx - 105}
-                                  y={cluster.cy - cluster.r - 22}
-                                  width={14}
-                                  height={14}
-                                  className="text-content"
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <Plus
-                                  x={cluster.cx + 17}
-                                  y={cluster.cy - 27}
-                                  width={14}
-                                  height={14}
-                                  className="text-content"
-                                  aria-hidden="true"
-                                />
-                              )}
-                              {!cluster.expanded && (
-                                <text
-                                  x={cluster.cx}
-                                  y={cluster.cy + 5}
-                                  textAnchor="middle"
-                                  className="fill-content text-[18px] font-semibold"
-                                >
-                                  {cluster.count}
-                                </text>
-                              )}
-                              <text
-                                x={cluster.cx}
-                                y={cluster.expanded ? cluster.cy - cluster.r - 10 : cluster.cy + 53}
-                                textAnchor="middle"
-                                className="fill-content text-[12px] font-medium"
-                              >
-                                {cluster.label} · {cluster.count}
-                              </text>
-                              {!cluster.expanded && cluster.unhealthy > 0 && (
-                                <text
-                                  x={cluster.cx}
-                                  y={cluster.cy + 70}
-                                  textAnchor="middle"
-                                  className="fill-content text-[11px]"
-                                >
-                                  {t('topology.radial.groupUnhealthy', { count: cluster.unhealthy })}
-                                </text>
-                              )}
-                              {!cluster.expanded && cluster.quarantined > 0 && (
-                                <text
-                                  x={cluster.cx}
-                                  y={cluster.cy + (cluster.unhealthy ? 85 : 70)}
-                                  textAnchor="middle"
-                                  className="fill-content text-[11px]"
-                                >
-                                  {t('topology.radial.groupQuarantined', { count: cluster.quarantined })}
-                                </text>
-                              )}
                             </g>
-                          </g>
-                        ))}
+                          );
+                        })}
 
-                      {visibleLinks.map((link) => {
-                        const u = renderPos.get(link.source);
-                        const v = renderPos.get(link.target);
-                        if (!u || !v) return null;
-                        const isCut = link.is_visible === false;
-                        const path = peerPath(u, v);
-                        const isSelectedLink =
-                          selectedLink &&
-                          ((selectedLink.source === link.source && selectedLink.target === link.target) ||
-                            (selectedLink.source === link.target && selectedLink.target === link.source));
-                        const modeClass = isCut ? 'stroke-danger' : 'stroke-accent';
-                        return (
-                          <g
-                            key={`${link.source}-${link.target}`}
-                            data-mesh-link="policy"
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`${t('topology.canvas.linkTitle')}: ${positionById.get(link.source)?.node.name || link.source} — ${positionById.get(link.target)?.node.name || link.target}`}
-                            className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={() => selectLink(link)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                selectLink(link);
-                              }
-                            }}
-                          >
-                            <title>{isCut ? t('topology.canvas.cutBadge') : t('topology.radial.policy')}</title>
-                            <path d={path} fill="none" stroke="transparent" strokeWidth={12} />
-                            <path
-                              d={path}
-                              fill="none"
-                              strokeWidth={isSelectedLink ? 3 : 1.25}
-                              strokeDasharray={isCut ? '4 4' : undefined}
-                              className={isSelectedLink ? 'stroke-content' : modeClass}
-                            />
-                          </g>
-                        );
-                      })}
-
-                      {placedNodes.map(({ node }) => {
-                        const pos = renderPos.get(node.id);
-                        if (!pos) return null;
-                        const { x, y } = pos;
-                        const isSelected = selectedNode?.id === node.id;
-                        const isQuarantined = node.is_quarantined;
-                        const fillClass = isQuarantined
-                          ? 'fill-danger-subtle'
-                          : node.is_healthy
-                            ? 'fill-accent-subtle'
-                            : 'fill-warning-subtle';
-                        const strokeClass = isQuarantined
-                          ? 'stroke-danger'
-                          : node.is_healthy
-                            ? 'stroke-accent'
-                            : 'stroke-warning';
-                        const faded = neighbourIds !== null && !neighbourIds.has(node.id);
-                        return (
-                          <g
-                            key={node.id}
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`${node.name || node.id} — ${node.role}`}
-                            aria-pressed={isSelected}
-                            className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
-                            style={{ cursor: 'grab' }}
-                            data-neighbour={faded ? 'false' : 'true'}
-                            onPointerDown={(e) => onNodePointerDown(e, node.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                setSelectedNodeId(node.id);
-                                setSelectedLink(null);
-                              }
-                            }}
-                          >
-                            <title>{`${node.name || node.id} — ${node.role}`}</title>
-                            {node.is_ghost_vault && (
+                        {placedNodes.map(({ node }) => {
+                          const pos = renderPos.get(node.id);
+                          if (!pos) return null;
+                          const { x, y } = pos;
+                          const isSelected = selectedNode?.id === node.id;
+                          const isQuarantined = node.is_quarantined;
+                          const fillClass = isQuarantined
+                            ? 'fill-danger-subtle'
+                            : node.is_healthy
+                              ? 'fill-accent-subtle'
+                              : 'fill-warning-subtle';
+                          const strokeClass = isQuarantined
+                            ? 'stroke-danger'
+                            : node.is_healthy
+                              ? 'stroke-accent'
+                              : 'stroke-warning';
+                          const faded = neighbourIds !== null && !neighbourIds.has(node.id);
+                          return (
+                            <g
+                              key={node.id}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`${node.name || node.id} — ${node.role}`}
+                              aria-pressed={isSelected}
+                              className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+                              style={{ cursor: 'grab', opacity: faded ? 0.3 : 1 }}
+                              data-neighbour={faded ? 'false' : 'true'}
+                              onPointerDown={(e) => onNodePointerDown(e, node.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  setSelectedNodeId(node.id);
+                                  setSelectedLink(null);
+                                }
+                              }}
+                            >
+                              <title>{`${node.name || node.id} — ${node.role}`}</title>
+                              {node.is_ghost_vault && (
+                                <circle
+                                  cx={x}
+                                  cy={y}
+                                  r={nodeRadius + 5}
+                                  className="fill-none stroke-info"
+                                  strokeDasharray="3 3"
+                                  strokeWidth={1.5}
+                                />
+                              )}
                               <circle
                                 cx={x}
                                 cy={y}
-                                r={nodeRadius + 5}
-                                className="fill-none stroke-info"
-                                strokeDasharray="3 3"
-                                strokeWidth={1.5}
+                                r={nodeRadius}
+                                strokeWidth={isSelected ? 3 : 2}
+                                strokeDasharray={!node.is_healthy && !isQuarantined ? '4 3' : undefined}
+                                className={`${fillClass} ${isSelected ? 'stroke-content' : strokeClass}`}
                               />
-                            )}
-                            <circle
-                              cx={x}
-                              cy={y}
-                              r={nodeRadius}
-                              strokeWidth={isSelected ? 3 : 2}
-                              strokeDasharray={!node.is_healthy && !isQuarantined ? '4 3' : undefined}
-                              className={`${fillClass} ${isSelected ? 'stroke-content' : strokeClass}`}
-                            />
-                            {nodeRadius >= 9 && (
-                              <text
-                                x={x}
-                                y={y}
-                                textAnchor="middle"
-                                dominantBaseline="middle"
-                                className="fill-content pointer-events-none text-[11px] font-semibold"
-                              >
-                                {(node.country || node.name || node.id).slice(0, 2).toUpperCase()}
-                              </text>
-                            )}
-                            {(showLabels || isSelected) && (
-                              <text
-                                x={x}
-                                y={y + nodeRadius + 11}
-                                textAnchor="middle"
-                                className="pointer-events-none fill-content text-[11px]"
-                              >
-                                {(node.name || node.id).slice(0, 14)}
-                              </text>
-                            )}
-                          </g>
-                        );
-                      })}
-                      <g className="pointer-events-none" aria-label={t('topology.radial.controlPlane')}>
-                        <circle
-                          cx={GRAPH_WIDTH / 2}
-                          cy={GRAPH_HEIGHT / 2}
-                          r={53}
-                          className="fill-surface stroke-accent"
-                          strokeWidth={1.5}
-                        />
-                        <Network
-                          x={GRAPH_WIDTH / 2 - 12}
-                          y={GRAPH_HEIGHT / 2 - 29}
-                          width={24}
-                          height={24}
-                          className="text-accent"
-                          aria-hidden="true"
-                        />
-                        <text
-                          x={GRAPH_WIDTH / 2}
-                          y={GRAPH_HEIGHT / 2 + 14}
-                          textAnchor="middle"
-                          className="fill-content text-[12px] font-semibold"
-                        >
-                          {t('topology.radial.controlPlane')}
-                        </text>
-                        <text
-                          x={GRAPH_WIDTH / 2}
-                          y={GRAPH_HEIGHT / 2 + 31}
-                          textAnchor="middle"
-                          className="fill-subtle text-[10px]"
-                        >
-                          {t('topology.radial.coordination')}
-                        </text>
+                              <circle cx={x} cy={y} r={Math.max(22, nodeRadius)} fill="transparent" />
+                              {nodeRadius >= 9 &&
+                                (node.role === 'CLIENT_ORIGIN' ? (
+                                  <Monitor
+                                    x={x - 7}
+                                    y={y - 7}
+                                    width={14}
+                                    height={14}
+                                    className="text-content pointer-events-none"
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <Server
+                                    x={x - 7}
+                                    y={y - 7}
+                                    width={14}
+                                    height={14}
+                                    className="text-content pointer-events-none"
+                                    aria-hidden="true"
+                                  />
+                                ))}
+                              {(showLabels || isSelected) && (
+                                <g className="pointer-events-none mesh-node-label">
+                                  <text
+                                    x={x}
+                                    y={y + nodeRadius + 20 * labelUnit}
+                                    textAnchor="middle"
+                                    className="fill-content font-semibold"
+                                    style={{ fontSize: 14 * labelUnit }}
+                                  >
+                                    {(node.name || node.id).slice(0, 28)}
+                                  </text>
+                                  <text
+                                    x={x}
+                                    y={y + nodeRadius + 38 * labelUnit}
+                                    textAnchor="middle"
+                                    className="fill-subtle font-mono"
+                                    style={{ fontSize: 12 * labelUnit }}
+                                  >
+                                    {node.overlay_ipv4 || '—'} · {node.country || '—'}
+                                  </text>
+                                  <text
+                                    x={x}
+                                    y={y + nodeRadius + 54 * labelUnit}
+                                    textAnchor="middle"
+                                    className="fill-subtle"
+                                    style={{ fontSize: 12 * labelUnit }}
+                                  >
+                                    {t(
+                                      node.is_quarantined
+                                        ? 'topology.nodeDrawer.quarantined'
+                                        : node.is_healthy
+                                          ? 'topology.nodeDrawer.healthy'
+                                          : 'topology.nodeDrawer.unhealthy'
+                                    )}
+                                  </text>
+                                </g>
+                              )}
+                            </g>
+                          );
+                        })}
+                        <g className="pointer-events-none" aria-label={t('topology.radial.controlPlane')}>
+                          <rect
+                            x={GRAPH_WIDTH / 2 - 58}
+                            y={GRAPH_HEIGHT / 2 - 30}
+                            width={116}
+                            height={100}
+                            rx={8}
+                            className="fill-surface-sunken stroke-border"
+                            strokeDasharray="2 4"
+                          />
+                          <circle
+                            cx={GRAPH_WIDTH / 2}
+                            cy={GRAPH_HEIGHT / 2}
+                            r={20}
+                            className="fill-surface stroke-border-strong"
+                            strokeWidth={1.5}
+                          />
+                          <Network
+                            x={GRAPH_WIDTH / 2 - 9}
+                            y={GRAPH_HEIGHT / 2 - 9}
+                            width={18}
+                            height={18}
+                            className="text-accent"
+                            aria-hidden="true"
+                          />
+                          <text
+                            x={GRAPH_WIDTH / 2}
+                            y={GRAPH_HEIGHT / 2 + 40}
+                            textAnchor="middle"
+                            className="fill-content text-[12px] font-semibold"
+                          >
+                            {t('topology.radial.controlPlane')}
+                          </text>
+                          <text
+                            x={GRAPH_WIDTH / 2}
+                            y={GRAPH_HEIGHT / 2 + 57}
+                            textAnchor="middle"
+                            className="fill-subtle text-[10px]"
+                          >
+                            {t('topology.radial.coordination')}
+                          </text>
+                        </g>
                       </g>
-                    </g>
-                  </svg>
+                    </svg>
 
-                  {evidenceView === 'policy' && needsSelectionHint && (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
-                      <span className="rounded-full border border-border bg-surface/90 px-3 py-1 text-caption text-muted shadow-sm backdrop-blur">
-                        {t('topology.canvas.edgesSelectHint')}
-                      </span>
+                    {evidenceView === 'policy' && needsSelectionHint && (
+                      <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+                        <span className="rounded-full border border-border bg-surface/90 px-3 py-1 text-caption text-muted shadow-sm backdrop-blur">
+                          {t('topology.canvas.edgesSelectHint')}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Camera controls, floated over the canvas. */}
+                    <div className="absolute left-4 bottom-4 flex gap-1.5">
+                      <button
+                        type="button"
+                        className={controlButtonClass}
+                        aria-label={t('topology.canvas.zoomIn')}
+                        title={t('topology.canvas.zoomIn')}
+                        onClick={() => zoomBy(ZOOM_STEP)}
+                      >
+                        <ZoomIn className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className={controlButtonClass}
+                        aria-label={t('topology.canvas.zoomOut')}
+                        title={t('topology.canvas.zoomOut')}
+                        onClick={() => zoomBy(1 / ZOOM_STEP)}
+                      >
+                        <ZoomOut className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className={controlButtonClass}
+                        aria-label={t('topology.canvas.resetView')}
+                        title={t('topology.canvas.resetView')}
+                        onClick={resetView}
+                      >
+                        <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                      </button>
                     </div>
-                  )}
-
-                  {/* Camera controls, floated over the canvas. */}
-                  <div className="absolute right-3 top-3 flex flex-col gap-1.5">
-                    <button
-                      type="button"
-                      className={controlButtonClass}
-                      aria-label={t('topology.canvas.zoomIn')}
-                      title={t('topology.canvas.zoomIn')}
-                      onClick={() => zoomBy(ZOOM_STEP)}
-                    >
-                      <ZoomIn className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className={controlButtonClass}
-                      aria-label={t('topology.canvas.zoomOut')}
-                      title={t('topology.canvas.zoomOut')}
-                      onClick={() => zoomBy(1 / ZOOM_STEP)}
-                    >
-                      <ZoomOut className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className={controlButtonClass}
-                      aria-label={t('topology.canvas.resetView')}
-                      title={t('topology.canvas.resetView')}
-                      onClick={resetView}
-                    >
-                      <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                    </button>
                   </div>
-                </div>
 
-                {evidenceView === 'observed' && (
-                  <p role="status" className="mesh-unmeasured">
-                    {t('topology.radial.unmeasured')}
+                  {evidenceView === 'observed' && (
+                    <p role="status" className="mesh-unmeasured">
+                      {t('topology.radial.unmeasured')}
+                    </p>
+                  )}
+                  <p className="mesh-explanation text-caption text-subtle">
+                    {t(evidenceView === 'policy' ? 'topology.radial.policyExplain' : 'topology.radial.observedExplain')}{' '}
+                    {t('topology.canvas.hint')}
                   </p>
-                )}
-                <p className="mt-2 text-caption text-subtle">{t('topology.canvas.hint')}</p>
 
-                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-caption text-muted">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-4 border-t border-accent" /> {t('topology.radial.policy')}
-                  </span>
-                  {/* Only what the view can know. Nothing measures whether a pair is
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-caption text-muted">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-4 border-t border-accent" /> {t('topology.radial.policy')}
+                    </span>
+                    {/* Only what the view can know. Nothing measures whether a pair is
                       relayed or onion-routed, and there is no OpenVPN transport, so
                       those used to sit here describing paths the mesh never took. */}
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-4 border-t-2 border-dashed border-danger" /> {t('topology.canvas.cutBadge')}
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full border border-dashed border-warning" />{' '}
-                    {t('topology.nodeDrawer.unhealthy')}
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-danger" /> {t('topology.nodeDrawer.quarantined')}
-                    <GlossaryHint
-                      text={t('glossary.quarantine.body')}
-                      label={t('glossary.ariaLabel', {
-                        term: t('glossary.quarantine.term')
-                      })}
-                    />
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full border border-dashed border-info" />{' '}
-                    {t('topology.nodeDrawer.ghostVaultNode')}
-                  </span>
-                </div>
-              </div>
-
-              <aside className="mesh-inspector" aria-label={t('topology.nodeDrawer.title')}>
-                {selectedLink ? (
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <h2 className="text-body font-semibold text-content">{t('topology.canvas.linkTitle')}</h2>
-                      <Badge tone={isLinkCut ? 'danger' : 'accent'}>
-                        {isLinkCut ? t('topology.canvas.cutBadge') : t('topology.radial.allowed')}
-                      </Badge>
-                    </div>
-
-                    <div className="flex flex-col gap-1 text-caption">
-                      <span className="font-mono text-content">{linkSourceNode?.name || selectedLink.source}</span>
-                      <span className="text-muted">↕</span>
-                      <span className="font-mono text-content">{linkTargetNode?.name || selectedLink.target}</span>
-                    </div>
-
-                    <div className="text-caption">
-                      <span className="text-subtle">{t('topology.radial.transport')}: </span>
-                      <span>{t('state.notMeasured')}</span>
-                    </div>
-
-                    <p className="text-caption text-muted">{t('topology.canvas.cutExplain')}</p>
-
-                    {linkActionError && <p className="text-caption text-danger">{linkActionError}</p>}
-
-                    {isLinkCut ? (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        icon={Link2}
-                        onClick={handleRestore}
-                        loading={linkBusy}
-                        disabled={dropRulesForPair.length === 0}
-                      >
-                        {t('topology.canvas.restoreAction')}
-                      </Button>
-                    ) : (
-                      <Button variant="danger" size="sm" icon={Scissors} onClick={handleCut} loading={linkBusy}>
-                        {t('topology.canvas.cutAction')}
-                      </Button>
-                    )}
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-4 border-t-2 border-dashed border-danger" /> {t('topology.canvas.cutBadge')}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full border border-dashed border-warning" />{' '}
+                      {t('topology.nodeDrawer.unhealthy')}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-danger" /> {t('topology.nodeDrawer.quarantined')}
+                      <GlossaryHint
+                        text={t('glossary.quarantine.body')}
+                        label={t('glossary.ariaLabel', {
+                          term: t('glossary.quarantine.term')
+                        })}
+                      />
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full border border-dashed border-info" />{' '}
+                      {t('topology.nodeDrawer.ghostVaultNode')}
+                    </span>
                   </div>
-                ) : selectedNode ? (
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h2 className="font-mono text-body font-semibold text-content">
-                          {selectedNode.name || selectedNode.id}
-                        </h2>
-                        {selectedNode.overlay_ipv4 && (
-                          <span className="mt-0.5 flex items-center gap-1">
-                            <CodeText>{selectedNode.overlay_ipv4}</CodeText>
-                            <GlossaryHint
-                              text={t('glossary.overlayAddress.body')}
-                              label={t('glossary.ariaLabel', {
-                                term: t('glossary.overlayAddress.term')
-                              })}
-                            />
-                          </span>
+                </div>
+
+                {(selectedLink || selectedNode) && (
+                  <aside className="mesh-inspector" aria-label={t('topology.nodeDrawer.title')}>
+                    <button
+                      type="button"
+                      className="mesh-inspector-close"
+                      aria-label={t('topology.radial.closeDetails')}
+                      onClick={() => {
+                        setSelectedNodeId(null);
+                        setSelectedLink(null);
+                        svgRef.current?.focus();
+                      }}
+                    >
+                      <X size={18} aria-hidden="true" />
+                    </button>
+                    {selectedLink ? (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <h2 className="text-body font-semibold text-content">{t('topology.canvas.linkTitle')}</h2>
+                          <Badge tone={isLinkCut ? 'danger' : 'accent'}>
+                            {isLinkCut ? t('topology.canvas.cutBadge') : t('topology.radial.allowed')}
+                          </Badge>
+                        </div>
+
+                        <div className="flex flex-col gap-1 text-caption">
+                          <span className="font-mono text-content">{linkSourceNode?.name || selectedLink.source}</span>
+                          <span className="text-muted">↕</span>
+                          <span className="font-mono text-content">{linkTargetNode?.name || selectedLink.target}</span>
+                        </div>
+
+                        <div className="text-caption">
+                          <span className="text-subtle">{t('topology.radial.transport')}: </span>
+                          <span>{t('state.notMeasured')}</span>
+                        </div>
+
+                        <p className="text-caption text-muted">{t('topology.canvas.cutExplain')}</p>
+
+                        {linkActionError && <p className="text-caption text-danger">{linkActionError}</p>}
+
+                        {isLinkCut ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon={Link2}
+                            onClick={handleRestore}
+                            loading={linkBusy}
+                            disabled={dropRulesForPair.length === 0}
+                          >
+                            {t('topology.canvas.restoreAction')}
+                          </Button>
+                        ) : (
+                          <Button variant="danger" size="sm" icon={Scissors} onClick={handleCut} loading={linkBusy}>
+                            {t('topology.canvas.cutAction')}
+                          </Button>
                         )}
                       </div>
-                      <StatusBadge
-                        status={nodeStatus(selectedNode)}
-                        label={
-                          selectedNode.is_quarantined
-                            ? t('topology.nodeDrawer.quarantined')
-                            : selectedNode.is_healthy
-                              ? t('topology.nodeDrawer.healthy')
-                              : t('topology.nodeDrawer.unhealthy')
-                        }
-                      />
-                    </div>
+                    ) : selectedNode ? (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h2 className="font-mono text-body font-semibold text-content">
+                              {selectedNode.name || selectedNode.id}
+                            </h2>
+                            {selectedNode.overlay_ipv4 && (
+                              <span className="mt-0.5 flex items-center gap-1">
+                                <CodeText>{selectedNode.overlay_ipv4}</CodeText>
+                                <GlossaryHint
+                                  text={t('glossary.overlayAddress.body')}
+                                  label={t('glossary.ariaLabel', {
+                                    term: t('glossary.overlayAddress.term')
+                                  })}
+                                />
+                              </span>
+                            )}
+                          </div>
+                          <StatusBadge
+                            status={nodeStatus(selectedNode)}
+                            label={
+                              selectedNode.is_quarantined
+                                ? t('topology.nodeDrawer.quarantined')
+                                : selectedNode.is_healthy
+                                  ? t('topology.nodeDrawer.healthy')
+                                  : t('topology.nodeDrawer.unhealthy')
+                            }
+                          />
+                        </div>
 
-                    {selectedNode.is_ghost_vault && (
-                      <Badge tone="warning">{t('topology.nodeDrawer.ghostVaultNode')}</Badge>
+                        {selectedNode.is_ghost_vault && (
+                          <Badge tone="warning">{t('topology.nodeDrawer.ghostVaultNode')}</Badge>
+                        )}
+
+                        <dl className="grid grid-cols-2 gap-2 text-caption">
+                          <div>
+                            <dt className="text-muted">{t('topology.nodeDrawer.role')}</dt>
+                            <dd className="font-medium text-content">{selectedNode.role}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted">{t('topology.nodeDrawer.country')}</dt>
+                            <dd className="font-medium text-content">{selectedNode.country || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted">{t('topology.nodeDrawer.latency')}</dt>
+                            <dd className="font-medium text-content">
+                              {selectedNode.latency_ms !== null && selectedNode.latency_ms !== undefined
+                                ? `${selectedNode.latency_ms} ms`
+                                : t('state.notMeasured')}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted">{t('topology.nodeDrawer.compartment')}</dt>
+                            <dd className="font-medium text-content">{selectedNode.compartment_name || '—'}</dd>
+                          </div>
+                        </dl>
+
+                        <div className="text-caption text-subtle">
+                          {t('topology.radial.transport')}: {t('state.notMeasured')}
+                        </div>
+                        <div className="text-caption text-muted">
+                          {t('topology.radial.allowedPairs')}: {selectedNodeLinks.length}
+                        </div>
+
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon={ExternalLink}
+                          onClick={() => navigate(nodePath(selectedNode.id))}
+                        >
+                          {t('topology.nodeDrawer.viewDetails')}
+                        </Button>
+                      </div>
+                    ) : (
+                      <EmptyState title={t('topology.nodeDrawer.title')} body={t('topology.canvas.selectPrompt')} />
                     )}
-
-                    <dl className="grid grid-cols-2 gap-2 text-caption">
-                      <div>
-                        <dt className="text-muted">{t('topology.nodeDrawer.role')}</dt>
-                        <dd className="font-medium text-content">{selectedNode.role}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted">{t('topology.nodeDrawer.country')}</dt>
-                        <dd className="font-medium text-content">{selectedNode.country || '—'}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted">{t('topology.nodeDrawer.latency')}</dt>
-                        <dd className="font-medium text-content">
-                          {selectedNode.latency_ms !== null && selectedNode.latency_ms !== undefined
-                            ? `${selectedNode.latency_ms} ms`
-                            : t('state.notMeasured')}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted">{t('topology.nodeDrawer.compartment')}</dt>
-                        <dd className="font-medium text-content">{selectedNode.compartment_name || '—'}</dd>
-                      </div>
-                    </dl>
-
-                    <div className="text-caption text-subtle">
-                      {t('topology.radial.transport')}: {t('state.notMeasured')}
-                    </div>
-                    <div className="text-caption text-muted">
-                      {t('topology.radial.allowedPairs')}: {selectedNodeLinks.length}
-                    </div>
-
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon={ExternalLink}
-                      onClick={() => navigate(nodePath(selectedNode.id))}
-                    >
-                      {t('topology.nodeDrawer.viewDetails')}
-                    </Button>
-                  </div>
-                ) : (
-                  <EmptyState title={t('topology.nodeDrawer.title')} body={t('topology.canvas.selectPrompt')} />
+                  </aside>
                 )}
-              </aside>
-            </div>
-          )}
-        </Card>
-      ) : (
-        <Card flush>
-          <Table<TopologyNode>
-            caption={t('topology.title')}
-            columns={listColumns}
-            rows={filteredNodes}
-            rowKey={(row) => row.id}
-            empty={<EmptyState title={t('topology.empty.title')} body={t('topology.empty.desc')} />}
-          />
-        </Card>
-      )}
+              </div>
+            )}
+          </Card>
+        ) : (
+          <Card flush>
+            <Table<TopologyNode>
+              caption={t('topology.title')}
+              columns={listColumns}
+              rows={filteredNodes}
+              rowKey={(row) => row.id}
+              empty={<EmptyState title={t('topology.empty.title')} body={t('topology.empty.desc')} />}
+            />
+          </Card>
+        )}
 
-      <Dialog
-        open={unlockDialogOpen}
-        onOpenChange={(open) => {
-          setUnlockDialogOpen(open);
-          if (!open) setUnlockError(null);
-        }}
-        title={t('topology.vault.dialogTitle')}
-        description={t('topology.vault.dialogDesc')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setUnlockDialogOpen(false)}>
-              {t('topology.vault.cancel')}
-            </Button>
-            <Button variant="primary" onClick={handleUnlock} loading={unlockMutation.isPending}>
-              {t('topology.vault.confirmUnlock')}
-            </Button>
-          </>
-        }
-      >
-        <FormField label={t('topology.vault.passwordLabel')} error={unlockError}>
-          <Input
-            type="password"
-            value={vaultPassword}
-            onChange={(e) => setVaultPassword(e.target.value)}
-            placeholder={t('topology.vault.passwordPlaceholder')}
-          />
-        </FormField>
-      </Dialog>
+        <Dialog
+          open={unlockDialogOpen}
+          onOpenChange={(open) => {
+            setUnlockDialogOpen(open);
+            if (!open) setUnlockError(null);
+          }}
+          title={t('topology.vault.dialogTitle')}
+          description={t('topology.vault.dialogDesc')}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setUnlockDialogOpen(false)}>
+                {t('topology.vault.cancel')}
+              </Button>
+              <Button variant="primary" onClick={handleUnlock} loading={unlockMutation.isPending}>
+                {t('topology.vault.confirmUnlock')}
+              </Button>
+            </>
+          }
+        >
+          <FormField label={t('topology.vault.passwordLabel')} error={unlockError}>
+            <Input
+              type="password"
+              value={vaultPassword}
+              onChange={(e) => setVaultPassword(e.target.value)}
+              placeholder={t('topology.vault.passwordPlaceholder')}
+            />
+          </FormField>
+        </Dialog>
+      </div>
     </PageFrame>
   );
 }
