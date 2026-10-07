@@ -64,6 +64,12 @@ digest_hash() {
   fi
   sha256sum "$manifest" | cut -d ' ' -f 1
 }
+constraint_manifest() {
+  # Keep constraint expressions in a private temporary file, but report only
+  # relation.constraint labels if they change across the restore.
+  tool --entrypoint psql backup-restore -X -q -A -t -F "$(printf '\t')" -v ON_ERROR_STOP=1 \
+    -c "SELECT r.relname || '.' || c.conname, c.contype::text || ':' || c.convalidated::text || ':' || pg_get_constraintdef(c.oid, true) FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname='public' ORDER BY 1" >"$1"
+}
 echo "before restore: TCP overlay matrix"
 sh scripts/dev/scenarios/overlay.sh matrix
 # shellcheck disable=SC2086
@@ -80,6 +86,8 @@ if [ "$secondary" = true ]; then
 fi
 before_manifest=$(mktemp)
 before=$(digest_hash "$before_manifest")
+before_constraints=$(mktemp)
+constraint_manifest "$before_constraints"
 tool backup-restore once
 set_id=$(tool backup-restore resolve-set primary latest | tail -n 1)
 echo "backup set $set_id; source manifest SHA-256 $before; re-enrolment baseline $baseline_reenrol"
@@ -100,6 +108,8 @@ repo=primary
 sh scripts/ops/restore.sh --replace --repo "$repo" --set "$set_id"
 after_manifest=$(mktemp)
 after=$(digest_hash "$after_manifest")
+after_constraints=$(mktemp)
+constraint_manifest "$after_constraints"
 if [ "$before" != "$after" ]; then
   echo "source/restored digest differs ($before != $after); differing schema/data objects:"
   awk -F '\t' '
@@ -110,10 +120,19 @@ if [ "$before" != "$after" ]; then
       for (key in restored) if (!(key in source)) print key
     }
   ' "$before_manifest" "$after_manifest" | sort -u
-  rm -f "$before_manifest" "$after_manifest"
+  echo "differing constraints:"
+  awk -F '\t' '
+    NR == FNR { source[$1] = $0; next }
+    { restored[$1] = $0 }
+    END {
+      for (key in source) if (!(key in restored) || source[key] != restored[key]) print key
+      for (key in restored) if (!(key in source)) print key
+    }
+  ' "$before_constraints" "$after_constraints" | sort -u
+  rm -f "$before_manifest" "$after_manifest" "$before_constraints" "$after_constraints"
   die "full source/restored schema and data digest differs"
 fi
-rm -f "$before_manifest" "$after_manifest"
+rm -f "$before_manifest" "$after_manifest" "$before_constraints" "$after_constraints"
 echo "source/restored canonical SHA-256 identical: $after"
 # shellcheck disable=SC2086
 $COMPOSE start backend
