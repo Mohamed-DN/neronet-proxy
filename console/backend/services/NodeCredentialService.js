@@ -114,10 +114,9 @@ async function validateCredential(rawToken) {
 /**
  * Revokes all active credentials for a given node.
  */
-async function revokeNodeCredentials(nodeId) {
+async function revokeNodeCredentials(nodeId, client = null) {
   if (!nodeId) return 0;
-  const pool = getPgPool();
-  const res = await pool.query(
+  const res = await (client || getPgPool()).query(
     'UPDATE node_credentials SET revoked_at = NOW() WHERE node_id = $1 AND revoked_at IS NULL',
     [nodeId]
   );
