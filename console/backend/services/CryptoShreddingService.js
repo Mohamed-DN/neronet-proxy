@@ -31,6 +31,56 @@ const logger = require('../utils/logger');
 
 const WRAP_PREFIX = 'v2:';
 const SEAL_PREFIX = 'enc:v1:';
+const GOVERNANCE_LOCK_ID = 7429149;
+
+async function governanceTransaction(operation) {
+  const client = await getPgPool().connect();
+  const afterCommit = [];
+  let result;
+  try {
+    await client.query('BEGIN');
+    // A single order covers tenant/global requests and absent legal-hold rows.
+    // The first owner of this lock decides before a competing hold or rejection.
+    await client.query('SELECT pg_advisory_xact_lock($1)', [GOVERNANCE_LOCK_ID]);
+    result = await operation(client, afterCommit);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+  // Notification failures cannot turn an already committed destruction into a
+  // failed/pending request. Delivery is best effort, not exactly once.
+  for (const notify of afterCommit) {
+    try {
+      await notify();
+    } catch (err) {
+      logger.error(`Governance committed; post-commit notification failed: ${err.message}`);
+    }
+  }
+  return result;
+}
+
+async function lockGovernanceTarget(client, targetType, targetId, { nodes = false, allowDestroyed = false } = {}) {
+  if (targetType === 'organization') {
+    const org = await client.query('SELECT id, destroyed_at FROM organizations WHERE id = $1 FOR NO KEY UPDATE', [
+      targetId
+    ]);
+    if (!org.rowCount || (org.rows[0].destroyed_at && !allowDestroyed)) {
+      throw new GovernanceAccessError(404, 'Governance target not found');
+    }
+  } else if (targetType === 'global') {
+    await client.query('SELECT id FROM organizations ORDER BY id FOR NO KEY UPDATE');
+  }
+  if (nodes) {
+    // Match NukeEngine's nodes-before-users order for account destruction.
+    await client.query('SELECT id FROM nodes WHERE ($1::boolean OR organization_id = $2) ORDER BY id FOR UPDATE', [
+      targetType === 'global',
+      targetId
+    ]);
+  }
+}
 
 function deriveKek(secret) {
   return Buffer.from(
@@ -287,36 +337,36 @@ class CryptoShreddingService {
   /**
    * Check if organization has an active legal hold.
    */
-  static async hasActiveLegalHold(orgId) {
-    const pool = getPgPool();
-    const res = await pool.query(
+  static async hasActiveLegalHold(orgId, client = getPgPool()) {
+    const res = await client.query(
       'SELECT id, reason FROM organization_legal_holds WHERE organization_id = $1 AND active = TRUE LIMIT 1',
       [orgId]
     );
     return res.rows.length > 0 ? res.rows[0] : null;
   }
 
-  static async getGovernanceActor(userId) {
-    const res = await getPgPool().query(
-      `SELECT u.id, u.role, u.status, COALESCE(u.organization_id, 'org-default') AS organization_id,
-              m.role AS membership_role
-         FROM users u
-         LEFT JOIN memberships m ON m.user_id = u.id
-          AND m.organization_id = COALESCE(u.organization_id, 'org-default')
-        WHERE u.id = $1`,
+  static async getGovernanceActor(userId, client = null) {
+    const db = client || getPgPool();
+    const res = await db.query(
+      `SELECT id, role, status, COALESCE(organization_id, 'org-default') AS organization_id
+         FROM users WHERE id = $1 ${client ? 'FOR NO KEY UPDATE' : ''}`,
       [userId]
     );
     const user = res.rows[0];
     if (!user || user.status !== 'active') {
       throw new GovernanceAccessError(403, 'Active governance account required');
     }
+    const membership = await db.query(
+      `SELECT role FROM memberships WHERE user_id = $1 AND organization_id = $2 ${client ? 'FOR UPDATE' : ''}`,
+      [userId, user.organization_id]
+    );
     return {
       id: user.id,
       organization_id: user.organization_id,
       platform: user.role === 'super-admin',
       // Migration 033 preserves legacy owner/admin authority once. Falling back
       // to users.role here would revive privileges after membership removal.
-      role: user.membership_role
+      role: membership.rows[0]?.role
     };
   }
 
@@ -328,8 +378,8 @@ class CryptoShreddingService {
     return actor;
   }
 
-  static async authorizeGovernanceTarget(userId, targetType, targetId, roles = ['owner', 'admin']) {
-    const actor = await CryptoShreddingService.getGovernanceActor(userId);
+  static async authorizeGovernanceTarget(userId, targetType, targetId, roles = ['owner', 'admin'], client = null) {
+    const actor = await CryptoShreddingService.getGovernanceActor(userId, client);
     if (targetType === 'global') {
       if (!actor.platform) {
         throw new GovernanceAccessError(403, 'Platform super-admin role required');
@@ -338,7 +388,7 @@ class CryptoShreddingService {
       if (!actor.platform && actor.organization_id !== targetId) {
         throw new GovernanceAccessError(404, 'Governance target not found');
       }
-      const org = await getPgPool().query('SELECT id FROM organizations WHERE id = $1', [targetId]);
+      const org = await (client || getPgPool()).query('SELECT id FROM organizations WHERE id = $1', [targetId]);
       if (org.rowCount === 0) {
         throw new GovernanceAccessError(404, 'Governance target not found');
       }
@@ -375,337 +425,299 @@ class CryptoShreddingService {
   }
 
   static async rejectDestruction(authorizationId, userId, comment = 'Rejected by administrator') {
-    const pool = getPgPool();
-    const existing = await pool.query('SELECT * FROM nuke_authorizations WHERE id = $1', [authorizationId]);
-    if (existing.rowCount === 0) return null;
-    const auth = existing.rows[0];
-    await CryptoShreddingService.authorizeGovernanceTarget(userId, auth.target_type, auth.target_id);
-    return (
-      (
-        await pool.query(
-          `UPDATE nuke_authorizations SET status = 'rejected', approver_user_id = $1,
-                approver_comment = $2, executed_at = NOW()
+    return governanceTransaction(async (client) => {
+      const existing = await client.query('SELECT * FROM nuke_authorizations WHERE id = $1 FOR UPDATE', [
+        authorizationId
+      ]);
+      if (!existing.rowCount) return null;
+      const auth = existing.rows[0];
+      // Authorization is still checked for a terminal request: a tenant cannot
+      // use its id to discover whether another tenant executed it.
+      await lockGovernanceTarget(client, auth.target_type, auth.target_id, { allowDestroyed: true });
+      await CryptoShreddingService.authorizeGovernanceTarget(
+        userId,
+        auth.target_type,
+        auth.target_id,
+        ['owner', 'admin'],
+        client
+      );
+      const res = await client.query(
+        `UPDATE nuke_authorizations SET status = 'rejected', approver_user_id = $1,
+              approver_comment = $2, executed_at = NOW()
           WHERE id = $3 AND status = 'pending' RETURNING *`,
-          [userId, comment, authorizationId]
-        )
-      ).rows[0] || null
-    );
+        [userId, comment, authorizationId]
+      );
+      return res.rows[0] || null;
+    });
   }
 
-  /**
-   * Impose a legal hold on an organization.
-   */
+  /** Impose a legal hold in the same ordering as destruction. */
   static async imposeLegalHold(orgId, reason, userId) {
-    await CryptoShreddingService.authorizeGovernanceTarget(userId, 'organization', orgId);
     if (!reason) throw new Error('Legal hold reason is required');
-    const pool = getPgPool();
-    const holdId = `hold-${uuidv4().substring(0, 8)}`;
-
-    const res = await pool.query(
-      `INSERT INTO organization_legal_holds (id, organization_id, reason, imposed_by_user_id, active)
-       VALUES ($1, $2, $3, $4, TRUE)
-       RETURNING *`,
-      [holdId, orgId, reason, userId]
-    );
-
-    logAuditEvent({
-      eventType: 'LEGAL_HOLD_IMPOSED',
-      severity: 'warn',
-      actorUserId: userId,
-      targetId: orgId,
-      targetType: 'organization',
-      message: `Legal hold imposed on organization ${orgId}: ${reason}`
+    return governanceTransaction(async (client, afterCommit) => {
+      await lockGovernanceTarget(client, 'organization', orgId);
+      await CryptoShreddingService.authorizeGovernanceTarget(userId, 'organization', orgId, ['owner', 'admin'], client);
+      const res = await client.query(
+        `INSERT INTO organization_legal_holds (id, organization_id, reason, imposed_by_user_id, active)
+         VALUES ($1, $2, $3, $4, TRUE) RETURNING *`,
+        [`hold-${uuidv4().substring(0, 8)}`, orgId, reason, userId]
+      );
+      afterCommit.push(() =>
+        logAuditEvent({
+          eventType: 'LEGAL_HOLD_IMPOSED',
+          severity: 'warn',
+          actorUserId: userId,
+          targetId: orgId,
+          targetType: 'organization',
+          message: `Legal hold imposed on organization ${orgId}: ${reason}`
+        })
+      );
+      return res.rows[0];
     });
-
-    return res.rows[0];
   }
 
-  /**
-   * Release an active legal hold.
-   */
+  /** Release an active legal hold. */
   static async releaseLegalHold(holdId, userId) {
-    const pool = getPgPool();
-    const existing = await pool.query('SELECT organization_id FROM organization_legal_holds WHERE id = $1', [holdId]);
-    if (existing.rowCount === 0) return null;
-    await CryptoShreddingService.authorizeGovernanceTarget(userId, 'organization', existing.rows[0].organization_id, [
-      'owner'
-    ]);
-    const res = await pool.query(
-      `UPDATE organization_legal_holds
-          SET active = FALSE, released_at = NOW()
-        WHERE id = $1 AND active = TRUE
-        RETURNING *`,
-      [holdId]
-    );
-
-    if (res.rows.length === 0) return null;
-
-    logAuditEvent({
-      eventType: 'LEGAL_HOLD_RELEASED',
-      severity: 'warn',
-      actorUserId: userId,
-      targetId: res.rows[0].organization_id,
-      targetType: 'organization',
-      message: `Legal hold ${holdId} released for organization ${res.rows[0].organization_id}`
+    return governanceTransaction(async (client, afterCommit) => {
+      const existing = await client.query('SELECT organization_id FROM organization_legal_holds WHERE id = $1', [
+        holdId
+      ]);
+      if (!existing.rowCount) return null;
+      const orgId = existing.rows[0].organization_id;
+      await lockGovernanceTarget(client, 'organization', orgId);
+      await CryptoShreddingService.authorizeGovernanceTarget(userId, 'organization', orgId, ['owner'], client);
+      const res = await client.query(
+        `UPDATE organization_legal_holds SET active = FALSE, released_at = NOW()
+          WHERE id = $1 AND active = TRUE RETURNING *`,
+        [holdId]
+      );
+      if (!res.rowCount) return null;
+      afterCommit.push(() =>
+        logAuditEvent({
+          eventType: 'LEGAL_HOLD_RELEASED',
+          severity: 'warn',
+          actorUserId: userId,
+          targetId: orgId,
+          targetType: 'organization',
+          message: `Legal hold ${holdId} released for organization ${orgId}`
+        })
+      );
+      return res.rows[0];
     });
-
-    return res.rows[0];
   }
 
-  /**
-   * Request dual-authorization destruction.
-   */
-  static async requestDestruction({ targetType, targetId, initiatorUserId, comment = '' }) {
-    await CryptoShreddingService.authorizeGovernanceTarget(initiatorUserId, targetType, targetId);
-
-    // Check legal hold upfront
+  static async checkDestructionHolds(targetType, targetId, client) {
     if (targetType === 'organization') {
-      const hold = await CryptoShreddingService.hasActiveLegalHold(targetId);
-      if (hold) {
-        throw new LegalHoldActiveError(`Cannot request destruction: active legal hold (${hold.reason})`);
-      }
+      const hold = await CryptoShreddingService.hasActiveLegalHold(targetId, client);
+      if (hold) throw new LegalHoldActiveError(`Destruction blocked: active legal hold (${hold.reason})`);
     } else if (targetType === 'global') {
-      const pool = getPgPool();
-      const anyHold = await pool.query(
-        'SELECT id, organization_id, reason FROM organization_legal_holds WHERE active = TRUE LIMIT 1'
+      const holds = await client.query(
+        'SELECT organization_id FROM organization_legal_holds WHERE active = TRUE LIMIT 1'
       );
-      if (anyHold.rows.length > 0) {
+      if (holds.rowCount) {
         throw new LegalHoldActiveError(
-          `Global destruction blocked: active legal hold on org ${anyHold.rows[0].organization_id}`
+          `Global destruction blocked: active legal hold on org ${holds.rows[0].organization_id}`
         );
       }
     }
+  }
 
-    const pool = getPgPool();
-    const authId = `auth-${uuidv4().substring(0, 8)}`;
-    const expiresAt = new Date(Date.now() + 24 * 3600 * 1000); // 24h expiration
-
-    const res = await pool.query(
-      `INSERT INTO nuke_authorizations (
-         id, target_type, target_id, initiator_user_id, initiator_comment,
-         status, expires_at
-       ) VALUES ($1, $2, $3, $4, $5, 'pending', $6)
-       RETURNING *`,
-      [authId, targetType, targetId, initiatorUserId, comment, expiresAt]
-    );
-
-    logAuditEvent({
-      eventType: 'NUKE_AUTHORIZATION_REQUESTED',
-      severity: 'critical',
-      actorUserId: initiatorUserId,
-      targetId: targetId,
-      targetType: targetType,
-      message: `Dual-authorization destruction requested for ${targetType} ${targetId} (ID: ${authId})`
+  /** Request dual-authorization destruction. */
+  static async requestDestruction({ targetType, targetId, initiatorUserId, comment = '' }) {
+    return governanceTransaction(async (client, afterCommit) => {
+      await lockGovernanceTarget(client, targetType, targetId);
+      await CryptoShreddingService.authorizeGovernanceTarget(
+        initiatorUserId,
+        targetType,
+        targetId,
+        ['owner', 'admin'],
+        client
+      );
+      await CryptoShreddingService.checkDestructionHolds(targetType, targetId, client);
+      const authId = `auth-${uuidv4().substring(0, 8)}`;
+      const res = await client.query(
+        `INSERT INTO nuke_authorizations (
+           id, target_type, target_id, initiator_user_id, initiator_comment, status, expires_at
+         ) VALUES ($1, $2, $3, $4, $5, 'pending', $6) RETURNING *`,
+        [authId, targetType, targetId, initiatorUserId, comment, new Date(Date.now() + 24 * 3600 * 1000)]
+      );
+      afterCommit.push(() =>
+        logAuditEvent({
+          eventType: 'NUKE_AUTHORIZATION_REQUESTED',
+          severity: 'critical',
+          actorUserId: initiatorUserId,
+          targetId,
+          targetType,
+          message: `Dual-authorization destruction requested for ${targetType} ${targetId} (ID: ${authId})`
+        })
+      );
+      return res.rows[0];
     });
-
-    return res.rows[0];
   }
 
-  /**
-   * Second administrator approves and executes destruction.
-   */
+  /** Second administrator approves and executes destruction. */
   static async approveAndExecuteDestruction(authorizationId, approverUserId, approverComment = '') {
-    const pool = getPgPool();
-    const authRes = await pool.query('SELECT * FROM nuke_authorizations WHERE id = $1 FOR UPDATE', [authorizationId]);
-    if (authRes.rows.length === 0) {
-      throw new GovernanceAccessError(404, 'Governance target not found');
-    }
-
-    const auth = authRes.rows[0];
-    await CryptoShreddingService.authorizeGovernanceTarget(approverUserId, auth.target_type, auth.target_id);
-    // Pending rows may predate scope checks, or their initiator may have moved or
-    // lost authority. A valid second actor cannot legitimize such a request.
-    try {
-      await CryptoShreddingService.authorizeGovernanceTarget(auth.initiator_user_id, auth.target_type, auth.target_id);
-    } catch (err) {
-      if (!(err instanceof GovernanceAccessError)) throw err;
-      throw new GovernanceAccessError(403, 'Initiator is no longer authorized for this target');
-    }
-    if (auth.status !== 'pending') {
-      throw new Error(`Authorization is not pending (current status: ${auth.status})`);
-    }
-
-    if (new Date(auth.expires_at) < new Date()) {
-      await pool.query("UPDATE nuke_authorizations SET status = 'expired' WHERE id = $1", [authorizationId]);
-      throw new Error('Authorization has expired');
-    }
-
-    // 4-EYES PRINCIPLE: Initiator cannot approve their own request!
-    if (auth.initiator_user_id === approverUserId) {
-      throw new DualAuthorizationRequiredError(
-        'Dual-authorization violation: the approving administrator must be distinct from the initiating administrator'
+    const result = await governanceTransaction(async (client, afterCommit) => {
+      const authRes = await client.query('SELECT * FROM nuke_authorizations WHERE id = $1 FOR UPDATE', [
+        authorizationId
+      ]);
+      if (!authRes.rowCount) throw new GovernanceAccessError(404, 'Governance target not found');
+      const auth = authRes.rows[0];
+      await lockGovernanceTarget(client, auth.target_type, auth.target_id, { nodes: true, allowDestroyed: true });
+      // Lock both current accounts in stable order, before their memberships.
+      await client.query('SELECT id FROM users WHERE id = ANY($1) ORDER BY id FOR NO KEY UPDATE', [
+        [approverUserId, auth.initiator_user_id]
+      ]);
+      await CryptoShreddingService.authorizeGovernanceTarget(
+        approverUserId,
+        auth.target_type,
+        auth.target_id,
+        ['owner', 'admin'],
+        client
       );
-    }
-
-    // Re-verify legal holds before irreversible shredding
-    if (auth.target_type === 'organization') {
-      const hold = await CryptoShreddingService.hasActiveLegalHold(auth.target_id);
-      if (hold) {
-        throw new LegalHoldActiveError(`Destruction blocked: active legal hold (${hold.reason})`);
+      try {
+        await CryptoShreddingService.authorizeGovernanceTarget(
+          auth.initiator_user_id,
+          auth.target_type,
+          auth.target_id,
+          ['owner', 'admin'],
+          client
+        );
+      } catch (err) {
+        if (!(err instanceof GovernanceAccessError)) throw err;
+        throw new GovernanceAccessError(403, 'Initiator is no longer authorized for this target');
       }
-    } else if (auth.target_type === 'global') {
-      const anyHold = await pool.query(
-        'SELECT id, organization_id, reason FROM organization_legal_holds WHERE active = TRUE LIMIT 1'
-      );
-      if (anyHold.rows.length > 0) {
-        throw new LegalHoldActiveError(
-          `Global destruction blocked: active legal hold on org ${anyHold.rows[0].organization_id}`
+      if (auth.status !== 'pending') throw new Error(`Authorization is not pending (current status: ${auth.status})`);
+      if (new Date(auth.expires_at) < new Date()) {
+        await client.query("UPDATE nuke_authorizations SET status = 'expired' WHERE id = $1", [authorizationId]);
+        return { expired: true };
+      }
+      if (auth.initiator_user_id === approverUserId) {
+        throw new DualAuthorizationRequiredError(
+          'Dual-authorization violation: the approving administrator must be distinct from the initiating administrator'
         );
       }
-    }
-
-    // Execute the crypto-shredding
-    let shredResult;
-    if (auth.target_type === 'organization') {
-      shredResult = await CryptoShreddingService.executeOrgShred(auth.target_id, {
-        initiatorId: auth.initiator_user_id,
-        approverId: approverUserId
-      });
-    } else if (auth.target_type === 'global') {
-      shredResult = await CryptoShreddingService.executeGlobalShred({
-        initiatorId: auth.initiator_user_id,
-        approverId: approverUserId
-      });
-    }
-
-    await pool.query(
-      `UPDATE nuke_authorizations
-          SET status = 'executed', approver_user_id = $1, approver_comment = $2, executed_at = NOW()
-        WHERE id = $3`,
-      [approverUserId, approverComment, authorizationId]
-    );
-
-    return {
-      success: true,
-      authorization_id: authorizationId,
-      shredResult
-    };
+      await lockGovernanceTarget(client, auth.target_type, auth.target_id);
+      await CryptoShreddingService.checkDestructionHolds(auth.target_type, auth.target_id, client);
+      const context = { initiatorId: auth.initiator_user_id, approverId: approverUserId, client, afterCommit };
+      const shredResult =
+        auth.target_type === 'organization'
+          ? await CryptoShreddingService.executeOrgShred(auth.target_id, context)
+          : await CryptoShreddingService.executeGlobalShred(context);
+      await client.query(
+        `UPDATE nuke_authorizations
+            SET status = 'executed', approver_user_id = $1, approver_comment = $2, executed_at = NOW()
+          WHERE id = $3`,
+        [approverUserId, approverComment, authorizationId]
+      );
+      return { success: true, authorization_id: authorizationId, shredResult };
+    });
+    if (result.expired) throw new Error('Authorization has expired');
+    return result;
   }
 
-  /**
-   * Internal execution of organization crypto-shredding.
-   *
-   * The node keys are revoked first, outside the transaction: a revocation that
-   * fails stops the shred before anything irreversible happens.
-   */
-  static async executeOrgShred(orgId, { initiatorId, approverId }) {
-    const pool = getPgPool();
+  /** Internal shred; helpers share the approval's transaction and deferred events. */
+  static async executeOrgShred(orgId, { initiatorId, approverId, client, afterCommit }) {
+    if (!client) {
+      return governanceTransaction(async (db, notifications) => {
+        await lockGovernanceTarget(db, 'organization', orgId, { nodes: true });
+        await CryptoShreddingService.checkDestructionHolds('organization', orgId, db);
+        return CryptoShreddingService.executeOrgShred(orgId, {
+          initiatorId,
+          approverId,
+          client: db,
+          afterCommit: notifications
+        });
+      });
+    }
     const RevocationEngine = require('./RevocationEngine');
     const AclEngine = require('./AclEngine');
-
-    const nodeIds = (await pool.query('SELECT id FROM nodes WHERE organization_id = $1', [orgId])).rows.map(
+    const nodeIds = (await client.query('SELECT id FROM nodes WHERE organization_id = $1', [orgId])).rows.map(
       (r) => r.id
     );
-    if (nodeIds.length > 0) {
-      await RevocationEngine.revokeNodeKeys(nodeIds, { reason: 'organization_shredded', actorId: approverId });
-    }
-
-    const client = await pool.connect();
-    let suspended = 0;
-    try {
-      await client.query('BEGIN');
-
-      // 1. Destroy the data key. The tombstone row also exists for an organisation
-      //    that never had a key, so none can be created for it afterwards.
+    await RevocationEngine.revokeNodeKeys(nodeIds, { reason: 'organization_shredded', actorId: approverId, client });
+    await client.query(
+      `INSERT INTO organization_keys (organization_id, key_epoch, encrypted_dek, dek_hash, status, shredded_at)
+       VALUES ($1, 1, 'SHREDDED', 'SHREDDED', 'destroyed', NOW())
+       ON CONFLICT (organization_id) DO UPDATE SET
+         encrypted_dek = 'SHREDDED', dek_hash = 'SHREDDED', status = 'destroyed', shredded_at = NOW()`,
+      [orgId]
+    );
+    await client.query('DELETE FROM nodes WHERE organization_id = $1', [orgId]);
+    await client.query('DELETE FROM acl_rules WHERE organization_id = $1', [orgId]);
+    await client.query('DELETE FROM preauth_keys WHERE organization_id = $1', [orgId]);
+    await client.query('DELETE FROM compartments WHERE organization_id = $1', [orgId]);
+    await client.query('DELETE FROM organization_oidc_configs WHERE organization_id = $1', [orgId]);
+    const users = await client.query(
+      `UPDATE users SET status = 'revoked', totp_secret = NULL, totp_pending_secret = NULL,
+                        oidc_refresh_token = NULL, updated_at = NOW()
+        WHERE organization_id = $1 AND role <> 'super-admin' RETURNING id`,
+      [orgId]
+    );
+    if (users.rowCount) {
       await client.query(
-        `INSERT INTO organization_keys (organization_id, key_epoch, encrypted_dek, dek_hash, status, shredded_at)
-         VALUES ($1, 1, 'SHREDDED', 'SHREDDED', 'destroyed', NOW())
-         ON CONFLICT (organization_id) DO UPDATE SET
-           encrypted_dek = 'SHREDDED', dek_hash = 'SHREDDED', status = 'destroyed', shredded_at = NOW()`,
-        [orgId]
+        'UPDATE refresh_tokens SET revoked = TRUE, revoked_at = NOW() WHERE user_id = ANY($1) AND revoked = FALSE',
+        [users.rows.map((r) => r.id)]
       );
-
-      // 2. What is not sealed with the key is deleted: nodes, rules, enrolment keys,
-      //    compartments, the identity-provider configuration.
-      await client.query('DELETE FROM nodes WHERE organization_id = $1', [orgId]);
-      await client.query('DELETE FROM acl_rules WHERE organization_id = $1', [orgId]);
-      await client.query('DELETE FROM preauth_keys WHERE organization_id = $1', [orgId]);
-      await client.query('DELETE FROM compartments WHERE organization_id = $1', [orgId]);
-      await client.query('DELETE FROM organization_oidc_configs WHERE organization_id = $1', [orgId]);
-
-      // 3. Its users can no longer sign in. The platform super-admin is not an
-      //    organisation's user and keeps access.
-      const users = await client.query(
-        `UPDATE users SET status = 'revoked', totp_secret = NULL, totp_pending_secret = NULL,
-                          oidc_refresh_token = NULL, updated_at = NOW()
-          WHERE organization_id = $1 AND role <> 'super-admin'
-          RETURNING id`,
-        [orgId]
-      );
-      suspended = users.rowCount;
-      if (suspended > 0) {
-        await client.query(
-          'UPDATE refresh_tokens SET revoked = TRUE, revoked_at = NOW() WHERE user_id = ANY($1) AND revoked = FALSE',
-          [users.rows.map((r) => r.id)]
-        );
-      }
-
-      // 4. Mark the organisation. It used to be switched to the standard profile,
-      //    which turned its high-risk modules back on.
-      await client.query('UPDATE organizations SET destroyed_at = NOW() WHERE id = $1', [orgId]);
-
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
     }
-
-    await AclEngine.bumpNetmap();
-
-    logAuditEvent({
-      eventType: 'ORG_CRYPTO_SHREDDED',
-      severity: 'critical',
-      actorUserId: approverId,
-      targetId: orgId,
-      targetType: 'organization',
-      message: `Organization ${orgId} crypto-shredded with dual authorization (${initiatorId} + ${approverId})`,
-      metadata: {
-        initiator: initiatorId,
-        approver: approverId,
-        nodes_revoked: nodeIds.length,
-        users_revoked: suspended
-      }
-    });
-
+    await client.query('UPDATE organizations SET destroyed_at = NOW() WHERE id = $1', [orgId]);
+    await client.query("UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = NOW() WHERE name = 'netmap'");
+    afterCommit.push(() => AclEngine.bumpNetmap());
+    afterCommit.push(() =>
+      logAuditEvent({
+        eventType: 'ORG_CRYPTO_SHREDDED',
+        severity: 'critical',
+        actorUserId: approverId,
+        targetId: orgId,
+        targetType: 'organization',
+        message: `Organization ${orgId} crypto-shredded with dual authorization (${initiatorId} + ${approverId})`,
+        metadata: {
+          initiator: initiatorId,
+          approver: approverId,
+          nodes_revoked: nodeIds.length,
+          users_revoked: users.rowCount
+        }
+      })
+    );
     return {
       shredded_organization_id: orgId,
       key_status: 'destroyed',
       nodes_revoked: nodeIds.length,
-      users_revoked: suspended,
+      users_revoked: users.rowCount,
       irreversibility:
         'The data key is destroyed: secrets sealed with it cannot be opened from the live database. ' +
         'Backups taken before now stay readable until the key-encryption key is rotated and the old one destroyed.'
     };
   }
 
-  /**
-   * Internal execution of global disaster wipe.
-   */
-  static async executeGlobalShred({ initiatorId, approverId }) {
-    const pool = getPgPool();
-    const client = await pool.connect();
-
-    try {
-      await client.query('BEGIN');
-
-      // 1. Shred all organization keys
-      await client.query(
-        `UPDATE organization_keys
-            SET encrypted_dek = 'SHREDDED_GLOBAL_00000000',
-                status = 'destroyed',
-                shredded_at = NOW()`
-      );
-
-      // 2. Wipe nodes, routes, acl rules
-      await client.query('DELETE FROM acl_rules');
-      await client.query('DELETE FROM network_routes');
-      await client.query('DELETE FROM nodes');
-      await client.query('DELETE FROM preauth_keys');
-
-      await client.query('COMMIT');
-
+  /** Internal global shred, under the same governance lock as tenant holds. */
+  static async executeGlobalShred({ initiatorId, approverId, client, afterCommit }) {
+    if (!client) {
+      return governanceTransaction(async (db, notifications) => {
+        await lockGovernanceTarget(db, 'global', 'global', { nodes: true });
+        await CryptoShreddingService.checkDestructionHolds('global', 'global', db);
+        return CryptoShreddingService.executeGlobalShred({
+          initiatorId,
+          approverId,
+          client: db,
+          afterCommit: notifications
+        });
+      });
+    }
+    const RevocationEngine = require('./RevocationEngine');
+    const AclEngine = require('./AclEngine');
+    const nodeIds = (await client.query('SELECT id FROM nodes')).rows.map((r) => r.id);
+    await RevocationEngine.revokeNodeKeys(nodeIds, { reason: 'global_shredded', actorId: approverId, client });
+    await client.query(
+      `UPDATE organization_keys SET encrypted_dek = 'SHREDDED_GLOBAL_00000000', status = 'destroyed', shredded_at = NOW()`
+    );
+    await client.query('DELETE FROM acl_rules');
+    await client.query('DELETE FROM network_routes');
+    await client.query('DELETE FROM nodes');
+    await client.query('DELETE FROM preauth_keys');
+    await client.query("UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = NOW() WHERE name = 'netmap'");
+    afterCommit.push(() => AclEngine.bumpNetmap());
+    afterCommit.push(() =>
       logAuditEvent({
         eventType: 'GLOBAL_CRYPTO_SHREDDED',
         severity: 'critical',
@@ -713,18 +725,9 @@ class CryptoShreddingService {
         targetId: 'global',
         targetType: 'global',
         message: `Global fleet and organization keys crypto-shredded with dual authorization (${initiatorId} + ${approverId})`
-      });
-
-      return {
-        target: 'global',
-        status: 'shredded'
-      };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+      })
+    );
+    return { target: 'global', status: 'shredded' };
   }
 }
 

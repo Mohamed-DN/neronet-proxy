@@ -23,9 +23,9 @@ const logger = require('../utils/logger');
 // delivered on every heartbeat stays small.
 const RETENTION_HOURS = Number(process.env.SOVEREIGN_REVOCATION_RETENTION_HOURS || 24);
 
-async function query(pgSql, pgParams, sqliteSql, sqliteParams) {
+async function query(pgSql, pgParams, sqliteSql, sqliteParams, client = null) {
   if (isPostgres()) {
-    return (await getPgPool().query(pgSql, pgParams)).rows;
+    return (await (client || getPgPool()).query(pgSql, pgParams)).rows;
   }
 
   const db = getDatabase();
@@ -41,7 +41,7 @@ async function query(pgSql, pgParams, sqliteSql, sqliteParams) {
  * Bumps the ACL epoch as well: a revoked peer must disappear from every other node's
  * compiled policy, and that only happens if they re-sync.
  */
-async function revokeNodeKeys(nodeIds, { reason = 'manual', actorId = null } = {}) {
+async function revokeNodeKeys(nodeIds, { reason = 'manual', actorId = null, client = null } = {}) {
   const ids = (Array.isArray(nodeIds) ? nodeIds : [nodeIds]).filter(Boolean);
   if (ids.length === 0) return [];
 
@@ -52,11 +52,12 @@ async function revokeNodeKeys(nodeIds, { reason = 'manual', actorId = null } = {
     `SELECT id, public_key FROM nodes WHERE id IN (${placeholdersPg})`,
     ids,
     `SELECT id, public_key FROM nodes WHERE id IN (${placeholdersLite})`,
-    ids
+    ids,
+    client
   );
 
   for (const id of ids) {
-    await NodeCredentialService.revokeNodeCredentials(id);
+    await NodeCredentialService.revokeNodeCredentials(id, client || getPgPool());
   }
 
   const expiresAt = new Date(Date.now() + RETENTION_HOURS * 3600_000).toISOString();
@@ -94,7 +95,8 @@ async function revokeNodeKeys(nodeIds, { reason = 'manual', actorId = null } = {
          revoked_by = excluded.revoked_by,
          revoked_at = CURRENT_TIMESTAMP,
          expires_at = excluded.expires_at`,
-      [keyHex, row.id, reason, actorId, expiresAt]
+      [keyHex, row.id, reason, actorId, expiresAt],
+      client
     );
 
     revoked.push(keyHex);
@@ -103,8 +105,15 @@ async function revokeNodeKeys(nodeIds, { reason = 'manual', actorId = null } = {
   if (revoked.length > 0) {
     // Without this the peer stays in every other node's compiled policy until
     // something else happens to change it.
-    await bumpEpoch('acl');
-    logger.info(`Revoked ${revoked.length} key(s), reason: ${reason}.`);
+    if (client) {
+      // A shred rolls back the revocations and the version nodes observe together.
+      await client.query(
+        "UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = NOW() WHERE name IN ('acl', 'netmap')"
+      );
+    } else {
+      await bumpEpoch('acl');
+      logger.info(`Revoked ${revoked.length} key(s), reason: ${reason}.`);
+    }
   }
 
   return revoked;
