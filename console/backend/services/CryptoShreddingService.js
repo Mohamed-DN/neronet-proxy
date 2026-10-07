@@ -103,6 +103,14 @@ class KeyShreddedError extends Error {
   }
 }
 
+class GovernanceAccessError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.name = 'GovernanceAccessError';
+    this.status = status;
+  }
+}
+
 class CryptoShreddingService {
   /**
    * Provision or retrieve an organization's Data Encryption Key (DEK).
@@ -288,10 +296,107 @@ class CryptoShreddingService {
     return res.rows.length > 0 ? res.rows[0] : null;
   }
 
+  static async getGovernanceActor(userId) {
+    const res = await getPgPool().query(
+      `SELECT u.id, u.role, u.status, COALESCE(u.organization_id, 'org-default') AS organization_id,
+              m.role AS membership_role
+         FROM users u
+         LEFT JOIN memberships m ON m.user_id = u.id
+          AND m.organization_id = COALESCE(u.organization_id, 'org-default')
+        WHERE u.id = $1`,
+      [userId]
+    );
+    const user = res.rows[0];
+    if (!user || user.status !== 'active') {
+      throw new GovernanceAccessError(403, 'Active governance account required');
+    }
+    return {
+      id: user.id,
+      organization_id: user.organization_id,
+      platform: user.role === 'super-admin',
+      // Migration 033 preserves legacy owner/admin authority once. Falling back
+      // to users.role here would revive privileges after membership removal.
+      role: user.membership_role
+    };
+  }
+
+  static async requireGovernanceRole(userId, roles = ['owner', 'admin']) {
+    const actor = await CryptoShreddingService.getGovernanceActor(userId);
+    if (!actor.platform && !roles.includes(actor.role)) {
+      throw new GovernanceAccessError(403, 'Insufficient governance role');
+    }
+    return actor;
+  }
+
+  static async authorizeGovernanceTarget(userId, targetType, targetId, roles = ['owner', 'admin']) {
+    const actor = await CryptoShreddingService.getGovernanceActor(userId);
+    if (targetType === 'global') {
+      if (!actor.platform) {
+        throw new GovernanceAccessError(403, 'Platform super-admin role required');
+      }
+    } else if (targetType === 'organization') {
+      if (!actor.platform && actor.organization_id !== targetId) {
+        throw new GovernanceAccessError(404, 'Governance target not found');
+      }
+      const org = await getPgPool().query('SELECT id FROM organizations WHERE id = $1', [targetId]);
+      if (org.rowCount === 0) {
+        throw new GovernanceAccessError(404, 'Governance target not found');
+      }
+      if (!actor.platform && !roles.includes(actor.role)) {
+        throw new GovernanceAccessError(403, 'Insufficient governance role');
+      }
+    } else {
+      throw new GovernanceAccessError(400, "targetType must be 'organization' or 'global'");
+    }
+    return actor;
+  }
+
+  static async listLegalHolds(userId) {
+    const actor = await CryptoShreddingService.getGovernanceActor(userId);
+    return (
+      await getPgPool().query(
+        'SELECT * FROM organization_legal_holds WHERE ($1::boolean OR organization_id = $2) ORDER BY created_at DESC',
+        [actor.platform, actor.organization_id]
+      )
+    ).rows;
+  }
+
+  static async listDestructionRequests(userId, { pendingOnly = false } = {}) {
+    const actor = await CryptoShreddingService.getGovernanceActor(userId);
+    return (
+      await getPgPool().query(
+        `SELECT * FROM nuke_authorizations
+          WHERE ($1::boolean OR (target_type = 'organization' AND target_id = $2))
+            AND (NOT $3::boolean OR (status = 'pending' AND expires_at > NOW()))
+          ORDER BY created_at DESC`,
+        [actor.platform, actor.organization_id, pendingOnly]
+      )
+    ).rows;
+  }
+
+  static async rejectDestruction(authorizationId, userId, comment = 'Rejected by administrator') {
+    const pool = getPgPool();
+    const existing = await pool.query('SELECT * FROM nuke_authorizations WHERE id = $1', [authorizationId]);
+    if (existing.rowCount === 0) return null;
+    const auth = existing.rows[0];
+    await CryptoShreddingService.authorizeGovernanceTarget(userId, auth.target_type, auth.target_id);
+    return (
+      (
+        await pool.query(
+          `UPDATE nuke_authorizations SET status = 'rejected', approver_user_id = $1,
+                approver_comment = $2, executed_at = NOW()
+          WHERE id = $3 AND status = 'pending' RETURNING *`,
+          [userId, comment, authorizationId]
+        )
+      ).rows[0] || null
+    );
+  }
+
   /**
    * Impose a legal hold on an organization.
    */
   static async imposeLegalHold(orgId, reason, userId) {
+    await CryptoShreddingService.authorizeGovernanceTarget(userId, 'organization', orgId);
     if (!reason) throw new Error('Legal hold reason is required');
     const pool = getPgPool();
     const holdId = `hold-${uuidv4().substring(0, 8)}`;
@@ -320,6 +425,11 @@ class CryptoShreddingService {
    */
   static async releaseLegalHold(holdId, userId) {
     const pool = getPgPool();
+    const existing = await pool.query('SELECT organization_id FROM organization_legal_holds WHERE id = $1', [holdId]);
+    if (existing.rowCount === 0) return null;
+    await CryptoShreddingService.authorizeGovernanceTarget(userId, 'organization', existing.rows[0].organization_id, [
+      'owner'
+    ]);
     const res = await pool.query(
       `UPDATE organization_legal_holds
           SET active = FALSE, released_at = NOW()
@@ -346,9 +456,7 @@ class CryptoShreddingService {
    * Request dual-authorization destruction.
    */
   static async requestDestruction({ targetType, targetId, initiatorUserId, comment = '' }) {
-    if (!['organization', 'global'].includes(targetType)) {
-      throw new Error("targetType must be 'organization' or 'global'");
-    }
+    await CryptoShreddingService.authorizeGovernanceTarget(initiatorUserId, targetType, targetId);
 
     // Check legal hold upfront
     if (targetType === 'organization') {
@@ -400,10 +508,19 @@ class CryptoShreddingService {
     const pool = getPgPool();
     const authRes = await pool.query('SELECT * FROM nuke_authorizations WHERE id = $1 FOR UPDATE', [authorizationId]);
     if (authRes.rows.length === 0) {
-      throw new Error('Nuke authorization not found');
+      throw new GovernanceAccessError(404, 'Governance target not found');
     }
 
     const auth = authRes.rows[0];
+    await CryptoShreddingService.authorizeGovernanceTarget(approverUserId, auth.target_type, auth.target_id);
+    // Pending rows may predate scope checks, or their initiator may have moved or
+    // lost authority. A valid second actor cannot legitimize such a request.
+    try {
+      await CryptoShreddingService.authorizeGovernanceTarget(auth.initiator_user_id, auth.target_type, auth.target_id);
+    } catch (err) {
+      if (!(err instanceof GovernanceAccessError)) throw err;
+      throw new GovernanceAccessError(403, 'Initiator is no longer authorized for this target');
+    }
     if (auth.status !== 'pending') {
       throw new Error(`Authorization is not pending (current status: ${auth.status})`);
     }
@@ -615,5 +732,6 @@ module.exports = {
   CryptoShreddingService,
   LegalHoldActiveError,
   DualAuthorizationRequiredError,
-  KeyShreddedError
+  KeyShreddedError,
+  GovernanceAccessError
 };

@@ -353,11 +353,22 @@ const {
   CryptoShreddingService,
   LegalHoldActiveError,
   DualAuthorizationRequiredError,
-  KeyShreddedError
+  GovernanceAccessError
 } = require('../../services/CryptoShreddingService');
 
+function requireGovernanceRole(...roles) {
+  return async (req, res, next) => {
+    try {
+      await CryptoShreddingService.requireGovernanceRole(req.user.id, roles);
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
 // 1. Impose Legal Hold
-router.post('/legal-hold', authenticateToken, requireRole('super-admin', 'owner', 'admin'), async (req, res, next) => {
+router.post('/legal-hold', authenticateToken, requireGovernanceRole('owner', 'admin'), async (req, res, next) => {
   try {
     const { organization_id, reason } = req.body || {};
     if (!organization_id || !reason) {
@@ -371,11 +382,11 @@ router.post('/legal-hold', authenticateToken, requireRole('super-admin', 'owner'
 });
 
 // 2. Release Legal Hold
-router.delete('/legal-hold/:id', authenticateToken, requireRole('super-admin', 'owner'), async (req, res, next) => {
+router.delete('/legal-hold/:id', authenticateToken, requireGovernanceRole('owner'), async (req, res, next) => {
   try {
     const released = await CryptoShreddingService.releaseLegalHold(req.params.id, req.user.id);
     if (!released) {
-      return res.status(404).json({ error: 'Legal hold not found or already released' });
+      return res.status(404).json({ error: 'Governance target not found' });
     }
     return res.status(200).json({ success: true, released });
   } catch (err) {
@@ -386,9 +397,8 @@ router.delete('/legal-hold/:id', authenticateToken, requireRole('super-admin', '
 // 3. List Legal Holds
 router.get('/legal-hold', authenticateToken, async (req, res, next) => {
   try {
-    const pool = getPgPool();
-    const qRes = await pool.query('SELECT * FROM organization_legal_holds ORDER BY created_at DESC');
-    return res.status(200).json({ legal_holds: qRes.rows });
+    const holds = await CryptoShreddingService.listLegalHolds(req.user.id);
+    return res.status(200).json({ legal_holds: holds });
   } catch (err) {
     next(err);
   }
@@ -398,7 +408,7 @@ router.get('/legal-hold', authenticateToken, async (req, res, next) => {
 router.post(
   '/dual-auth/request',
   authenticateToken,
-  requireRole('super-admin', 'owner', 'admin'),
+  requireGovernanceRole('owner', 'admin'),
   async (req, res, next) => {
     try {
       const { target_type, target_id, comment } = req.body || {};
@@ -427,7 +437,7 @@ router.post(
 router.post(
   '/dual-auth/approve/:id',
   authenticateToken,
-  requireRole('super-admin', 'owner', 'admin'),
+  requireGovernanceRole('owner', 'admin'),
   async (req, res, next) => {
     try {
       const { comment } = req.body || {};
@@ -441,6 +451,7 @@ router.post(
       if (err instanceof LegalHoldActiveError) {
         return res.status(403).json({ error: err.message, code: 'LEGAL_HOLD_ACTIVE' });
       }
+      if (err instanceof GovernanceAccessError) return next(err);
       return res.status(400).json({ error: err.message });
     }
   }
@@ -449,9 +460,8 @@ router.post(
 // 6. List Dual-Authorization Requests
 router.get('/dual-auth', authenticateToken, async (req, res, next) => {
   try {
-    const pool = getPgPool();
-    const qRes = await pool.query('SELECT * FROM nuke_authorizations ORDER BY created_at DESC');
-    return res.status(200).json({ authorizations: qRes.rows });
+    const authorizations = await CryptoShreddingService.listDestructionRequests(req.user.id);
+    return res.status(200).json({ authorizations });
   } catch (err) {
     next(err);
   }
@@ -461,19 +471,19 @@ router.get('/dual-auth', authenticateToken, async (req, res, next) => {
 router.post(
   '/dual-auth/reject/:id',
   authenticateToken,
-  requireRole('super-admin', 'owner', 'admin'),
+  requireGovernanceRole('owner', 'admin'),
   async (req, res, next) => {
     try {
       const { comment } = req.body || {};
-      const pool = getPgPool();
-      const qRes = await pool.query(
-        "UPDATE nuke_authorizations SET status = 'rejected', approver_user_id = $1, approver_comment = $2, executed_at = NOW() WHERE id = $3 AND status = 'pending' RETURNING *",
-        [req.user.id, comment || 'Rejected by administrator', req.params.id]
+      const authorization = await CryptoShreddingService.rejectDestruction(
+        req.params.id,
+        req.user.id,
+        comment || 'Rejected by administrator'
       );
-      if (qRes.rows.length === 0) {
-        return res.status(404).json({ error: 'Pending authorization not found or already closed' });
+      if (!authorization) {
+        return res.status(404).json({ error: 'Governance target not found' });
       }
-      return res.status(200).json({ success: true, authorization: qRes.rows[0] });
+      return res.status(200).json({ success: true, authorization });
     } catch (err) {
       next(err);
     }
@@ -484,11 +494,12 @@ router.post(
 router.get('/status', authenticateToken, async (req, res, next) => {
   try {
     const pool = getPgPool();
-    const orgId = req.user?.organization_id;
+    const actor = await CryptoShreddingService.getGovernanceActor(req.user.id);
+    const orgId = actor.organization_id;
 
     // Check active legal holds
     let holdsCount = 0;
-    if (orgId) {
+    if (!actor.platform) {
       const hRes = await pool.query(
         'SELECT COUNT(*) FROM organization_legal_holds WHERE organization_id = $1 AND active = TRUE',
         [orgId]
@@ -500,10 +511,17 @@ router.get('/status', authenticateToken, async (req, res, next) => {
     }
 
     // Check pending approvals
-    const aRes = await pool.query(
-      "SELECT id, target_type, target_id, initiator_user_id as proposed_by, created_at, expires_at FROM nuke_authorizations WHERE status = 'pending' AND expires_at > NOW() ORDER BY created_at DESC"
+    const authorizations = await CryptoShreddingService.listDestructionRequests(req.user.id, { pendingOnly: true });
+    const pendingApprovals = authorizations.map(
+      ({ id, target_type, target_id, initiator_user_id, created_at, expires_at }) => ({
+        id,
+        target_type,
+        target_id,
+        proposed_by: initiator_user_id,
+        created_at,
+        expires_at
+      })
     );
-    const pendingApprovals = aRes.rows;
 
     // Key status
     let keyStatus = 'active';
@@ -517,9 +535,11 @@ router.get('/status', authenticateToken, async (req, res, next) => {
     // Owner DMS check
     let ownerArmed = false;
     try {
-      const dmsRes = await pool.query('SELECT armed FROM owner_dead_man_switch WHERE id = 1');
-      if (dmsRes.rows.length > 0) {
-        ownerArmed = Boolean(dmsRes.rows[0].armed);
+      if (actor.platform) {
+        const dmsRes = await pool.query('SELECT armed FROM owner_dead_man_switch WHERE id = 1');
+        if (dmsRes.rows.length > 0) {
+          ownerArmed = Boolean(dmsRes.rows[0].armed);
+        }
       }
     } catch (_) {
       // Table might not exist or empty
