@@ -31,7 +31,7 @@ const logger = require('../utils/logger');
 
 const WRAP_PREFIX = 'v2:';
 const SEAL_PREFIX = 'enc:v1:';
-const GOVERNANCE_LOCK_ID = 7429149;
+const { LIFECYCLE_LOCK_ID: GOVERNANCE_LOCK_ID } = require('./EnrollmentService');
 
 async function governanceTransaction(operation) {
   const client = await getPgPool().connect();

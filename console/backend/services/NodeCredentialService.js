@@ -24,7 +24,7 @@ function hashToken(rawToken) {
 /**
  * Mints an ephemeral bearer credential for an enrolled node.
  */
-async function mintCredential(nodeId, ttlHours = 24) {
+async function mintCredential(nodeId, ttlHours = 24, client = null) {
   if (!nodeId) {
     throw new Error('nodeId is required to mint a credential');
   }
@@ -35,7 +35,7 @@ async function mintCredential(nodeId, ttlHours = 24) {
   const credId = `nc_${crypto.randomBytes(16).toString('hex')}`;
   const expiresAt = new Date(Date.now() + ttlHours * 3600 * 1000);
 
-  const pool = getPgPool();
+  const pool = client || getPgPool();
   await pool.query(
     `INSERT INTO node_credentials (id, node_id, token_hash, expires_at, created_at)
      VALUES ($1, $2, $3, $4, NOW())`,

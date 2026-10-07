@@ -60,3 +60,44 @@ this governance transaction. Direct administrative SQL that changes legal holds
 also does not participate in its advisory lock. Concurrency with every other
 destructive account/organization path has not been certified deadlock-free;
 PostgreSQL aborts a deadlocked transaction and its database effects roll back.
+
+## Enrollment and destruction
+
+Node registration and the two console creation endpoints participate in the same
+transaction-level advisory lock. Enrollment re-reads the existing node, owner,
+organization and current console membership after acquiring it. The pre-auth key
+use, node insertion or update, bearer credential and ACL/netmap epochs commit in
+one transaction. A failed credential or epoch write rolls back the node and the
+pre-auth use, allowing a legitimate retry with a new proof challenge.
+
+An enrollment that acquires the lock first commits before a competing shred, so
+the shred includes its node and credential. A shred that commits first invalidates
+the old pre-auth key; a destroyed organization and an inactive owner cannot enroll.
+Console enrollment also holds its current account and membership rows until commit,
+so a concurrent demotion, account revocation or primary-organization change either
+precedes authorization or waits for the accepted enrollment to finish.
+The enrollment organization uses `FOR UPDATE`, including when a legacy account has
+no membership row. Its foreign-key lock prevents a newly inserted read-only
+membership from committing between the authorization check and node insertion.
+
+An existing node keeps its owner, organization and VIP on restart. A pre-auth key
+for another organization cannot move that node. Concurrent registrations of the
+same identity return the address that is actually stored. Legacy accounts with no
+organization or membership retain the existing `org-default` enrollment behavior;
+this fallback grants no destruction-governance authority.
+
+Global shredding wipes the current fleet and pre-auth keys. It does not permanently
+disable the control plane or revoke every platform account: a fresh enrollment
+with the configured fleet token and an active owner in an available organization
+can follow the wipe. This is distinct from allowing an enrollment already in
+progress to survive it.
+
+The lifecycle helper is part of the core and does not load the optional `nuke`
+module. Its exclusive lock currently serializes enrollment across organizations;
+the SQL section is kept short and notifications run after commit. Audit and
+WebSocket delivery remain best effort, without a transactional outbox.
+
+Manual node revocation, pre-auth creation and the separate `NukeEngine` wipes do
+not all participate in this enrollment transaction. This boundary does not certify
+every such race or prove that an already running WireGuard tunnel stops after a
+shred; those require their own concurrency and traffic scenarios.

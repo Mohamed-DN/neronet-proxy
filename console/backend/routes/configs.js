@@ -12,6 +12,8 @@ const {
   allocateNextVip
 } = require('../utils/crypto');
 const { broadcastNodeEvent } = require('../services/TopologySync');
+const EnrollmentService = require('../services/EnrollmentService');
+const { bumpNetmap } = require('../services/AclEngine');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -21,12 +23,6 @@ router.post('/generate', async (req, res, next) => {
   try {
     // The same rules as POST /api/nodes, which this also creates: read-only roles
     // cannot, and the node joins the caller's organisation. It used to do neither.
-    const orgRole = req.user.org_role || req.user.role;
-    if (orgRole === 'auditor' || orgRole === 'viewer') {
-      return res.status(403).json({ error: 'Forbidden: read-only role cannot create nodes' });
-    }
-    const organizationId = req.user.organization_id || 'org-default';
-
     const { name, role, country_code, onion_routing_enabled, onion_hops, kill_switch_enabled } = req.body || {};
 
     if (!name || !name.trim()) {
@@ -51,16 +47,18 @@ router.post('/generate', async (req, res, next) => {
 
     let overlayIpv4, overlayIpv6;
 
-    const pool = getPgPool();
-    const vips = await allocateNextVip(pool);
-    overlayIpv4 = vips.overlayIpv4;
-    overlayIpv6 = vips.overlayIpv6;
+    await EnrollmentService.transaction(async (client, afterCommit) => {
+      const actor = await EnrollmentService.authorizeConsole(client, req.user);
+      const organizationId = actor.organization_id;
+      const vips = await allocateNextVip(client);
+      overlayIpv4 = vips.overlayIpv4;
+      overlayIpv6 = vips.overlayIpv6;
 
-    const lat = nodeCountry === 'US' ? 38.9072 : 50.1109;
-    const lon = nodeCountry === 'US' ? -77.0369 : 8.6821;
+      const lat = nodeCountry === 'US' ? 38.9072 : 50.1109;
+      const lon = nodeCountry === 'US' ? -77.0369 : 8.6821;
 
-    await pool.query(
-      `
+      await client.query(
+        `
       INSERT INTO nodes (
         id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6,
         role, ip_class, country_code, onion_routing_enabled, onion_hops, kill_switch_enabled,
@@ -71,24 +69,54 @@ router.post('/generate', async (req, res, next) => {
         TRUE, FALSE, 10.0, $13, $14, $15
       )
     `,
-      [
-        kp.nodeId,
-        req.user.id,
-        name.trim(),
-        kp.publicKeyBase64,
-        kp.presharedKeyBase64,
-        overlayIpv4,
-        overlayIpv6,
-        nodeRole,
-        nodeCountry,
-        onionEnabled,
-        hops,
-        killSwitch,
-        lon,
-        lat,
-        organizationId
-      ]
-    );
+        [
+          kp.nodeId,
+          actor.id,
+          name.trim(),
+          kp.publicKeyBase64,
+          kp.presharedKeyBase64,
+          overlayIpv4,
+          overlayIpv6,
+          nodeRole,
+          nodeCountry,
+          onionEnabled,
+          hops,
+          killSwitch,
+          lon,
+          lat,
+          organizationId
+        ]
+      );
+      await bumpNetmap(client);
+      afterCommit.push(() =>
+        logAuditEvent({
+          eventType: 'CONFIG_GENERATE',
+          severity: 'info',
+          actorUserId: actor.id,
+          actorUsername: actor.username,
+          targetId: kp.nodeId,
+          targetType: 'node',
+          message: `Config generated for node ${name} (onion: ${onionEnabled})`,
+          ipAddress: req.ip,
+          metadata: { onion_routing_enabled: onionEnabled, onion_hops: hops }
+        })
+      );
+      afterCommit.push(() =>
+        broadcastNodeEvent(
+          'NODE_REGISTER',
+          {
+            id: kp.nodeId,
+            name: name.trim(),
+            user_id: actor.id,
+            organization_id: organizationId,
+            role: nodeRole,
+            overlay_ipv4: overlayIpv4,
+            onion_routing_enabled: onionEnabled
+          },
+          actor
+        )
+      );
+    });
 
     const wgConf = buildWireGuardConfig({
       deviceName: name ? name.trim() : 'Sovereign-Client',
@@ -115,31 +143,6 @@ router.post('/generate', async (req, res, next) => {
     });
 
     const qrCodeDataUrl = await generateQrCodeDataUrl(wgConf);
-
-    logAuditEvent({
-      eventType: 'CONFIG_GENERATE',
-      severity: 'info',
-      actorUserId: req.user.id,
-      actorUsername: req.user.username,
-      targetId: kp.nodeId,
-      targetType: 'node',
-      message: `Config generated for node ${name} (onion: ${onionEnabled})`,
-      ipAddress: req.ip,
-      metadata: { onion_routing_enabled: onionEnabled, onion_hops: hops }
-    });
-
-    await broadcastNodeEvent(
-      'NODE_REGISTER',
-      {
-        id: kp.nodeId,
-        name: name.trim(),
-        user_id: req.user.id,
-        role: nodeRole,
-        overlay_ipv4: overlayIpv4,
-        onion_routing_enabled: onionEnabled
-      },
-      req.user
-    );
 
     return res.status(200).json({
       node_id: kp.nodeId,

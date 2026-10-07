@@ -12,6 +12,7 @@ const { bumpNetmap } = require('../services/AclEngine');
 const NodeCredentialService = require('../services/NodeCredentialService');
 const RevocationEngine = require('../services/RevocationEngine');
 const { resolveUserOrg } = require('../middleware/rbac');
+const EnrollmentService = require('../services/EnrollmentService');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -193,11 +194,6 @@ router.get('/', async (req, res, next) => {
 // 2. Create Node (with VIP allocation, PostGIS point, and kill_switch_enabled)
 router.post('/', async (req, res, next) => {
   try {
-    const orgRole = req.user.org_role || req.user.role;
-    if (orgRole === 'auditor' || orgRole === 'viewer') {
-      return res.status(403).json({ error: 'Forbidden: read-only role cannot create nodes' });
-    }
-
     const {
       name,
       role,
@@ -236,21 +232,21 @@ router.post('/', async (req, res, next) => {
     const killSwitch = Boolean(kill_switch_enabled);
     const endpointsArray = Array.isArray(endpoints) ? endpoints : [];
     const nodeId = `svrn-node-${crypto.randomBytes(4).toString('hex')}`;
-    const orgId = req.user.organization_id || 'org-default';
+    const createdNode = await EnrollmentService.transaction(async (client, afterCommit) => {
+      const actor = await EnrollmentService.authorizeConsole(client, req.user);
+      const orgId = actor.organization_id;
+      const existingKey = await client.query('SELECT id FROM nodes WHERE public_key = $1', [finalPubKey]);
+      if (existingKey.rows.length > 0) {
+        throw EnrollmentService.denied(409, 'Public key already registered');
+      }
 
-    const pool = getPgPool();
-    const existingKey = await pool.query('SELECT id FROM nodes WHERE public_key = $1', [finalPubKey]);
-    if (existingKey.rows.length > 0) {
-      return res.status(409).json({ error: 'Public key already registered' });
-    }
+      const { overlayIpv4, overlayIpv6 } = await allocateNextVip(client);
 
-    const { overlayIpv4, overlayIpv6 } = await allocateNextVip(pool);
+      const lat = latitude !== undefined ? parseFloat(latitude) : nodeCountry === 'US' ? 38.9072 : 50.1109;
+      const lon = longitude !== undefined ? parseFloat(longitude) : nodeCountry === 'US' ? -77.0369 : 8.6821;
 
-    const lat = latitude !== undefined ? parseFloat(latitude) : nodeCountry === 'US' ? 38.9072 : 50.1109;
-    const lon = longitude !== undefined ? parseFloat(longitude) : nodeCountry === 'US' ? -77.0369 : 8.6821;
-
-    await pool.query(
-      `
+      await client.query(
+        `
       INSERT INTO nodes (
         id, user_id, organization_id, name, public_key, overlay_ipv4, overlay_ipv6,
         role, ip_class, country_code, city, asn, endpoints,
@@ -263,47 +259,51 @@ router.post('/', async (req, res, next) => {
         $17, $18, $19::jsonb
       )
     `,
-      [
-        nodeId,
-        req.user.id,
-        orgId,
-        name.trim(),
-        finalPubKey,
-        overlayIpv4,
-        overlayIpv6,
-        nodeRole,
-        nodeIpClass,
-        nodeCountry,
-        city || '',
-        asn || 0,
-        JSON.stringify(endpointsArray),
-        onionRouting,
-        hops,
-        killSwitch,
-        lon,
-        lat,
-        JSON.stringify(metadata || {})
-      ]
-    );
+        [
+          nodeId,
+          actor.id,
+          orgId,
+          name.trim(),
+          finalPubKey,
+          overlayIpv4,
+          overlayIpv6,
+          nodeRole,
+          nodeIpClass,
+          nodeCountry,
+          city || '',
+          asn || 0,
+          JSON.stringify(endpointsArray),
+          onionRouting,
+          hops,
+          killSwitch,
+          lon,
+          lat,
+          JSON.stringify(metadata || {})
+        ]
+      );
 
-    const createdRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [nodeId]);
-    const createdNode = formatNode(createdRes.rows[0]);
+      const createdRes = await client.query('SELECT * FROM nodes WHERE id = $1', [nodeId]);
+      const createdNode = formatNode(createdRes.rows[0]);
 
-    // An added node has to appear in peer maps immediately.
-    await bumpNetmap();
+      // An added node has to appear in peer maps immediately.
+      await bumpNetmap(client);
 
-    logAuditEvent({
-      eventType: 'NODE_CREATE',
-      severity: 'info',
-      actorUserId: req.user.id,
-      actorUsername: req.user.username,
-      targetId: nodeId,
-      targetType: 'node',
-      message: `Node ${createdNode.name} (${nodeId}) created by ${req.user.username} in org ${orgId}`,
-      ipAddress: req.ip
+      afterCommit.push(() =>
+        logAuditEvent({
+          eventType: 'NODE_CREATE',
+          severity: 'info',
+          actorUserId: actor.id,
+          actorUsername: actor.username,
+          targetId: nodeId,
+          targetType: 'node',
+          message: `Node ${createdNode.name} (${nodeId}) created by ${actor.username} in org ${orgId}`,
+          ipAddress: req.ip
+        })
+      );
+
+      afterCommit.push(() => broadcastNodeEvent('NODE_REGISTER', createdNode, actor));
+      return createdNode;
     });
-
-    await broadcastNodeEvent('NODE_REGISTER', createdNode, req.user);
 
     return res.status(201).json({ node: createdNode });
   } catch (err) {
