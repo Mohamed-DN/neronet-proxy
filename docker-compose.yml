@@ -15,7 +15,10 @@
 # `name:`, because an existing stack keeps its data only while its project name stays
 # the same.
 #
-# Every host port is bound to 127.0.0.1.
+# Every host port is bound to 127.0.0.1. The console's address can be changed with
+# NERONET_CONSOLE_BIND, which a deployment that serves a public domain needs; with
+# NERONET_TLS_MODE=acme, docker-compose.acme.yml also publishes the HTTP-01
+# listener (host 8080 by default). A public deployment forwards public port 80 to it.
 
 x-node-build: &node-build
   # Every node-image service builds from the same recipe. Naming the image once
@@ -43,8 +46,11 @@ x-node: &node
     # policy permits.
     - SOVEREIGN_OVERLAY_ECHO_PORT=${NERONET_OVERLAY_ECHO_PORT:-9999}
     # The control plane is reached over TLS, and only a certificate this CA signed
-    # is accepted (scripts/dev/gen-certs.sh writes it).
-    - SOVEREIGN_CONTROL_PLANE_CA=/run/secrets/control_plane_ca
+    # is accepted (scripts/dev/gen-certs.sh writes it). With NERONET_TLS_MODE=acme,
+    # stack.sh sets NERONET_NODE_CA to the empty string unless a CA file was given
+    # (NERONET_CONTROL_PLANE_CA_FILE): the console's certificate then comes from a CA
+    # the system roots already trust. `-` and not `:-`, so that empty stays empty.
+    - SOVEREIGN_CONTROL_PLANE_CA=${NERONET_NODE_CA-/run/secrets/control_plane_ca}
   secrets:
     - control_plane_ca
   depends_on:
@@ -225,7 +231,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${NERONET_CONSOLE_PORT:-8443}:8443"
+      - "${NERONET_CONSOLE_BIND:-127.0.0.1}:${NERONET_CONSOLE_PORT:-8443}:8443"
     secrets:
       - console_tls_cert
       - console_tls_key
@@ -267,79 +273,79 @@ services:
 
   relay-de:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "DE", "-enable-exit=true"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "DE", "-enable-exit=true"]
     volumes:
       - identity-relay-de:/var/lib/neronet
 
   relay-fr:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "FR", "-enable-exit=true"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "FR", "-enable-exit=true"]
     volumes:
       - identity-relay-fr:/var/lib/neronet
 
   relay-us:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "US", "-enable-exit=true"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "US", "-enable-exit=true"]
     volumes:
       - identity-relay-us:/var/lib/neronet
 
   relay-nl:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "NL", "-enable-exit=true"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "NL", "-enable-exit=true"]
     volumes:
       - identity-relay-nl:/var/lib/neronet
 
   client-it:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "IT"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "IT"]
     volumes:
       - identity-client-it:/var/lib/neronet
 
   client-es:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "ES"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "ES"]
     volumes:
       - identity-client-es:/var/lib/neronet
 
   client-uk:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "GB"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "GB"]
     volumes:
       - identity-client-uk:/var/lib/neronet
 
   client-us:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "US"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "US"]
     volumes:
       - identity-client-us:/var/lib/neronet
 
   client-de:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "DE"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "DE"]
     volumes:
       - identity-client-de:/var/lib/neronet
 
   client-fr:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "FR"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "FR"]
     volumes:
       - identity-client-fr:/var/lib/neronet
 
   client-jp:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "JP"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "JP"]
     volumes:
       - identity-client-jp:/var/lib/neronet
 
   client-ch:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "CH"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "CH"]
     volumes:
       - identity-client-ch:/var/lib/neronet
 
   relay-se:
     <<: *node
-    command: ["-control-url", "https://frontend:8443", "-country", "SE", "-enable-exit=true"]
+    command: ["-control-url", "${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}", "-country", "SE", "-enable-exit=true"]
     volumes:
       - identity-relay-se:/var/lib/neronet
 
@@ -453,14 +459,16 @@ networks:
     driver: bridge
 
 # Written by scripts/dev/gen-certs.sh (stack.sh runs it when they are missing). A
-# deployment points these at its own certificate, key and CA.
+# deployment points these at its own certificate, key and CA. With NERONET_TLS_MODE=acme
+# the console does not use the first two (docker-compose.acme.yml), and the third only
+# matters to the node fleet, when the ACME CA is not one the system roots trust.
 secrets:
   console_tls_cert:
     file: ./certs/server.crt
   console_tls_key:
     file: ./certs/server.key
   control_plane_ca:
-    file: ./certs/ca.crt
+    file: ${NERONET_CONTROL_PLANE_CA_FILE:-./certs/ca.crt}
 
 volumes:
   backend_data:

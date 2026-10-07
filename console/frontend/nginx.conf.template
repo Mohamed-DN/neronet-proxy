@@ -1,12 +1,18 @@
-# The console and the node control API, TLS only. The certificate and key come in as
-# compose secrets: scripts/dev/gen-certs.sh writes a development pair, a deployment
-# mounts its own under the same names.
+# The console and the node control API, TLS only. Where the certificate comes from is
+# NERONET_TLS_MODE, which tls/neronet-tls.sh turns into the files included below:
+#
+#   internal (default)  compose secrets console_tls_cert and console_tls_key:
+#                       scripts/dev/gen-certs.sh writes a development pair, a deployment
+#                       mounts its own under the same names.
+#   acme                a certificate from an ACME CA, renewed by the acme service; nginx
+#                       reloads when a new one is published. Port 80 then answers the
+#                       CA's HTTP-01 challenges (the http01.conf include at the end of
+#                       this file).
 server {
     listen 8443 ssl;
     server_name localhost 127.0.0.1 frontend;
 
-    ssl_certificate     /run/secrets/console_tls_cert;
-    ssl_certificate_key /run/secrets/console_tls_key;
+    include /etc/nginx/neronet/tls.conf;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
     ssl_session_cache shared:SSL:10m;
@@ -39,6 +45,9 @@ server {
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
         add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+        # Strict-Transport-Security, in acme mode only: the development certificate is for
+        # localhost, and a browser would pin that name for every port.
+        include /etc/nginx/neronet/hsts.conf;
     }
 
     location /v4/ {
@@ -84,10 +93,15 @@ server {
 
     location = /healthz {
         access_log off;
-        return 200 "ok\n";
+        # 200, or 503 in acme mode until the first certificate has been published.
+        include /etc/nginx/neronet/healthz.conf;
     }
 
     location / {
         return 404;
     }
 }
+
+# Port 80 in acme mode: the ACME HTTP-01 challenge and a redirect to the console. Empty
+# in internal mode, where nothing listens on 80.
+include /etc/nginx/neronet/http01.conf;
