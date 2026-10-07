@@ -1,0 +1,96 @@
+.mesh-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem 1.5rem;
+  padding: 0.75rem 0;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid rgb(var(--color-border));
+  font-size: 0.8125rem;
+  color: rgb(var(--color-content-subtle));
+}
+.mesh-summary strong {
+  color: rgb(var(--color-content));
+  font-variant-numeric: tabular-nums;
+}
+.mesh-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+}
+.mesh-map-panel {
+  min-width: 0;
+  padding: 1rem;
+}
+.mesh-inspector {
+  min-width: 0;
+  padding: 1.25rem;
+  border-left: 1px solid rgb(var(--color-border));
+}
+.mesh-evidence {
+  display: flex;
+  gap: 1.25rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid rgb(var(--color-border));
+}
+.mesh-evidence button {
+  padding: 0.5rem 0;
+  border-bottom: 2px solid transparent;
+  color: rgb(var(--color-content-subtle));
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.mesh-evidence button[aria-pressed='true'] {
+  border-bottom-color: rgb(var(--color-accent));
+  color: rgb(var(--color-content));
+}
+.mesh-evidence button:hover {
+  color: rgb(var(--color-content));
+}
+.mesh-evidence button:focus-visible,
+.mesh-group-control:focus-visible {
+  outline: 2px solid rgb(var(--color-focus));
+  outline-offset: 3px;
+}
+.mesh-canvas {
+  height: 35rem;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 0.5rem;
+  background: rgb(var(--color-surface-sunken));
+}
+.mesh-group-control {
+  cursor: pointer;
+}
+.mesh-group-control:hover text {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.mesh-unmeasured {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: rgb(var(--color-surface-sunken));
+  color: rgb(var(--color-content));
+  font-size: 0.8125rem;
+}
+@media (max-width: 1100px) {
+  .mesh-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mesh-inspector {
+    border-left: 0;
+    border-top: 1px solid rgb(var(--color-border));
+  }
+}
+@media (max-width: 640px) {
+  .mesh-map-panel {
+    padding: 0.75rem;
+  }
+  .mesh-canvas {
+    height: 25rem;
+  }
+  .mesh-evidence {
+    gap: 1rem;
+  }
+  .mesh-evidence button {
+    text-align: left;
+  }
+}

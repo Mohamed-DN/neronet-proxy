@@ -292,7 +292,7 @@
   },
   "topology": {
     "title": "Topologia Mesh",
-    "description": "Topologia interattiva della rete overlay sovrana, collegamenti peer e compartimenti logici L2.",
+    "description": "Esplora nodi, compartimenti e connessioni della tua mesh.",
     "searchPlaceholder": "Cerca nodi per nome, ID o IP overlay...",
     "filterRoleAll": "Tutti i ruoli",
     "filterRoleRelay": "Relay",
@@ -315,7 +315,7 @@
     "stats": {
       "nodes": "Nodi Visibili",
       "links": "Rotte Peer",
-      "compartments": "Compartimenti L2",
+      "compartments": "Compartimenti",
       "vaultStatus": "Ghost Vaults"
     },
     "vault": {
@@ -382,13 +382,34 @@
       "healthy": "In Salute",
       "ghostVaultNode": "Nodo Stealth Ghost",
       "viewDetails": "Ispeziona Specifiche Nodo",
-      "close": "Chiudi"
+      "close": "Chiudi",
+      "unhealthy": "Non sano"
     },
-    "policyOpenNotice": "La mesh è aperta per default: ogni nodo raggiunge tutti gli altri, tranne i collegamenti che hai tagliato.",
+    "policyOpenNotice": "La policy consente connessioni tra tutti i nodi, salvo i collegamenti tagliati. La raggiungibilità richiede un percorso disponibile.",
     "empty": {
       "title": "Nessun nodo trovato nella topologia",
       "desc": "Nessun nodo corrisponde al compartimento selezionato o ai filtri di ricerca.",
       "enrollFirst": "Registra nodi sovrani per costruire la topologia della rete overlay."
+    },
+    "radial": {
+      "summary": "Mesh visibile",
+      "allowedPairs": "Coppie nelle policy",
+      "loading": "Caricamento della mesh",
+      "evidence": "Vista connessioni",
+      "policy": "Connessioni consentite",
+      "observed": "Percorsi osservati",
+      "policyExplain": "Le linee indicano connessioni consentite dalle policy. Non dimostrano traffico o trasporto.",
+      "observedExplain": "Qui appariranno le misure autenticate dei peer. Le etichette delle policy non dimostrano un percorso.",
+      "unmeasured": "I percorsi tra peer non sono ancora misurati.",
+      "collapse": "Comprimi {{name}}",
+      "expand": "Espandi {{name}}",
+      "groupUnhealthy": "Non sani: {{count}}",
+      "groupQuarantined": "In quarantena: {{count}}",
+      "controlPlane": "Control plane",
+      "coordination": "Coordinamento",
+      "transport": "Trasporto osservato",
+      "allowed": "Consentita",
+      "allNodes": "Tutti i nodi"
     }
   },
   "acl": {

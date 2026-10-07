@@ -8,6 +8,20 @@ import { IconButton } from './IconButton';
 import { expectAccessibleInBothThemes, renderUI } from '../test/harness';
 
 describe('Button', () => {
+  it.each(['primary', 'danger'] as const)(
+    'preserves the %s foreground while applying a semantic text size',
+    (variant) => {
+      renderUI(
+        <Button variant={variant} size="sm">
+          Readable action
+        </Button>
+      );
+      const button = screen.getByRole('button', { name: 'Readable action' });
+      expect(button).toHaveClass(`text-${variant === 'primary' ? 'accent' : 'danger'}-contrast`);
+      expect(button).toHaveClass('text-caption');
+    }
+  );
+
   it('is reachable and activated from the keyboard alone', async () => {
     const user = userEvent.setup();
     const onClick = vi.fn();

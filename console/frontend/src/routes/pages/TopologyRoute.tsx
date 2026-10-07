@@ -7,7 +7,9 @@ import {
   Link2,
   List,
   Lock,
+  Minus,
   Network,
+  Plus,
   RotateCcw,
   Scissors,
   Search,
@@ -28,8 +30,7 @@ import { Dialog } from '../../ui/Dialog';
 import { FormField } from '../../ui/FormField';
 import { Input } from '../../ui/Input';
 import { Select } from '../../ui/Select';
-import { EmptyState } from '../../ui/States';
-import { Stat } from '../../ui/Stat';
+import { EmptyState, ErrorState, Skeleton } from '../../ui/States';
 import { StatusBadge, type Status } from '../../ui/StatusBadge';
 import { Table, type TableColumn } from '../../ui/Table';
 
@@ -43,14 +44,15 @@ import {
   useUnlockGhostVaults
 } from '../../services/queries';
 import type { AclRule, Compartment, TopologyLink, TopologyNode } from '../../services/types';
+import './TopologyRoute.css';
 
 export type RoleFilter = 'ALL' | 'RELAY' | 'EXIT_BRIDGE' | 'CLIENT_ORIGIN' | 'HYBRID';
 export type ViewMode = 'CANVAS' | 'LIST';
 export type GroupBy = 'compartment' | 'country' | 'role' | 'none';
 export type EdgeMode = 'auto' | 'all' | 'selected' | 'none';
 
-const GRAPH_WIDTH = 720;
-const GRAPH_HEIGHT = 420;
+const GRAPH_WIDTH = 800;
+const GRAPH_HEIGHT = 600;
 const BASE_NODE_RADIUS = 16;
 
 const MIN_SCALE = 0.3;
@@ -60,12 +62,9 @@ const ZOOM_STEP = 1.2;
 const MOVE_EPS = 3;
 // It is the number of lines, not of nodes, that makes a mesh unreadable: a full mesh
 // of 13 nodes is already 78 of them. Above this many, "auto" draws only what departs
-// from the full mesh -- cut links, relayed or onion paths -- plus the selected node's.
+// from the full mesh -- cut links -- plus the selected node's policy connections.
 const EDGE_AUTO_LINK_LIMIT = 30;
 const LABEL_LIMIT = 40;
-const DRIFT_LIMIT = 80;
-
-const ZERO: Point = { x: 0, y: 0 };
 
 interface Point {
   x: number;
@@ -85,6 +84,9 @@ interface ClusterBox {
   cy: number;
   r: number;
   count: number;
+  expanded: boolean;
+  unhealthy: number;
+  quarantined: number;
 }
 
 /** The pan/zoom of the whole scene. Nodes keep their own coordinates; this only
@@ -119,62 +121,55 @@ function groupValue(node: TopologyNode, groupBy: GroupBy): { key: string; label:
   return { key: '__all__', label: '' };
 }
 
-/**
- * Lays the fleet out as clusters rather than one ring. Grouping the nodes -- by
- * compartment, region or role -- is what keeps a large mesh legible: a thousand
- * nodes become a few dozen labelled clusters instead of one hairball. The circular
- * seed inside each cluster is deterministic; the operator can still drag any node,
- * and those overrides are kept in component state.
- */
+/** Stable radial groups: refresh order never moves an identity. Large groups
+ * start folded, keeping the overview useful without rendering every peer. */
 function clusterLayout(
   nodes: TopologyNode[],
   groupBy: GroupBy,
-  otherLabel: string
+  otherLabel: string,
+  expansion: Record<string, boolean>,
+  revealMatches: boolean
 ): { placed: PlacedNode[]; clusters: ClusterBox[] } {
-  if (nodes.length === 0) return { placed: [], clusters: [] };
-
   const groups = new Map<string, { label: string; nodes: TopologyNode[] }>();
-  for (const n of nodes) {
-    const { key, label } = groupValue(n, groupBy);
-    const g = groups.get(key) ?? { label: label || otherLabel, nodes: [] };
-    g.nodes.push(n);
-    groups.set(key, g);
+  for (const node of nodes) {
+    const { key, label } = groupValue(node, groupBy);
+    const group = groups.get(key) ?? { label: label || otherLabel, nodes: [] };
+    group.nodes.push(node);
+    groups.set(key, group);
   }
-
-  const keys = [...groups.keys()];
-  const k = keys.length;
-  const cols = Math.ceil(Math.sqrt(k));
-  const rows = Math.ceil(k / cols);
-  const padX = 44;
-  const padY = 48;
-  const cellW = (GRAPH_WIDTH - padX * 2) / cols;
-  const cellH = (GRAPH_HEIGHT - padY * 2) / rows;
-  const clusterR = Math.max(18, Math.min(cellW, cellH) / 2 - 18);
-
+  const keys = [...groups.keys()].sort();
   const placed: PlacedNode[] = [];
   const clusters: ClusterBox[] = [];
-
-  keys.forEach((key, gi) => {
-    const col = gi % cols;
-    const row = Math.floor(gi / cols);
-    const cx = padX + cellW * (col + 0.5);
-    const cy = padY + cellH * (row + 0.5);
-    const g = groups.get(key)!;
-    const m = g.nodes.length;
-    clusters.push({ key, label: g.label || otherLabel, cx, cy, r: clusterR + 8, count: m });
-
-    if (m === 1) {
-      placed.push({ node: g.nodes[0]!, x: cx, y: cy });
-      return;
-    }
-    // Phyllotaxis (sunflower) packing spreads the nodes evenly to the cluster edge.
-    g.nodes.forEach((node, i) => {
-      const rr = clusterR * Math.sqrt((i + 0.5) / m);
-      const theta = i * 2.399963229728653;
-      placed.push({ node, x: cx + rr * Math.cos(theta), y: cy + rr * Math.sin(theta) });
+  const centre = { x: GRAPH_WIDTH / 2, y: GRAPH_HEIGHT / 2 };
+  keys.forEach((key, index) => {
+    const group = groups.get(key)!;
+    const members = [...group.nodes].sort((a, b) => a.id.localeCompare(b.id));
+    const angle = -Math.PI / 2 + (index * Math.PI * 2) / keys.length;
+    const single = keys.length === 1;
+    const orbit = single ? 0 : 195;
+    const expanded = revealMatches || (expansion[key] ?? members.length <= 16);
+    const cx = centre.x + Math.cos(angle) * orbit;
+    const cy = single && !expanded ? centre.y - 180 : centre.y + Math.sin(angle) * orbit;
+    const r = single ? 225 : Math.max(40, Math.min(85, 175 * Math.sin(Math.PI / keys.length)));
+    clusters.push({
+      key,
+      label: group.label,
+      cx,
+      cy,
+      r,
+      count: members.length,
+      expanded,
+      unhealthy: members.filter((node) => !node.is_healthy && !node.is_quarantined).length,
+      quarantined: members.filter((node) => node.is_quarantined).length
+    });
+    if (!expanded) return;
+    members.forEach((node, ni) => {
+      const theta = -Math.PI / 2 + (ni * Math.PI * 2) / members.length;
+      // A sole group surrounds coordination; satellites use their own local ring.
+      const radius = single ? 185 : members.length === 1 ? 0 : r - 25;
+      placed.push({ node, x: cx + Math.cos(theta) * radius, y: cy + Math.sin(theta) * radius });
     });
   });
-
   return { placed, clusters };
 }
 
@@ -184,17 +179,36 @@ function nodeRadiusFor(count: number): number {
   return 6;
 }
 
-/** A small, deterministic idle wobble so the canvas feels alive without a physics
- *  engine. Bounded to a couple of pixels and skipped for nodes the operator pinned. */
-function driftOffset(id: string, t: number): Point {
-  let h = 0;
-  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) & 0xffff;
-  const phase = (h % 628) / 100;
-  return { x: Math.sin(t * 0.7 + phase) * 2.2, y: Math.cos(t * 0.5 + phase * 1.3) * 2.2 };
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/** Peer edges go around coordination, so they never look like traffic to it. */
+function peerPath(a: Point, b: Point): string {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  const centre = { x: GRAPH_WIDTH / 2, y: GRAPH_HEIGHT / 2 };
+  const along = lengthSquared ? clamp(((centre.x - a.x) * dx + (centre.y - a.y) * dy) / lengthSquared, 0, 1) : 0;
+  const distance = Math.hypot(a.x + along * dx - centre.x, a.y + along * dy - centre.y);
+  if (distance >= 78 || !lengthSquared) return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+  const length = Math.sqrt(lengthSquared);
+  const normal = { x: -dy / length, y: dx / length };
+  const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const side = (midpoint.x - centre.x) * normal.x + (midpoint.y - centre.y) * normal.y >= 0 ? 1 : -1;
+  let control = midpoint;
+  for (let offset = 190; offset <= 650; offset *= 1.5) {
+    control = { x: midpoint.x + normal.x * offset * side, y: midpoint.y + normal.y * offset * side };
+    let closest = Infinity;
+    for (let sample = 0; sample <= 40; sample++) {
+      const t = sample / 40;
+      const x = (1 - t) ** 2 * a.x + 2 * (1 - t) * t * control.x + t * t * b.x;
+      const y = (1 - t) ** 2 * a.y + 2 * (1 - t) * t * control.y + t * t * b.y;
+      closest = Math.min(closest, Math.hypot(x - centre.x, y - centre.y));
+    }
+    if (closest >= 78) break;
+  }
+  return `M ${a.x} ${a.y} Q ${control.x} ${control.y} ${b.x} ${b.y}`;
 }
 
 /** Scale the view by `factor` while keeping the scene point under `center`
@@ -208,14 +222,6 @@ function zoomAt(view: ViewTransform, center: Point, factor: number): ViewTransfo
     ty: center.y - applied * (center.y - view.ty)
   };
 }
-
-/** Categorical colour per transport mode, from the same token palette Recharts uses. */
-const LINK_MODE_STROKE: Record<string, string> = {
-  direct: 'stroke-chart-1',
-  derp: 'stroke-chart-2',
-  onion: 'stroke-chart-3',
-  openvpn: 'stroke-chart-4'
-};
 
 function nodeStatus(node: TopologyNode): Status {
   if (node.is_quarantined) return 'critical';
@@ -263,12 +269,16 @@ export function TopologyRoute() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState<RoleFilter>('ALL');
   const [selectedCompartment, setSelectedCompartment] = useState<string>('ALL');
-  const [viewMode, setViewMode] = useState<ViewMode>('CANVAS');
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    window.matchMedia?.('(max-width: 640px)').matches ? 'LIST' : 'CANVAS'
+  );
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedLink, setSelectedLink] = useState<SelectedLink | null>(null);
   const [linkActionError, setLinkActionError] = useState<string | null>(null);
 
-  const [groupBy, setGroupBy] = useState<GroupBy>('country');
+  const [groupBy, setGroupBy] = useState<GroupBy>('compartment');
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [evidenceView, setEvidenceView] = useState<'policy' | 'observed'>('policy');
   const [edgeMode, setEdgeMode] = useState<EdgeMode>('auto');
 
   // Camera and dragged-node positions. The camera starts centred; node overrides
@@ -276,13 +286,17 @@ export function TopologyRoute() {
   const [view, setView] = useState<ViewTransform>({ scale: 1, tx: 0, ty: 0 });
   const [positions, setPositions] = useState<Record<string, Point>>({});
   const [animateView, setAnimateView] = useState(false);
-  const [driftT, setDriftT] = useState(0);
 
   const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
   const [vaultPassword, setVaultPassword] = useState('');
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const [canvasElement, setCanvasElement] = useState<SVGSVGElement | null>(null);
+  const bindCanvas = useCallback((element: SVGSVGElement | null) => {
+    svgRef.current = element;
+    setCanvasElement(element);
+  }, []);
   const sceneRef = useRef<SVGGElement | null>(null);
   const interactionRef = useRef<Interaction>(null);
 
@@ -320,10 +334,10 @@ export function TopologyRoute() {
   }, [links, filteredNodes]);
 
   // The clustered seed, then the operator's per-node overrides laid on top.
-  const otherLabel = t('topology.canvas.clusterOther');
+  const otherLabel = t(groupBy === 'none' ? 'topology.radial.allNodes' : 'topology.canvas.clusterOther');
   const { placed: basePlaced, clusters } = useMemo(
-    () => clusterLayout(filteredNodes, groupBy, otherLabel),
-    [filteredNodes, groupBy, otherLabel]
+    () => clusterLayout(filteredNodes, groupBy, otherLabel, expandedGroups, Boolean(searchQuery.trim())),
+    [filteredNodes, groupBy, otherLabel, expandedGroups, searchQuery]
   );
   const placedNodes = useMemo<PlacedNode[]>(
     () =>
@@ -342,40 +356,8 @@ export function TopologyRoute() {
   const nodeCount = filteredNodes.length;
   const nodeRadius = nodeRadiusFor(nodeCount);
   const showLabels = nodeCount <= LABEL_LIMIT;
-  const driftEnabled = prefersMotion && nodeCount <= DRIFT_LIMIT;
-
-  // Idle wobble. Throttled to ~30fps and only for a fleet small enough that
-  // animating the DOM stays cheap.
-  useEffect(() => {
-    if (!driftEnabled) {
-      setDriftT(0);
-      return undefined;
-    }
-    let raf = 0;
-    let last = 0;
-    const start = performance.now();
-    const loop = (now: number) => {
-      if (now - last > 33) {
-        setDriftT((now - start) / 1000);
-        last = now;
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [driftEnabled]);
-
-  // Effective on-screen position = layout (or drag override) plus idle drift, used
-  // for both the node and its links so they stay attached.
-  const renderPos = useMemo(() => {
-    const map = new Map<string, Point>();
-    placedNodes.forEach(({ node, x, y }) => {
-      const pinned = positions[node.id] !== undefined;
-      const off = driftEnabled && !pinned ? driftOffset(node.id, driftT) : ZERO;
-      map.set(node.id, { x: x + off.x, y: y + off.y });
-    });
-    return map;
-  }, [placedNodes, positions, driftEnabled, driftT]);
+  // Stable positions make updates comparable and honour reduced motion.
+  const renderPos = useMemo(() => new Map(placedNodes.map(({ node, x, y }) => [node.id, { x, y }])), [placedNodes]);
 
   // "focus" is what auto falls back to on a busy mesh: the exceptions plus the
   // selection. "selected" is the stricter manual mode: the selection alone.
@@ -383,7 +365,9 @@ export function TopologyRoute() {
     edgeMode === 'auto' ? (filteredLinks.length > EDGE_AUTO_LINK_LIMIT ? 'focus' : 'all') : edgeMode;
 
   const visibleLinks = useMemo(() => {
-    if (resolvedEdgeMode === 'none') return EMPTY_LINKS;
+    // The current API exposes policy pairs, never authenticated peer-path evidence.
+    // Keep observed paths explicitly unmeasured until the transport contract exists.
+    if (evidenceView === 'observed' || resolvedEdgeMode === 'none') return EMPTY_LINKS;
     if (resolvedEdgeMode === 'all') return filteredLinks;
     return filteredLinks.filter((l) => {
       const touchesNode = selectedNodeId && (l.source === selectedNodeId || l.target === selectedNodeId);
@@ -391,10 +375,10 @@ export function TopologyRoute() {
         selectedLink &&
         ((l.source === selectedLink.source && l.target === selectedLink.target) ||
           (l.source === selectedLink.target && l.target === selectedLink.source));
-      const isException = l.is_visible === false || (l.mode !== undefined && l.mode !== 'direct');
+      const isException = l.is_visible === false;
       return Boolean(touchesNode || isSelected || (resolvedEdgeMode === 'focus' && isException));
     });
-  }, [resolvedEdgeMode, filteredLinks, selectedNodeId, selectedLink]);
+  }, [evidenceView, resolvedEdgeMode, filteredLinks, selectedNodeId, selectedLink]);
 
   // With a node selected, everything it does not reach directly fades back.
   const neighbourIds = useMemo(() => {
@@ -411,7 +395,9 @@ export function TopologyRoute() {
   const selectedNode = selectedNodeId ? (nodes.find((n) => n.id === selectedNodeId) ?? null) : null;
   const selectedNodeLinks = useMemo(() => {
     if (!selectedNode) return [];
-    return filteredLinks.filter((l) => l.source === selectedNode.id || l.target === selectedNode.id);
+    return filteredLinks.filter(
+      (l) => l.is_visible !== false && (l.source === selectedNode.id || l.target === selectedNode.id)
+    );
   }, [selectedNode, filteredLinks]);
 
   const linkSourceNode = selectedLink ? (nodes.find((n) => n.id === selectedLink.source) ?? null) : null;
@@ -512,7 +498,7 @@ export function TopologyRoute() {
 
   // Native, non-passive wheel handler so zooming does not scroll the page.
   useEffect(() => {
-    const svg = svgRef.current;
+    const svg = canvasElement;
     if (!svg) return undefined;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -523,7 +509,7 @@ export function TopologyRoute() {
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
     return () => svg.removeEventListener('wheel', onWheel);
-  }, [clientToVB]);
+  }, [canvasElement, clientToVB]);
 
   useEffect(
     () => () => {
@@ -697,7 +683,13 @@ export function TopologyRoute() {
       cell: (row) => (
         <StatusBadge
           status={nodeStatus(row)}
-          label={row.is_quarantined ? t('topology.nodeDrawer.quarantined') : t('topology.nodeDrawer.healthy')}
+          label={
+            row.is_quarantined
+              ? t('topology.nodeDrawer.quarantined')
+              : row.is_healthy
+                ? t('topology.nodeDrawer.healthy')
+                : t('topology.nodeDrawer.unhealthy')
+          }
         />
       )
     }
@@ -707,9 +699,9 @@ export function TopologyRoute() {
   const noNodesAtAll = totalNodes === 0;
 
   const controlButtonClass =
-    'inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface/90 text-muted shadow-sm backdrop-blur transition-colors hover:border-border-strong hover:text-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus';
+    'inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-content transition-colors hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus';
 
-  const drawClusters = groupBy !== 'none' && clusters.length > 1;
+  const drawClusters = true;
   const needsSelectionHint =
     (resolvedEdgeMode === 'selected' || resolvedEdgeMode === 'focus') && !selectedNodeId && !selectedLink;
 
@@ -771,14 +763,20 @@ export function TopologyRoute() {
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label={t('topology.stats.nodes')} value={filteredNodes.length} />
-        <Stat label={t('topology.stats.links')} value={filteredLinks.filter((l) => l.is_visible !== false).length} />
-        <Stat label={t('topology.stats.compartments')} value={compartments.length} />
-        <Stat
-          label={t('topology.stats.vaultStatus')}
-          value={isUnlocked ? t('topology.vault.unlockedBadge') : t('topology.vault.lockedBadge')}
-        />
+      <div className="mesh-summary" aria-label={t('topology.radial.summary')}>
+        <span>
+          <strong>{filteredNodes.length}</strong> {t('topology.stats.nodes')}
+        </span>
+        <span>
+          <strong>{filteredLinks.filter((link) => link.is_visible !== false).length}</strong>{' '}
+          {t('topology.radial.allowedPairs')}
+        </span>
+        <span>
+          <strong>{compartments.length}</strong> {t('topology.stats.compartments')}
+        </span>
+        <span className="sm:ml-auto">
+          {isUnlocked ? t('topology.vault.unlockedBadge') : t('topology.vault.lockedBadge')}
+        </span>
       </div>
 
       {!noNodesAtAll && (
@@ -812,7 +810,13 @@ export function TopologyRoute() {
         </div>
       )}
 
-      {noNodesAtAll ? (
+      {topologyQuery.isPending ? (
+        <div role="status" aria-label={t('topology.radial.loading')} className="p-6">
+          <Skeleton lines={8} />
+        </div>
+      ) : topologyQuery.isError ? (
+        <ErrorState onRetry={() => void topologyQuery.refetch()} />
+      ) : noNodesAtAll ? (
         <Card>
           <EmptyState title={t('topology.empty.title')} body={t('topology.empty.enrollFirst')} />
         </Card>
@@ -823,8 +827,30 @@ export function TopologyRoute() {
               <EmptyState title={t('topology.empty.title')} body={t('topology.empty.desc')} />
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3">
-              <div className="border-b border-border p-4 lg:col-span-2 lg:border-b-0 lg:border-r">
+            <div className="mesh-workspace">
+              <div className="mesh-map-panel">
+                <div className="mesh-evidence" aria-label={t('topology.radial.evidence')}>
+                  <button
+                    type="button"
+                    aria-pressed={evidenceView === 'policy'}
+                    onClick={() => setEvidenceView('policy')}
+                  >
+                    {t('topology.radial.policy')}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={evidenceView === 'observed'}
+                    onClick={() => {
+                      setEvidenceView('observed');
+                      setSelectedLink(null);
+                    }}
+                  >
+                    {t('topology.radial.observed')}
+                  </button>
+                </div>
+                <p className="mb-4 text-caption text-subtle">
+                  {t(evidenceView === 'policy' ? 'topology.radial.policyExplain' : 'topology.radial.observedExplain')}
+                </p>
                 <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                   <div className="flex items-center gap-2">
                     <span className="text-caption text-muted">{t('topology.canvas.groupByLabel')}</span>
@@ -855,39 +881,145 @@ export function TopologyRoute() {
 
                 <div className="relative">
                   <svg
-                    ref={svgRef}
+                    ref={bindCanvas}
                     viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
-                    className="h-[460px] w-full touch-none select-none rounded-card bg-surface-sunken"
+                    className="mesh-canvas w-full touch-none select-none"
                     preserveAspectRatio="xMidYMid meet"
                     role="group"
                     aria-label={t('topology.title')}
                     style={{ cursor: 'grab' }}
                     onPointerDown={onBackgroundPointerDown}
                   >
+                    <defs>
+                      <pattern id="mesh-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+                        <path d="M 24 0 L 0 0 0 24" fill="none" className="stroke-border" strokeWidth="0.5" />
+                      </pattern>
+                    </defs>
+                    <rect width={GRAPH_WIDTH} height={GRAPH_HEIGHT} fill="url(#mesh-grid)" opacity="0.5" />
                     <g
                       ref={sceneRef}
                       transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}
-                      style={{ transition: animateView ? 'transform 180ms ease-out' : 'none' }}
+                      style={{ transition: animateView && prefersMotion ? 'transform 180ms ease-out' : 'none' }}
                     >
+                      <circle
+                        cx={GRAPH_WIDTH / 2}
+                        cy={GRAPH_HEIGHT / 2}
+                        r={265}
+                        className="fill-none stroke-border"
+                        strokeDasharray="3 6"
+                      />
                       {drawClusters &&
                         clusters.map((cluster) => (
-                          <g key={`cluster-${cluster.key}`} className="pointer-events-none">
+                          <g key={`cluster-${cluster.key}`}>
                             <circle
                               cx={cluster.cx}
                               cy={cluster.cy}
-                              r={cluster.r}
-                              className="fill-surface/40 stroke-border"
-                              strokeWidth={1}
-                              strokeDasharray="2 3"
+                              r={cluster.expanded ? cluster.r : 32}
+                              className={
+                                !cluster.expanded && cluster.quarantined
+                                  ? 'fill-danger-subtle stroke-danger'
+                                  : !cluster.expanded && cluster.unhealthy
+                                    ? 'fill-warning-subtle stroke-warning'
+                                    : 'fill-surface stroke-border-strong'
+                              }
+                              fillOpacity={0.5}
+                              strokeDasharray={cluster.expanded ? '3 5' : undefined}
                             />
-                            <text
-                              x={cluster.cx}
-                              y={cluster.cy - cluster.r - 6}
-                              textAnchor="middle"
-                              className="fill-muted text-[10px] font-semibold uppercase tracking-wide"
+                            <g
+                              role="button"
+                              tabIndex={0}
+                              aria-expanded={cluster.expanded}
+                              aria-label={[
+                                t(cluster.expanded ? 'topology.radial.collapse' : 'topology.radial.expand', {
+                                  name: cluster.label
+                                }),
+                                !cluster.expanded && cluster.unhealthy
+                                  ? t('topology.radial.groupUnhealthy', { count: cluster.unhealthy })
+                                  : '',
+                                !cluster.expanded && cluster.quarantined
+                                  ? t('topology.radial.groupQuarantined', { count: cluster.quarantined })
+                                  : ''
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                              className="mesh-group-control"
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={() =>
+                                setExpandedGroups((previous) => ({ ...previous, [cluster.key]: !cluster.expanded }))
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  setExpandedGroups((previous) => ({ ...previous, [cluster.key]: !cluster.expanded }));
+                                }
+                              }}
                             >
-                              {cluster.label} · {cluster.count}
-                            </text>
+                              <rect
+                                x={cluster.cx - 110}
+                                y={cluster.expanded ? cluster.cy - cluster.r - 28 : cluster.cy - 28}
+                                width={220}
+                                height={cluster.expanded ? 28 : 116}
+                                rx={5}
+                                fill="transparent"
+                              />
+                              {cluster.expanded ? (
+                                <Minus
+                                  x={cluster.cx - 105}
+                                  y={cluster.cy - cluster.r - 22}
+                                  width={14}
+                                  height={14}
+                                  className="text-content"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <Plus
+                                  x={cluster.cx + 17}
+                                  y={cluster.cy - 27}
+                                  width={14}
+                                  height={14}
+                                  className="text-content"
+                                  aria-hidden="true"
+                                />
+                              )}
+                              {!cluster.expanded && (
+                                <text
+                                  x={cluster.cx}
+                                  y={cluster.cy + 5}
+                                  textAnchor="middle"
+                                  className="fill-content text-[18px] font-semibold"
+                                >
+                                  {cluster.count}
+                                </text>
+                              )}
+                              <text
+                                x={cluster.cx}
+                                y={cluster.expanded ? cluster.cy - cluster.r - 10 : cluster.cy + 53}
+                                textAnchor="middle"
+                                className="fill-content text-[12px] font-medium"
+                              >
+                                {cluster.label} · {cluster.count}
+                              </text>
+                              {!cluster.expanded && cluster.unhealthy > 0 && (
+                                <text
+                                  x={cluster.cx}
+                                  y={cluster.cy + 70}
+                                  textAnchor="middle"
+                                  className="fill-content text-[11px]"
+                                >
+                                  {t('topology.radial.groupUnhealthy', { count: cluster.unhealthy })}
+                                </text>
+                              )}
+                              {!cluster.expanded && cluster.quarantined > 0 && (
+                                <text
+                                  x={cluster.cx}
+                                  y={cluster.cy + (cluster.unhealthy ? 85 : 70)}
+                                  textAnchor="middle"
+                                  className="fill-content text-[11px]"
+                                >
+                                  {t('topology.radial.groupQuarantined', { count: cluster.quarantined })}
+                                </text>
+                              )}
+                            </g>
                           </g>
                         ))}
 
@@ -896,16 +1028,16 @@ export function TopologyRoute() {
                         const v = renderPos.get(link.target);
                         if (!u || !v) return null;
                         const isCut = link.is_visible === false;
+                        const path = peerPath(u, v);
                         const isSelectedLink =
                           selectedLink &&
                           ((selectedLink.source === link.source && selectedLink.target === link.target) ||
                             (selectedLink.source === link.target && selectedLink.target === link.source));
-                        const modeClass = isCut
-                          ? 'stroke-danger'
-                          : (LINK_MODE_STROKE[link.mode ?? 'direct'] ?? 'stroke-border-strong');
+                        const modeClass = isCut ? 'stroke-danger' : 'stroke-accent';
                         return (
                           <g
                             key={`${link.source}-${link.target}`}
+                            data-mesh-link="policy"
                             role="button"
                             tabIndex={0}
                             aria-label={`${t('topology.canvas.linkTitle')}: ${positionById.get(link.source)?.node.name || link.source} — ${positionById.get(link.target)?.node.name || link.target}`}
@@ -919,14 +1051,12 @@ export function TopologyRoute() {
                               }
                             }}
                           >
-                            <title>{isCut ? t('topology.canvas.cutBadge') : (link.mode ?? 'direct')}</title>
-                            <line x1={u.x} y1={u.y} x2={v.x} y2={v.y} stroke="transparent" strokeWidth={12} />
-                            <line
-                              x1={u.x}
-                              y1={u.y}
-                              x2={v.x}
-                              y2={v.y}
-                              strokeWidth={isSelectedLink ? 3.5 : isCut ? 1.5 : 2}
+                            <title>{isCut ? t('topology.canvas.cutBadge') : t('topology.radial.policy')}</title>
+                            <path d={path} fill="none" stroke="transparent" strokeWidth={12} />
+                            <path
+                              d={path}
+                              fill="none"
+                              strokeWidth={isSelectedLink ? 3 : 1.25}
                               strokeDasharray={isCut ? '4 4' : undefined}
                               className={isSelectedLink ? 'stroke-content' : modeClass}
                             />
@@ -940,8 +1070,16 @@ export function TopologyRoute() {
                         const { x, y } = pos;
                         const isSelected = selectedNode?.id === node.id;
                         const isQuarantined = node.is_quarantined;
-                        const fillClass = isQuarantined ? 'fill-danger-subtle' : 'fill-accent-subtle';
-                        const strokeClass = isQuarantined ? 'stroke-danger' : 'stroke-accent';
+                        const fillClass = isQuarantined
+                          ? 'fill-danger-subtle'
+                          : node.is_healthy
+                            ? 'fill-accent-subtle'
+                            : 'fill-warning-subtle';
+                        const strokeClass = isQuarantined
+                          ? 'stroke-danger'
+                          : node.is_healthy
+                            ? 'stroke-accent'
+                            : 'stroke-warning';
                         const faded = neighbourIds !== null && !neighbourIds.has(node.id);
                         return (
                           <g
@@ -951,7 +1089,8 @@ export function TopologyRoute() {
                             aria-label={`${node.name || node.id} — ${node.role}`}
                             aria-pressed={isSelected}
                             className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
-                            style={{ cursor: 'grab', opacity: faded ? 0.3 : 1, transition: 'opacity 200ms ease-out' }}
+                            style={{ cursor: 'grab' }}
+                            data-neighbour={faded ? 'false' : 'true'}
                             onPointerDown={(e) => onNodePointerDown(e, node.id)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
@@ -977,6 +1116,7 @@ export function TopologyRoute() {
                               cy={y}
                               r={nodeRadius}
                               strokeWidth={isSelected ? 3 : 2}
+                              strokeDasharray={!node.is_healthy && !isQuarantined ? '4 3' : undefined}
                               className={`${fillClass} ${isSelected ? 'stroke-content' : strokeClass}`}
                             />
                             {nodeRadius >= 9 && (
@@ -985,7 +1125,7 @@ export function TopologyRoute() {
                                 y={y}
                                 textAnchor="middle"
                                 dominantBaseline="middle"
-                                className={`${isQuarantined ? 'fill-danger-contrast' : 'fill-accent-contrast'} pointer-events-none text-[9px] font-bold`}
+                                className="fill-content pointer-events-none text-[11px] font-semibold"
                               >
                                 {(node.country || node.name || node.id).slice(0, 2).toUpperCase()}
                               </text>
@@ -995,7 +1135,7 @@ export function TopologyRoute() {
                                 x={x}
                                 y={y + nodeRadius + 11}
                                 textAnchor="middle"
-                                className="pointer-events-none fill-content text-[9px] font-mono"
+                                className="pointer-events-none fill-content text-[11px]"
                               >
                                 {(node.name || node.id).slice(0, 14)}
                               </text>
@@ -1003,10 +1143,43 @@ export function TopologyRoute() {
                           </g>
                         );
                       })}
+                      <g className="pointer-events-none" aria-label={t('topology.radial.controlPlane')}>
+                        <circle
+                          cx={GRAPH_WIDTH / 2}
+                          cy={GRAPH_HEIGHT / 2}
+                          r={53}
+                          className="fill-surface stroke-accent"
+                          strokeWidth={1.5}
+                        />
+                        <Network
+                          x={GRAPH_WIDTH / 2 - 12}
+                          y={GRAPH_HEIGHT / 2 - 29}
+                          width={24}
+                          height={24}
+                          className="text-accent"
+                          aria-hidden="true"
+                        />
+                        <text
+                          x={GRAPH_WIDTH / 2}
+                          y={GRAPH_HEIGHT / 2 + 14}
+                          textAnchor="middle"
+                          className="fill-content text-[12px] font-semibold"
+                        >
+                          {t('topology.radial.controlPlane')}
+                        </text>
+                        <text
+                          x={GRAPH_WIDTH / 2}
+                          y={GRAPH_HEIGHT / 2 + 31}
+                          textAnchor="middle"
+                          className="fill-subtle text-[10px]"
+                        >
+                          {t('topology.radial.coordination')}
+                        </text>
+                      </g>
                     </g>
                   </svg>
 
-                  {needsSelectionHint && (
+                  {evidenceView === 'policy' && needsSelectionHint && (
                     <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
                       <span className="rounded-full border border-border bg-surface/90 px-3 py-1 text-caption text-muted shadow-sm backdrop-blur">
                         {t('topology.canvas.edgesSelectHint')}
@@ -1046,17 +1219,26 @@ export function TopologyRoute() {
                   </div>
                 </div>
 
-                <p className="mt-2 text-caption text-muted">{t('topology.canvas.hint')}</p>
+                {evidenceView === 'observed' && (
+                  <p role="status" className="mesh-unmeasured">
+                    {t('topology.radial.unmeasured')}
+                  </p>
+                )}
+                <p className="mt-2 text-caption text-subtle">{t('topology.canvas.hint')}</p>
 
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-caption text-muted">
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-chart-1" /> {t('topology.legend.direct')}
+                    <span className="w-4 border-t border-accent" /> {t('topology.radial.policy')}
                   </span>
                   {/* Only what the view can know. Nothing measures whether a pair is
                       relayed or onion-routed, and there is no OpenVPN transport, so
                       those used to sit here describing paths the mesh never took. */}
                   <span className="flex items-center gap-1.5">
                     <span className="w-4 border-t-2 border-dashed border-danger" /> {t('topology.canvas.cutBadge')}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full border border-dashed border-warning" />{' '}
+                    {t('topology.nodeDrawer.unhealthy')}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-danger" /> {t('topology.nodeDrawer.quarantined')}
@@ -1074,13 +1256,13 @@ export function TopologyRoute() {
                 </div>
               </div>
 
-              <div className="p-4">
+              <aside className="mesh-inspector" aria-label={t('topology.nodeDrawer.title')}>
                 {selectedLink ? (
                   <div className="flex flex-col gap-3">
                     <div className="flex items-start justify-between gap-2">
                       <h2 className="text-body font-semibold text-content">{t('topology.canvas.linkTitle')}</h2>
                       <Badge tone={isLinkCut ? 'danger' : 'accent'}>
-                        {isLinkCut ? t('topology.canvas.cutBadge') : t('topology.canvas.activeBadge')}
+                        {isLinkCut ? t('topology.canvas.cutBadge') : t('topology.radial.allowed')}
                       </Badge>
                     </div>
 
@@ -1090,12 +1272,10 @@ export function TopologyRoute() {
                       <span className="font-mono text-content">{linkTargetNode?.name || selectedLink.target}</span>
                     </div>
 
-                    {selectedLinkData?.mode && (
-                      <div className="text-caption">
-                        <span className="text-muted">{t('topology.canvas.mode')}: </span>
-                        <span className="font-medium text-content">{selectedLinkData.mode}</span>
-                      </div>
-                    )}
+                    <div className="text-caption">
+                      <span className="text-subtle">{t('topology.radial.transport')}: </span>
+                      <span>{t('state.notMeasured')}</span>
+                    </div>
 
                     <p className="text-caption text-muted">{t('topology.canvas.cutExplain')}</p>
 
@@ -1142,7 +1322,9 @@ export function TopologyRoute() {
                         label={
                           selectedNode.is_quarantined
                             ? t('topology.nodeDrawer.quarantined')
-                            : t('topology.nodeDrawer.healthy')
+                            : selectedNode.is_healthy
+                              ? t('topology.nodeDrawer.healthy')
+                              : t('topology.nodeDrawer.unhealthy')
                         }
                       />
                     </div>
@@ -1174,8 +1356,11 @@ export function TopologyRoute() {
                       </div>
                     </dl>
 
+                    <div className="text-caption text-subtle">
+                      {t('topology.radial.transport')}: {t('state.notMeasured')}
+                    </div>
                     <div className="text-caption text-muted">
-                      {t('topology.stats.links')}: {selectedNodeLinks.length}
+                      {t('topology.radial.allowedPairs')}: {selectedNodeLinks.length}
                     </div>
 
                     <Button
@@ -1190,7 +1375,7 @@ export function TopologyRoute() {
                 ) : (
                   <EmptyState title={t('topology.nodeDrawer.title')} body={t('topology.canvas.selectPrompt')} />
                 )}
-              </div>
+              </aside>
             </div>
           )}
         </Card>

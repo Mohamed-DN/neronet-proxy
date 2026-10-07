@@ -5,6 +5,9 @@ sober, dense and calm: a screen an operator reads for eight hours, not a demo.
 Data comes first, colour carries meaning and nothing else, and a figure that
 was never measured says so.
 
+The [radial mesh topology](mesh-topology.md) describes how the network map
+separates policy connections from observed paths and lists its current limits.
+
 Three files hold the system:
 
 | File | What it holds |

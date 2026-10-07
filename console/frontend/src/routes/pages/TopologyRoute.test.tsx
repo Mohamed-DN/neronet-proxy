@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations, renderUI } from '../../test/harness';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -110,6 +110,137 @@ function renderTopology(initialEntries = ['/topology']) {
     </QueryClientProvider>
   );
 }
+
+describe('Radial mesh uses policy and observations as distinct evidence', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/api/stats/topology'))
+          return jsonResponse({
+            nodes: mockStandardNodes.map((node, index) => ({
+              ...node,
+              is_healthy: index !== 0,
+              is_quarantined: index === 1
+            })),
+            links: [{ ...mockLinks[0], mode: 'derp', is_visible: true }],
+            total_nodes: 2
+          });
+        if (url.includes('/api/compartments')) return jsonResponse({ compartments: mockStandardCompartments });
+        return jsonResponse({});
+      }) as unknown as typeof fetch
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('places coordination at the centre without declaring configured links observed', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTopology();
+    expect(await screen.findByText('Control plane')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Observed paths' }));
+    expect(screen.getByText('Peer paths have not been measured yet.')).toBeInTheDocument();
+    expect(container.querySelectorAll('[data-mesh-link]').length).toBe(0);
+  });
+
+  it('reports an unhealthy node accurately in the inspector and accessible list', async () => {
+    const user = userEvent.setup();
+    renderTopology();
+    const node = await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' });
+    node.focus();
+    await user.keyboard('{Enter}');
+    expect(within(screen.getByRole('complementary')).getByText('Unhealthy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Accessible List/i }));
+    expect(screen.getByText('Unhealthy')).toBeInTheDocument();
+  });
+
+  it('keeps peer connections clear of the coordination disc', async () => {
+    renderTopology();
+    const link = await screen.findByRole('button', { name: 'Connection: Rome Gateway Alpha — Berlin Exit Bravo' });
+    const shape = link.querySelector('path, line')!;
+    const values =
+      shape.tagName.toLowerCase() === 'line'
+        ? ['x1', 'y1', 'x2', 'y2'].map((attribute) => Number(shape.getAttribute(attribute)))
+        : (shape.getAttribute('d')!.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+    const [x1, y1] = values;
+    let closest = Infinity;
+    for (let i = 0; i <= 100; i++) {
+      const t = i / 100;
+      const quadratic = values.length === 6;
+      const x = quadratic
+        ? (1 - t) ** 2 * x1! + 2 * (1 - t) * t * values[2]! + t * t * values[4]!
+        : (1 - t) * x1! + t * values[2]!;
+      const y = quadratic
+        ? (1 - t) ** 2 * y1! + 2 * (1 - t) * t * values[3]! + t * t * values[5]!
+        : (1 - t) * y1! + t * values[3]!;
+      closest = Math.min(closest, Math.hypot(x - 400, y - 300));
+    }
+    expect(closest).toBeGreaterThan(62);
+  });
+
+  it('collapses a group without losing its count and search expands matching nodes', async () => {
+    const user = userEvent.setup();
+    renderTopology();
+    const collapse = await screen.findByRole('button', { name: 'Collapse Corporate Ops' });
+    await user.click(collapse);
+    expect(screen.queryByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Expand Corporate Ops/ })).toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: /Search nodes by name/i }), 'Rome');
+    expect(screen.getByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).toBeInTheDocument();
+  });
+
+  it('keeps health warnings visible and accessible when a group is collapsed', async () => {
+    const user = userEvent.setup();
+    renderTopology();
+    await user.click(await screen.findByRole('button', { name: 'Collapse Corporate Ops' }));
+    const group = screen.getByRole('button', { name: /^Expand Corporate Ops/ });
+    expect(within(group).getByText('1 unhealthy')).toBeInTheDocument();
+    expect(within(group).getByText('1 quarantined')).toBeInTheDocument();
+    expect(group).toHaveAccessibleName(/1 unhealthy.*1 quarantined/);
+  });
+
+  it('zooms with the wheel after loading and after remounting the canvas', async () => {
+    const user = userEvent.setup();
+    const originalPoint = globalThis.DOMPoint;
+    vi.stubGlobal(
+      'DOMPoint',
+      class {
+        constructor(
+          public x: number,
+          public y: number
+        ) {}
+        matrixTransform() {
+          return { x: this.x, y: this.y };
+        }
+      }
+    );
+    try {
+      const { container } = renderTopology();
+      await screen.findByText('Control plane');
+      const zoom = () => {
+        const svg = container.querySelector('svg[role="group"]')!;
+        Object.defineProperty(svg, 'getScreenCTM', { value: () => ({ inverse: () => ({}) }) });
+        const scene = svg.querySelector(':scope > g[transform]')!;
+        const before = scene.getAttribute('transform');
+        const wheel = new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 400,
+          clientY: 300,
+          deltaY: -100
+        });
+        fireEvent(svg, wheel);
+        expect(wheel.defaultPrevented).toBe(true);
+        expect(scene.getAttribute('transform')).not.toBe(before);
+      };
+      zoom();
+      await user.click(screen.getByRole('button', { name: /Accessible List/i }));
+      await user.click(screen.getByRole('button', { name: /Interactive Canvas/i }));
+      zoom();
+    } finally {
+      vi.stubGlobal('DOMPoint', originalPoint);
+    }
+  });
+});
 
 describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unlock)', () => {
   let isVaultUnlocked = false;
@@ -489,6 +620,9 @@ describe('Topology canvas: cutting links and staying readable at scale', () => {
     const user = userEvent.setup();
     renderTopology();
 
+    (await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).focus();
+    await user.keyboard('{Enter}');
+    expect(within(screen.getByRole('complementary')).getByText('Policy pairs: 0')).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Connection: Rome Gateway Alpha — Berlin Exit Bravo' }));
     const restore = screen.getByRole('button', { name: 'Restore connection' });
     // Disabled until the rule list has loaded and the pair's rules are known.
@@ -539,6 +673,10 @@ describe('Topology canvas: cutting links and staying readable at scale', () => {
     const user = userEvent.setup();
     renderTopology();
 
+    // Compartment is the default; this large unassigned group starts folded.
+    expect(await screen.findByRole('button', { name: 'Expand Unassigned' })).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Group by' }));
+    await user.click(screen.getByRole('option', { name: 'Region' }));
     const node0 = await screen.findByRole('button', { name: 'Node 0 — CLIENT_ORIGIN' });
 
     // 435 links exist; only the cut one is drawn. The full mesh would be a hairball.
@@ -546,7 +684,7 @@ describe('Topology canvas: cutting links and staying readable at scale', () => {
     expect(screen.getByRole('button', { name: 'Connection: Node 1 — Node 2' })).toBeInTheDocument();
     expect(screen.getByText(/Select a node to reveal its connections/)).toBeInTheDocument();
 
-    // Grouped by region by default: two clusters of fifteen.
+    // Switching to region reveals two manageable clusters of fifteen.
     expect(screen.getByText('DE · 15')).toBeInTheDocument();
     expect(screen.getByText('IT · 15')).toBeInTheDocument();
 

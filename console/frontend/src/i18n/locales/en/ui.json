@@ -292,7 +292,7 @@
   },
   "topology": {
     "title": "Mesh Topology",
-    "description": "Interactive sovereign overlay network topology, peer connections, and L2 logical compartments.",
+    "description": "Explore the nodes, compartments and connections in your mesh.",
     "searchPlaceholder": "Search nodes by name, ID or overlay IP...",
     "filterRoleAll": "All Roles",
     "filterRoleRelay": "Relays",
@@ -315,7 +315,7 @@
     "stats": {
       "nodes": "Visible Nodes",
       "links": "Peer Routes",
-      "compartments": "L2 Compartments",
+      "compartments": "Compartments",
       "vaultStatus": "Ghost Vaults"
     },
     "vault": {
@@ -382,13 +382,34 @@
       "healthy": "Healthy",
       "ghostVaultNode": "Stealth Ghost Node",
       "viewDetails": "Inspect Node Specs",
-      "close": "Close"
+      "close": "Close",
+      "unhealthy": "Unhealthy"
     },
-    "policyOpenNotice": "The mesh is open by default: every node can reach every other, except the connections you have cut.",
+    "policyOpenNotice": "Policy permits connections between all nodes except cut pairs. Reachability still requires an available path.",
     "empty": {
       "title": "No nodes found in topology",
       "desc": "No nodes match the selected compartment or search filters.",
       "enrollFirst": "Enroll sovereign nodes to construct the overlay topology."
+    },
+    "radial": {
+      "summary": "Visible mesh",
+      "allowedPairs": "Policy pairs",
+      "loading": "Loading mesh",
+      "evidence": "Connection view",
+      "policy": "Allowed connections",
+      "observed": "Observed paths",
+      "policyExplain": "These lines show connections allowed by policy. They do not prove traffic or a transport.",
+      "observedExplain": "Authenticated peer measurements will appear here. Policy labels do not establish a path.",
+      "unmeasured": "Peer paths have not been measured yet.",
+      "collapse": "Collapse {{name}}",
+      "expand": "Expand {{name}}",
+      "groupUnhealthy": "{{count}} unhealthy",
+      "groupQuarantined": "{{count}} quarantined",
+      "controlPlane": "Control plane",
+      "coordination": "Coordination",
+      "transport": "Observed transport",
+      "allowed": "Allowed",
+      "allNodes": "All nodes"
     }
   },
   "acl": {
