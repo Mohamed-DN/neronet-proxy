@@ -12,6 +12,13 @@ which fixes an upstream defect and says which and why.
 
 ## Status
 
+The transport adapter in `internal/derpwire` uses `tailscale.com v1.102.5`
+(upstream commit `5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115`) through Go modules.
+It uses the DERP wire client/server and private-key proof with NeroNet admission;
+it does not use a Tailscale control plane. The module is pinned independently of
+the older, unused carve below. The upstream BSD notice is retained in
+`licenses/tailscale-v1.102.5.txt` and must accompany binary distributions.
+
 The Tailscale packages were carved to replace the relay and endpoint-discovery code in
 `pkg/derp` and `pkg/nat`. That integration has not been done, so today they add code and
 tests but no behaviour. CI runs their upstream tests separately from the project's race

@@ -10,7 +10,8 @@ require (
 	github.com/go-json-experiment/json v0.0.0-20260820222146-c27c302e5fc3
 	github.com/go4org/hashtriemap v0.0.0-20260824042624-45fcf11fca0e
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8
-	github.com/gorilla/websocket v1.5.3
+	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
+	github.com/invopop/jsonschema v0.14.0
 	github.com/jsimonetti/rtnetlink v1.4.2
 	github.com/mdlayher/netlink v1.11.2
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745
@@ -23,23 +24,30 @@ require (
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
 	golang.zx2c4.com/wireguard/windows v1.0.1
 	gopkg.in/yaml.v3 v3.0.1
+	tailscale.com v1.102.5
 )
 
 require (
+	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/dgryski/go-metro v0.0.0-20250106013310-edb8663e5e33 // indirect
-	github.com/google/btree v1.1.2 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
+	github.com/google/btree v1.1.3 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/invopop/jsonschema v0.14.0 // indirect
+	github.com/hdevalence/ed25519consensus v0.2.0 // indirect
 	github.com/kamstrup/intmap v0.5.2 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mdlayher/socket v0.6.0 // indirect
+	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
-	github.com/rogpeppe/go-internal v1.9.0 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
+	github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
-	gvisor.dev/gvisor v0.0.0-20250503011706-39ed1f5ac29c // indirect
+	gvisor.dev/gvisor v0.0.0-20260224225140-573d5e7127a8 // indirect
 )
