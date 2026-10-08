@@ -64,6 +64,54 @@ describe('WP-404: OverviewRoute (Fleet Overview Dashboard)', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(['partial', 'stale', 'unknown'])(
+    'explains %s native coverage without inventing missing totals',
+    async (status) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) => {
+          if (url === '/api/stats/overview')
+            return jsonResponse({
+              active_nodes: 2,
+              total_nodes: 2,
+              quarantined_nodes: 0,
+              connected_users: 1,
+              total_bandwidth_rx_mb_s: null,
+              total_bandwidth_tx_mb_s: null,
+              total_bandwidth_bytes: null,
+              memory_runtime_sys_bytes: null,
+              network_health_score: 100,
+              liveness_window_seconds: 60,
+              traffic: {
+                source: 'wireguard-device',
+                status,
+                total_nodes: 2,
+                measured_nodes: status === 'partial' ? 1 : 0,
+                stale_nodes: status === 'unknown' ? 0 : 1,
+                unknown_nodes: status === 'unknown' ? 2 : 0,
+                unavailable_nodes: 0,
+                memory_measured_nodes: 0,
+                freshness_seconds: 60
+              }
+            });
+          return jsonResponse([]);
+        }) as unknown as typeof fetch
+      );
+      renderOverview();
+      await waitFor(() => expect(screen.getByText(/WireGuard device/)).toBeInTheDocument());
+      const label = { partial: 'Incomplete measurements', stale: 'Measurements expired', unknown: 'Not measured' }[
+        status
+      ];
+      await waitFor(() => expect(screen.getByTestId('native-traffic-coverage')).toHaveTextContent(label!));
+      await waitFor(() =>
+        expect(screen.getByTestId('native-traffic-coverage')).toHaveTextContent(
+          `${status === 'partial' ? 1 : 0} of 2 devices measured within 60s`
+        )
+      );
+      expect(screen.getByText('Device traffic counters:').parentElement).toHaveTextContent('—');
+    }
+  );
+
   it('1. Truthfulness: renders Mesh Posture Score as "Not measured" when total_nodes is 0', async () => {
     vi.stubGlobal(
       'fetch',
@@ -104,14 +152,13 @@ describe('WP-404: OverviewRoute (Fleet Overview Dashboard)', () => {
     });
 
     // Check data-state="not-measured" attribute exists
-    const notMeasuredState = container.querySelector('[data-state="not-measured"]');
-    expect(notMeasuredState).toBeInTheDocument();
+    await waitFor(() => expect(container.querySelector('[data-state="not-measured"]')).toBeInTheDocument());
 
     // Must show "No nodes enrolled" hint under the posture card
     expect(screen.getAllByText('No nodes enrolled').length).toBeGreaterThanOrEqual(1);
 
     // Must show Live line-rate rateHint since throughput is null
-    expect(screen.getAllByText('Needs two samples a minute apart').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Needs two fresh observations from the same counter sources').length).toBeGreaterThan(0);
 
     // Axe accessibility validation
     await expectNoAxeViolations(container);
@@ -188,10 +235,10 @@ describe('WP-404: OverviewRoute (Fleet Overview Dashboard)', () => {
     expect(screen.getByText('1 non-compliant')).toBeInTheDocument();
     expect(screen.getByText('1 quarantined')).toBeInTheDocument();
 
-    // Check throughput line-rate (42.5 + 28.3 = 70.8 MB/s)
+    // Check throughput line-rate (42.5 + 28.3 = 70.8 MiB/s)
     expect(screen.getByText('70.8')).toBeInTheDocument();
-    expect(screen.getByText('RX: 42.5 MB/s')).toBeInTheDocument();
-    expect(screen.getByText('TX: 28.3 MB/s')).toBeInTheDocument();
+    expect(screen.getByText('RX: 42.5 MiB/s')).toBeInTheDocument();
+    expect(screen.getByText('TX: 28.3 MiB/s')).toBeInTheDocument();
 
     // Check lifetime transfer
     expect(screen.getByText('10.0 GiB')).toBeInTheDocument();

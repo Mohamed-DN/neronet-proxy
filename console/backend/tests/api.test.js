@@ -400,7 +400,7 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     // fabricated a seven-point ramp whenever no samples existed.
   });
 
-  test('GET /api/stats/bandwidth returns a point once two samples exist', async () => {
+  test('GET /api/stats/bandwidth keeps unmeasured native rates unknown despite two legacy samples', async () => {
     const MetricsCollector = require('../services/MetricsCollector');
 
     // A rate needs two cumulative readings and the interval between them.
@@ -414,9 +414,10 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     assert(res.body.bandwidth_series.length >= 1, 'two samples yield one interval');
 
     const point = res.body.bandwidth_series[0];
-    assert(typeof point.rx === 'number');
-    assert(typeof point.tx === 'number');
-    assert(point.rx >= 0 && point.tx >= 0, 'a rate is never negative');
+    assert.strictEqual(point.rx, null);
+    assert.strictEqual(point.tx, null);
+    assert.strictEqual(point.rx_bytes, null);
+    assert.strictEqual(point.traffic.status, 'unknown');
   });
 
   test('GET /api/stats/topology should return global mesh topology for admin', async () => {

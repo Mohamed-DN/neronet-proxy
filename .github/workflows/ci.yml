@@ -211,8 +211,8 @@ jobs:
       - name: Overlay traffic matrix
         run: sh scripts/dev/scenarios/overlay.sh matrix
 
-      - name: Overlay native telemetry
-        run: sh scripts/dev/scenarios/overlay.sh telemetry
+      - name: Overlay native telemetry and console metrics
+        run: sh scripts/dev/scenarios/overlay.sh metrics
 
       - name: Overlay deny rule and authenticated discovery
         run: sh scripts/dev/scenarios/overlay.sh discovery

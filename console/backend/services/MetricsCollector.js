@@ -213,14 +213,25 @@ async function collectOnce() {
   await getPgPool().query(
     `INSERT INTO node_metric_samples
        (node_id, organization_id, user_id, is_hidden, is_live, is_quarantined,
-        rx_bytes, tx_bytes, cpu_usage_pct, memory_usage_pct)
+        rx_bytes, tx_bytes, cpu_usage_pct, memory_usage_pct,
+        native_generation, native_sequence, native_received_at, native_status,
+        native_traffic_available, native_rx_bytes, native_tx_bytes, native_memory_runtime_sys_bytes)
      SELECT n.id, COALESCE(n.organization_id, 'org-default'), n.user_id,
             COALESCE(c.is_hidden, FALSE),
             COALESCE(n.last_heartbeat > NOW() - make_interval(secs => $1), FALSE),
             COALESCE(n.is_quarantined, FALSE), COALESCE(n.rx_bytes, 0), COALESCE(n.tx_bytes, 0),
-            NULLIF(n.cpu_usage_pct, 0), n.memory_usage_pct
+            NULLIF(n.cpu_usage_pct, 0), n.memory_usage_pct,
+            CASE WHEN t.received_at IS NOT NULL THEN t.session_id || ':' || t.counter_epoch END,
+            t.sequence,t.received_at,
+            CASE WHEN t.received_at IS NULL THEN 'unknown'
+                 WHEN t.received_at BETWEEN clock_timestamp()-interval '60 seconds' AND clock_timestamp() THEN 'fresh'
+                 ELSE 'stale' END,
+            t.traffic_available,t.rx_bytes,t.tx_bytes,t.memory_runtime_sys_bytes
        FROM nodes n LEFT JOIN compartments c
-         ON c.id=COALESCE(n.compartment_id, 'cmp-' || COALESCE(n.organization_id, 'org-default'))`,
+         ON c.id=COALESCE(n.compartment_id, 'cmp-' || COALESCE(n.organization_id, 'org-default'))
+       LEFT JOIN node_native_telemetry t ON t.node_id=n.id
+         AND t.organization_id=COALESCE(n.organization_id,'org-default')
+         AND t.user_id IS NOT DISTINCT FROM n.user_id AND t.source='wireguard-device'`,
     [LIVENESS_WINDOW_SECONDS]
   );
   await getPgPool().query('DELETE FROM node_metric_samples WHERE sampled_at < NOW() - make_interval(hours => $1)', [

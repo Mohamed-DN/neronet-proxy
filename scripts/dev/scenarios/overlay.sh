@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: overlay.sh [matrix|telemetry|rule-deny|discovery|subnet|quarantine|revoke|fail-static]
+# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static]
 #
 # Measures the overlay between the fleet nodes of a running stack. Every cell of the
 # matrix is a real TCP exchange: node A dials node B's overlay address through node
@@ -8,6 +8,7 @@
 #
 #   matrix        N x N of ok / denied / timeout with the measured round trips
 #   telemetry     real TCP matrix and increasing native WireGuard device counters
+#   metrics       telemetry plus overview, node DTOs and scheduled native history
 #   rule-deny     deny one pair through the API, re-measure, delete the rule, re-measure
 #   discovery     rule-deny plus authenticated discovery checked against real TCP
 #   subnet        put two nodes in a sub-network, re-measure; connect it to the default
@@ -156,7 +157,7 @@ build_inventory() {
 # runs inside two nested loops that read the fleet file on stdin. Without it the first
 # dial swallows the rest of the fleet and the matrix comes out with a single column.
 dial() {
-  if [ "$SCENARIO" = telemetry ]; then
+  if [ "$SCENARIO" = telemetry ] || [ "$SCENARIO" = metrics ]; then
     out=$(node_exec "$1" env NERONET_OVERLAY_PAYLOAD_BYTES=262144 /bin/sovereign-cli overlay-dial \
       "$SOCKS" "$2:$ECHO_PORT" "$DIAL_TIMEOUT" 2>/dev/null < /dev/null) && rc=0 || rc=$?
   else
@@ -327,12 +328,48 @@ while read -r svc vip id; do printf '%-12s %-16s %s\n' "$svc" "$vip" "$id"; done
 
 rc=0
 
+metrics_probe() {
+  api GET /api/stats/timeseries > "$WORK/metrics-history.json"
+  api GET /api/stats/overview > "$WORK/metrics-overview.json"
+  api GET '/api/nodes?limit=100' > "$WORK/metrics-nodes.json"
+  api GET /api/stats/native-telemetry > "$WORK/metrics-after.json"
+  { cat "$WORK/metrics-baseline.json"; printf '\n';
+    cat "$WORK/metrics-history.json"; printf '\n';
+    cat "$WORK/telemetry-before.json"; printf '\n';
+    cat "$WORK/metrics-overview.json"; printf '\n';
+    cat "$WORK/metrics-nodes.json"; printf '\n';
+    cat "$WORK/metrics-after.json"; printf '\n'; cat "$WORK/fleet";
+  } | $ENGINE exec -i "$backend_id" node -e "$(cat "$REPO_ROOT/scripts/dev/probes/check-native-metrics.cjs")" "$1" 262144
+}
+
+wait_metrics() {
+  mode=$1
+  started=$(date +%s)
+  while ! metrics_probe "$mode" > "$WORK/metrics-probe.log" 2>&1; do
+    if [ "$(($(date +%s)-started))" -ge 180 ]; then
+      cat "$WORK/metrics-probe.log" >&2
+      return 1
+    fi
+    sleep 5
+  done
+  cat "$WORK/metrics-probe.log"
+}
+
 case "$SCENARIO" in
-  telemetry)
+  telemetry|metrics)
     # Wait for a native observation after the whole fleet has stabilized. The two
     # snapshots must be different heartbeat sequences from one counter epoch.
     converge
     api GET /api/stats/native-telemetry > "$WORK/telemetry-before.json"
+    backend_id=$($COMPOSE ps -q backend)
+    [ -n "$backend_id" ] || die "backend is not running"
+    if [ "$SCENARIO" = metrics ]; then
+      printf '[]\n' > "$WORK/metrics-baseline.json"
+      echo "waiting for scheduled native history baseline..."
+      wait_metrics baseline || die "native history baseline unavailable"
+      cp "$WORK/metrics-history.json" "$WORK/metrics-baseline.json"
+      api GET /api/stats/native-telemetry > "$WORK/telemetry-before.json"
+    fi
     measure_matrix "real TCP for the native telemetry measurement"
     expect_all ok || rc=1
     converge
@@ -342,6 +379,10 @@ case "$SCENARIO" in
     { cat "$WORK/telemetry-before.json"; printf '\n';
       cat "$WORK/telemetry-after.json"; printf '\n'; cat "$WORK/fleet";
     } | $ENGINE exec -i "$backend_id" node -e "$(cat "$REPO_ROOT/scripts/dev/probes/check-native-telemetry.cjs")" 262144 || rc=1
+    if [ "$SCENARIO" = metrics ]; then
+      echo "waiting for scheduled history covering the real TCP payload..."
+      wait_metrics final || rc=1
+    fi
     ;;
   matrix)
     measure_matrix "overlay matrix, no rules (the compiled policy is allow-all)"

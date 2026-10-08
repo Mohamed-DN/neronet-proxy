@@ -60,6 +60,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
   const geoQuery = useStatsGeoMatrix();
 
   const stats = overviewQuery.data;
+  const coverage = stats?.traffic;
   const timeseries = timeseriesQuery.data ?? [];
   const geoMatrix = geoQuery.data ?? [];
 
@@ -128,11 +129,11 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
           </div>
           <div className="flex items-center justify-between gap-4 text-accent">
             <span>{t('overview.inbound')}:</span>
-            <span className="font-semibold tabular-nums">{payload[0]?.value} MB/s</span>
+            <span className="font-semibold tabular-nums">{payload[0]?.value} MiB/s</span>
           </div>
           <div className="flex items-center justify-between gap-4 text-info">
             <span>{t('overview.outbound')}:</span>
-            <span className="font-semibold tabular-nums">{payload[1]?.value} MB/s</span>
+            <span className="font-semibold tabular-nums">{payload[1]?.value} MiB/s</span>
           </div>
           {payload[0]?.payload?.latency !== undefined && payload[0]?.payload?.latency !== null && (
             <div className="mt-1 flex items-center justify-between gap-4 border-t border-border pt-1 text-success">
@@ -265,7 +266,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
                 {overviewQuery.isLoading ? (
                   <Skeleton lines={2} />
                 ) : haveRates ? (
-                  <Stat label="" value={totalBandwidth} unit="MB/s" />
+                  <Stat label="" value={totalBandwidth} unit="MiB/s" />
                 ) : (
                   <Stat label="" value={null} hint={t('overview.rateHint')} />
                 )}
@@ -277,11 +278,11 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-1 text-accent">
                     <ArrowDownLeft className="h-3 w-3" />
-                    <span className="tabular-nums">RX: {rxBandwidth} MB/s</span>
+                    <span className="tabular-nums">RX: {rxBandwidth} MiB/s</span>
                   </span>
                   <span className="flex items-center gap-1 text-info">
                     <ArrowUpRight className="h-3 w-3" />
-                    <span className="tabular-nums">TX: {txBandwidth} MB/s</span>
+                    <span className="tabular-nums">TX: {txBandwidth} MiB/s</span>
                   </span>
                 </div>
               ) : (
@@ -301,7 +302,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
                 {overviewQuery.isLoading ? (
                   <Skeleton lines={2} />
                 ) : (
-                  <div className="flex items-baseline gap-2">
+                  <div className="flex flex-wrap items-baseline gap-2">
                     <Stat label="" value={healthScore} unit={healthScore === null ? undefined : '%'} />
                     <StatusBadge status={postureStatus} label={postureLabel} />
                   </div>
@@ -357,6 +358,22 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
               }
             />
 
+            <div
+              data-testid="native-traffic-coverage"
+              className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted"
+            >
+              <span>{t('overview.trafficSource')}</span>
+              <span>{t(`overview.traffic_${coverage?.status || 'unknown'}`)}</span>
+              {coverage && (
+                <span>
+                  {t('overview.trafficCoverage', {
+                    measured: coverage.measured_nodes,
+                    total: coverage.total_nodes,
+                    seconds: coverage.freshness_seconds
+                  })}
+                </span>
+              )}
+            </div>
             <div className="h-72 w-full pt-4">
               {timeseriesQuery.isLoading ? (
                 <div className="flex h-full w-full items-center justify-center">
@@ -377,16 +394,16 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
                         <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--color-border))" vertical={false} />
                     <XAxis
                       dataKey="time"
-                      stroke="var(--color-muted)"
-                      tick={{ fill: 'var(--color-muted)', fontSize: 11, fontFamily: 'monospace' }}
+                      stroke="rgb(var(--color-content-muted))"
+                      tick={{ fill: 'rgb(var(--color-content-muted))', fontSize: 11, fontFamily: 'monospace' }}
                     />
                     <YAxis
-                      stroke="var(--color-muted)"
-                      tick={{ fill: 'var(--color-muted)', fontSize: 11, fontFamily: 'monospace' }}
-                      unit=" MB/s"
+                      stroke="rgb(var(--color-content-muted))"
+                      tick={{ fill: 'rgb(var(--color-content-muted))', fontSize: 11, fontFamily: 'monospace' }}
+                      unit=" MiB/s"
                     />
                     <RechartsTooltip content={<CustomTooltip />} />
                     <Area
@@ -425,7 +442,9 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
               </div>
               <span>
                 {t('overview.lifetimeTransfer')}{' '}
-                <strong className="text-content tabular-nums">{formatBytes(stats?.total_bandwidth_bytes)}</strong>
+                <strong className="text-content tabular-nums" title={stats?.total_bandwidth_bytes ?? undefined}>
+                  {formatBytes(stats?.total_bandwidth_bytes)}
+                </strong>
               </span>
             </div>
           </Card>

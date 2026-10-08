@@ -4,6 +4,7 @@ const request = require('supertest');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const MetricsCollector = require('../services/MetricsCollector');
+const { seedNative, advanceFromLegacy } = require('./helpers/nativeMetricsFixture');
 const { seedHiddenTier, tokens, NODES, ORG_A, ORG_B, DEFAULT_COMPARTMENT } = require('./helpers/hiddenTier');
 
 describe('Statistics obey current tenant and node visibility before aggregation', () => {
@@ -38,6 +39,7 @@ describe('Statistics obey current tenant and node visibility before aggregation'
           JSON.stringify(posture ? { ...posture, measured_at: new Date().toISOString() } : {})
         ]
       );
+      await seedNative(db.pool, node.id, { rx, tx, memory: cpu * 1024 });
     }
     // Old global samples are deliberately unattributable to any node or tenant.
     await db.pool.query(`INSERT INTO system_metrics (timestamp, total_bandwidth_rx, total_bandwidth_tx, active_nodes)
@@ -53,8 +55,8 @@ describe('Statistics obey current tenant and node visibility before aggregation'
       assert.equal(response.status, 200);
       assert.equal(response.body.total_nodes, 2);
       assert.equal(response.body.active_nodes, 2);
-      assert.equal(response.body.total_rx_bytes, 30);
-      assert.equal(response.body.total_tx_bytes, 15);
+      assert.equal(response.body.total_rx_bytes, '30');
+      assert.equal(response.body.total_tx_bytes, '15');
       assert.equal(response.body.avg_cpu_pct, 15);
       assert.deepEqual(response.body.country_distribution, { IT: 2 });
       assert.equal(response.body.posture_verified_compliant_nodes, 1);
@@ -66,14 +68,14 @@ describe('Statistics obey current tenant and node visibility before aggregation'
     const response = await get('/overview', 'rootOwner');
     assert.equal(response.status, 200);
     assert.equal(response.body.total_nodes, 3);
-    assert.equal(response.body.total_rx_bytes, 930);
+    assert.equal(response.body.total_rx_bytes, '930');
     assert.deepEqual(response.body.country_distribution, { IT: 2, CA: 1 });
   });
   it('confines a member to their own node instead of exposing organisation totals', async () => {
     const response = await get('/overview', 'member');
     assert.equal(response.status, 200);
     assert.equal(response.body.total_nodes, 1);
-    assert.equal(response.body.total_rx_bytes, 20);
+    assert.equal(response.body.total_rx_bytes, '20');
     assert.equal(response.body.connected_users, 1);
     assert.equal(response.body.posture_non_compliant_nodes, 1);
   });
@@ -98,7 +100,7 @@ describe('Statistics obey current tenant and node visibility before aggregation'
       const response = await get('/overview');
       assert.equal(response.status, 200);
       assert.equal(response.body.total_nodes, 0);
-      assert.equal(response.body.total_rx_bytes, 0);
+      assert.equal(response.body.total_rx_bytes, null);
       assert.deepEqual(response.body.country_distribution, {});
       assert.equal(response.body.posture_verified_compliant_nodes, 0);
       assert.deepEqual((await get('/geo')).body, []);
@@ -116,7 +118,7 @@ describe('Statistics obey current tenant and node visibility before aggregation'
       const response = await get('/overview');
       assert.equal(response.status, 200);
       assert.equal(response.body.total_nodes, 1);
-      assert.equal(response.body.total_rx_bytes, 800);
+      assert.equal(response.body.total_rx_bytes, '800');
       assert.deepEqual(response.body.country_distribution, { US: 1 });
     } finally {
       await db.pool.query("DELETE FROM memberships WHERE id='stats-moved-owner'");
@@ -127,7 +129,7 @@ describe('Statistics obey current tenant and node visibility before aggregation'
     const response = await get(`/overview?org_id=${ORG_B}`);
     assert.equal(response.status, 200);
     assert.equal(response.body.total_nodes, 2);
-    assert.equal(response.body.total_rx_bytes, 30);
+    assert.equal(response.body.total_rx_bytes, '30');
   });
   it('rechecks a downgraded platform role in the database', async () => {
     await db.pool.query("UPDATE users SET role='user' WHERE id='usr-sec-super'");
@@ -165,32 +167,34 @@ describe('Statistics obey current tenant and node visibility before aggregation'
       await MetricsCollector.collectOnce();
       await db.pool.query('SELECT pg_sleep(0.05)');
       await db.pool.query('UPDATE nodes SET rx_bytes=rx_bytes*2, tx_bytes=tx_bytes*2');
+      await advanceFromLegacy(db.pool);
       await MetricsCollector.collectOnce();
     });
     it('retains measured owner history and excludes foreign and hidden samples', async () => {
       const response = await get('/timeseries');
       assert.equal(response.status, 200);
       assert.equal(response.body.length, 1);
-      assert.equal(response.body[0].rx_bytes, 60);
+      assert.equal(response.body[0].rx_bytes, '60');
       assert.equal(response.body[0].active_nodes, 2);
       assert.equal(response.body[0].memory_usage_mb, null);
-      assert.equal(Number(response.body[0].memory_usage_pct), 15);
+      assert.equal(response.body[0].memory_usage_pct, null);
+      assert.equal(response.body[0].memory_runtime_sys_bytes, '30720');
     });
     it('keeps member and root histories within their respective visibility', async () => {
       const member = await get('/timeseries', 'member');
       const root = await get('/timeseries', 'rootOwner');
-      assert.equal(member.body[0].rx_bytes, 40);
+      assert.equal(member.body[0].rx_bytes, '40');
       assert.equal(member.body[0].active_nodes, 1);
-      assert.equal(root.body[0].rx_bytes, 1860);
+      assert.equal(root.body[0].rx_bytes, '1860');
       assert.equal(root.body[0].active_nodes, 3);
     });
     it('does not move captured history into another tenant with its node', async () => {
       await db.pool.query('UPDATE nodes SET organization_id=$2 WHERE id=$1', [NODES.v1.id, ORG_B]);
       try {
         const response = await get('/timeseries');
-        assert.equal(response.body[0].rx_bytes, 40);
+        assert.equal(response.body[0].rx_bytes, '40');
         const other = await get(`/timeseries?org_id=${ORG_B}`, 'superAdmin');
-        assert.equal(other.body[0].rx_bytes, 1600);
+        assert.equal(other.body[0].rx_bytes, '1600');
       } finally {
         await db.pool.query('UPDATE nodes SET organization_id=$2 WHERE id=$1', [NODES.v1.id, ORG_A]);
       }
@@ -209,7 +213,7 @@ describe('Statistics obey current tenant and node visibility before aggregation'
         [NODES.h1.id]
       );
       try {
-        assert.equal((await get('/timeseries')).body[0].rx_bytes, 60);
+        assert.equal((await get('/timeseries')).body[0].rx_bytes, '60');
       } finally {
         await db.pool.query(
           'UPDATE compartments SET is_hidden=TRUE WHERE id=(SELECT compartment_id FROM nodes WHERE id=$1)',
@@ -224,6 +228,7 @@ describe('Statistics obey current tenant and node visibility before aggregation'
     it('reports counter reset as an unknown rate', async () => {
       await db.pool.query('SELECT pg_sleep(0.05)');
       await db.pool.query('UPDATE nodes SET rx_bytes=0, tx_bytes=0');
+      await advanceFromLegacy(db.pool);
       await MetricsCollector.collectOnce();
       const response = await get('/timeseries');
       assert.equal(response.body.at(-1).rx, null);

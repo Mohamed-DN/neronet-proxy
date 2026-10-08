@@ -20,16 +20,16 @@ including in development where legacy unauthenticated heartbeats are permitted.
 
 The object contains:
 
-| Field | Meaning |
-|---|---|
-| `version` | Integer `1` |
-| `session_id` | Session issued by the most recent registration |
-| `sequence` | Increasing positive uint64 decimal string within that session |
-| `counter_epoch` | Positive uint64 decimal string identifying a comparable device counter baseline |
-| `source` | `wireguard-device` |
-| `traffic_available` | Whether the device counters were read successfully |
-| `rx_bytes`, `tx_bytes` | Cumulative unsigned decimal strings; omitted when unavailable |
-| `memory_runtime_sys_bytes` | Go runtime Sys bytes as an unsigned decimal string |
+| Field                      | Meaning                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| `version`                  | Integer `1`                                                                     |
+| `session_id`               | Session issued by the most recent registration                                  |
+| `sequence`                 | Increasing positive uint64 decimal string within that session                   |
+| `counter_epoch`            | Positive uint64 decimal string identifying a comparable device counter baseline |
+| `source`                   | `wireguard-device`                                                              |
+| `traffic_available`        | Whether the device counters were read successfully                              |
+| `rx_bytes`, `tx_bytes`     | Cumulative unsigned decimal strings; omitted when unavailable                   |
+| `memory_runtime_sys_bytes` | Go runtime Sys bytes as an unsigned decimal string                              |
 
 Decimal strings preserve every uint64 value through Go JSON, PostgreSQL
 `NUMERIC(20,0)` and JavaScript. They are not JavaScript numbers. Memory is neither
@@ -86,10 +86,12 @@ point display value. Derive a rate only between fresh, available measurements of
 the same source and generation. A fresh observation means it was recently received;
 it is not proof that a particular peer or application is reachable.
 
-**Integration boundary:** the existing fleet overview, historical charts and node
-DTO still use the legacy metric path. This change provides the authenticated native
-feed and scoped read API; chart integration and source-aware history are subsequent
-delivery gates. The old memory column's unit mismatch is not silently reinterpreted.
+The fleet overview, historical charts and node DTOs use these native observations.
+See [scoped statistics](scoped-metrics.md) for coverage, exact totals and rate
+continuity. Legacy observations remain archived without being promoted into native
+evidence. Node read endpoints resolve current authority and bind the observation
+to the ownership authorized for the DTO, including a transfer during the request.
+This does not certify authorization on every node mutation or session endpoint.
 
 ## Reproduce the traffic measurement
 
@@ -99,6 +101,11 @@ On an exclusively owned running test stack:
 COMPOSE_PROJECT_NAME=my-native-test NERONET_PORT_OFFSET=1900 \
   sh scripts/dev/scenarios/overlay.sh telemetry
 ```
+
+Use `overlay.sh metrics` to also verify the existing overview, node DTOs and
+leader-scheduled history against the same traffic. It waits for a native baseline
+and a subsequent scheduled sample covering the useful payload. It does not insert
+traffic, observations or historical samples directly into PostgreSQL.
 
 Every selected node sends a 256 KiB payload through its real local SOCKS proxy to
 every other selected overlay address and verifies the full echo. The scenario

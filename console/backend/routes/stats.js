@@ -10,7 +10,8 @@ const { COUNTRY_NAMES } = require('../utils/countries');
 const AclEngine = require('../services/AclEngine');
 const NetmapService = require('../services/NetmapService');
 const { resolveMetricsScope, nodeVisibility } = require('../services/FleetVisibility');
-const { readMetricHistory, counterDeltas } = require('../services/ScopedMetricsHistory');
+const { readMetricHistory, counterRates, sameSources, trafficCoverage } = require('../services/ScopedMetricsHistory');
+const NativeMetrics = require('../services/NativeMetrics');
 
 // The compartment a node counts as being in, the same expression AclEngine compiles
 // with: a node enrolled without one is in its organisation's default compartment.
@@ -49,11 +50,12 @@ async function overviewHandler(req, res, next) {
     const accessTier = req.user?.compartment_access || req.user?.access_tier || 'standard';
     const scope = await resolveMetricsScope(req.user, req.query.org_id);
     const state = await readFleetState(accessTier, scope);
+    const native = await NativeMetrics.read(accessTier, scope);
 
     // Two consecutive samples give a rate. With fewer than two the rate is unknown,
     // and unknown is reported as null rather than as a plausible-looking number:
     // the console renders null as a dash, which is the honest thing to show.
-    const rates = await deriveThroughput(accessTier, scope);
+    const rates = await deriveThroughput(accessTier, scope, native);
 
     // The Overview used to derive a "compliant" count as active minus quarantined,
     // which is a liveness figure wearing a compliance label. These three are counted
@@ -68,9 +70,14 @@ async function overviewHandler(req, res, next) {
       active_users: state.activeUsers,
       total_bandwidth_rx_mb_s: rates.rxMbPerSec,
       total_bandwidth_tx_mb_s: rates.txMbPerSec,
-      total_bandwidth_bytes: state.rxBytes + state.txBytes,
-      total_rx_bytes: state.rxBytes,
-      total_tx_bytes: state.txBytes,
+      total_bandwidth_rx_bytes_s: rates.rx,
+      total_bandwidth_tx_bytes_s: rates.tx,
+      total_bandwidth_bytes:
+        native.rxBytes === null ? null : (BigInt(native.rxBytes) + BigInt(native.txBytes)).toString(),
+      total_rx_bytes: native.rxBytes,
+      total_tx_bytes: native.txBytes,
+      memory_runtime_sys_bytes: native.memoryBytes,
+      traffic: native.traffic,
       country_distribution: await countryDistribution(accessTier, scope),
       posture_verified_compliant_nodes: posture.verified_compliant,
       posture_unverified_nodes: posture.unverified,
@@ -79,7 +86,7 @@ async function overviewHandler(req, res, next) {
       // node yet, so this is null on every current deployment; 0 would read as an
       // idle fleet.
       avg_cpu_pct: state.cpuPct,
-      avg_memory_pct: state.memPct,
+      avg_memory_pct: null,
       system_health: `${state.healthScore}%`,
       network_health_score: state.healthScore,
       liveness_window_seconds: LIVENESS_WINDOW_SECONDS
@@ -96,8 +103,8 @@ async function overviewHandler(req, res, next) {
  * counter reset invalidates that direction; a change of visible counter sources
  * requires a new baseline rather than counting a joining node's lifetime traffic.
  */
-async function deriveThroughput(accessTier, scope) {
-  const unknown = { rxMbPerSec: null, txMbPerSec: null };
+async function deriveThroughput(accessTier, scope, native) {
+  const unknown = { rx: null, tx: null, rxMbPerSec: null, txMbPerSec: null };
   const rows = (await readMetricHistory(accessTier, scope, 1)).slice(-2).reverse();
 
   if (rows.length < 2) {
@@ -105,14 +112,13 @@ async function deriveThroughput(accessTier, scope) {
   }
 
   const [latest, prior] = rows;
-  const seconds = (new Date(latest.timestamp) - new Date(prior.timestamp)) / 1000;
-  if (!(seconds > 0)) {
+  if (!latest.is_recent || native.traffic.status !== 'measured' || !sameSources(latest.source_ids, native.sourceIds)) {
     return unknown;
   }
 
-  const deltas = counterDeltas(prior, latest);
-  const toMbPerSec = (bytes) => (bytes === null ? null : Number((bytes / (1024 * 1024) / seconds).toFixed(2)));
-  return { rxMbPerSec: toMbPerSec(deltas.rx), txMbPerSec: toMbPerSec(deltas.tx) };
+  const rates = counterRates(prior, latest);
+  const toMbPerSec = (bytes) => (bytes === null ? null : Number((bytes / (1024 * 1024)).toFixed(2)));
+  return { ...rates, rxMbPerSec: toMbPerSec(rates.rx), txMbPerSec: toMbPerSec(rates.tx) };
 }
 
 async function countryDistribution(accessTier = 'standard', scope = {}) {
@@ -156,16 +162,20 @@ async function timeseriesHandler(req, res, next) {
       const seconds = (new Date(cur.timestamp) - new Date(prev.timestamp)) / 1000;
       if (!(seconds > 0)) continue;
 
-      const deltas = counterDeltas(prev, cur);
-      const rate = (bytes) => (bytes === null ? null : Number((bytes / (1024 * 1024) / seconds).toFixed(3)));
+      const rates = counterRates(prev, cur);
+      const rate = (bytes) => (bytes === null ? null : Number((bytes / (1024 * 1024)).toFixed(3)));
 
       series.push({
         timestamp: cur.timestamp,
         time: new Date(cur.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        rx: rate(deltas.rx),
-        tx: rate(deltas.tx),
-        rx_bytes: Number(cur.total_bandwidth_rx),
-        tx_bytes: Number(cur.total_bandwidth_tx),
+        rx: rate(rates.rx),
+        tx: rate(rates.tx),
+        rx_bytes_per_second: rates.rx,
+        tx_bytes_per_second: rates.tx,
+        rx_bytes: cur.total_bandwidth_rx,
+        tx_bytes: cur.total_bandwidth_tx,
+        memory_runtime_sys_bytes: cur.memory_runtime_sys_bytes,
+        traffic: trafficCoverage(cur),
         active_nodes: cur.active_nodes,
         cpu_usage_pct: cur.cpu_usage_pct,
         memory_usage_mb: null,

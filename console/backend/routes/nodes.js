@@ -13,6 +13,8 @@ const NodeCredentialService = require('../services/NodeCredentialService');
 const RevocationEngine = require('../services/RevocationEngine');
 const { resolveUserOrg } = require('../middleware/rbac');
 const EnrollmentService = require('../services/EnrollmentService');
+const NativeTelemetry = require('../services/NativeTelemetry');
+const { resolveMetricsScope, nodeVisibility } = require('../services/FleetVisibility');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -29,8 +31,25 @@ function parseJsonField(val, defaultVal = {}) {
   }
 }
 
-function formatNode(row) {
+async function formatNode(row, telemetry) {
   if (!row) return null;
+  const observation = telemetry ||
+    (await NativeTelemetry.readForNodes([row])).nodes[0] || {
+      node_id: row.id,
+      version: null,
+      source: null,
+      status: 'unknown',
+      received_at: null,
+      sequence: null,
+      counter_epoch: null,
+      generation: null,
+      traffic_available: false,
+      rx_bytes: null,
+      tx_bytes: null,
+      memory_runtime_sys_bytes: null,
+      memory_usage_pct: null
+    };
+  const fresh = observation?.status === 'fresh';
   const isQuarantined = Boolean(row.is_quarantined);
   const isExit = row.role === 'EXIT_BRIDGE';
   const onionEnabled = Boolean(row.onion_routing_enabled);
@@ -69,10 +88,12 @@ function formatNode(row) {
     status: isQuarantined ? 'quarantined' : row.is_healthy ? 'active' : 'degraded',
     latency_ms: Number(row.latency_ms) || 15.0,
     jitter_ms: 1.0,
-    tx_bytes: Number(row.tx_bytes) || 0,
-    rx_bytes: Number(row.rx_bytes) || 0,
+    tx_bytes: fresh && observation.traffic_available ? observation.tx_bytes : null,
+    rx_bytes: fresh && observation.traffic_available ? observation.rx_bytes : null,
     cpu_usage_pct: Number(row.cpu_usage_pct) || 0.0,
-    memory_usage_pct: Number(row.memory_usage_pct) || 0.0,
+    memory_usage_pct: null,
+    memory_runtime_sys_bytes: fresh ? observation.memory_runtime_sys_bytes : null,
+    native_telemetry: observation,
     battery_pct: row.battery_pct !== undefined ? Number(row.battery_pct) : 100.0,
     posture,
     posture_checks: posture,
@@ -140,51 +161,22 @@ router.get('/', async (req, res, next) => {
   try {
     const { limit, offset } = readPageParams(req);
     const pool = getPgPool();
-    const isSuperAdmin = req.user.role === 'super-admin';
-    const orgRole = req.user.org_role || req.user.role;
-    const isOrgPrivileged = ['owner', 'admin', 'network_admin', 'auditor'].includes(orgRole);
-
-    let rows = [];
-    let total = 0;
     const accessTier = req.user.compartment_access || req.user.access_tier || 'standard';
-    const hiddenClause = accessTier === 'root' ? '' : ' AND (c.is_hidden IS NULL OR c.is_hidden = FALSE)';
-
-    if (isSuperAdmin && !req.query.org_id) {
-      const countRes = await pool.query(
-        `SELECT count(*)::int AS n FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE 1=1 ${hiddenClause}`
-      );
-      total = countRes.rows[0].n;
-      const result = await pool.query(
-        `SELECT n.* FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE 1=1 ${hiddenClause} ORDER BY n.created_at ASC, n.id ASC LIMIT $1 OFFSET $2`,
-        [limit, offset]
-      );
-      rows = result.rows;
-    } else if (isOrgPrivileged || isSuperAdmin) {
-      const orgId = isSuperAdmin ? req.query.org_id : req.user.organization_id || 'org-default';
-      const countRes = await pool.query(
-        `SELECT count(*)::int AS n FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE n.organization_id = $1 ${hiddenClause}`,
-        [orgId]
-      );
-      total = countRes.rows[0].n;
-      const result = await pool.query(
-        `SELECT n.* FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE n.organization_id = $1 ${hiddenClause} ORDER BY n.created_at ASC, n.id ASC LIMIT $2 OFFSET $3`,
-        [orgId, limit, offset]
-      );
-      rows = result.rows;
-    } else {
-      const countRes = await pool.query(
-        `SELECT count(*)::int AS n FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE n.user_id = $1 ${hiddenClause}`,
-        [req.user.id]
-      );
-      total = countRes.rows[0].n;
-      const result = await pool.query(
-        `SELECT n.* FROM nodes n LEFT JOIN compartments c ON n.compartment_id = c.id WHERE n.user_id = $1 ${hiddenClause} ORDER BY n.created_at ASC, n.id ASC LIMIT $2 OFFSET $3`,
-        [req.user.id, limit, offset]
-      );
-      rows = result.rows;
-    }
-
-    const nodes = rows.map(formatNode);
+    const scope = await resolveMetricsScope(req.user, req.query.org_id);
+    const visible = nodeVisibility(accessTier, scope);
+    const countRes = await pool.query(
+      `SELECT count(*)::int AS n FROM nodes n ${visible.join} WHERE ${visible.where}`,
+      visible.params
+    );
+    const result = await pool.query(
+      `SELECT n.* FROM nodes n ${visible.join} WHERE ${visible.where}
+       ORDER BY n.created_at ASC,n.id ASC LIMIT $${visible.params.length + 1} OFFSET $${visible.params.length + 2}`,
+      [...visible.params, limit, offset]
+    );
+    const total = countRes.rows[0].n;
+    const snapshots = await NativeTelemetry.readForNodes(result.rows);
+    const byId = new Map(snapshots.nodes.map((node) => [node.node_id, node]));
+    const nodes = await Promise.all(result.rows.map((row) => formatNode(row, byId.get(row.id))));
     return res.status(200).json({ nodes, ...pageEnvelope({ items: nodes, total, limit, offset }) });
   } catch (err) {
     next(err);
@@ -283,7 +275,7 @@ router.post('/', async (req, res, next) => {
       );
 
       const createdRes = await client.query('SELECT * FROM nodes WHERE id = $1', [nodeId]);
-      const createdNode = formatNode(createdRes.rows[0]);
+      const createdNode = await formatNode(createdRes.rows[0]);
 
       // An added node has to appear in peer maps immediately.
       await bumpNetmap(client);
@@ -315,27 +307,17 @@ router.post('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const pool = getPgPool();
-    const resNode = await pool.query(
-      `SELECT n.*, c.is_hidden
-       FROM nodes n
-       LEFT JOIN compartments c ON n.compartment_id = c.id
-       WHERE n.id = $1`,
-      [req.params.id]
-    );
+    const scope = await resolveMetricsScope(req.user, req.query.org_id);
+    const tier = req.user.compartment_access || req.user.access_tier || 'standard';
+    const visible = nodeVisibility(tier, scope, 1);
+    const resNode = await pool.query(`SELECT n.* FROM nodes n ${visible.join} WHERE n.id=$1 AND ${visible.where}`, [
+      req.params.id,
+      ...visible.params
+    ]);
     const node = resNode.rows[0] || null;
 
-    if (node && node.is_hidden) {
-      const accessTier = req.user.compartment_access || req.user.access_tier || 'standard';
-      if (accessTier !== 'root') {
-        return res.status(404).json({ error: 'Node not found' });
-      }
-    }
-
-    const access = verifyNodeAccess(node, req.user, false);
-    if (!access.ok) {
-      return res.status(access.error).json({ error: access.message });
-    }
-    return res.status(200).json({ node: formatNode(node) });
+    if (!node) return res.status(404).json({ error: 'Node not found' });
+    return res.status(200).json({ node: await formatNode(node) });
   } catch (err) {
     next(err);
   }
@@ -409,7 +391,7 @@ router.put('/:id', async (req, res, next) => {
     }
 
     const resUp = await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id]);
-    const updatedNode = formatNode(resUp.rows[0]);
+    const updatedNode = await formatNode(resUp.rows[0]);
 
     if (req.body.status !== undefined || req.body.is_healthy !== undefined) {
       await bumpNetmap();
@@ -711,7 +693,7 @@ router.post('/:id/action', async (req, res, next) => {
         metadata: { onion_routing_enabled: newVal, onion_hops: hops }
       });
 
-      const formatted = formatNode(updatedRow);
+      const formatted = await formatNode(updatedRow);
       await broadcastNodeEvent('NODE_ACTION_ONION', formatted, req.user);
 
       return res.status(200).json({
@@ -846,7 +828,7 @@ router.post('/:id/action', async (req, res, next) => {
       });
 
       const updatedRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [node.id]);
-      const formatted = formatNode(updatedRes.rows[0]);
+      const formatted = await formatNode(updatedRes.rows[0]);
 
       await broadcastNodeEvent('NODE_ACTION_TRANSPORT', formatted, req.user);
 
@@ -882,7 +864,7 @@ router.post('/:id/action', async (req, res, next) => {
       });
 
       const updatedRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [node.id]);
-      const formatted = formatNode(updatedRes.rows[0]);
+      const formatted = await formatNode(updatedRes.rows[0]);
 
       await broadcastNodeEvent('NODE_ACTION_DAITA', formatted, req.user);
 
@@ -919,7 +901,7 @@ router.post('/:id/action', async (req, res, next) => {
       });
 
       const updatedRes = await pool.query('SELECT * FROM nodes WHERE id = $1', [node.id]);
-      const formatted = formatNode(updatedRes.rows[0]);
+      const formatted = await formatNode(updatedRes.rows[0]);
 
       await broadcastNodeEvent('NODE_ACTION_DNS_NAME', formatted, req.user);
 

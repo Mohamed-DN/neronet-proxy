@@ -5,6 +5,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Keep session and enrollment controls reachable when labels or rates expand. */
+.console-header-search input {
+  width: clamp(10rem, 17vw, 18rem);
+}
+@media (max-width: 1800px) {
+  .console-header-throughput {
+    display: none;
+  }
+}
+@media (max-width: 1280px) {
+  .console-header-search {
+    display: none;
+  }
+  .console-header {
+    justify-content: flex-end;
+  }
+}
+
 @layer base {
   html {
     /* Every number in a table or a metric lines up. */

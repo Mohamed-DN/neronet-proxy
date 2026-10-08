@@ -145,16 +145,41 @@ async function record(nodeId, credentialId, body) {
 
 async function read(accessTier, scope) {
   const visible = nodeVisibility(accessTier, scope);
+  return readWhere(visible.join, visible.where, visible.params);
+}
+
+// Internal DTO adapter. Bind observations to the ownership that was authorized:
+// a transfer between the node SELECT and this read must not attach the new
+// owner's measurement to a response authorized for the previous owner.
+async function readForNodes(authorizedRows) {
+  if (!authorizedRows.length) return { freshness_seconds: FRESHNESS_SECONDS, nodes: [] };
+  const identities = authorizedRows.map((row) => ({
+    id: row.id,
+    organization_id: row.organization_id || 'org-default',
+    user_id: row.user_id ?? null
+  }));
+  return readWhere(
+    '',
+    `EXISTS (
+    SELECT 1 FROM jsonb_to_recordset($1::jsonb) AS authorized(id text,organization_id text,user_id text)
+    WHERE authorized.id=n.id AND authorized.organization_id=COALESCE(n.organization_id,'org-default')
+      AND authorized.user_id IS NOT DISTINCT FROM n.user_id
+  )`,
+    [JSON.stringify(identities)]
+  );
+}
+
+async function readWhere(join, where, params) {
   const result = await getPgPool().query(
     `SELECT n.id AS node_id,t.sequence,t.counter_epoch,t.session_id,t.source,
        t.traffic_available,t.rx_bytes,t.tx_bytes,t.memory_runtime_sys_bytes,t.received_at,
        EXTRACT(EPOCH FROM clock_timestamp()-t.received_at) AS age_seconds
-       FROM nodes n ${visible.join}
+       FROM nodes n ${join}
        LEFT JOIN node_native_telemetry t ON t.node_id=n.id
          AND t.organization_id=COALESCE(n.organization_id,'org-default')
          AND t.user_id IS NOT DISTINCT FROM n.user_id
-       WHERE ${visible.where} ORDER BY n.id`,
-    visible.params
+       WHERE ${where} ORDER BY n.id`,
+    params
   );
   return {
     freshness_seconds: FRESHNESS_SECONDS,
@@ -180,4 +205,4 @@ async function read(accessTier, scope) {
   };
 }
 
-module.exports = { startSession, record, read, FRESHNESS_SECONDS };
+module.exports = { startSession, record, read, readForNodes, FRESHNESS_SECONDS };

@@ -23,13 +23,13 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
   const stats = overview.status === 'success' ? overview.data : null;
 
   const rate = (value: number | null | undefined) =>
-    typeof value === 'number' ? <span className="font-bold tabular-nums">{value} MB/s</span> : <NotMeasured />;
+    typeof value === 'number' ? <span className="font-bold tabular-nums">{value} MiB/s</span> : <NotMeasured />;
 
   const isSuperAdmin = role === 'super-admin';
 
   return (
-    <header className="console-header sticky top-0 z-sticky flex h-16 items-center justify-between border-b border-border bg-surface-raised px-6">
-      <div className="flex items-center gap-6">
+    <header className="console-header sticky top-0 z-sticky flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-raised px-6 py-2">
+      <div className="flex min-w-0 items-center gap-6">
         <div className="console-header-search relative">
           <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle" />
           <input
@@ -75,7 +75,7 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
         </div>
       </div>
 
-      <div className="console-header-actions flex items-center gap-4">
+      <div className="console-header-actions flex min-w-0 flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={onOpenEnrollModal}

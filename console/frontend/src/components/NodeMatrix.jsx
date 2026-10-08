@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
+import { formatBytes } from '../i18n/format';
 import {
   Server,
   Search,
@@ -28,6 +30,7 @@ import {
 } from 'lucide-react';
 
 export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
+  const { t, i18n } = useTranslation('ui');
   const { role } = useAuth();
   const [nodes, setNodes] = useState([]);
   const [search, setSearch] = useState('');
@@ -408,7 +411,13 @@ export default function NodeMatrix({ onSelectNode, onOpenEnrollModal }) {
                               means "not measured", and printing it as 0% claimed an
                               idle host. */}
                           <span title="CPU Usage">CPU: {n.cpu_usage_pct ? `${n.cpu_usage_pct}%` : 'not measured'}</span>
-                          <span title="RAM Usage">RAM: {n.memory_usage_pct || 0}%</span>
+                          <span title={t('overview.runtimeMemory')}>
+                            {t('overview.runtimeMemory')}:{' '}
+                            {formatBytes(
+                              i18n.language,
+                              n.memory_runtime_sys_bytes == null ? null : Number(n.memory_runtime_sys_bytes)
+                            ) ?? '—'}
+                          </span>
                           <span className="flex items-center space-x-1 text-muted" title="Battery">
                             {n.battery_pct === 100 ? (
                               <BatteryCharging className="w-3.5 h-3.5 text-success" />

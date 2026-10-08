@@ -37,11 +37,24 @@ export interface MeshNode {
   posture_checks?: PostureChecks | null;
   latency_ms?: number | null;
   jitter_ms?: number | null;
-  tx_bytes?: number;
-  rx_bytes?: number;
+  tx_bytes?: string | null;
+  rx_bytes?: string | null;
+  memory_runtime_sys_bytes?: string | null;
   cpu_usage_pct?: number | null;
   endpoints?: string[];
   [key: string]: unknown;
+}
+
+export interface TrafficCoverage {
+  source: 'wireguard-device';
+  status: 'measured' | 'partial' | 'stale' | 'unknown';
+  total_nodes: number;
+  measured_nodes: number;
+  stale_nodes: number;
+  unknown_nodes: number;
+  unavailable_nodes: number;
+  memory_measured_nodes: number;
+  freshness_seconds: number;
 }
 
 export interface StatsOverview {
@@ -53,9 +66,13 @@ export interface StatsOverview {
   /** null until two samples exist: a rate cannot be derived from one. */
   total_bandwidth_rx_mb_s: number | null;
   total_bandwidth_tx_mb_s: number | null;
-  total_bandwidth_bytes?: number | null;
-  total_rx_bytes?: number | null;
-  total_tx_bytes?: number | null;
+  total_bandwidth_bytes?: string | null;
+  total_rx_bytes?: string | null;
+  total_tx_bytes?: string | null;
+  total_bandwidth_rx_bytes_s?: number | null;
+  total_bandwidth_tx_bytes_s?: number | null;
+  memory_runtime_sys_bytes?: string | null;
+  traffic?: TrafficCoverage;
   /** Counted from what each node attested, not derived from liveness. */
   posture_verified_compliant_nodes?: number | null;
   posture_unverified_nodes?: number | null;
@@ -266,8 +283,12 @@ export interface TimeseriesPoint {
   time: string;
   rx: number | null;
   tx: number | null;
-  rx_bytes?: number;
-  tx_bytes?: number;
+  rx_bytes?: string | null;
+  tx_bytes?: string | null;
+  rx_bytes_per_second?: number | null;
+  tx_bytes_per_second?: number | null;
+  memory_runtime_sys_bytes?: string | null;
+  traffic?: TrafficCoverage;
   active_nodes?: number;
   cpu_usage_pct?: number | null;
   memory_usage_mb?: number | null;

@@ -4,6 +4,7 @@ const request = require('supertest');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const MetricsCollector = require('../services/MetricsCollector');
+const { seedNative, advanceFromLegacy } = require('./helpers/nativeMetricsFixture');
 const { seedHiddenTier, tokens, NODES, ORG_A, ORG_B } = require('./helpers/hiddenTier');
 
 const MIB = 1024 * 1024;
@@ -14,16 +15,19 @@ describe('Scoped throughput remains unknown across individual resets and fleet c
   let token;
   const get = (path) => request(app).get(`/api/stats${path}`).set('Authorization', `Bearer ${token}`);
   const sample = async () => {
+    await advanceFromLegacy(db.pool);
     await MetricsCollector.collectOnce();
     await db.pool.query('SELECT pg_sleep(0.02)');
   };
-  const addNode = (organizationId) =>
-    db.pool.query(
+  const addNode = async (organizationId) => {
+    await db.pool.query(
       `INSERT INTO nodes (id,user_id,organization_id,name,public_key,overlay_ipv4,overlay_ipv6,role,
                           rx_bytes,tx_bytes,last_heartbeat)
        VALUES ('node-rate-new',$1,$2,'New counter source',$3,'100.64.77.10','fd7a:115c:a1e0::7710','CLIENT_ORIGIN',$4,$4,NOW())`,
       [organizationId === ORG_A ? NODES.v1.user : NODES.b1.user, organizationId, 'e'.repeat(64), 20 * MIB]
     );
+    await seedNative(db.pool, 'node-rate-new', { rx: 20 * MIB, tx: 20 * MIB });
+  };
 
   before(async () => {
     db = await setupTestDatabase();
@@ -37,6 +41,7 @@ describe('Scoped throughput remains unknown across individual resets and fleet c
     await db.pool.query("DELETE FROM nodes WHERE id='node-rate-new'");
     await db.pool.query('DELETE FROM node_metric_samples');
     await db.pool.query('UPDATE nodes SET rx_bytes=$1,tx_bytes=$1,last_heartbeat=NOW()', [MIB]);
+    for (const node of Object.values(NODES)) await seedNative(db.pool, node.id, { rx: MIB, tx: MIB });
     await sample();
   });
   after(async () => {
@@ -54,7 +59,7 @@ describe('Scoped throughput remains unknown across individual resets and fleet c
     assert.ok(overview.body.total_bandwidth_tx_mb_s > 0);
     assert.ok(series.body.at(-1).rx > 0);
     assert.ok(series.body.at(-1).tx > 0);
-    assert.equal(series.body.at(-1).rx_bytes, 4 * MIB);
+    assert.equal(series.body.at(-1).rx_bytes, String(4 * MIB));
   });
 
   for (const reset of ['rx', 'tx']) {
