@@ -1,7 +1,7 @@
 # NeroNet development stack.
 #
 #   core services (always):  postgres, valkey, backend, frontend
-#   profile "nodes":         two DERP relays and six Go nodes enrolling through nginx
+#   profile "nodes":         two DERP relays and thirteen Go nodes enrolling through nginx
 #   profile "debug-ports":   publishes PostgreSQL and Valkey on the host loopback
 #   profile "backup":        encrypted, periodic backups of the database and the backend
 #                            data volume, copied to a second repository

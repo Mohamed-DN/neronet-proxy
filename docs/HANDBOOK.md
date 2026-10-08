@@ -588,7 +588,7 @@ VIP sequence; `007` to `009` add ACL rules, routes and revoked keys; `010` sets 
 ```bash
 sh scripts/dev/gen-env.sh        # writes .env with fresh secrets, never overwrites
 sh scripts/dev/stack.sh up       # postgres, valkey, backend, console
-sh scripts/dev/stack.sh nodes    # two DERP relays and six Go nodes
+sh scripts/dev/stack.sh nodes    # two DERP relays and thirteen Go nodes
 sh scripts/dev/stack.sh status   # health, and nodes with a heartbeat under 60 s
 ```
 
@@ -646,7 +646,7 @@ Counts on `main` on 2026-09-20:
 | Go | 14 packages with tests in the root module, and 1 in `cmd/sovereign-security-daemon` (own module); all with `-race` | `sh scripts/dev/test-go.sh` |
 
 CI (`.github/workflows/ci.yml`) runs the Go suite, the backend suite three times, the
-frontend build and tests, the compose stack with six nodes and a smoke check, linters,
+frontend build and tests, the compose stack with thirteen nodes and a smoke check, linters,
 the legacy tool tests, and the image builds. `security-scan.yml` runs secret scanning,
 CodeQL and dependency audits.
 

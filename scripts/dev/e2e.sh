@@ -67,7 +67,7 @@ trap cleanup EXIT INT TERM
 echo "== starting $COMPOSE_PROJECT_NAME (API on port $API_PORT)"
 $STACK up
 $STACK nodes
-sh scripts/dev/smoke.sh 6 240
+sh scripts/dev/smoke.sh 13 240
 
 failed=""
 for scenario in $SCENARIOS; do

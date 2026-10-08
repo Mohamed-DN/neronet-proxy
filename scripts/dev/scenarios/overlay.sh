@@ -42,10 +42,10 @@ SOCKS=${NERONET_NODE_SOCKS:-127.0.0.1:1080}
 DIAL_TIMEOUT=${NERONET_OVERLAY_DIAL_TIMEOUT:-5}
 API=${NERONET_API_URL:-http://127.0.0.1:$((8081 + ${NERONET_PORT_OFFSET:-0}))}
 
-# The six compose node services, plus anything the caller started by hand. A node that
+# All thirteen compose node services, plus anything the caller started by hand. A node that
 # is not a compose service is named "container:<name>", which is what the seventh-node
 # scenario uses.
-NODE_SERVICES=${NERONET_NODE_SERVICES:-"relay-de relay-fr relay-us relay-nl client-it client-es"}
+NODE_SERVICES=${NERONET_NODE_SERVICES:-"relay-de relay-fr relay-us relay-nl client-it client-es client-uk client-us client-de client-fr client-jp client-ch relay-se"}
 NODE_SERVICES="$NODE_SERVICES ${NERONET_EXTRA_NODES:-}"
 
 [ -f .env ] || die "no .env in $REPO_ROOT; run scripts/dev/gen-env.sh first"

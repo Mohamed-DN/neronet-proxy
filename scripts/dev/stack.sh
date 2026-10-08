@@ -4,7 +4,7 @@
 #   up      build and start postgres, valkey, backend and console, wait until healthy.
 #           The console is https://127.0.0.1:8443; certs/ca.crt is the CA to trust,
 #           written by gen-certs.sh on the first run
-#   nodes   start the two DERP relays and six Go nodes (starts the core first if needed)
+#   nodes   start the two DERP relays and thirteen Go nodes (starts the core first if needed)
 #   fleet   start the simulated fleet written by scripts/sim/fleet.mjs (see scripts/sim/README.md)
 #   backup  start the backup service and wait for its first backup (needs RESTIC_PASSWORD
 #           in .env: gen-env.sh --append-missing adds it to an older .env)
@@ -129,8 +129,8 @@ case "$cmd" in
     ;;
   nodes)
     need_env
-    # All eight node-image services share one image. Build it through one service,
-    # then start everything without rebuilding, so it is built once and not eight times.
+    # All node-image services share one image. Build it through one service,
+    # then start everything without rebuilding, so it is built only once.
     # shellcheck disable=SC2086
     $COMPOSE --profile nodes build derp-eu
     # shellcheck disable=SC2086

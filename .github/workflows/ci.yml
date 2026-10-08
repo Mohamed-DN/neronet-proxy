@@ -197,11 +197,11 @@ jobs:
       - name: Start the core services
         run: sh scripts/dev/stack.sh up
 
-      - name: Start the DERP relays and the six nodes
+      - name: Start the DERP relays and all thirteen nodes
         run: sh scripts/dev/stack.sh nodes
 
-      - name: Wait for 6 nodes with a heartbeat, check /api/health
-        run: sh scripts/dev/smoke.sh 6 180
+      - name: Wait for 13 nodes with a heartbeat, check /api/health
+        run: sh scripts/dev/smoke.sh 13 180
 
       - name: Console security headers
         run: sh scripts/dev/check-console-headers.sh "https://127.0.0.1:$((8443 + NERONET_PORT_OFFSET))"
