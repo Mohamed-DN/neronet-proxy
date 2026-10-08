@@ -126,19 +126,38 @@ type RegisterResponse struct {
 	RouteEpoch          uint64       `json:"route_epoch"`
 	Credential          string       `json:"credential,omitempty"`
 	CredentialExpiresAt string       `json:"credential_expires_at,omitempty"`
+	TelemetrySession    string       `json:"telemetry_session,omitempty"`
+}
+
+// NativeTelemetry carries cumulative wireguard-go device counters, not byte rates
+// or application payload sizes. Decimal strings preserve all uint64 values in JS.
+// The control plane assigns SessionID at registration; only newer sequences can
+// replace its observation. CounterEpoch changes when the measured peer set or any
+// peer counter resets. Memory is Go runtime Sys, not host RAM or a percentage.
+type NativeTelemetry struct {
+	Version               uint32 `json:"version"`
+	SessionID             string `json:"session_id"`
+	Sequence              string `json:"sequence"`
+	CounterEpoch          string `json:"counter_epoch"`
+	Source                string `json:"source"`
+	TrafficAvailable      bool   `json:"traffic_available"`
+	RxBytes               string `json:"rx_bytes,omitempty"`
+	TxBytes               string `json:"tx_bytes,omitempty"`
+	MemoryRuntimeSysBytes string `json:"memory_runtime_sys_bytes"`
 }
 
 type HeartbeatRequest struct {
-	NodeID          string         `json:"node_id"`
-	SequenceNum     uint64         `json:"sequence_num,omitempty"`
-	Endpoints       []EndpointDesc `json:"endpoints,omitempty"`
-	ActiveCircuits  uint32         `json:"active_circuits,omitempty"`
-	TxBytesSec      uint32         `json:"tx_bytes_sec,omitempty"`
-	RxBytesSec      uint32         `json:"rx_bytes_sec,omitempty"`
-	CPUUsagePct     uint32         `json:"cpu_usage_pct,omitempty"`
-	MemoryUsageMB   uint32         `json:"memory_usage_mb,omitempty"`
-	BatteryLevelPct uint32         `json:"battery_level_pct,omitempty"`
-	OnBatteryPower  bool           `json:"on_battery_power,omitempty"`
+	Telemetry       *NativeTelemetry `json:"telemetry,omitempty"`
+	NodeID          string           `json:"node_id"`
+	SequenceNum     uint64           `json:"sequence_num,omitempty"`
+	Endpoints       []EndpointDesc   `json:"endpoints,omitempty"`
+	ActiveCircuits  uint32           `json:"active_circuits,omitempty"`
+	TxBytesSec      uint32           `json:"tx_bytes_sec,omitempty"`
+	RxBytesSec      uint32           `json:"rx_bytes_sec,omitempty"`
+	CPUUsagePct     uint32           `json:"cpu_usage_pct,omitempty"`
+	MemoryUsageMB   uint32           `json:"memory_usage_mb,omitempty"`
+	BatteryLevelPct uint32           `json:"battery_level_pct,omitempty"`
+	OnBatteryPower  bool             `json:"on_battery_power,omitempty"`
 
 	// RTTMillis is the round trip the node measured on its previous heartbeat.
 	// It is the one latency figure a node can obtain without extra traffic, and it

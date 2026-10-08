@@ -227,6 +227,9 @@ type Device struct {
 	// next can remove only the peers that are gone.
 	setMu    sync.Mutex
 	peerKeys map[string]struct{}
+	// Advanced even when a peer is removed and re-added between observations.
+	// WireGuard counters belong to a peer incarnation, not just its public key.
+	counterEpoch uint64
 }
 
 // New brings up a tunnel. The device has no peers until SetPeers is called, so it
@@ -315,6 +318,7 @@ func New(cfg Config) (*Device, error) {
 		backing:      back,
 		transportMgr: cfg.TransportMgr,
 		daitaShaper:  shaper,
+		counterEpoch: 1,
 	}, nil
 }
 
@@ -394,6 +398,20 @@ func (d *Device) SetPeers(peers []Peer) error {
 		fmt.Fprintf(&b, "persistent_keepalive_interval=%d\n", p.PersistentKeepalive)
 	}
 
+	changed := len(seen) != len(d.peerKeys)
+	for key := range seen {
+		if _, exists := d.peerKeys[key]; !exists {
+			changed = true
+		}
+	}
+	if changed {
+		if d.counterEpoch == ^uint64(0) {
+			return errors.New("dataplane: counter epoch exhausted")
+		}
+		// IpcSet may apply part of a failed request. Conservatively invalidate the
+		// old counter baseline before it touches the device, including that case.
+		d.counterEpoch++
+	}
 	if err := d.wg.IpcSet(b.String()); err != nil {
 		return fmt.Errorf("dataplane: applying %d peer(s): %w", len(peers), err)
 	}
@@ -515,18 +533,27 @@ type PeerStatus struct {
 // for "is the tunnel actually up": a configured peer that never handshook has a zero
 // LastHandshake.
 func (d *Device) Peers() ([]PeerStatus, error) {
+	peers, _, err := d.CounterSnapshot()
+	return peers, err
+}
+
+// CounterSnapshot reads counters and the peer-incarnation epoch under the same
+// lock as SetPeers. A remove/re-add cannot silently reuse an earlier baseline.
+func (d *Device) CounterSnapshot() ([]PeerStatus, uint64, error) {
+	d.setMu.Lock()
+	defer d.setMu.Unlock()
 	d.mu.Lock()
 	closed := d.closed
 	d.mu.Unlock()
 	if closed {
-		return nil, ErrClosed
+		return nil, 0, ErrClosed
 	}
 
 	raw, err := d.wg.IpcGet()
 	if err != nil {
-		return nil, fmt.Errorf("dataplane: reading device state: %w", err)
+		return nil, 0, fmt.Errorf("dataplane: reading device state: %w", err)
 	}
-	return parsePeerStatus(raw), nil
+	return parsePeerStatus(raw), d.counterEpoch, nil
 }
 
 func parsePeerStatus(raw string) []PeerStatus {

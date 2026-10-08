@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: overlay.sh [matrix|rule-deny|discovery|subnet|quarantine|revoke|fail-static]
+# Usage: overlay.sh [matrix|telemetry|rule-deny|discovery|subnet|quarantine|revoke|fail-static]
 #
 # Measures the overlay between the fleet nodes of a running stack. Every cell of the
 # matrix is a real TCP exchange: node A dials node B's overlay address through node
@@ -7,6 +7,7 @@
 # and calls it reachability.
 #
 #   matrix        N x N of ok / denied / timeout with the measured round trips
+#   telemetry     real TCP matrix and increasing native WireGuard device counters
 #   rule-deny     deny one pair through the API, re-measure, delete the rule, re-measure
 #   discovery     rule-deny plus authenticated discovery checked against real TCP
 #   subnet        put two nodes in a sub-network, re-measure; connect it to the default
@@ -155,8 +156,13 @@ build_inventory() {
 # runs inside two nested loops that read the fleet file on stdin. Without it the first
 # dial swallows the rest of the fleet and the matrix comes out with a single column.
 dial() {
-  out=$(node_exec "$1" /bin/sovereign-cli overlay-dial \
-    "$SOCKS" "$2:$ECHO_PORT" "$DIAL_TIMEOUT" 2>/dev/null < /dev/null) && rc=0 || rc=$?
+  if [ "$SCENARIO" = telemetry ]; then
+    out=$(node_exec "$1" env NERONET_OVERLAY_PAYLOAD_BYTES=262144 /bin/sovereign-cli overlay-dial \
+      "$SOCKS" "$2:$ECHO_PORT" "$DIAL_TIMEOUT" 2>/dev/null < /dev/null) && rc=0 || rc=$?
+  else
+    out=$(node_exec "$1" /bin/sovereign-cli overlay-dial \
+      "$SOCKS" "$2:$ECHO_PORT" "$DIAL_TIMEOUT" 2>/dev/null < /dev/null) && rc=0 || rc=$?
+  fi
   case "$rc" in
     0) printf 'ok %s\n' "$(printf '%s' "$out" | awk '{print $3}')" ;;
     3) printf 'timeout\n' ;;
@@ -322,6 +328,21 @@ while read -r svc vip id; do printf '%-12s %-16s %s\n' "$svc" "$vip" "$id"; done
 rc=0
 
 case "$SCENARIO" in
+  telemetry)
+    # Wait for a native observation after the whole fleet has stabilized. The two
+    # snapshots must be different heartbeat sequences from one counter epoch.
+    converge
+    api GET /api/stats/native-telemetry > "$WORK/telemetry-before.json"
+    measure_matrix "real TCP for the native telemetry measurement"
+    expect_all ok || rc=1
+    converge
+    api GET /api/stats/native-telemetry > "$WORK/telemetry-after.json"
+    backend_id=$($COMPOSE ps -q backend)
+    [ -n "$backend_id" ] || die "backend is not running"
+    { cat "$WORK/telemetry-before.json"; printf '\n';
+      cat "$WORK/telemetry-after.json"; printf '\n'; cat "$WORK/fleet";
+    } | $ENGINE exec -i "$backend_id" node -e "$(cat "$REPO_ROOT/scripts/dev/probes/check-native-telemetry.cjs")" 262144 || rc=1
+    ;;
   matrix)
     measure_matrix "overlay matrix, no rules (the compiled policy is allow-all)"
     expect_all ok || rc=1

@@ -19,6 +19,16 @@ const EFFECTIVE_COMPARTMENT = "COALESCE(n.compartment_id, 'cmp-' || COALESCE(n.o
 router.use(authenticateToken);
 router.use(resolveUserOrg);
 
+router.get('/native-telemetry', async (req, res, next) => {
+  try {
+    const scope = await resolveMetricsScope(req.user, req.query.org_id);
+    const tier = req.user?.compartment_access || req.user?.access_tier || 'standard';
+    return res.json(await require('../services/NativeTelemetry').read(tier, scope));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // The audit ledger, its checkpoints and its SIEM sinks are platform wide: events are
 // not tagged with an organisation. Until they are, only the platform super-admin may
 // read the ledger in bulk or change where it is sent. These routes checked nothing,

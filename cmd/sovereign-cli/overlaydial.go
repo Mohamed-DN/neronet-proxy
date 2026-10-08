@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -155,6 +156,15 @@ func echoThroughSocks(socksAddr, target string, timeout time.Duration) (time.Dur
 	}
 
 	marker := fmt.Sprintf("NERONET-OVERLAY-PROBE-%d", time.Now().UnixNano())
+	// A bounded known payload makes the telemetry scenario distinguish data from
+	// keepalives. Ordinary reachability probes keep the existing small marker.
+	if text := os.Getenv("NERONET_OVERLAY_PAYLOAD_BYTES"); text != "" {
+		size, err := strconv.Atoi(text)
+		if err != nil || size < 1 || size > 256*1024 {
+			return 0, errors.New("NERONET_OVERLAY_PAYLOAD_BYTES must be between 1 and 262144")
+		}
+		marker = strings.Repeat(marker, size/len(marker)+1)[:size]
+	}
 	payload := append([]byte{echoMode}, []byte(marker)...)
 
 	start := time.Now()

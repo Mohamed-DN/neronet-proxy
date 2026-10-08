@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -33,10 +34,11 @@ const ClientVersion = "v4.0.0"
 // It is recoverable: the node still holds its identity and can enrol again.
 var ErrNodeUnknown = errors.New("control plane has no record of this node")
 
-// ErrUnauthorized is returned when the control plane refuses the node credential:
+// ErrUnauthorized is returned when the control plane requires renewed registration:
 // it expired, was revoked, or belongs to a registration the control plane no longer
 // has. Also recoverable by enrolling again, which proves possession of the key.
-var ErrUnauthorized = errors.New("control plane refused the node credential")
+// A restored database can also invalidate the server-issued observation session.
+var ErrUnauthorized = errors.New("control plane requires renewed node registration")
 
 // Client interacts with the SovereignMesh Control Plane Service
 type Client struct {
@@ -57,6 +59,39 @@ type Client struct {
 	// which is exactly the kind of assumption that stops being true quietly.
 	rttMu   sync.RWMutex
 	lastRTT time.Duration
+
+	telemetryMu      sync.Mutex
+	telemetrySession string
+	telemetrySeq     uint64
+	telemetrySource  func() (*NativeTelemetry, error)
+}
+
+// SetTelemetrySource installs the native measurement provider. A control plane
+// without a telemetry_session in registration receives the unchanged old wire body.
+func (c *Client) SetTelemetrySource(source func() (*NativeTelemetry, error)) {
+	c.telemetryMu.Lock()
+	defer c.telemetryMu.Unlock()
+	c.telemetrySource = source
+}
+
+func (c *Client) nativeTelemetry() (*NativeTelemetry, error) {
+	c.telemetryMu.Lock()
+	defer c.telemetryMu.Unlock()
+	if c.telemetrySession == "" || c.telemetrySource == nil {
+		return nil, nil
+	}
+	snapshot, err := c.telemetrySource()
+	if err != nil || snapshot == nil {
+		return nil, err
+	}
+	if c.telemetrySeq == ^uint64(0) {
+		return nil, errors.New("native telemetry sequence exhausted")
+	}
+	c.telemetrySeq++
+	copy := *snapshot
+	copy.SessionID = c.telemetrySession
+	copy.Sequence = fmt.Sprint(c.telemetrySeq)
+	return &copy, nil
 }
 
 func (c *Client) recordRTT(d time.Duration) {
@@ -202,7 +237,14 @@ func (c *Client) SendHeartbeatWithPosture(
 	onBat bool,
 	post *posture.PeerAttestation,
 ) (*HeartbeatResponse, error) {
+	telemetry, err := c.nativeTelemetry()
+	if err != nil {
+		// A measurement failure must not suppress liveness, policy or revocations.
+		// Omit the observation so its server freshness expires independently.
+		log.Printf("[CONTROL] Native telemetry unavailable: %v", err)
+	}
 	reqBody := HeartbeatRequest{
+		Telemetry:       telemetry,
 		NodeID:          nodeID,
 		Endpoints:       endpoints,
 		ActiveCircuits:  circuits,
@@ -242,6 +284,17 @@ func (c *Client) SendHeartbeatWithPosture(
 	if resp.StatusCode == http.StatusUnauthorized {
 		c.authToken = ""
 		return nil, ErrUnauthorized
+	}
+	if resp.StatusCode == http.StatusConflict {
+		var conflict struct {
+			Error string `json:"error"`
+			Code  string `json:"code"`
+		}
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&conflict)
+		if conflict.Code == "native_telemetry_session_changed" {
+			return nil, fmt.Errorf("%w: native telemetry session changed", ErrUnauthorized)
+		}
+		return nil, fmt.Errorf("heartbeat refused: status 409: %s", conflict.Error)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, errorFromResponse("heartbeat refused", resp)
@@ -402,6 +455,10 @@ func (c *Client) RegisterWithProof(
 	if regResp.Credential != "" {
 		c.authToken = regResp.Credential
 	}
+	c.telemetryMu.Lock()
+	c.telemetrySession = regResp.TelemetrySession
+	c.telemetrySeq = 0
+	c.telemetryMu.Unlock()
 
 	return &regResp, nil
 }

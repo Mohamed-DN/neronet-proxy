@@ -35,6 +35,7 @@ const ControlPlaneKeyService = require('../services/ControlPlaneKeyService');
 const PreAuthKeyService = require('../services/PreAuthKeyService');
 const NodeCredentialService = require('../services/NodeCredentialService');
 const EnrollmentService = require('../services/EnrollmentService');
+const NativeTelemetry = require('../services/NativeTelemetry');
 const logger = require('../utils/logger');
 const { logAuditEvent } = require('../utils/audit');
 const { checkNodeAuth, checkEnrolmentToken } = require('../middleware/nodeAuth');
@@ -399,6 +400,7 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       }
 
       const cred = await NodeCredentialService.mintCredential(nodeId, 24, client);
+      const telemetrySession = await NativeTelemetry.startSession(client, nodeId);
 
       afterCommit.push(() =>
         logger.info(`[GO-BRIDGE] Registered ${nodeId} (${role}) with overlay ${overlayIpv4} / ${overlayIpv6}`)
@@ -419,7 +421,8 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
         policy_epoch: await AclEngine.getEpoch('acl', client),
         route_epoch: await AclEngine.getEpoch('routes', client),
         credential: cred.credential,
-        credential_expires_at: cred.expiresAt
+        credential_expires_at: cred.expiresAt,
+        telemetry_session: telemetrySession
       };
     });
     return res.json(result);
@@ -469,6 +472,10 @@ router.post('/heartbeat', normalizeRegisterBody, validateRequest('HeartbeatReque
 
     if (known.length === 0) {
       return res.status(404).json({ error: `unknown node_id ${nodeId}` });
+    }
+
+    if (req.body.telemetry) {
+      await NativeTelemetry.record(nodeId, auth.node?.credentialId, req.body.telemetry);
     }
 
     // The attestation the node sends with every beat. It was decoded off the wire and
@@ -589,7 +596,7 @@ router.post('/heartbeat', normalizeRegisterBody, validateRequest('HeartbeatReque
     return res.json(responsePayload);
   } catch (err) {
     logger.error(`[GO-BRIDGE] Heartbeat failed: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(err.status || 500).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
   }
 });
 

@@ -136,6 +136,7 @@ func main() {
 	// up after it, because it needs the overlay addresses registration returned. This
 	// is where the loop finds the netmap manager once it exists.
 	netmaps := &netmapHolder{}
+	ctrlClient.SetTelemetrySource(newTelemetrySampler(netmaps).snapshot)
 
 	log.Printf("[SOVEREIGN-NODE] Country %s is self-declared by the operator, not measured", *countryCode)
 
