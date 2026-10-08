@@ -9,6 +9,8 @@ const { readFleetState, readPostureCounts, LIVENESS_WINDOW_SECONDS } = require('
 const { COUNTRY_NAMES } = require('../utils/countries');
 const AclEngine = require('../services/AclEngine');
 const NetmapService = require('../services/NetmapService');
+const { resolveMetricsScope, nodeVisibility } = require('../services/FleetVisibility');
+const { readMetricHistory, counterDeltas } = require('../services/ScopedMetricsHistory');
 
 // The compartment a node counts as being in, the same expression AclEngine compiles
 // with: a node enrolled without one is in its organisation's default compartment.
@@ -35,17 +37,18 @@ const TOPOLOGY_ROLES = new Set(['owner', 'admin', 'network_admin']);
 async function overviewHandler(req, res, next) {
   try {
     const accessTier = req.user?.compartment_access || req.user?.access_tier || 'standard';
-    const state = await readFleetState(accessTier);
+    const scope = await resolveMetricsScope(req.user, req.query.org_id);
+    const state = await readFleetState(accessTier, scope);
 
     // Two consecutive samples give a rate. With fewer than two the rate is unknown,
     // and unknown is reported as null rather than as a plausible-looking number:
     // the console renders null as a dash, which is the honest thing to show.
-    const rates = await deriveThroughput();
+    const rates = await deriveThroughput(accessTier, scope);
 
     // The Overview used to derive a "compliant" count as active minus quarantined,
     // which is a liveness figure wearing a compliance label. These three are counted
     // from what each node actually attested.
-    const posture = await readPostureCounts(accessTier);
+    const posture = await readPostureCounts(accessTier, scope.organizationId, scope.userId);
 
     return res.status(200).json({
       active_nodes: state.liveNodes,
@@ -58,7 +61,7 @@ async function overviewHandler(req, res, next) {
       total_bandwidth_bytes: state.rxBytes + state.txBytes,
       total_rx_bytes: state.rxBytes,
       total_tx_bytes: state.txBytes,
-      country_distribution: await countryDistribution(accessTier),
+      country_distribution: await countryDistribution(accessTier, scope),
       posture_verified_compliant_nodes: posture.verified_compliant,
       posture_unverified_nodes: posture.unverified,
       posture_non_compliant_nodes: posture.non_compliant,
@@ -79,18 +82,13 @@ async function overviewHandler(req, res, next) {
 /**
  * Turns the two most recent cumulative samples into a rate.
  *
- * Returns nulls when there is not enough history, and when the counters have gone
- * backwards. Counters decrease when a node restarts and resets its own counter, or
- * when a node leaves the fleet; treating that as negative traffic would draw a
- * downward spike that never happened.
+ * Returns nulls when there is not enough comparable history. An individual
+ * counter reset invalidates that direction; a change of visible counter sources
+ * requires a new baseline rather than counting a joining node's lifetime traffic.
  */
-async function deriveThroughput() {
+async function deriveThroughput(accessTier, scope) {
   const unknown = { rxMbPerSec: null, txMbPerSec: null };
-  const pool = getPgPool();
-  const q = await pool.query(
-    'SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx FROM system_metrics ORDER BY timestamp DESC LIMIT 2'
-  );
-  const rows = q.rows;
+  const rows = (await readMetricHistory(accessTier, scope, 1)).slice(-2).reverse();
 
   if (rows.length < 2) {
     return unknown;
@@ -102,24 +100,19 @@ async function deriveThroughput() {
     return unknown;
   }
 
-  const rxDelta = Number(latest.total_bandwidth_rx) - Number(prior.total_bandwidth_rx);
-  const txDelta = Number(latest.total_bandwidth_tx) - Number(prior.total_bandwidth_tx);
-  if (rxDelta < 0 || txDelta < 0) {
-    return unknown;
-  }
-
-  const toMbPerSec = (bytes) => Number((bytes / (1024 * 1024) / seconds).toFixed(2));
-  return { rxMbPerSec: toMbPerSec(rxDelta), txMbPerSec: toMbPerSec(txDelta) };
+  const deltas = counterDeltas(prior, latest);
+  const toMbPerSec = (bytes) => (bytes === null ? null : Number((bytes / (1024 * 1024) / seconds).toFixed(2)));
+  return { rxMbPerSec: toMbPerSec(deltas.rx), txMbPerSec: toMbPerSec(deltas.tx) };
 }
 
-async function countryDistribution(accessTier = 'standard') {
+async function countryDistribution(accessTier = 'standard', scope = {}) {
   const dist = {};
   const pool = getPgPool();
-  const hiddenClause =
-    accessTier === 'root'
-      ? ''
-      : ' LEFT JOIN compartments c ON nodes.compartment_id = c.id WHERE (c.is_hidden IS NULL OR c.is_hidden = FALSE)';
-  const q = await pool.query(`SELECT country_code, count(*) AS count FROM nodes ${hiddenClause} GROUP BY country_code`);
+  const visible = nodeVisibility(accessTier, scope);
+  const q = await pool.query(
+    `SELECT country_code, count(*) AS count FROM nodes n ${visible.join} WHERE ${visible.where} GROUP BY country_code`,
+    visible.params
+  );
   for (const r of q.rows) dist[r.country_code] = parseInt(r.count, 10);
   return dist;
 }
@@ -139,17 +132,9 @@ const RANGE_HOURS = { '1h': 1, '6h': 6, '24h': 24, '7d': 168 };
 async function timeseriesHandler(req, res, next) {
   try {
     const hours = RANGE_HOURS[req.query.range] || 24;
-
-    const pool = getPgPool();
-    const q = await pool.query(
-      `SELECT timestamp, total_bandwidth_rx, total_bandwidth_tx, active_nodes,
-              cpu_usage_pct, memory_usage_mb, network_health_score
-       FROM system_metrics
-       WHERE timestamp > now() - make_interval(hours => $1)
-       ORDER BY timestamp ASC`,
-      [hours]
-    );
-    const metrics = q.rows;
+    const accessTier = req.user?.compartment_access || req.user?.access_tier || 'standard';
+    const scope = await resolveMetricsScope(req.user, req.query.org_id);
+    const metrics = await readMetricHistory(accessTier, scope, hours);
 
     // The stored counters are cumulative. The chart wants a rate, so each point is
     // the difference from the point before it; the first sample has no predecessor
@@ -161,20 +146,20 @@ async function timeseriesHandler(req, res, next) {
       const seconds = (new Date(cur.timestamp) - new Date(prev.timestamp)) / 1000;
       if (!(seconds > 0)) continue;
 
-      const rxDelta = Number(cur.total_bandwidth_rx) - Number(prev.total_bandwidth_rx);
-      const txDelta = Number(cur.total_bandwidth_tx) - Number(prev.total_bandwidth_tx);
-      const rate = (bytes) => (bytes < 0 ? 0 : Number((bytes / (1024 * 1024) / seconds).toFixed(3)));
+      const deltas = counterDeltas(prev, cur);
+      const rate = (bytes) => (bytes === null ? null : Number((bytes / (1024 * 1024) / seconds).toFixed(3)));
 
       series.push({
         timestamp: cur.timestamp,
         time: new Date(cur.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        rx: rate(rxDelta),
-        tx: rate(txDelta),
+        rx: rate(deltas.rx),
+        tx: rate(deltas.tx),
         rx_bytes: Number(cur.total_bandwidth_rx),
         tx_bytes: Number(cur.total_bandwidth_tx),
         active_nodes: cur.active_nodes,
         cpu_usage_pct: cur.cpu_usage_pct,
-        memory_usage_mb: cur.memory_usage_mb,
+        memory_usage_mb: null,
+        memory_usage_pct: cur.memory_usage_pct,
         health_score: cur.network_health_score
       });
     }
@@ -200,10 +185,8 @@ async function geoMatrixHandler(req, res, next) {
   try {
     const pool = getPgPool();
     const accessTier = req.user?.compartment_access || req.user?.access_tier || 'standard';
-    const hiddenClause =
-      accessTier === 'root'
-        ? ''
-        : ' LEFT JOIN compartments c ON nodes.compartment_id = c.id WHERE (c.is_hidden IS NULL OR c.is_hidden = FALSE)';
+    const scope = await resolveMetricsScope(req.user, req.query.org_id);
+    const visible = nodeVisibility(accessTier, scope, 1);
 
     const sql = `
       SELECT
@@ -213,12 +196,12 @@ async function geoMatrixHandler(req, res, next) {
         count(*) FILTER (WHERE role = 'EXIT_BRIDGE') AS exits,
         count(*) FILTER (WHERE last_heartbeat > now() - make_interval(secs => $1)) AS live,
         avg(latency_ms) FILTER (WHERE latency_ms > 0) AS avg_latency
-      FROM nodes
-      ${hiddenClause}
+      FROM nodes n ${visible.join}
+      WHERE ${visible.where}
       GROUP BY country_code
       ORDER BY count(*) DESC, country_code ASC`;
 
-    const q = await pool.query(sql, [LIVENESS_WINDOW_SECONDS]);
+    const q = await pool.query(sql, [LIVENESS_WINDOW_SECONDS, ...visible.params]);
     const rows = q.rows;
 
     const matrix = rows.map((r) => {

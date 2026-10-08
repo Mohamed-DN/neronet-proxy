@@ -1,5 +1,6 @@
 const { isPostgres, getPgPool, getDatabase } = require('../db/index');
 const { derivePostureStatus, emptyPostureCounts } = require('../utils/posture');
+const { nodeVisibility } = require('./FleetVisibility');
 
 // Nodes report every 15 seconds. A node is counted as live if it has been heard
 // from within four of those intervals, which absorbs one lost datagram and a slow
@@ -25,16 +26,14 @@ let timer = null;
  * are cumulative, so the value is a total transferred, not a rate; deriving a rate
  * is the caller's job and needs two samples.
  */
-async function readFleetState(accessTier = 'standard') {
+async function readFleetState(accessTier = 'standard', scope = {}) {
   // cpu_usage_pct = 0 is the node saying "not measured": nothing on a node samples
   // CPU yet, and the wire field has no null. Averaging those zeros in reported a
   // fleet-wide 0% load as if it were a measurement, so they are excluded and the
-  // average is null when no node measured anything. Memory is genuinely measured
-  // (runtime.MemStats) and is averaged as-is.
-  const hiddenClause =
-    accessTier === 'root'
-      ? ''
-      : ' LEFT JOIN compartments c ON nodes.compartment_id = c.id WHERE (c.is_hidden IS NULL OR c.is_hidden = FALSE)';
+  // average is null when no node measured anything. Memory retains the legacy
+  // stored value: native heartbeats send MB into a column named memory_usage_pct.
+  // Its unit contract needs a separate correction before interpreting it as %.
+  const visible = nodeVisibility(accessTier, scope, 1);
 
   const sql = `
     SELECT
@@ -47,13 +46,27 @@ async function readFleetState(accessTier = 'standard') {
         WHERE last_heartbeat > now() - make_interval(secs => $1) AND cpu_usage_pct > 0
       ) AS cpu_pct,
       avg(memory_usage_pct) FILTER (WHERE last_heartbeat > now() - make_interval(secs => $1)) AS mem_pct
-    FROM nodes
-    ${hiddenClause}`;
+    FROM nodes n ${visible.join}
+    WHERE ${visible.where}`;
 
   if (isPostgres()) {
     const pool = getPgPool();
-    const nodes = await pool.query(sql, [LIVENESS_WINDOW_SECONDS]);
-    const users = await pool.query('SELECT count(*) AS c FROM users');
+    const nodes = await pool.query(sql, [LIVENESS_WINDOW_SECONDS, ...visible.params]);
+    const userConditions = [];
+    const userParams = [];
+    for (const [value, column] of [
+      [scope.organizationId, "COALESCE(organization_id, 'org-default')"],
+      [scope.userId, 'id']
+    ]) {
+      if (value !== undefined) {
+        userParams.push(value);
+        userConditions.push(`${column}=$${userParams.length}`);
+      }
+    }
+    const users = await pool.query(
+      `SELECT count(*) AS c FROM users ${userConditions.length ? `WHERE ${userConditions.join(' AND ')}` : ''}`,
+      userParams
+    );
     return shape(nodes.rows[0], Number(users.rows[0].c));
   }
 
@@ -88,23 +101,16 @@ async function readFleetState(accessTier = 'standard') {
  * the fleet sizes this console handles and is the first thing to turn into a stored
  * column if that stops being true.
  */
-async function readPostureCounts(accessTier = 'standard', organizationId = undefined) {
+async function readPostureCounts(accessTier = 'standard', organizationId = undefined, userId = undefined) {
   let rows;
 
   if (isPostgres()) {
     // organizationId limits the count to one organisation's nodes; without it the
     // count covers the platform.
-    const where = [];
-    const params = [];
-    if (accessTier !== 'root') where.push('(c.is_hidden IS NULL OR c.is_hidden = FALSE)');
-    if (organizationId !== undefined) {
-      params.push(organizationId);
-      where.push(`COALESCE(nodes.organization_id, 'org-default') = $${params.length}`);
-    }
+    const visible = nodeVisibility(accessTier, { organizationId, userId });
     const result = await getPgPool().query(
-      `SELECT nodes.posture_checks FROM nodes LEFT JOIN compartments c ON nodes.compartment_id = c.id
-       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`,
-      params
+      `SELECT n.posture_checks FROM nodes n ${visible.join} WHERE ${visible.where}`,
+      visible.params
     );
     rows = result.rows;
   } else {
@@ -201,6 +207,25 @@ async function writeSample(state) {
 async function collectOnce() {
   const state = await readFleetState();
   await writeSample(state);
+  // One INSERT observes the whole fleet at one PostgreSQL snapshot and timestamp.
+  // Store capture-time scope as well as checking current visibility on reads: a
+  // node reassigned to a tenant must not bring its former tenant's chart with it.
+  await getPgPool().query(
+    `INSERT INTO node_metric_samples
+       (node_id, organization_id, user_id, is_hidden, is_live, is_quarantined,
+        rx_bytes, tx_bytes, cpu_usage_pct, memory_usage_pct)
+     SELECT n.id, COALESCE(n.organization_id, 'org-default'), n.user_id,
+            COALESCE(c.is_hidden, FALSE),
+            COALESCE(n.last_heartbeat > NOW() - make_interval(secs => $1), FALSE),
+            COALESCE(n.is_quarantined, FALSE), COALESCE(n.rx_bytes, 0), COALESCE(n.tx_bytes, 0),
+            NULLIF(n.cpu_usage_pct, 0), n.memory_usage_pct
+       FROM nodes n LEFT JOIN compartments c
+         ON c.id=COALESCE(n.compartment_id, 'cmp-' || COALESCE(n.organization_id, 'org-default'))`,
+    [LIVENESS_WINDOW_SECONDS]
+  );
+  await getPgPool().query('DELETE FROM node_metric_samples WHERE sampled_at < NOW() - make_interval(hours => $1)', [
+    RETENTION_HOURS
+  ]);
   return state;
 }
 

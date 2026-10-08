@@ -264,13 +264,14 @@ export interface AuthSession {
 export interface TimeseriesPoint {
   timestamp: string;
   time: string;
-  rx: number;
-  tx: number;
+  rx: number | null;
+  tx: number | null;
   rx_bytes?: number;
   tx_bytes?: number;
   active_nodes?: number;
   cpu_usage_pct?: number | null;
   memory_usage_mb?: number | null;
+  memory_usage_pct?: number | null;
   health_score?: number | null;
   latency?: number | null;
 }
