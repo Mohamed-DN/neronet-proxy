@@ -75,3 +75,17 @@ existing authenticator and is single-use, a new authenticator is kept pending un
 code from it is confirmed, and the console sign-in handles the code, recovery codes and
 enrolment.
 
+## Amendment, October 2026: current access authority
+
+Authenticated console HTTP requests and topology WebSocket connections now read
+the account's current status, platform role, organization and membership from
+PostgreSQL. Module guards share the HTTP request's verified decision. Open sockets
+revalidate before event delivery and close on token expiry, including while idle.
+An unavailable authority fails closed.
+
+Root-password compartment grants remain tenant-bound. Enrollment separately
+retains the signed tenant context and its transactional lifecycle checks, so a
+transfer requires a fresh tenant-context token before creating nodes there.
+See [console session authority](../en/console-session-authority.md) for behavior,
+verification and limits. Durable access-session families, cache-loss revocation
+and multi-replica failover remain separate acceptance work.

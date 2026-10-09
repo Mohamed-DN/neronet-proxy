@@ -1,49 +1,28 @@
 const { WebSocketServer, WebSocket } = require('ws');
-const url = require('url');
-const jwt = require('jsonwebtoken');
-const config = require('../config/env');
 const logger = require('../utils/logger');
-const { isTokenBlacklisted } = require('../db/valkey');
+const { resolveAccessToken, SessionAuthorityError } = require('../services/SessionAuthority');
 const { registerWsBroadcaster } = require('../services/TopologySync');
 
 let wss = null;
 const clients = new Set();
 
-function authenticateSocket(req) {
-  try {
-    const parsedUrl = new URL(req.url, 'http://localhost');
-    let token = parsedUrl.searchParams.get('token');
+async function authenticateSocket(req) {
+  const parsedUrl = new URL(req.url, 'http://localhost');
+  let token = parsedUrl.searchParams.get('token');
 
-    if (!token && req.headers['authorization']) {
-      const authHeader = req.headers['authorization'];
-      if (authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7).trim();
-      }
+  if (!token && req.headers['authorization']) {
+    const authHeader = req.headers['authorization'];
+    if (authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim();
     }
-
-    if (!token && req.headers['sec-websocket-protocol']) {
-      token = req.headers['sec-websocket-protocol'].split(',')[0].trim();
-    }
-
-    if (!token) {
-      return null;
-    }
-
-    const decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
-    if (decoded.type === 'mfa_pending') return null;
-    return {
-      token,
-      user: {
-        id: decoded.sub || decoded.id,
-        username: decoded.username,
-        role: decoded.role,
-        tier: decoded.tier,
-        organization_id: decoded.organization_id || 'org-default'
-      }
-    };
-  } catch (err) {
-    return null;
   }
+
+  if (!token && req.headers['sec-websocket-protocol']) {
+    token = req.headers['sec-websocket-protocol'].split(',')[0].trim();
+  }
+
+  if (!token) throw new SessionAuthorityError(401, 'Authentication required');
+  return { token, ...(await resolveAccessToken(token)) };
 }
 
 function initTopologyWebSocket(httpServer) {
@@ -55,41 +34,23 @@ function initTopologyWebSocket(httpServer) {
       return; // allow other upgrade handlers if any
     }
 
-    const authResult = authenticateSocket(req);
-    if (!authResult) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-      socket.destroy();
-      return;
-    }
-
-    const isBlacklisted = await isTokenBlacklisted(authResult.token);
-    if (isBlacklisted) {
-      socket.write('HTTP/1.1 401 Unauthorized (Token Revoked)\r\n\r\n');
-      socket.destroy();
-      return;
-    }
-
-    // The organisation and the role in it decide what the socket receives; read them
-    // from the database, as middleware/rbac does for HTTP requests.
+    let authResult;
     try {
-      const { getPgPool } = require('../db/index');
-      const pool = getPgPool();
-      const userRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [authResult.user.id]);
-      if (userRes.rows[0] && userRes.rows[0].organization_id) {
-        authResult.user.organization_id = userRes.rows[0].organization_id;
-      }
-      const memRes = await pool.query('SELECT role FROM memberships WHERE user_id = $1 AND organization_id = $2', [
-        authResult.user.id,
-        authResult.user.organization_id
-      ]);
-      authResult.user.org_role = memRes.rows[0] ? memRes.rows[0].role : 'member';
+      authResult = await authenticateSocket(req);
     } catch (err) {
-      authResult.user.org_role = 'member';
+      const status = err.status || 503;
+      const reason = status === 403 ? 'Forbidden' : status === 401 ? 'Unauthorized' : 'Service Unavailable';
+      socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`);
+      socket.destroy();
+      return;
     }
+
+    if (socket.destroyed) return;
 
     wss.handleUpgrade(req, socket, head, (ws) => {
       ws.user = authResult.user;
       ws.token = authResult.token;
+      ws.expiresAt = authResult.expiresAt;
       ws.isAlive = true;
       wss.emit('connection', ws, req);
     });
@@ -110,15 +71,31 @@ function initTopologyWebSocket(httpServer) {
       })
     );
 
+    // An idle stream expires too; it must not depend on receiving a fleet event.
+    let expiryTimer = null;
+    const scheduleExpiry = () => {
+      const remaining = ws.expiresAt - Date.now();
+      if (remaining <= 0) {
+        ws.close(1008, 'Session expired');
+        return;
+      }
+      // Longer delays overflow Node's signed 32-bit timer and become one millisecond.
+      expiryTimer = setTimeout(scheduleExpiry, Math.min(remaining, 2147483647));
+      expiryTimer.unref();
+    };
+    if (ws.expiresAt) scheduleExpiry();
+
     ws.on('pong', () => {
       ws.isAlive = true;
     });
 
-    ws.on('message', (message) => {
+    ws.on('message', async (message) => {
       try {
         const parsed = JSON.parse(message.toString());
         if (parsed.type === 'PING') {
-          ws.send(JSON.stringify({ type: 'PONG', timestamp: new Date().toISOString() }));
+          if (await refreshSocketAuthority(ws)) {
+            ws.send(JSON.stringify({ type: 'PONG', timestamp: new Date().toISOString() }));
+          }
         }
       } catch (e) {
         // Ignore malformed text frames
@@ -126,6 +103,7 @@ function initTopologyWebSocket(httpServer) {
     });
 
     ws.on('close', () => {
+      if (expiryTimer) clearTimeout(expiryTimer);
       clients.delete(ws);
       logger.info(`WebSocket client disconnected: ${ws.user.username} [Total: ${clients.size}]`);
     });
@@ -137,7 +115,7 @@ function initTopologyWebSocket(httpServer) {
   });
 
   // Heartbeat ping interval
-  const pingInterval = setInterval(() => {
+  const pingInterval = setInterval(async () => {
     if (!wss) return;
     for (const ws of clients) {
       if (ws.isAlive === false) {
@@ -145,8 +123,10 @@ function initTopologyWebSocket(httpServer) {
         ws.terminate();
         continue;
       }
-      ws.isAlive = false;
-      ws.ping();
+      if (await refreshSocketAuthority(ws)) {
+        ws.isAlive = false;
+        ws.ping();
+      }
     }
   }, 30000);
   pingInterval.unref();
@@ -203,14 +183,27 @@ function isVisibleTo(user, event) {
   return own || ORG_WIDE_ROLES.has(user.org_role);
 }
 
-function broadcastTopologyMessage(payload) {
+async function refreshSocketAuthority(client) {
+  if (client.readyState !== WebSocket.OPEN) return false;
+  try {
+    const authority = await resolveAccessToken(client.token);
+    if (client.readyState !== WebSocket.OPEN) return false;
+    client.user = authority.user;
+    return true;
+  } catch {
+    client.close(1008, 'Session no longer authorized');
+    return false;
+  }
+}
+
+async function broadcastTopologyMessage(payload) {
   if (clients.size === 0) return;
 
   const dataString = typeof payload === 'string' ? payload : JSON.stringify(payload);
   const dataObj = typeof payload === 'string' ? JSON.parse(payload) : payload;
 
   for (const client of clients) {
-    if (client.readyState === WebSocket.OPEN && isVisibleTo(client.user, dataObj)) {
+    if ((await refreshSocketAuthority(client)) && isVisibleTo(client.user, dataObj)) {
       client.send(dataString);
     }
   }
