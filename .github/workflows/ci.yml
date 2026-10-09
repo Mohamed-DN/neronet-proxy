@@ -340,6 +340,9 @@ jobs:
       - name: Markdown links
         run: python3 scripts/dev/check-links.py .
 
+      - name: E2E project protection
+        run: python3 scripts/dev/test-e2e-project.py
+
       - name: YAML syntax
         run: |
           python3 -m pip install --quiet pyyaml

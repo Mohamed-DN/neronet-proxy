@@ -38,7 +38,12 @@ for arg in "$@"; do
 done
 [ -n "$SCENARIOS" ] || SCENARIOS="matrix rule-deny quarantine fail-static revoke"
 
-export COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-neronet-e2e}
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-neronet-e2e}"
+# The cleanup trap deletes volumes. Reject the owner's project before starting
+# anything, including --keep runs; a shell's exported deployment name is not consent.
+case "$COMPOSE_PROJECT_NAME" in
+  neronet | *[!a-z0-9_-]*) die "set a safe COMPOSE_PROJECT_NAME for disposable tests; neronet is protected" ;;
+esac
 export NERONET_PORT_OFFSET=${NERONET_PORT_OFFSET:-3000}
 export NERONET_DATAPLANE=${NERONET_DATAPLANE:-netstack}
 export SOVEREIGN_MFA_MANDATORY=off
