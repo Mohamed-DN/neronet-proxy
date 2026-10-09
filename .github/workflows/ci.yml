@@ -180,7 +180,9 @@ jobs:
   stack-smoke:
     name: stack-smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Thirteen peers produce 156 five-second negative probes in fail-closed alone.
+    # Keep the full fleet and timeout assertions within a separate job budget.
+    timeout-minutes: 45
     env:
       # The runner has Podman and Docker installed; only the Docker daemon runs.
       NERONET_ENGINE: docker
