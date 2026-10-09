@@ -1,8 +1,8 @@
 # Sovereign mesh binaries: node, CLI and DERP relay.
 #
-# Separate from docker/Dockerfile, which builds the security daemon and pins Go 1.22
-# — below the 1.25 this module now requires for hybrid post-quantum TLS.
-FROM golang:1.26 AS builder
+# Separate from docker/Dockerfile, which builds the security daemon.
+# Keep the builder at the security patch level required by go.mod.
+FROM golang:1.26.9 AS builder
 
 WORKDIR /build
 COPY go.mod go.sum ./
