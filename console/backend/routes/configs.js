@@ -48,7 +48,11 @@ router.post('/generate', async (req, res, next) => {
     let overlayIpv4, overlayIpv6;
 
     await EnrollmentService.transaction(async (client, afterCommit) => {
-      const actor = await EnrollmentService.authorizeConsole(client, req.user);
+      const actor = await EnrollmentService.authorizeConsole(
+        client,
+        req.user,
+        req.sessionAuthority.organizationIdAtIssue
+      );
       const organizationId = actor.organization_id;
       const vips = await allocateNextVip(client);
       overlayIpv4 = vips.overlayIpv4;

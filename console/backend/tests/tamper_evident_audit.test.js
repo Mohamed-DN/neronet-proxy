@@ -27,11 +27,10 @@ describe('WP-301: Tamper-Evident Audit Log & SIEM Export', () => {
     await pool.query('DELETE FROM audit_events');
     await pool.query('DELETE FROM audit_siem_destinations');
 
-    superAdminToken = jwt.sign(
-      { id: 'usr-audit-admin', username: 'auditadmin', role: 'super-admin' },
-      config.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
+    const admin = (await pool.query("SELECT id, username, role, organization_id FROM users WHERE id='usr-admin'"))
+      .rows[0];
+    assert.strictEqual(admin.role, 'super-admin');
+    superAdminToken = jwt.sign(admin, config.JWT_SECRET, { expiresIn: '1h' });
   });
 
   after(async () => {

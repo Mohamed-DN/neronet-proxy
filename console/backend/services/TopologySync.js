@@ -11,7 +11,9 @@ function initTopologySync() {
   subscribeTopologyEvents((eventData) => {
     if (wsBroadcastHandler && typeof wsBroadcastHandler === 'function') {
       try {
-        wsBroadcastHandler(eventData);
+        Promise.resolve(wsBroadcastHandler(eventData)).catch((err) => {
+          logger.error(`Error in WebSocket broadcast distributor: ${err.message}`);
+        });
       } catch (err) {
         logger.error(`Error in WebSocket broadcast distributor: ${err.message}`);
       }

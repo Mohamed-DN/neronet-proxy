@@ -26,8 +26,11 @@ describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', ()
     pool = dbHelper.pool;
     app = createApp();
 
-    // 1. Super Admin token
-    superAdminToken = signToken({ id: 'usr-super-admin', username: 'superadmin', role: 'super-admin' });
+    // 1. The token belongs to the real seeded platform administrator.
+    const admin = (await pool.query("SELECT id, username, role, organization_id FROM users WHERE id='usr-admin'"))
+      .rows[0];
+    assert.strictEqual(admin.role, 'super-admin');
+    superAdminToken = signToken(admin);
 
     // 2. Setup Organizations A and B
     const orgARes = await pool.query(`

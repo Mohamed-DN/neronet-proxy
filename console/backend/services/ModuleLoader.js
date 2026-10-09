@@ -202,45 +202,27 @@ class ModuleLoader {
    */
   createModuleGuard(moduleId) {
     const self = this;
-    const jwt = require('jsonwebtoken');
-    const config = require('../config/env');
+    const { verifyToken } = require('../middleware/auth');
+    const { authenticateConsoleRequest, accessTokenFromRequest } = require('./SessionAuthority');
 
     return async function moduleGuard(req, res, next) {
       if (!self.isModuleLoaded(moduleId)) {
         return res.status(404).json({ error: 'Not found' });
       }
 
-      let orgId = req.user?.organization_id || req.node?.organization_id;
-
-      if (!orgId) {
-        const authHeader = req.headers?.authorization || '';
-        let token = '';
-        if (authHeader.startsWith('Bearer ')) {
-          token = authHeader.substring(7).trim();
-        } else if (req.cookies && req.cookies.token) {
-          token = req.cookies.token;
-        }
-
-        if (token && !token.startsWith('nnt1_')) {
-          let decoded = null;
-          try {
-            decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
-          } catch (e) {
-            // Downstream authenticateToken middleware handles invalid tokens
-          }
-
-          if (decoded) {
-            orgId = decoded.organization_id;
-            // A token without an organisation still belongs to a user who has one.
-            // Skipping the check for such tokens let a regulated organisation use
-            // its disabled modules after the first token refresh.
-            if (!orgId) {
-              orgId = await self.resolveUserOrgId(decoded.sub || decoded.id);
-              if (!orgId) {
-                return res.status(404).json({ error: 'Not found' });
-              }
-            }
-          }
+      let orgId = req.node?.organization_id;
+      const token = accessTokenFromRequest(req);
+      // Node credentials remain the node router's responsibility. Console tokens
+      // use the same current principal as HTTP authorization, including legacy
+      // tokens without an organization claim and accounts moved between tenants.
+      if (token && !token.startsWith('nnt1_') && verifyToken(token)) {
+        try {
+          await authenticateConsoleRequest(req);
+          orgId = req.user.organization_id;
+        } catch (err) {
+          return res
+            .status(err.status || 503)
+            .json({ error: err.status ? err.message : 'Session authority unavailable' });
         }
       }
 

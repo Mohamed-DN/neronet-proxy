@@ -72,8 +72,10 @@ async function authorizeOwner(client, ownerId, organizationId, { consoleActor = 
   return { ...user, organization_id: organizationId, org_role: orgRole };
 }
 
-async function authorizeConsole(client, actor) {
-  return authorizeOwner(client, actor.id, actor.organization_id || 'org-default', { consoleActor: true });
+async function authorizeConsole(client, actor, organizationIdAtIssue = actor.organization_id || 'org-default') {
+  // Enrollment remains bound to the signed tenant context, even when request
+  // authorization has refreshed the actor's current organization from PostgreSQL.
+  return authorizeOwner(client, actor.id, organizationIdAtIssue, { consoleActor: true });
 }
 
 module.exports = { transaction, authorizeOwner, authorizeConsole, denied, LIFECYCLE_LOCK_ID };

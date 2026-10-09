@@ -225,7 +225,11 @@ router.post('/', async (req, res, next) => {
     const endpointsArray = Array.isArray(endpoints) ? endpoints : [];
     const nodeId = `svrn-node-${crypto.randomBytes(4).toString('hex')}`;
     const createdNode = await EnrollmentService.transaction(async (client, afterCommit) => {
-      const actor = await EnrollmentService.authorizeConsole(client, req.user);
+      const actor = await EnrollmentService.authorizeConsole(
+        client,
+        req.user,
+        req.sessionAuthority.organizationIdAtIssue
+      );
       const orgId = actor.organization_id;
       const existingKey = await client.query('SELECT id FROM nodes WHERE public_key = $1', [finalPubKey]);
       if (existingKey.rows.length > 0) {
