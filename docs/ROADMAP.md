@@ -1,5 +1,21 @@
 # NeroNet engineering roadmap
 
+## Current delivery order and retained plans
+
+The current product sequence is recorded in the [README](../README.md#roadmap):
+security/recovery, reliable UDP/DERP, an installable single-node product and native
+clients, optional transports/Tor, then HA. The [deployment profiles](en/deployment-profiles.md)
+distinguish simple installation, database-only redundancy and full service HA.
+
+The detailed tracks below are retained from the earlier engineering plan. Their
+measurements, dates and claims need revalidation against the current implementation;
+in particular, stateless API operation and complete HA are not established results.
+Moving a feature later does not remove it. The [ADRs](adr/) and [archive](archive/)
+preserve its design context. TLS and isolated backup/restore now have implemented
+flows in [TLS certificates](en/tls-certificates.md) and [backup/restore](en/backup-restore.md).
+
+## Earlier engineering plan
+
 Working document. Figures are measured against a running deployment; the methods are
 reproducible from the commands in each section.
 

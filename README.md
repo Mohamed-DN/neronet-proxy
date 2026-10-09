@@ -6,14 +6,21 @@
 
 NeroNet is an overlay mesh VPN with a web management console. It has two halves: Go
 nodes (`cmd/sovereign-node`, `pkg/*`) and a Node.js control plane with a React console
-(`console/backend`, `console/frontend`), backed by PostgreSQL 16 and Valkey 7. The
+(`console/backend`, `console/frontend`), backed by PostgreSQL and Valkey. The
+development stack currently uses PostgreSQL 18 and Valkey 9.1; backend CI also runs
+against PostgreSQL 16. The
 target users are banks and public administration
 ([ADR 0006](docs/adr/0006-target-market-banks-and-public-administration.md)). The
 licence is AGPL-3.0.
 
 ## Current state
 
-Running today, and exercised in CI by a stack of six nodes that exchange real traffic:
+The development fleet contains thirteen WireGuard nodes and two relay services.
+The overlay matrix measures all 156 directed TCP exchanges between the thirteen
+nodes. Passing that matrix does not certify host-installed clients, DERP failover
+or production readiness. Check the exact commit's CI result before deploying.
+
+Implemented behavior:
 
 - **Data plane.** Each node runs WireGuard in userspace (`wireguard-go` with gVisor
   netstack) and filters every packet with the ACL policy it received. Peers, addresses,
@@ -43,7 +50,16 @@ Running today, and exercised in CI by a stack of six nodes that exchange real tr
   tokens are sealed with a per-organisation data key, which an organisation shred
   destroys.
 - **Several control plane instances.** A PostgreSQL advisory lock elects one leader,
-  and scheduled jobs run on it only.
+  and scheduled jobs run on it only. This is not a complete HA deployment or proof
+  that an old worker is fenced during a database failover.
+- **TLS and recovery.** The console and node control API use HTTPS, with internal
+  CA trust by default or optional ACME HTTP-01. Pebble issuance, served renewal and
+  recovery have been exercised. The backup drill restores schema, data and backend
+  keys on a disposable stack, then checks node identity/address continuity and TCP.
+  A local REST copy does not demonstrate an offsite destination.
+- **Mesh view and metrics.** The console includes a radial topology and native node
+  counters. Policy links and device counters are not measurements of the transport
+  used by each peer; authenticated per-peer path observations are a separate gate.
 - **DERP relays and STUN** (`cmd/sovereign-derp-relay`). The stack starts two, and nodes
   receive the relay list in the netmap. The relayed path has not been measured.
 
@@ -74,8 +90,8 @@ flowchart LR
     leader["Scheduled jobs<br/>leader only"]
   end
 
-  pg[("PostgreSQL 16")]
-  vk[("Valkey 7<br/>rate limits, token revocation, events")]
+  pg[("PostgreSQL<br/>single primary")]
+  vk[("Valkey<br/>rate limits, token revocation, events")]
 
   subgraph fleet["Nodes: cmd/sovereign-node"]
     a["Node A<br/>WireGuard netstack, ACL filter,<br/>SOCKS5 and HTTP proxy"]
@@ -100,10 +116,31 @@ flowchart LR
   a -.->|"relay list only"| derp
 ```
 
-### Planned
+### Deployment choices
 
-Nothing in this diagram beyond the one above exists yet. The order and the reasons are
-in [docs/ROADMAP.md](docs/ROADMAP.md).
+Start with a single control-plane host; a database cluster is optional. These are
+deployment profiles of the same product, not different VPNs.
+
+| Profile | Architecture | Delivery status |
+|---|---|---|
+| **Simple, without HA** | One host with HTTPS/console, API, one PostgreSQL and Valkey; independent encrypted backups | Current development stack. Guided VM installation and daily-use desktop client acceptance remain open. No Patroni or etcd required. |
+| **Database HA** | Three PostgreSQL/Patroni instances and three etcd voters across independent failure domains; one writable primary | Planned. Protecting the database alone leaves single points of failure in the rest of the service. |
+| **Full service HA** | Database HA plus multiple API/HTTPS instances, Valkey failover, fenced jobs and independent relay/gateway paths | Planned. Requires failure tests for each component and the complete service. |
+
+The control plane distributes identity, peers and policy. It is not the central
+router drawn in the radial view: WireGuard data travels between nodes. The target
+transport design adds authenticated redundant DERP while retaining direct UDP as
+the preferred path, within the transports allowed by policy.
+
+The [deployment profiles](docs/en/deployment-profiles.md) describe both diagrams,
+the three-VM/three-DC database proposal, migration and the checks required before
+claiming HA. Neither a Patroni template nor several running API containers proves HA.
+
+### Future building blocks
+
+The diagram below is a target design, not a list of available features. Direct UDP
+and the current control-plane components are included for context. Implementation
+order and retained future ideas are in [Roadmap](#roadmap).
 
 ```mermaid
 flowchart LR
@@ -127,7 +164,7 @@ flowchart LR
     onion["Onion circuits<br/>after external review"]
   end
 
-  subgraph transports["Transports, chosen automatically"]
+  subgraph transports["Transports, limited by policy"]
     udp["Direct UDP"]
     awg["Obfuscated UDP<br/>AmneziaWG-style"]
     quic["QUIC datagrams on 443"]
@@ -174,8 +211,9 @@ command from Git Bash.
      both. On Windows also install [Git for Windows](https://gitforwindows.org/).
    - Check: `podman compose version` must print a version.
 
-2. **Windows and macOS only: start the Podman machine.** The stack with six nodes needs
-   about 8 GB of memory.
+2. **Windows and macOS only: start the Podman machine.** The following requests four
+   CPUs and 8 GB for a development VM; it is not a measured production capacity.
+   Reuse an existing machine rather than initializing it again.
 
    ```sh
    podman machine init --cpus 4 --memory 8192 --disk-size 60
@@ -207,11 +245,11 @@ command from Git Bash.
    sh scripts/dev/stack.sh up
    ```
 
-6. **Start the nodes.** Two DERP relays and six nodes, which enrol and build the mesh.
+6. **Start the nodes.** Two DERP relays and thirteen nodes, which enrol and build the mesh.
 
    ```sh
    sh scripts/dev/stack.sh nodes
-   sh scripts/dev/smoke.sh 6 240    # waits for six nodes with a heartbeat, checks /api/health
+   sh scripts/dev/smoke.sh 13 240   # waits for thirteen nodes with a heartbeat, checks /api/health
    ```
 
 7. **Sign in.** Open <https://127.0.0.1:8443> (TLS only; the certificate is signed by the
@@ -220,12 +258,15 @@ command from Git Bash.
    `SOVEREIGN_ADMIN_PASS` from `.env`. With `SOVEREIGN_MFA_MANDATORY=admins` or `all`,
    the console asks you to set up an authenticator app first.
 
-8. **Check the overlay.** `e2e.sh` starts a separate stack (its own name, ports offset
-   by 3000), measures real traffic between the nodes in five scenarios (full matrix, an
-   ACL deny rule, quarantine and lift, control plane outage, revocation) and removes it.
+8. **Check the overlay.** `e2e.sh` starts a disposable stack (its own name, ports offset
+   by 3000), measures real traffic between the thirteen nodes in five default
+   scenarios (matrix, ACL deny, quarantine, control plane outage and revocation),
+   then deletes that test project's containers and volumes. Use only a disposable
+   project, never the name of an existing deployment. CI additionally checks native
+   metrics, authenticated discovery and subnets.
 
    ```sh
-   sh scripts/dev/e2e.sh
+   COMPOSE_PROJECT_NAME=neronet-e2e NERONET_PORT_OFFSET=3000 sh scripts/dev/e2e.sh
    ```
 
 9. **Day to day.**
@@ -233,7 +274,7 @@ command from Git Bash.
    ```sh
    sh scripts/dev/stack.sh status         # health and live node count
    sh scripts/dev/stack.sh logs backend   # last 200 lines of one service
-   sh scripts/dev/stack.sh down           # stop; add -v to delete the data as well
+   sh scripts/dev/stack.sh down           # remove this project's containers; keep data volumes
    ```
 
 Ports in use: `NERONET_PORT_OFFSET=1000 sh scripts/dev/stack.sh up` moves all of them.
@@ -280,10 +321,10 @@ API port on the loopback interface; the CLI has no option for the console's CA y
 sh scripts/dev/test-go.sh        # gofmt, go vet, go test -race
 sh scripts/dev/test-backend.sh   # backend suite against a throw-away Valkey
 sh scripts/dev/test-frontend.sh  # production build and unit tests
-sh scripts/dev/e2e.sh            # six nodes, real overlay traffic, five scenarios
+sh scripts/dev/e2e.sh            # thirteen nodes, real overlay traffic and policy scenarios
 ```
 
-CI runs the same suites, the six-node stack with the overlay scenarios, linters, image
+CI runs the same suites, the thirteen-node stack with the overlay scenarios, linters, image
 builds, secret scanning over the full history, CodeQL and dependency audits
 (`.github/workflows/ci.yml`, `security-scan.yml`).
 
@@ -313,8 +354,9 @@ Known gaps:
 - No external audit and no penetration test. `pkg/crypto` and `pkg/routing` have had no
   external review; a nonce-reuse defect was found and fixed in the onion layer in
   September 2026.
-- The compose stack serves the console and the node API over plain HTTP. TLS must be
-  terminated in front of it.
+- Host-installed Windows/Linux clients, mobile tunnel providers and authenticated
+  redundant DERP still need their end-to-end acceptance gates. Container traffic
+  tests do not establish readiness on these platforms.
 - The tunnel is classical X25519. The post-quantum pre-shared key is planned.
 - Crypto-shredding covers organisation secrets only; other data is deleted, not
   encrypted. The key-encryption key is an environment secret, not a KMS or HSM.
@@ -322,17 +364,40 @@ Known gaps:
   super-admin only.
 - The node does not measure disk encryption or firewall state, so every node's posture
   is unverified.
-- PostgreSQL failover and backups are not tested.
+- PostgreSQL failover and complete service HA are not tested. Backup/restore has a
+  real isolated drill; a genuinely external recovery copy remains to be demonstrated.
 - Cloud PC is switched off by default (`SOVEREIGN_FEATURE_CLOUD_PC`) and cannot stream.
 
 ## Roadmap
 
-In order: release the WireGuard data plane with TLS at the edge and tested backups;
-hybrid post-quantum pre-shared keys; one tunnel with several transports (WireGuard over
-direct UDP, obfuscated UDP, QUIC on 443 and REALITY-style TLS on 443, chosen
-automatically); Tor as an opt-in exit; onion circuits after an external review; one
-mobile client. Details, measurements and decisions:
-[docs/ROADMAP.md](docs/ROADMAP.md).
+Deliver gradually, with an installable single-node product before the optional HA
+profile. Future work remains planned; the order below does not remove earlier ideas.
+
+1. **Close the security and recovery foundation.** Current account authority,
+   durable session revocation, MFA/audit checks, exact-commit CI, TLS and real
+   external backup recovery. Some packages are implemented; the overall gate is open.
+2. **Finish reliable connectivity.** One WireGuard session with direct UDP and
+   authenticated upstream DERP, two relay candidates, policy enforcement, loss of a
+   relay and return to direct connectivity. Show measured paths in the mesh view.
+3. **Make the simple installation usable.** Guided VM/container setup and actual
+   Windows/Linux client installation, reboot/roaming/DNS/routes, upgrade and rollback.
+   Native Android and Apple clients follow with their own platform acceptance tests.
+4. **Add optional modules.** Tor egress, then additional transports such as obfuscated
+   UDP, QUIC and TLS. Tor is an opt-in TCP/DNS egress path with leak prevention; it
+   does not host the control plane or provide generic UDP forwarding.
+5. **Add the redundant profile.** PostgreSQL/Patroni/etcd first, followed by the API,
+   HTTPS edge, Valkey, jobs, certificates, relay and gateway failure scenarios.
+
+Keep the longer-term tracks: subnet and exit-gateway resilience, federation,
+competitor parity, plugins, regulated builds, KMS/HSM, hybrid post-quantum keys,
+reviewed onion circuits, large-fleet performance, cloud/workspace features and
+additional deployment targets. OpenVPN, VLESS/REALITY and ShadowTLS remain separate
+proposals, not currently usable VPN choices. Cryptographic and advanced network
+features keep independent review and traffic gates.
+
+[The engineering roadmap](docs/ROADMAP.md), [decision records](docs/adr/) and
+[archived plans](docs/archive/) are retained. Older claims or dates in a design
+document are not evidence that its feature is delivered.
 
 ## Documentation
 
@@ -344,7 +409,11 @@ mobile client. Details, measurements and decisions:
   consequences.
 - [Developer setup](DEVELOPER_SETUP.md): environments, compose stack, tests, configuration.
 - [Administrator guide](docs/en/admin-guide.md).
-- [High availability design](docs/HA_ARCHITECTURE.md) and
+- [Deployment profiles](docs/en/deployment-profiles.md): simple installation,
+  database HA and full service HA; current boundaries and future acceptance gates.
+- [Backup and restore](docs/en/backup-restore.md) and
+  [TLS certificates](docs/en/tls-certificates.md): implemented operational flows.
+- [Earlier high availability design](docs/HA_ARCHITECTURE.md) and
   [console architecture](docs/CONSOLE_ARCHITECTURE.md): design documents; the handbook is
   authoritative where they differ.
 - [Environment template](.env.example).
