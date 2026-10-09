@@ -351,6 +351,9 @@ In place, and checked by tests or by the CI jobs:
 
 Known gaps:
 
+- A logged-out access token can still be accepted by a fresh HTTP process without
+  cached revocations. Durable access-session revocation and session families remain
+  open security work; current account-role checks do not close this gap.
 - No external audit and no penetration test. `pkg/crypto` and `pkg/routing` have had no
   external review; a nonce-reuse defect was found and fixed in the onion layer in
   September 2026.
