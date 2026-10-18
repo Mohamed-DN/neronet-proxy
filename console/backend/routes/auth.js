@@ -22,6 +22,8 @@ const TotpService = require('../services/TotpService');
 const OidcService = require('../services/OidcService');
 const DuressService = require('../services/DuressService');
 const MfaPolicy = require('../services/MfaPolicy');
+const { resolveAccessToken, SessionAuthorityError } = require('../services/SessionAuthority');
+const { revokeAccessTokenAndRefresh } = require('../services/AccessTokenRevocation');
 const { CryptoShreddingService } = require('../services/CryptoShreddingService');
 const logger = require('../utils/logger');
 
@@ -272,6 +274,19 @@ async function resolveMfaCaller(req) {
   }
   if (await isTokenBlacklisted(token)) {
     return { error: { status: 401, message: 'Token has been revoked or already used' } };
+  }
+
+  // A full session must pass the same durable authority as every other API. The
+  // password-only MFA challenge has its own lifecycle and cannot use this path.
+  if (decoded.type !== 'mfa_pending') {
+    try {
+      await resolveAccessToken(token);
+    } catch (error) {
+      if (error instanceof SessionAuthorityError) {
+        return { error: { status: error.status, message: error.message } };
+      }
+      throw error;
+    }
   }
 
   const userRes = await getPgPool().query(
@@ -624,35 +639,23 @@ router.get('/me', authenticateToken, async (req, res, next) => {
   }
 });
 
-// 5. Logout (Authenticated - adds token to Valkey revocation cache and revokes in DB)
+// 5. Logout: commit durable access and refresh revocations before acknowledging.
 router.post('/logout', authenticateToken, async (req, res, next) => {
   try {
     const token = req.token;
     const refreshToken = (req.cookies && req.cookies.refreshToken) || (req.body && req.body.refreshToken);
 
-    if (token) {
-      // 1. Blacklist access token in Valkey with 15m TTL
-      await blacklistToken(token, 900);
-    }
-
-    // 2. Persist revocation in refresh_tokens table
-    try {
-      const pool = getPgPool();
-      if (refreshToken) {
-        const hash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-        await pool.query(
-          'UPDATE refresh_tokens SET revoked = TRUE, revoked_at = NOW() WHERE token_hash = $1 OR token_hash = $2',
-          [hash, refreshToken]
-        );
-      } else if (req.user && req.user.id) {
-        await pool.query(
-          'UPDATE refresh_tokens SET revoked = TRUE, revoked_at = NOW() WHERE user_id = $1 AND revoked = FALSE',
-          [req.user.id]
-        );
-      }
-    } catch (e) {
-      // Ignore if table unavailable
-    }
+    await revokeAccessTokenAndRefresh({
+      token,
+      userId: req.user.id,
+      refreshToken,
+      expiresAt: req.sessionAuthority.expiresAt
+    });
+    // A cache entry may reject sooner; its absence can never grant access.
+    const ttl = req.sessionAuthority.expiresAt
+      ? Math.max(1, Math.ceil((req.sessionAuthority.expiresAt - Date.now()) / 1000))
+      : 900;
+    await blacklistToken(token, ttl);
 
     clearAuthCookies(res);
 

@@ -10,7 +10,36 @@ role. A module guard and its router share that request's decision; it is not
 cached across requests. Invalid or expired tokens and deleted accounts receive
 401; suspended or revoked accounts receive 403. If PostgreSQL authority cannot
 be read, the request receives 503 instead of falling back to token claims.
-Existing cache and persistent token-revocation checks are retained.
+Cache entries can reject a token early; their absence never replaces the
+PostgreSQL revocation decision.
+
+## Explicit logout
+
+Logout stores a SHA-256 digest of the presented access token in
+`access_token_revocations`. The same PostgreSQL transaction revokes the supplied
+refresh credential belonging to the authenticated account, or that account's
+refresh credentials when none is supplied. A credential belonging to another
+account cannot be revoked by this request. The response acknowledges success only
+after commit; a failed write returns 503 without clearing cookies or recording a
+successful logout. No raw access token is stored in the revocation table.
+
+HTTP admission, full-session MFA endpoints and topology WebSocket revalidation
+read this state. A second process with independent caches rejects a logged-out
+token. Existing sockets stop on their next authority check; logout does not
+retract a delivered event or cancel an operation already authorized.
+
+Migration 038 is additive and must be applied before serving the updated API.
+If its table cannot be read, authenticated admission fails closed with 503.
+Revocation expiry follows the verified JWT `exp`, rather than a fixed cache TTL.
+Legacy signed tokens without `exp` retain a null expiry and cannot be purged on
+a guessed lifetime. Automatic pruning is not implemented; expired rows may be
+removed only after their signed expiry. Deploy the migration and API together;
+an older API replica does not check the new table.
+
+This implements explicit token termination following the
+[OWASP JWT guidance](https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html)
+and uses PostgreSQL's
+[transaction guarantees](https://www.postgresql.org/docs/18/tutorial-transactions.html).
 
 Organization changes have two additional boundaries:
 
@@ -40,13 +69,17 @@ transactional lifecycle checks.
 Regression tests use password login, real HTTP handlers, PostgreSQL mutations and
 real WebSocket connections. They cover account deletion/status changes, current
 roles and memberships, tenant transfers, module policy, hidden-compartment grants,
-database unavailability, connected-token revocation and idle expiry. Enrollment
+database unavailability, connected-token revocation and idle expiry. Logout tests
+use a second real HTTP/WebSocket process, independent caches, foreign-account
+refresh credentials and PostgreSQL triggers that reject writes, verifying rollback
+and recovery. Enrollment
 tests also check that denied requests leave no node behind and that a fresh login
 can enroll in the new organization.
 
-This change does not introduce durable access-session families or certify
-revocation after cache loss, multi-API failover, MFA concurrency, every topology
-payload's compartment filtering, or large-fleet fanout performance. Those require
+This change does not introduce access-session families or revoke other access
+tokens issued earlier in a refresh chain. Durable MFA challenge consumption,
+refresh/logout concurrency, multi-host failover, every topology payload's
+compartment filtering and large-fleet fanout performance remain open. Those require
 separate migrations and acceptance tests. PostgreSQL/Valkey HA is a separate
 deployment capability; single-node authority checks do not certify it.
 

@@ -91,7 +91,7 @@ flowchart LR
   end
 
   pg[("PostgreSQL<br/>single primary")]
-  vk[("Valkey<br/>rate limits, token revocation, events")]
+  vk[("Valkey<br/>rate limits, revocation cache, events")]
 
   subgraph fleet["Nodes: cmd/sovereign-node"]
     a["Node A<br/>WireGuard netstack, ACL filter,<br/>SOCKS5 and HTTP proxy"]
@@ -351,9 +351,10 @@ In place, and checked by tests or by the CI jobs:
 
 Known gaps:
 
-- A logged-out access token can still be accepted by a fresh HTTP process without
-  cached revocations. Durable access-session revocation and session families remain
-  open security work; current account-role checks do not close this gap.
+- Explicit logout persists revocation of the presented access token in PostgreSQL,
+  independently of the cache. Session families, access tokens issued earlier in a
+  refresh chain, durable MFA challenges and refresh/logout races remain open
+  security work. These checks do not certify multi-host HA.
 - No external audit and no penetration test. `pkg/crypto` and `pkg/routing` have had no
   external review; a nonce-reuse defect was found and fixed in the onion layer in
   September 2026.

@@ -204,14 +204,14 @@ async function checkValkeyHealth() {
     }
   }
 
-  // Degraded, and named as such. This state means the token blacklist, the topology
-  // bus and rate limiting are per-process: a token revoked on one instance stays
-  // valid on the others, and every limit is multiplied by the number of replicas.
-  // Reporting it as an "active" state made a broken integration look like a design.
+  // Cache-only blacklist entries, the topology bus and rate limiting become local.
+  // Explicit access-token logout is checked independently in PostgreSQL; pending
+  // MFA challenge consumption still needs its separate durable lifecycle.
   return {
     status: 'degraded',
     type: 'in_memory_fallback',
-    detail: 'Valkey is unreachable: revocation, topology events and rate limits are per-process only'
+    detail:
+      'Valkey is unreachable: blacklist cache, topology events and rate limits are per-process; explicit logout remains PostgreSQL-authoritative'
   };
 }
 

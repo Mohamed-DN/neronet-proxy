@@ -49,11 +49,14 @@ async function resolveAccessToken(token) {
     if (!actor) throw new SessionAuthorityError(401, 'Account no longer exists');
     if (actor.status !== 'active') throw new SessionAuthorityError(403, 'Active account required');
 
-    // Retain the existing persistent revocation format while the separate durable
-    // session-family migration is completed. A failed lookup is never permission.
+    // Explicit logout is durable even when no cache has seen the token. Retain
+    // older revocation entries while session families are migrated separately.
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const revocation = await pool.query(
-      'SELECT id FROM refresh_tokens WHERE (token_hash=$1 OR token_hash=$2) AND (revoked=TRUE OR revoked_at IS NOT NULL)',
+      `SELECT token_hash FROM access_token_revocations WHERE token_hash=$1
+       UNION ALL
+       SELECT token_hash FROM refresh_tokens WHERE (token_hash=$1 OR token_hash=$2)
+         AND (revoked=TRUE OR revoked_at IS NOT NULL) LIMIT 1`,
       [tokenHash, token]
     );
     if (revocation.rows.length) throw new SessionAuthorityError(401, 'Token has been revoked');
@@ -93,7 +96,7 @@ async function authenticateConsoleRequest(req) {
   const authority = await decision.authority;
   req.user = authority.user;
   req.token = token;
-  req.sessionAuthority = { organizationIdAtIssue: authority.organizationIdAtIssue };
+  req.sessionAuthority = { organizationIdAtIssue: authority.organizationIdAtIssue, expiresAt: authority.expiresAt };
   return authority;
 }
 
