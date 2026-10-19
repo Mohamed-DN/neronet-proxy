@@ -1,8 +1,8 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -74,17 +74,14 @@ describe('WP-206: Onion Routing End-to-End & Per-Org Controls', () => {
       [adminUserId]
     );
 
-    adminToken = jwt.sign(
-      {
-        sub: adminUserId,
-        id: adminUserId,
-        username: 'admin_onion',
-        role: 'super-admin',
-        organization_id: standardOrgId,
-        compartment_access: 'standard'
-      },
-      config.JWT_SECRET
-    );
+    adminToken = await issueConsoleTestToken({
+      sub: adminUserId,
+      id: adminUserId,
+      username: 'admin_onion',
+      role: 'super-admin',
+      organization_id: standardOrgId,
+      compartment_access: 'standard'
+    });
 
     // 4. Create healthy relays for circuit construction (need at least 3: 2 RELAYs + 1 EXIT_BRIDGE)
     for (let i = 1; i <= 3; i++) {

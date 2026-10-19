@@ -1,3 +1,4 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { fork } = require('node:child_process');
@@ -5,12 +6,11 @@ const path = require('node:path');
 const request = require('supertest');
 const bcrypt = require('bcryptjs');
 const crypto = require('node:crypto');
-const jwt = require('jsonwebtoken');
 const { WebSocket } = require('ws');
 const { createApp } = require('../server');
 const { setupTestDatabase } = require('./helpers/db');
 const { refreshCookie } = require('./helpers/refreshCookie');
-const { signToken, verifyToken } = require('../middleware/auth');
+const { verifyToken } = require('../middleware/auth');
 const config = require('../config/env');
 
 describe('Durable logout across real API processes with independent caches', () => {
@@ -158,7 +158,7 @@ describe('Durable logout across real API processes with independent caches', () 
 
   it('retains revocation for a token with more than the former fifteen-minute cache lifetime', async () => {
     const user = await login();
-    user.token = signToken({ id: user.id, role: 'user', organization_id: 'org-default' }, '30d');
+    user.token = await issueConsoleTestToken({ id: user.id, role: 'user', organization_id: 'org-default' }, '30d');
     assert.equal((await me(user.token)).status, 200);
     assert.equal((await logout(user)).status, 200);
     assert.equal((await me(user.token)).status, 401);
@@ -220,9 +220,9 @@ describe('Durable logout across real API processes with independent caches', () 
     assert.equal(response.status, 401);
   });
 
-  it('keeps legacy signed tokens without expiry revoked without inventing a fifteen-minute expiry', async () => {
+  it('keeps session tokens without expiry revoked without inventing a fifteen-minute expiry', async () => {
     const user = await login();
-    user.token = jwt.sign({ sub: user.id, organization_id: 'org-default' }, config.JWT_SECRET);
+    user.token = await issueConsoleTestToken({ sub: user.id, organization_id: 'org-default' });
     assert.equal((await me(user.token)).status, 200);
     assert.equal((await logout(user)).status, 200);
     assert.equal((await me(user.token)).status, 401);

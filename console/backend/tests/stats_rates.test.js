@@ -35,7 +35,7 @@ describe('Scoped throughput remains unknown across individual resets and fleet c
     app = createApp();
     await db.pool.query('DELETE FROM nodes');
     await seedHiddenTier(db.pool);
-    token = tokens().owner;
+    token = (await tokens()).owner;
   });
   beforeEach(async () => {
     await db.pool.query("DELETE FROM nodes WHERE id='node-rate-new'");

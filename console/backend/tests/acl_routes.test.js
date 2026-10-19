@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -50,15 +50,21 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
       ON CONFLICT (id) DO NOTHING;
     `);
 
-    superAdminToken = jwt.sign(
-      { sub: superAdminId, id: superAdminId, username: 'aclsuperadmin', role: 'super-admin', organization_id: orgId },
-      config.JWT_SECRET
-    );
+    superAdminToken = await issueConsoleTestToken({
+      sub: superAdminId,
+      id: superAdminId,
+      username: 'aclsuperadmin',
+      role: 'super-admin',
+      organization_id: orgId
+    });
 
-    standardToken = jwt.sign(
-      { sub: standardUserId, id: standardUserId, username: 'aclregular', role: 'user', organization_id: orgId },
-      config.JWT_SECRET
-    );
+    standardToken = await issueConsoleTestToken({
+      sub: standardUserId,
+      id: standardUserId,
+      username: 'aclregular',
+      role: 'user',
+      organization_id: orgId
+    });
   });
 
   after(async () => {

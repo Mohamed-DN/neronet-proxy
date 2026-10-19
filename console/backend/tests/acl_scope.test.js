@@ -42,7 +42,7 @@ describe('ACL read endpoints stay inside the caller organisation and tier', () =
     dbHelper = await setupTestDatabase();
     app = createApp();
     await seedHiddenTier(dbHelper.pool);
-    t = makeTokens();
+    t = await makeTokens();
 
     // The hidden compartment is peered with the default one, which is how a visible
     // node comes to name a hidden node's address among its peers.
@@ -129,7 +129,7 @@ describe('ACL read endpoints stay inside the caller organisation and tier', () =
     const hidden = await get(`/api/acl/compiled/${NODES.h1.id}`, t.superAdmin);
     assert.strictEqual(hidden.status, 404);
 
-    const rootToken = tokenFor(USERS.superAdmin, { compartment_access: 'root' });
+    const rootToken = await tokenFor(USERS.superAdmin, { compartment_access: 'root' });
     const root = await get(`/api/acl/compiled/${NODES.h1.id}`, rootToken);
     assert.strictEqual(root.status, 200, JSON.stringify(root.body));
   });

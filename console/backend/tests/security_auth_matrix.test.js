@@ -1,9 +1,10 @@
+const config = require('../config/env');
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
 const { createApp } = require('../server');
 const { setupTestDatabase } = require('./helpers/db');
-const { signToken } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 
 describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', () => {
@@ -30,7 +31,7 @@ describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', ()
     const admin = (await pool.query("SELECT id, username, role, organization_id FROM users WHERE id='usr-admin'"))
       .rows[0];
     assert.strictEqual(admin.role, 'super-admin');
-    superAdminToken = signToken(admin);
+    superAdminToken = await issueConsoleTestToken(admin, { expiresIn: config.JWT_EXPIRES_IN || '15m' });
 
     // 2. Setup Organizations A and B
     const orgARes = await pool.query(`
@@ -61,13 +62,16 @@ describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', ()
        VALUES ('mem-owner-a', 'usr-owner-a', $1, 'owner')`,
       [orgAId]
     );
-    ownerTokenOrgA = signToken({
-      id: 'usr-owner-a',
-      username: 'owner_a',
-      role: 'user',
-      organization_id: orgAId,
-      org_role: 'owner'
-    });
+    ownerTokenOrgA = await issueConsoleTestToken(
+      {
+        id: 'usr-owner-a',
+        username: 'owner_a',
+        role: 'user',
+        organization_id: orgAId,
+        org_role: 'owner'
+      },
+      { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+    );
 
     // Auditor
     await pool.query(
@@ -80,13 +84,16 @@ describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', ()
        VALUES ('mem-auditor-a', 'usr-auditor-a', $1, 'auditor')`,
       [orgAId]
     );
-    auditorTokenOrgA = signToken({
-      id: 'usr-auditor-a',
-      username: 'auditor_a',
-      role: 'user',
-      organization_id: orgAId,
-      org_role: 'auditor'
-    });
+    auditorTokenOrgA = await issueConsoleTestToken(
+      {
+        id: 'usr-auditor-a',
+        username: 'auditor_a',
+        role: 'user',
+        organization_id: orgAId,
+        org_role: 'auditor'
+      },
+      { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+    );
 
     // Member
     await pool.query(
@@ -99,13 +106,16 @@ describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', ()
        VALUES ('mem-member-a', 'usr-member-a', $1, 'member')`,
       [orgAId]
     );
-    memberTokenOrgA = signToken({
-      id: 'usr-member-a',
-      username: 'member_a',
-      role: 'user',
-      organization_id: orgAId,
-      org_role: 'member'
-    });
+    memberTokenOrgA = await issueConsoleTestToken(
+      {
+        id: 'usr-member-a',
+        username: 'member_a',
+        role: 'user',
+        organization_id: orgAId,
+        org_role: 'member'
+      },
+      { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+    );
 
     // Setup Member for Org B (for IDOR tests)
     await pool.query(
@@ -118,13 +128,16 @@ describe('WP-503: Full Control Plane Authorization Matrix & IDOR Protection', ()
        VALUES ('mem-member-b', 'usr-member-b', $1, 'member')`,
       [orgBId]
     );
-    memberTokenOrgB = signToken({
-      id: 'usr-member-b',
-      username: 'member_b',
-      role: 'user',
-      organization_id: orgBId,
-      org_role: 'member'
-    });
+    memberTokenOrgB = await issueConsoleTestToken(
+      {
+        id: 'usr-member-b',
+        username: 'member_b',
+        role: 'user',
+        organization_id: orgBId,
+        org_role: 'member'
+      },
+      { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+    );
 
     // Setup Test Nodes in Org A and Org B
     nodeAId = 'svrn-node-alpha-503';

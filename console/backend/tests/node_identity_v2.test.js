@@ -1,3 +1,5 @@
+const config = require('../config/env');
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
@@ -10,7 +12,6 @@ const ControlPlaneKeyService = require('../services/ControlPlaneKeyService');
 const PreAuthKeyService = require('../services/PreAuthKeyService');
 const NodeCredentialService = require('../services/NodeCredentialService');
 const RevocationEngine = require('../services/RevocationEngine');
-const { signToken } = require('../middleware/auth');
 
 describe('WP-103: Node Identity and Authentication v2', () => {
   let dbHelper;
@@ -29,7 +30,7 @@ describe('WP-103: Node Identity and Authentication v2', () => {
       "SELECT id, username, role FROM users WHERE role = 'super-admin' LIMIT 1"
     );
     adminUser = adminRes.rows[0];
-    adminToken = signToken(adminUser);
+    adminToken = await issueConsoleTestToken(adminUser, { expiresIn: config.JWT_EXPIRES_IN || '15m' });
 
     // Create a regular user for tenant/owner boundary tests
     const regularId = `usr-test-regular-${crypto.randomBytes(4).toString('hex')}`;
@@ -39,7 +40,7 @@ describe('WP-103: Node Identity and Authentication v2', () => {
       [regularId]
     );
     regularUser = { id: regularId, username: 'regular_alice', email: 'alice@neronet.test', role: 'user' };
-    regularToken = signToken(regularUser);
+    regularToken = await issueConsoleTestToken(regularUser, { expiresIn: config.JWT_EXPIRES_IN || '15m' });
   });
 
   after(async () => {

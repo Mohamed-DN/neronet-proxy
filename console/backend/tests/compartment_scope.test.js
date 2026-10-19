@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -14,8 +14,8 @@ describe('A compartment is read only within its organisation', () => {
   let dbHelper;
   let app;
 
-  const token = (id, orgId, role = 'user') =>
-    jwt.sign({ sub: id, id, username: id, role, organization_id: orgId }, config.JWT_SECRET);
+  const token = async (id, orgId, role = 'user') =>
+    await issueConsoleTestToken({ sub: id, id, username: id, role, organization_id: orgId });
 
   before(async () => {
     dbHelper = await setupTestDatabase();
@@ -48,7 +48,7 @@ describe('A compartment is read only within its organisation', () => {
   it("refuses another organisation's compartment named through ?org_id", async () => {
     const res = await request(app)
       .get('/api/compartments/cmp-b-finance?org_id=org-cmp-b')
-      .set('Authorization', `Bearer ${token('usr-cmp-a', 'org-cmp-a')}`);
+      .set('Authorization', `Bearer ${await token('usr-cmp-a', 'org-cmp-a')}`);
 
     assert.strictEqual(res.status, 404);
     assert.ok(!JSON.stringify(res.body).includes('Finance B'));
@@ -57,7 +57,7 @@ describe('A compartment is read only within its organisation', () => {
   it('serves it to its own organisation', async () => {
     const res = await request(app)
       .get('/api/compartments/cmp-b-finance')
-      .set('Authorization', `Bearer ${token('usr-cmp-b', 'org-cmp-b')}`);
+      .set('Authorization', `Bearer ${await token('usr-cmp-b', 'org-cmp-b')}`);
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.compartment.name, 'Finance B');

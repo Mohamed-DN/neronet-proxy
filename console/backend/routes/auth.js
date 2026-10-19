@@ -1,5 +1,4 @@
 const express = require('express');
-const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
@@ -8,13 +7,7 @@ const { loginLimiter, registerLimiter } = require('../middleware/rateLimit');
 const router = express.Router();
 const config = require('../config/env');
 const { getPgPool } = require('../db/index');
-const {
-  signToken,
-  signRefreshToken,
-  authenticateToken,
-  verifyToken,
-  verifyRefreshToken
-} = require('../middleware/auth');
+const { authenticateToken, verifyToken, verifyRefreshToken } = require('../middleware/auth');
 const { blacklistToken, isTokenBlacklisted } = require('../db/valkey');
 const { logAuditEvent } = require('../utils/audit');
 const { setAuthCookies, clearAuthCookies } = require('../utils/cookies');
@@ -26,6 +19,7 @@ const { resolveAccessToken, SessionAuthorityError } = require('../services/Sessi
 const { revokeAccessTokenAndRefresh } = require('../services/AccessTokenRevocation');
 const { CryptoShreddingService } = require('../services/CryptoShreddingService');
 const logger = require('../utils/logger');
+const ConsoleSessionService = require('../services/ConsoleSessionService');
 
 // Pre-computed constant-time dummy bcrypt hash to prevent timing side-channel attacks on non-existent usernames
 const DUMMY_BCRYPT_HASH = '$2a$10$wN3t8gX1ZkGkR0e2M8t0y.9gZ0n4p7s2e6u1v8w5x9y2z3a4b5c6d';
@@ -33,36 +27,10 @@ const DUMMY_BCRYPT_HASH = '$2a$10$wN3t8gX1ZkGkR0e2M8t0y.9gZ0n4p7s2e6u1v8w5x9y2z3
 /**
  * Issue new session (access token + refresh token) and store in database
  */
-async function issueUserSession(req, res, user, pool) {
-  const userPayload = {
-    id: user.id,
-    username: user.username,
-    role: user.role,
-    organization_id: user.organization_id,
-    compartment_access: user.compartment_access || 'standard'
-  };
-
-  const token = signToken(userPayload);
-  const refreshToken = signRefreshToken(userPayload);
-
-  const tokenId = `tok-${uuidv4().substring(0, 8)}`;
-  const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-  await pool.query(
-    `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, ip_address, revoked, revoked_at)
-     VALUES ($1, $2, $3, $4, $5, FALSE, NULL)`,
-    [tokenId, user.id, tokenHash, expiresAt, req.ip || '127.0.0.1']
-  );
-
-  setAuthCookies(req, res, { token, refreshToken });
-
-  // The refresh token goes out only as the HttpOnly cookie. In the body, any script
-  // running on the console origin could read it and keep the session alive.
-  return {
-    token,
-    user: userPayload
-  };
+async function issueUserSession(req, res, user) {
+  const session = await ConsoleSessionService.issueSession({ user, ipAddress: req.ip });
+  setAuthCookies(req, res, session);
+  return { token: session.token, user: session.user };
 }
 
 // 1. Register User (Public)
@@ -456,7 +424,17 @@ router.post('/mfa/verify', loginLimiter, async (req, res, next) => {
       ipAddress: req.ip
     });
 
-    const session = await issueUserSession(req, res, user, pool);
+    const session = passwordStepOnly
+      ? await issueUserSession(req, res, user, pool)
+      : await ConsoleSessionService.changeRootGrant({
+          userId: user.id,
+          sessionId: decoded.sid,
+          root: false,
+          ipAddress: req.ip
+        });
+    if (!passwordStepOnly) setAuthCookies(req, res, session);
+    // Full-session enrollment renews the same family; only sign-in creates one.
+    delete session.refreshToken;
     return res.status(200).json(session);
   } catch (err) {
     next(err);
@@ -493,107 +471,33 @@ router.post('/refresh', async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
 
-    const pool = getPgPool();
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    // Query database for refresh token status
-    const tokenRes = await pool.query(
-      'SELECT id, user_id, expires_at, revoked, revoked_at FROM refresh_tokens WHERE token_hash = $1 OR token_hash = $2',
-      [tokenHash, token]
-    );
-
-    if (tokenRes.rows.length === 0) {
+    const userId = decoded.sub || decoded.id;
+    if (!ConsoleSessionService.validSessionId(decoded.sid) || typeof userId !== 'string') {
       clearAuthCookies(res);
-      return res.status(401).json({ error: 'Refresh token not recognized' });
+      return res.status(401).json({ error: 'Fresh sign-in required' });
     }
-
-    const rtRow = tokenRes.rows[0];
-
-    // ATOMIC REPLAY DETECTION:
-    // If presented refresh token was already revoked, immediately revoke ALL tokens for this user!
-    if (rtRow.revoked || rtRow.revoked_at !== null) {
-      await pool.query(
-        'UPDATE refresh_tokens SET revoked = TRUE, revoked_at = NOW() WHERE user_id = $1 AND (revoked = FALSE OR revoked_at IS NULL)',
-        [rtRow.user_id]
-      );
-
-      logAuditEvent({
-        eventType: 'AUTH_REFRESH_REPLAY_DETECTED',
-        severity: 'critical',
-        actorUserId: rtRow.user_id,
-        targetId: rtRow.user_id,
-        targetType: 'user',
-        message: `Replay attack detected with revoked refresh token ${rtRow.id}. All sessions revoked for user ${rtRow.user_id}.`,
-        ipAddress: req.ip
-      });
-
-      clearAuthCookies(res);
-      return res.status(401).json({ error: 'Revoked refresh token presented: entire session chain terminated' });
-    }
-
-    // Check expiration
-    if (new Date(rtRow.expires_at) < new Date()) {
-      clearAuthCookies(res);
-      return res.status(401).json({ error: 'Refresh token expired' });
-    }
-
-    // Single use. The condition makes the consumption atomic: of two requests racing
-    // with the same token, only one updates the row.
-    const consumed = await pool.query(
-      'UPDATE refresh_tokens SET revoked = TRUE, revoked_at = NOW() WHERE id = $1 AND revoked = FALSE AND revoked_at IS NULL',
-      [rtRow.id]
-    );
-    if (consumed.rowCount !== 1) {
-      clearAuthCookies(res);
-      return res.status(401).json({ error: 'Refresh token already used' });
-    }
-
-    // Re-read current role and status from PostgreSQL source of truth
-    const userRes = await pool.query('SELECT id, username, role, status, organization_id FROM users WHERE id = $1', [
-      rtRow.user_id
-    ]);
-    if (userRes.rows.length === 0 || userRes.rows[0].status === 'suspended' || userRes.rows[0].status === 'revoked') {
-      clearAuthCookies(res);
-      return res.status(401).json({ error: 'Account inactive or suspended' });
-    }
-
-    // WP-303: Verify user active status on external IdP for OIDC SSO managed accounts
-    const idpStatus = await OidcService.verifyUserActiveOnIdP(rtRow.user_id);
+    // Network I/O must finish before acquiring the account/family SQL locks.
+    const idpStatus = await OidcService.verifyUserActiveOnIdP(userId);
     if (!idpStatus.active) {
       clearAuthCookies(res);
       return res.status(401).json({ error: idpStatus.reason || 'Account deactivated on identity provider' });
     }
-    const latestUser = userRes.rows[0];
-
-    // Issue new access token and rotated refresh token with the updated role. The
-    // organisation is carried too: the feature module guard reads it from the token,
-    // and without it a regulated organisation got its disabled modules back.
-    const userPayload = {
-      id: latestUser.id,
-      username: latestUser.username,
-      role: latestUser.role,
-      organization_id: latestUser.organization_id
-    };
-
-    const newToken = signToken(userPayload);
-    const newRefreshToken = signRefreshToken(userPayload);
-
-    const newId = `tok-${uuidv4().substring(0, 8)}`;
-    const newHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
-    const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-    await pool.query(
-      `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, ip_address, revoked, revoked_at)
-       VALUES ($1, $2, $3, $4, $5, FALSE, NULL)`,
-      [newId, latestUser.id, newHash, newExpiresAt, req.ip || '127.0.0.1']
-    );
-
-    setAuthCookies(req, res, { token: newToken, refreshToken: newRefreshToken });
-
-    return res.status(200).json({
-      token: newToken,
-      user: userPayload
-    });
+    const session = await ConsoleSessionService.rotateSession({ decoded, refreshToken: token, ipAddress: req.ip });
+    if (session.replay) {
+      logAuditEvent({
+        eventType: 'AUTH_REFRESH_REPLAY_DETECTED',
+        severity: 'critical',
+        actorUserId: session.userId,
+        targetId: session.userId,
+        targetType: 'user',
+        message: 'Refresh replay detected; the affected session family was revoked.',
+        ipAddress: req.ip
+      });
+      clearAuthCookies(res);
+      return res.status(401).json({ error: 'Revoked refresh token presented: entire session chain terminated' });
+    }
+    setAuthCookies(req, res, session);
+    return res.status(200).json({ token: session.token, user: session.user });
   } catch (err) {
     next(err);
   }
@@ -648,6 +552,7 @@ router.post('/logout', authenticateToken, async (req, res, next) => {
     await revokeAccessTokenAndRefresh({
       token,
       userId: req.user.id,
+      sessionId: req.sessionAuthority.sessionId,
       refreshToken,
       expiresAt: req.sessionAuthority.expiresAt
     });

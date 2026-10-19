@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -72,10 +72,13 @@ describe('Topology links follow the enforced policy', () => {
       );
     }
 
-    token = jwt.sign(
-      { sub: USER, id: USER, username: 'topolinks', role: 'user', organization_id: ORG },
-      config.JWT_SECRET
-    );
+    token = await issueConsoleTestToken({
+      sub: USER,
+      id: USER,
+      username: 'topolinks',
+      role: 'user',
+      organization_id: ORG
+    });
   });
 
   after(async () => {

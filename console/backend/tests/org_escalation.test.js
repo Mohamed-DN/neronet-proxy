@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -18,8 +18,8 @@ describe('Organisation admins cannot raise their own privileges', () => {
   let app;
   const orgId = 'org-esc-reg';
 
-  function token(id, role, organizationId) {
-    return jwt.sign({ sub: id, id, username: id, role, organization_id: organizationId }, config.JWT_SECRET);
+  async function token(id, role, organizationId) {
+    return await issueConsoleTestToken({ sub: id, id, username: id, role, organization_id: organizationId });
   }
 
   async function addUser(id, orgRole, platformRole = 'user', organizationId = orgId) {
@@ -36,7 +36,7 @@ describe('Organisation admins cannot raise their own privileges', () => {
         orgRole
       ]);
     }
-    return token(id, platformRole, organizationId);
+    return await token(id, platformRole, organizationId);
   }
 
   async function membershipRole(userId) {

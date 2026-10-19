@@ -1,53 +1,5 @@
-const jwt = require('jsonwebtoken');
-
-// Pinning the algorithm keeps a token from choosing its own verification method.
-// jsonwebtoken defends against the classic 'alg: none' forgery, but an unpinned
-// verifier still accepts any algorithm the secret happens to satisfy.
-const { v4: uuidv4 } = require('uuid');
-const config = require('../config/env');
+const { signToken, signRefreshToken, verifyToken, verifyRefreshToken } = require('../services/ConsoleTokens');
 const { authenticateConsoleRequest } = require('../services/SessionAuthority');
-
-function signToken(payload, expiresIn = config.JWT_EXPIRES_IN || '15m') {
-  const cleanPayload = {
-    sub: payload.id || payload.sub,
-    id: payload.id || payload.sub,
-    username: payload.username,
-    role: payload.role,
-    organization_id: payload.organization_id,
-    compartment_access: payload.compartment_access,
-    jti: uuidv4()
-  };
-  return jwt.sign(cleanPayload, config.JWT_SECRET, { expiresIn });
-}
-
-function signRefreshToken(payload, expiresIn = config.REFRESH_EXPIRES_IN || '7d') {
-  const cleanPayload = {
-    sub: payload.id || payload.sub,
-    id: payload.id || payload.sub,
-    username: payload.username,
-    role: payload.role,
-    organization_id: payload.organization_id,
-    compartment_access: payload.compartment_access,
-    jti: uuidv4()
-  };
-  return jwt.sign(cleanPayload, config.REFRESH_SECRET, { expiresIn });
-}
-
-function verifyToken(token) {
-  try {
-    return jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
-  } catch (err) {
-    return null;
-  }
-}
-
-function verifyRefreshToken(token) {
-  try {
-    return jwt.verify(token, config.REFRESH_SECRET, { algorithms: ['HS256'] });
-  } catch (err) {
-    return null;
-  }
-}
 
 async function authenticateToken(req, res, next) {
   try {

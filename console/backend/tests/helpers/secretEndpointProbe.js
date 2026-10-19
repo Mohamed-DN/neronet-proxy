@@ -1,3 +1,5 @@
+const config = require('../../config/env');
+const { issueConsoleTestToken } = require('./consoleSession');
 /**
  * Exercises the limiters on the secret-verifying endpoints and prints the result as
  * JSON.
@@ -22,7 +24,6 @@ const request = require('supertest');
 const scenarioName = process.argv[2] || 'unknown';
 const { setupTestDatabase } = require('./db');
 const { getValkeyClient } = require('../../db/valkey');
-const { signToken } = require('../../middleware/auth');
 const { createApp } = require('../../server');
 
 let dbHelper;
@@ -48,7 +49,13 @@ function counterBacking() {
 async function anAccount() {
   const res = await dbHelper.pool.query("SELECT id, username, role FROM users WHERE role = 'super-admin' LIMIT 1");
   const row = res.rows[0];
-  return { user: row, token: signToken({ id: row.id, username: row.username, role: row.role }) };
+  return {
+    user: row,
+    token: await issueConsoleTestToken(
+      { id: row.id, username: row.username, role: row.role },
+      { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+    )
+  };
 }
 
 const scenarios = {
@@ -129,7 +136,10 @@ const scenarios = {
       "INSERT INTO users (id, username, email, password_hash, role) VALUES ($1, $2, $3, 'x', 'user')",
       [otherId, `probe-${otherId}`, `${otherId}@example.test`]
     );
-    const otherToken = signToken({ id: otherId, username: `probe-${otherId}`, role: 'user' });
+    const otherToken = await issueConsoleTestToken(
+      { id: otherId, username: `probe-${otherId}`, role: 'user' },
+      { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+    );
 
     const passphrase = crypto.randomBytes(16).toString('hex');
     await request(app)

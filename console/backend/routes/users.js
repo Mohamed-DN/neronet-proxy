@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const { getPgPool } = require('../db/index');
 const { authenticateToken, requireRole, requireSelfOrAdmin } = require('../middleware/auth');
 const { logAuditEvent } = require('../utils/audit');
+const { revokeUserSessions } = require('../services/ConsoleSessionService');
 
 router.use(authenticateToken);
 
@@ -231,11 +232,7 @@ router.get('/:id/quota', requireSelfOrAdmin, async (req, res, next) => {
 // 7. Revoke All User Sessions (Super-Admin or Self)
 router.post('/:id/revoke-sessions', requireSelfOrAdmin, async (req, res, next) => {
   try {
-    const pool = getPgPool();
-    const result = await pool.query(
-      'UPDATE refresh_tokens SET revoked = TRUE, revoked_at = NOW() WHERE user_id = $1 AND (revoked = FALSE OR revoked IS NULL)',
-      [req.params.id]
-    );
+    const revokedCount = await revokeUserSessions(req.params.id);
     logAuditEvent({
       eventType: 'USER_REVOKE_SESSIONS',
       severity: 'warn',
@@ -246,7 +243,7 @@ router.post('/:id/revoke-sessions', requireSelfOrAdmin, async (req, res, next) =
       message: `All active sessions revoked for user ${req.params.id} by ${req.user.username}`,
       ipAddress: req.ip
     });
-    return res.status(200).json({ ok: true, revoked_count: result.rowCount || 0 });
+    return res.status(200).json({ ok: true, revoked_count: revokedCount });
   } catch (err) {
     next(err);
   }

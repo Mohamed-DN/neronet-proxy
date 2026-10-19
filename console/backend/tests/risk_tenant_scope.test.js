@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -16,8 +16,8 @@ describe('Risk overviews are scoped to the caller’s organisation', () => {
   let memberA;
   let superAdmin;
 
-  function token(id, role, orgId) {
-    return jwt.sign({ sub: id, id, username: id, role, organization_id: orgId }, config.JWT_SECRET);
+  async function token(id, role, orgId) {
+    return await issueConsoleTestToken({ sub: id, id, username: id, role, organization_id: orgId });
   }
 
   before(async () => {
@@ -38,9 +38,9 @@ describe('Risk overviews are scoped to the caller’s organisation', () => {
          ('node-risk-a', 'usr-risk-a', 'org-risk-a', 'alpha-host', 'pk-risk-a', '100.64.97.1', 'fd7a:115c:a1e0::97:1', 50),
          ('node-risk-b', 'usr-risk-b', 'org-risk-b', 'bravo-secret-host', 'pk-risk-b', '100.64.97.2', 'fd7a:115c:a1e0::97:2', 90)`
     );
-    memberA = token('usr-risk-a', 'user', 'org-risk-a');
+    memberA = await token('usr-risk-a', 'user', 'org-risk-a');
     const adminId = (await pool.query("SELECT id FROM users WHERE role = 'super-admin' LIMIT 1")).rows[0].id;
-    superAdmin = token(adminId, 'super-admin', 'org-default');
+    superAdmin = await token(adminId, 'super-admin', 'org-default');
   });
 
   after(async () => {
@@ -71,10 +71,12 @@ describe('Risk overviews are scoped to the caller’s organisation', () => {
   // A token without an organisation claim used to be scoped to the default
   // organisation. The organisation now comes from the user's record.
   it('takes the organisation from the user record when the token carries none', async () => {
-    const noClaim = jwt.sign(
-      { sub: 'usr-risk-a', id: 'usr-risk-a', username: 'riska', role: 'user' },
-      config.JWT_SECRET
-    );
+    const noClaim = await issueConsoleTestToken({
+      sub: 'usr-risk-a',
+      id: 'usr-risk-a',
+      username: 'riska',
+      role: 'user'
+    });
     const res = await request(app).get('/api/risk/scores').set('Authorization', `Bearer ${noClaim}`);
     assert.strictEqual(res.status, 200);
     assert.ok(JSON.stringify(res.body).includes('alpha-host'));

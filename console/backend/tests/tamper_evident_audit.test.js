@@ -1,8 +1,8 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const dgram = require('node:dgram');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -30,7 +30,7 @@ describe('WP-301: Tamper-Evident Audit Log & SIEM Export', () => {
     const admin = (await pool.query("SELECT id, username, role, organization_id FROM users WHERE id='usr-admin'"))
       .rows[0];
     assert.strictEqual(admin.role, 'super-admin');
-    superAdminToken = jwt.sign(admin, config.JWT_SECRET, { expiresIn: '1h' });
+    superAdminToken = await issueConsoleTestToken(admin, { expiresIn: '1h' });
   });
 
   after(async () => {

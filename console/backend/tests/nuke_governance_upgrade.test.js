@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const { setupTestDatabase } = require('./helpers/db');
 const { runPostgresMigrations } = require('../db/migrator');
 const { createApp } = require('../server');
@@ -39,7 +39,7 @@ describe('Legacy governance accounts upgrade once to revocable memberships', () 
         "INSERT INTO users (id, username, email, password_hash, organization_id, role) VALUES ($1, $1, $2, 'fixture', $3, $4)",
         [id, `${id}@test.invalid`, org, role]
       );
-      actors[id] = jwt.sign({ id, username: id, role, organization_id: org }, config.JWT_SECRET, { expiresIn: '1h' });
+      actors[id] = await issueConsoleTestToken({ id, username: id, role, organization_id: org }, { expiresIn: '1h' });
     }
     await pool.query(
       "INSERT INTO memberships (id, user_id, organization_id, role) VALUES ('upgrade-existing-member', 'upgrade-demoted', 'gov-upgrade-b', 'member')"

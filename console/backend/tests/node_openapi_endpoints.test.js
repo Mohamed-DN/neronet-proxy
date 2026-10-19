@@ -1,3 +1,5 @@
+const config = require('../config/env');
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
@@ -6,7 +8,6 @@ const crypto = require('crypto');
 const { createApp } = require('../server');
 const { setupTestDatabase } = require('./helpers/db');
 const { generateCurve25519Keypair } = require('../utils/crypto');
-const { signToken } = require('../middleware/auth');
 
 describe('WP-405: OpenAPI 3.1.0 Node Management Endpoints', () => {
   let dbHelper;
@@ -23,7 +24,7 @@ describe('WP-405: OpenAPI 3.1.0 Node Management Endpoints', () => {
       "SELECT id, username, role FROM users WHERE role = 'super-admin' LIMIT 1"
     );
     adminUser = adminRes.rows[0];
-    adminToken = signToken(adminUser);
+    adminToken = await issueConsoleTestToken(adminUser, { expiresIn: config.JWT_EXPIRES_IN || '15m' });
 
     testNodeId = `node-test-${crypto.randomBytes(4).toString('hex')}`;
     const kp = generateCurve25519Keypair();

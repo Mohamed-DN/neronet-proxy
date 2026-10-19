@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -21,8 +21,8 @@ describe('Audit and topology routes check the caller', () => {
   let memberA;
   let netAdminA;
 
-  function token(id, role, orgId) {
-    return jwt.sign({ sub: id, id, username: id, role, organization_id: orgId }, config.JWT_SECRET);
+  async function token(id, role, orgId) {
+    return await issueConsoleTestToken({ sub: id, id, username: id, role, organization_id: orgId });
   }
 
   async function addUser(id, orgId, orgRole, platformRole = 'user') {
@@ -39,7 +39,7 @@ describe('Audit and topology routes check the caller', () => {
         orgRole
       ]);
     }
-    return token(id, platformRole, orgId);
+    return await token(id, platformRole, orgId);
   }
 
   async function addNode(id, userId, orgId, ip) {

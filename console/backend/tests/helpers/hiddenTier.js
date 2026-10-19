@@ -1,4 +1,4 @@
-const jwt = require('jsonwebtoken');
+const { issueConsoleTestToken } = require('./consoleSession');
 const config = require('../../config/env');
 
 /**
@@ -38,24 +38,25 @@ const USERS = {
   superAdmin: { id: 'usr-sec-super', org: 'org-default', orgRole: null, tier: 'standard', platformRole: 'super-admin' }
 };
 
-function tokenFor(user, extra = {}) {
-  return jwt.sign(
-    {
-      sub: user.id,
-      id: user.id,
-      username: user.id,
-      role: user.platformRole || 'user',
-      organization_id: user.org,
-      compartment_access: user.tier,
-      ...extra
-    },
-    config.JWT_SECRET
-  );
+async function tokenFor(user, extra = {}) {
+  return await issueConsoleTestToken({
+    sub: user.id,
+    id: user.id,
+    username: user.id,
+    role: user.platformRole || 'user',
+    organization_id: user.org,
+    compartment_access: user.tier,
+    ...extra
+  });
 }
 
 /** Tokens for every user in USERS, keyed by the same names. */
-function tokens() {
-  return Object.fromEntries(Object.entries(USERS).map(([name, user]) => [name, tokenFor(user)]));
+async function tokens() {
+  const entries = [];
+  for (const [name, user] of Object.entries(USERS)) {
+    entries.push([name, await tokenFor(user)]);
+  }
+  return Object.fromEntries(entries);
 }
 
 async function seedHiddenTier(pool, { policy = 'open' } = {}) {

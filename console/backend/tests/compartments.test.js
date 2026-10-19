@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
@@ -43,17 +43,14 @@ describe('Compartments & Ghost Vaults (L2 Logical Segregation & Plausible Deniab
       VALUES ('mem-acme-1', '${standardUserId}', '${orgId}', 'owner')
       ON CONFLICT (user_id, organization_id) DO NOTHING;
     `);
-    standardUserToken = jwt.sign(
-      {
-        sub: standardUserId,
-        id: standardUserId,
-        username: 'acmeowner',
-        role: 'user',
-        organization_id: orgId,
-        compartment_access: 'standard'
-      },
-      config.JWT_SECRET
-    );
+    standardUserToken = await issueConsoleTestToken({
+      sub: standardUserId,
+      id: standardUserId,
+      username: 'acmeowner',
+      role: 'user',
+      organization_id: orgId,
+      compartment_access: 'standard'
+    });
 
     // 3. Root User (Owner with root access tier, unlocked via pwd_root)
     rootUserId = 'usr-acme-root';
@@ -67,17 +64,14 @@ describe('Compartments & Ghost Vaults (L2 Logical Segregation & Plausible Deniab
       VALUES ('mem-acme-2', '${rootUserId}', '${orgId}', 'owner')
       ON CONFLICT (user_id, organization_id) DO NOTHING;
     `);
-    rootUserToken = jwt.sign(
-      {
-        sub: rootUserId,
-        id: rootUserId,
-        username: 'acmeroot',
-        role: 'user',
-        organization_id: orgId,
-        compartment_access: 'root'
-      },
-      config.JWT_SECRET
-    );
+    rootUserToken = await issueConsoleTestToken({
+      sub: rootUserId,
+      id: rootUserId,
+      username: 'acmeroot',
+      role: 'user',
+      organization_id: orgId,
+      compartment_access: 'root'
+    });
   });
 
   after(async () => {

@@ -1,3 +1,4 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
@@ -53,17 +54,14 @@ describe('WP-406: Topology & Ghost Vaults Dynamic Unlock / Plausible Deniability
       ON CONFLICT (user_id, organization_id) DO NOTHING;
     `);
 
-    standardToken = jwt.sign(
-      {
-        sub: userId,
-        id: userId,
-        username: 'vaultadmin',
-        role: 'user',
-        organization_id: orgId,
-        compartment_access: 'standard'
-      },
-      config.JWT_SECRET
-    );
+    standardToken = await issueConsoleTestToken({
+      sub: userId,
+      id: userId,
+      username: 'vaultadmin',
+      role: 'user',
+      organization_id: orgId,
+      compartment_access: 'standard'
+    });
 
     // 3. Create Standard Compartment and Ghost Compartment
     await pool.query(`

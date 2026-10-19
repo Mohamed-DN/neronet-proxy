@@ -1,3 +1,4 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 // ==============================================================================
 // NeroNet Sovereign Mesh - High Availability & Distributed Leadership Tests (WP-307)
 // Verifies ADR 0001: PostgreSQL Advisory Lock Leader Election for N Control Planes
@@ -6,7 +7,6 @@
 const { test, describe, before, after, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
 const { DistributedLeaderService, LOCK_CLASS_ID, LOCK_OBJ_ID } = require('../services/DistributedLeaderService');
@@ -31,9 +31,12 @@ describe('WP-307: High Availability & Distributed Leadership (ADR 0001)', () => 
        ON CONFLICT (id) DO NOTHING`
     );
 
-    adminToken = jwt.sign({ id: 'ha-admin-uuid', username: 'ha_admin', role: 'super-admin' }, config.JWT_SECRET, {
-      expiresIn: '1h'
-    });
+    adminToken = await issueConsoleTestToken(
+      { id: 'ha-admin-uuid', username: 'ha_admin', role: 'super-admin' },
+      {
+        expiresIn: '1h'
+      }
+    );
   });
 
   afterEach(async () => {

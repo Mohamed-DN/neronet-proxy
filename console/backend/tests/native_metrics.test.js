@@ -28,7 +28,7 @@ describe('Native observations reach overview, source-aware history and node DTOs
   beforeEach(async () => {
     await db.pool.query('DELETE FROM nodes');
     await seedHiddenTier(db.pool);
-    auth = tokens();
+    auth = await tokens();
     for (const n of Object.values(NODES)) await seedNative(db.pool, n.id, { ago: 10 });
     await db.pool.query('UPDATE nodes SET last_heartbeat=NOW(),rx_bytes=999,tx_bytes=888,memory_usage_pct=777');
   });

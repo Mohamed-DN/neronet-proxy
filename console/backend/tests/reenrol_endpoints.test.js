@@ -1,8 +1,8 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 
 const REGISTRATION_TOKEN = crypto.randomBytes(24).toString('hex');
 process.env.SOVEREIGN_REGISTRATION_TOKEN = REGISTRATION_TOKEN;
@@ -78,10 +78,13 @@ describe('Registering again keeps a node reachable', () => {
 
     observer = await enrol(nodeKey());
     const owner = (await dbHelper.pool.query('SELECT user_id FROM nodes WHERE id = $1', [observer])).rows[0].user_id;
-    adminToken = jwt.sign(
-      { sub: owner, id: owner, username: 'testadmin', role: 'super-admin', compartment_access: 'standard' },
-      config.JWT_SECRET
-    );
+    adminToken = await issueConsoleTestToken({
+      sub: owner,
+      id: owner,
+      username: 'testadmin',
+      role: 'super-admin',
+      compartment_access: 'standard'
+    });
   });
 
   after(async () => {

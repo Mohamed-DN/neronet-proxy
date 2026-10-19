@@ -27,7 +27,12 @@ async function resolveAccessToken(token) {
   if (decoded.type === 'mfa_pending') {
     throw new SessionAuthorityError(401, 'MFA verification required');
   }
-  if (typeof id !== 'string' || !id) {
+  if (
+    typeof id !== 'string' ||
+    !id ||
+    typeof decoded.sid !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decoded.sid)
+  ) {
     throw new SessionAuthorityError(401, 'Invalid or expired token');
   }
   if (await isTokenBlacklisted(token)) {
@@ -39,18 +44,24 @@ async function resolveAccessToken(token) {
     const result = await pool.query(
       `SELECT u.id, u.username, u.role, u.status,
               COALESCE(u.organization_id, 'org-default') AS organization_id,
-              m.role AS membership_role
-         FROM users u LEFT JOIN memberships m ON m.user_id=u.id
+              m.role AS membership_role, s.expires_at AS session_expires_at,
+              s.revoked_at AS session_revoked_at, s.expires_at<=clock_timestamp() AS session_expired,
+              s.root_grant_id, s.root_organization_id,
+              s.root_grant_expires_at>clock_timestamp() AS root_grant_fresh
+         FROM users u JOIN console_sessions s ON s.user_id=u.id AND s.id=$2
+         LEFT JOIN memberships m ON m.user_id=u.id
           AND m.organization_id=COALESCE(u.organization_id, 'org-default')
         WHERE u.id=$1`,
-      [id]
+      [id, decoded.sid]
     );
     const actor = result.rows[0];
-    if (!actor) throw new SessionAuthorityError(401, 'Account no longer exists');
+    if (!actor) throw new SessionAuthorityError(401, 'Account or session no longer exists');
+    if (actor.session_revoked_at || actor.session_expired)
+      throw new SessionAuthorityError(401, 'Session expired or revoked');
     if (actor.status !== 'active') throw new SessionAuthorityError(403, 'Active account required');
 
-    // Explicit logout is durable even when no cache has seen the token. Retain
-    // older revocation entries while session families are migrated separately.
+    // Retain explicit tombstones and older revocation entries across the upgrade;
+    // neither family admission nor token termination depends on cache presence.
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const revocation = await pool.query(
       `SELECT token_hash FROM access_token_revocations WHERE token_hash=$1
@@ -71,10 +82,20 @@ async function resolveAccessToken(token) {
         role: actor.role,
         organization_id: actor.organization_id,
         org_role: actor.membership_role || (actor.role === 'super-admin' ? 'owner' : 'member'),
-        compartment_access: sameOrganization && decoded.compartment_access === 'root' ? 'root' : 'standard'
+        compartment_access:
+          sameOrganization &&
+          decoded.compartment_access === 'root' &&
+          decoded.root_grant_id &&
+          decoded.root_grant_id === actor.root_grant_id &&
+          actor.root_grant_fresh &&
+          actor.root_organization_id === actor.organization_id
+            ? 'root'
+            : 'standard'
       },
       organizationIdAtIssue: decoded.organization_id || 'org-default',
-      expiresAt: decoded.exp ? decoded.exp * 1000 : null
+      sessionId: decoded.sid,
+      accessTokenExpiresAt: decoded.exp ? decoded.exp * 1000 : null,
+      expiresAt: Math.min(decoded.exp ? decoded.exp * 1000 : Infinity, new Date(actor.session_expires_at).getTime())
     };
   } catch (error) {
     if (error instanceof SessionAuthorityError) throw error;
@@ -96,7 +117,11 @@ async function authenticateConsoleRequest(req) {
   const authority = await decision.authority;
   req.user = authority.user;
   req.token = token;
-  req.sessionAuthority = { organizationIdAtIssue: authority.organizationIdAtIssue, expiresAt: authority.expiresAt };
+  req.sessionAuthority = {
+    organizationIdAtIssue: authority.organizationIdAtIssue,
+    sessionId: authority.sessionId,
+    expiresAt: authority.accessTokenExpiresAt
+  };
   return authority;
 }
 

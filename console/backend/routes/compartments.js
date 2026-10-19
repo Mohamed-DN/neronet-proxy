@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { v4: uuidv4 } = require('uuid');
-const { authenticateToken, signToken, signRefreshToken } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
+const { changeRootGrant } = require('../services/ConsoleSessionService');
+const { setAuthCookies } = require('../utils/cookies');
 const { requireOrgRole, resolveUserOrg } = require('../middleware/rbac');
 const { getPgPool } = require('../db/index');
 const { logAuditEvent } = require('../utils/audit');
@@ -78,39 +78,15 @@ router.post('/unlock', async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid vault password' });
     }
 
-    const userPayload = {
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      organization_id: user.organization_id,
-      compartment_access: 'root'
-    };
-
-    const token = signToken(userPayload);
-    const refreshToken = signRefreshToken(userPayload);
-
-    const tokenId = `tok-${uuidv4().substring(0, 8)}`;
-    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-    await pool.query(
-      `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, ip_address, revoked, revoked_at)
-       VALUES ($1, $2, $3, $4, $5, FALSE, NULL)`,
-      [tokenId, user.id, tokenHash, expiresAt, req.ip || '127.0.0.1']
-    );
-
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/'
+    const session = await changeRootGrant({
+      userId: req.user.id,
+      sessionId: req.sessionAuthority.sessionId,
+      root: true,
+      verifiedRootHash: user.password_hash_root,
+      organizationIdAtIssue: req.sessionAuthority.organizationIdAtIssue,
+      ipAddress: req.ip
     });
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/api/auth'
-    });
+    setAuthCookies(req, res, session);
 
     logAuditEvent({
       eventType: 'VAULT_UNLOCKED',
@@ -123,9 +99,8 @@ router.post('/unlock', async (req, res, next) => {
     return res.status(200).json({
       success: true,
       compartment_access: 'root',
-      token,
-      refreshToken,
-      user: userPayload
+      token: session.token,
+      user: session.user
     });
   } catch (err) {
     next(err);
@@ -136,46 +111,14 @@ router.post('/unlock', async (req, res, next) => {
 // Reverts session to standard compartment access tier
 router.post('/lock', async (req, res, next) => {
   try {
-    const pool = getPgPool();
-    const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
-    if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    const user = userRes.rows[0];
-
-    const userPayload = {
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      organization_id: user.organization_id,
-      compartment_access: 'standard'
-    };
-
-    const token = signToken(userPayload);
-    const refreshToken = signRefreshToken(userPayload);
-
-    const tokenId = `tok-${uuidv4().substring(0, 8)}`;
-    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-    await pool.query(
-      `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, ip_address, revoked, revoked_at)
-       VALUES ($1, $2, $3, $4, $5, FALSE, NULL)`,
-      [tokenId, user.id, tokenHash, expiresAt, req.ip || '127.0.0.1']
-    );
-
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/'
+    const session = await changeRootGrant({
+      userId: req.user.id,
+      sessionId: req.sessionAuthority.sessionId,
+      root: false,
+      ipAddress: req.ip
     });
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/api/auth'
-    });
+    setAuthCookies(req, res, session);
+    const user = session.user;
 
     logAuditEvent({
       eventType: 'VAULT_LOCKED',
@@ -188,9 +131,8 @@ router.post('/lock', async (req, res, next) => {
     return res.status(200).json({
       success: true,
       compartment_access: 'standard',
-      token,
-      refreshToken,
-      user: userPayload
+      token: session.token,
+      user: session.user
     });
   } catch (err) {
     next(err);

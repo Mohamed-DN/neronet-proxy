@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const crypto = require('node:crypto');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -54,7 +54,7 @@ describe('Destruction governance confines each actor to their effective tenant a
         ]);
       }
       const claims = { id, username: id, role: storedRole, organization_id: org };
-      return { id, org, role, claims, token: jwt.sign(claims, config.JWT_SECRET, { expiresIn: '1h' }) };
+      return { id, org, role, claims, token: await issueConsoleTestToken(claims, { expiresIn: '1h' }) };
     }
     const owner = await actor('owner-a', orgA, 'owner');
     const admin = await actor('admin-a', orgA, 'admin');
@@ -331,7 +331,7 @@ describe('Destruction governance confines each actor to their effective tenant a
 
   it('a stale tenant JWT cannot select a foreign tenant for governance', async () => {
     const f = await fixture();
-    f.owner.token = jwt.sign({ ...f.owner.claims, organization_id: f.orgB }, config.JWT_SECRET, { expiresIn: '1h' });
+    f.owner.token = await issueConsoleTestToken({ ...f.owner.claims, organization_id: f.orgB }, { expiresIn: '1h' });
     const res = await api('post', '/legal-hold', f.owner, { organization_id: f.orgB, reason: 'Stale tenant claim' });
     assert.equal(res.status, 404, JSON.stringify(res.body));
   });

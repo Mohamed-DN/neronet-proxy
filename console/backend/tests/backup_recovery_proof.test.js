@@ -1,3 +1,4 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { Pool } = require('pg');
@@ -41,14 +42,12 @@ describe('Disaster recovery proof against a separate restored database', () => {
         'member'
       ]
     );
-    superAdminToken = jwt.sign(
+    superAdminToken = await issueConsoleTestToken(
       { id: '11111111-1111-1111-1111-111111111111', username: 'dr_admin', role: 'super-admin' },
-      config.JWT_SECRET,
       { expiresIn: '1h' }
     );
-    memberToken = jwt.sign(
+    memberToken = await issueConsoleTestToken(
       { id: '22222222-2222-2222-2222-222222222222', username: 'dr_member', role: 'member' },
-      config.JWT_SECRET,
       { expiresIn: '1h' }
     );
     await pool.query('CREATE TABLE dr_payloads (value text, metadata jsonb)');

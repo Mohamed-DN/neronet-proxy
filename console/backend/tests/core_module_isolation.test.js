@@ -1,9 +1,9 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
@@ -34,7 +34,7 @@ describe('WP-107: Feature Module Isolation and Organization Profiles', () => {
       VALUES ('usr-mod-admin', 'modadmin', 'admin@mod.local', 'hash', 'super-admin')
       ON CONFLICT (id) DO NOTHING;
     `);
-    superAdminToken = jwt.sign({ sub: 'usr-mod-admin', username: 'modadmin', role: 'super-admin' }, config.JWT_SECRET);
+    superAdminToken = await issueConsoleTestToken({ sub: 'usr-mod-admin', username: 'modadmin', role: 'super-admin' });
 
     // 2. Standard Organization
     standardOrgId = 'org-standard-corp';
@@ -54,10 +54,12 @@ describe('WP-107: Feature Module Isolation and Organization Profiles', () => {
       VALUES ('mem-std-1', '${standardUserId}', '${standardOrgId}', 'owner')
       ON CONFLICT (user_id, organization_id) DO NOTHING;
     `);
-    standardUserToken = jwt.sign(
-      { sub: standardUserId, username: 'stdowner', role: 'user', organization_id: standardOrgId },
-      config.JWT_SECRET
-    );
+    standardUserToken = await issueConsoleTestToken({
+      sub: standardUserId,
+      username: 'stdowner',
+      role: 'user',
+      organization_id: standardOrgId
+    });
 
     // 3. Regulated Organization
     regulatedOrgId = 'org-regulated-bank';
@@ -77,10 +79,12 @@ describe('WP-107: Feature Module Isolation and Organization Profiles', () => {
       VALUES ('mem-reg-1', '${regulatedUserId}', '${regulatedOrgId}', 'owner')
       ON CONFLICT (user_id, organization_id) DO NOTHING;
     `);
-    regulatedUserToken = jwt.sign(
-      { sub: regulatedUserId, username: 'regowner', role: 'user', organization_id: regulatedOrgId },
-      config.JWT_SECRET
-    );
+    regulatedUserToken = await issueConsoleTestToken({
+      sub: regulatedUserId,
+      username: 'regowner',
+      role: 'user',
+      organization_id: regulatedOrgId
+    });
   });
 
   after(async () => {

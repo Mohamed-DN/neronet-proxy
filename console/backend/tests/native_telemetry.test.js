@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const request = require('supertest');
 const { setupTestDatabase } = require('./helpers/db');
 const { nodeKey, register } = require('./helpers/nodeEnrolment');
@@ -17,7 +17,7 @@ describe('Authenticated native telemetry snapshots', () => {
     db = await setupTestDatabase();
     app = createApp();
     const { rows } = await db.pool.query("SELECT id FROM users WHERE role='super-admin' LIMIT 1");
-    adminToken = jwt.sign({ id: rows[0].id, sub: rows[0].id, role: 'super-admin' }, config.JWT_SECRET);
+    adminToken = await issueConsoleTestToken({ id: rows[0].id, sub: rows[0].id, role: 'super-admin' });
   });
   after(async () => {
     if (db) await db.cleanup();
@@ -227,14 +227,14 @@ describe('Authenticated native telemetry snapshots', () => {
     const old = await sample(n);
     assert.equal(old.rx_bytes, null);
     assert.equal((await beat(n, payload(n, { sequence: '2' }))).status, 409);
-    const auth = tokens();
+    const auth = await tokens();
     const response = await get(auth.ownerB);
     assert.equal(response.status, 200);
     assert.ok(!response.body.nodes.some((row) => row.node_id === n.id));
     await db.pool.query('UPDATE nodes SET organization_id=$2 WHERE id=$1', [n.id, ORG_B]);
   });
   it('filters hidden compartments and current member scope before exposing even unknown rows', async () => {
-    const auth = tokens();
+    const auth = await tokens();
     const own = await get(auth.owner);
     assert.equal(own.status, 200);
     assert.deepEqual(own.body.nodes.map((n) => n.node_id).sort(), [NODES.v1.id, NODES.v2.id].sort());

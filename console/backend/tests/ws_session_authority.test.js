@@ -1,3 +1,4 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
@@ -5,7 +6,6 @@ const bcrypt = require('bcryptjs');
 const { WebSocket } = require('ws');
 const { createApp } = require('../server');
 const { setupTestDatabase } = require('./helpers/db');
-const { signToken } = require('../middleware/auth');
 const { blacklistToken } = require('../db/valkey');
 const { initTopologyWebSocket, closeTopologyWebSocket, broadcastTopologyMessage } = require('../ws/topologyServer');
 
@@ -200,7 +200,10 @@ describe('Current authority on real topology WebSocket connections', () => {
 
   it('closes an otherwise idle socket when its access token expires', async () => {
     const user = await login();
-    const token = signToken({ id: user.id, role: 'user', organization_id: 'org-ws-authority-a' }, '2s');
+    const token = await issueConsoleTestToken(
+      { id: user.id, role: 'user', organization_id: 'org-ws-authority-a' },
+      '2s'
+    );
     const connection = await connect(token);
     assert.equal(connection.status, 101);
     const closed = await new Promise((resolve) => {
@@ -216,7 +219,10 @@ describe('Current authority on real topology WebSocket connections', () => {
 
   it('does not prematurely expire a valid token beyond the timer duration limit', async () => {
     const user = await login();
-    const token = signToken({ id: user.id, role: 'user', organization_id: 'org-ws-authority-a' }, '30d');
+    const token = await issueConsoleTestToken(
+      { id: user.id, role: 'user', organization_id: 'org-ws-authority-a' },
+      '30d'
+    );
     const connection = await connect(token);
     assert.equal(connection.status, 101);
     const closedEarly = await new Promise((resolve) => {

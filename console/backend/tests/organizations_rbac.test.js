@@ -1,9 +1,10 @@
+const config = require('../config/env');
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
 const { createApp } = require('../server');
 const { setupTestDatabase } = require('./helpers/db');
-const { signToken } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 
 describe('WP-106: Organizations, RBAC, and Tenant Isolation', () => {
@@ -27,7 +28,10 @@ describe('WP-106: Organizations, RBAC, and Tenant Isolation', () => {
     app = createApp();
 
     // 1. Setup Super Admin
-    superAdminToken = signToken({ id: 'usr-admin', username: 'admin', role: 'super-admin' });
+    superAdminToken = await issueConsoleTestToken(
+      { id: 'usr-admin', username: 'admin', role: 'super-admin' },
+      { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+    );
 
     // 2. Create Org A and Org B
     const orgARes = await pool.query(`
@@ -58,13 +62,16 @@ describe('WP-106: Organizations, RBAC, and Tenant Isolation', () => {
        VALUES ('mem-a-1', 'usr-a-owner', $1, 'owner')`,
       [orgAId]
     );
-    userAOwnerToken = signToken({
-      id: 'usr-a-owner',
-      username: 'alice_owner',
-      role: 'user',
-      organization_id: orgAId,
-      org_role: 'owner'
-    });
+    userAOwnerToken = await issueConsoleTestToken(
+      {
+        id: 'usr-a-owner',
+        username: 'alice_owner',
+        role: 'user',
+        organization_id: orgAId,
+        org_role: 'owner'
+      },
+      { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+    );
 
     // User A Auditor
     await pool.query(
@@ -77,13 +84,16 @@ describe('WP-106: Organizations, RBAC, and Tenant Isolation', () => {
        VALUES ('mem-a-2', 'usr-a-auditor', $1, 'auditor')`,
       [orgAId]
     );
-    userAAuditorToken = signToken({
-      id: 'usr-a-auditor',
-      username: 'arthur_auditor',
-      role: 'user',
-      organization_id: orgAId,
-      org_role: 'auditor'
-    });
+    userAAuditorToken = await issueConsoleTestToken(
+      {
+        id: 'usr-a-auditor',
+        username: 'arthur_auditor',
+        role: 'user',
+        organization_id: orgAId,
+        org_role: 'auditor'
+      },
+      { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+    );
 
     // User B Member
     await pool.query(
@@ -96,13 +106,16 @@ describe('WP-106: Organizations, RBAC, and Tenant Isolation', () => {
        VALUES ('mem-b-1', 'usr-b-member', $1, 'member')`,
       [orgBId]
     );
-    userBMemberToken = signToken({
-      id: 'usr-b-member',
-      username: 'bob_member',
-      role: 'user',
-      organization_id: orgBId,
-      org_role: 'member'
-    });
+    userBMemberToken = await issueConsoleTestToken(
+      {
+        id: 'usr-b-member',
+        username: 'bob_member',
+        role: 'user',
+        organization_id: orgBId,
+        org_role: 'member'
+      },
+      { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+    );
 
     // 4. Create Nodes in Org A and Org B
     nodeAId = 'svrn-node-alpha-1';

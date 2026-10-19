@@ -1,3 +1,4 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
@@ -5,7 +6,6 @@ const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const { nodeKey, register } = require('./helpers/nodeEnrolment');
 const RevocationEngine = require('../services/RevocationEngine');
-const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 
 /**
@@ -56,16 +56,13 @@ describe('WP-205: Revocation-to-Data-Plane propagation', () => {
 
     // Build an admin token for the same user as beta/gamma so access is permitted
     const userId = betaNode.user_id;
-    adminToken = jwt.sign(
-      {
-        sub: userId,
-        id: userId,
-        username: 'testadmin',
-        role: 'super-admin',
-        compartment_access: 'standard'
-      },
-      config.JWT_SECRET
-    );
+    adminToken = await issueConsoleTestToken({
+      sub: userId,
+      id: userId,
+      username: 'testadmin',
+      role: 'super-admin',
+      compartment_access: 'standard'
+    });
 
     beta.node_id = betaNode.id;
     gamma.node_id = gammaNode.id;
@@ -178,16 +175,13 @@ describe('Lifting a quarantine', () => {
     pool = dbHelper.pool;
     app = createApp();
     observer = await enrol(nodeKey());
-    adminToken = jwt.sign(
-      {
-        sub: observer.user_id,
-        id: observer.user_id,
-        username: 'testadmin',
-        role: 'super-admin',
-        compartment_access: 'standard'
-      },
-      config.JWT_SECRET
-    );
+    adminToken = await issueConsoleTestToken({
+      sub: observer.user_id,
+      id: observer.user_id,
+      username: 'testadmin',
+      role: 'super-admin',
+      compartment_access: 'standard'
+    });
   });
 
   after(async () => {

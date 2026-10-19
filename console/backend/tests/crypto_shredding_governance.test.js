@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -59,15 +59,13 @@ describe('WP-302: Crypto-Shredding with Governance (NeroNuke v2)', () => {
       [admin2Id, testOrgId]
     );
 
-    admin1Token = jwt.sign(
+    admin1Token = await issueConsoleTestToken(
       { id: admin1Id, username: 'initiator', role: 'super-admin', organization_id: testOrgId },
-      config.JWT_SECRET,
       { expiresIn: '1h' }
     );
 
-    admin2Token = jwt.sign(
+    admin2Token = await issueConsoleTestToken(
       { id: admin2Id, username: 'approver', role: 'super-admin', organization_id: testOrgId },
-      config.JWT_SECRET,
       { expiresIn: '1h' }
     );
   });

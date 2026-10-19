@@ -1,8 +1,8 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 
 const REGISTRATION_TOKEN = crypto.randomBytes(24).toString('hex');
 process.env.SOVEREIGN_REGISTRATION_TOKEN = REGISTRATION_TOKEN;
@@ -101,17 +101,14 @@ describe('Compartments isolate in the data plane', () => {
        ON CONFLICT (user_id, organization_id) DO NOTHING`,
       [ORG]
     );
-    ownerToken = jwt.sign(
-      {
-        sub: 'usr-cmp-iso',
-        id: 'usr-cmp-iso',
-        username: 'cmpiso',
-        role: 'user',
-        organization_id: ORG,
-        compartment_access: 'standard'
-      },
-      config.JWT_SECRET
-    );
+    ownerToken = await issueConsoleTestToken({
+      sub: 'usr-cmp-iso',
+      id: 'usr-cmp-iso',
+      username: 'cmpiso',
+      role: 'user',
+      organization_id: ORG,
+      compartment_access: 'standard'
+    });
 
     // A hidden compartment of this organisation, and a compartment of another one.
     hiddenId = 'cmp-iso-hidden';

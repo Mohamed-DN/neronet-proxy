@@ -87,5 +87,8 @@ Root-password compartment grants remain tenant-bound. Enrollment separately
 retains the signed tenant context and its transactional lifecycle checks, so a
 transfer requires a fresh tenant-context token before creating nodes there.
 See [console session authority](../en/console-session-authority.md) for behavior,
-verification and limits. Durable access-session families, cache-loss revocation
-and multi-replica failover remain separate acceptance work.
+verification and limits. Cache-loss revocation is implemented by migration 038.
+[ADR 0023](0023-durable-console-session-families.md) supersedes the account-wide
+replay scope above with durable per-sign-in families, migration 039 and atomic
+refresh/logout transitions. Durable password-step MFA consumption and multi-host
+failover remain separate acceptance work.

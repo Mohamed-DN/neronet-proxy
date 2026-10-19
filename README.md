@@ -348,12 +348,13 @@ In place, and checked by tests or by the CI jobs:
 - Tamper-evident audit chain with signed checkpoints.
 - Federation requires a verified Ed25519 signature and a key fingerprint confirmed by
   the operator through another channel.
+- Console sign-ins have PostgreSQL session families: logout and refresh replay
+  revoke earlier access tokens in the same chain, independently of the cache.
+  Other sign-ins stay independent; account-wide revocation closes all of them.
 
 Known gaps:
 
-- Explicit logout persists revocation of the presented access token in PostgreSQL,
-  independently of the cache. Session families, access tokens issued earlier in a
-  refresh chain, durable MFA challenges and refresh/logout races remain open
+- Durable password-step MFA challenges and recovery-code consumption remain open
   security work. These checks do not certify multi-host HA.
 - No external audit and no penetration test. `pkg/crypto` and `pkg/routing` have had no
   external review; a nonce-reuse defect was found and fixed in the onion layer in

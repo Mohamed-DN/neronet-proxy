@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -36,8 +36,8 @@ describe('The overlay keeps organisations apart', () => {
     return `100.64.99.${n}`;
   }
 
-  function token(id, role, orgId) {
-    return jwt.sign({ sub: id, id, username: id, role, organization_id: orgId }, config.JWT_SECRET);
+  async function token(id, role, orgId) {
+    return await issueConsoleTestToken({ sub: id, id, username: id, role, organization_id: orgId });
   }
 
   const vip = {};
@@ -143,13 +143,13 @@ describe('The overlay keeps organisations apart', () => {
 
     const auditor = await request(app)
       .post('/api/configs/generate')
-      .set('Authorization', `Bearer ${token('usr-iso-auditor', 'user', 'org-iso-open')}`)
+      .set('Authorization', `Bearer ${await token('usr-iso-auditor', 'user', 'org-iso-open')}`)
       .send({ name: 'auditor-node' });
     assert.strictEqual(auditor.status, 403);
 
     const member = await request(app)
       .post('/api/configs/generate')
-      .set('Authorization', `Bearer ${token('usr-iso-member', 'user', 'org-iso-open')}`)
+      .set('Authorization', `Bearer ${await token('usr-iso-member', 'user', 'org-iso-open')}`)
       .send({ name: 'member-node' });
     assert.strictEqual(member.status, 200, JSON.stringify(member.body));
     const row = await pool.query("SELECT organization_id FROM nodes WHERE name = 'member-node'");
@@ -163,7 +163,7 @@ describe('The overlay keeps organisations apart', () => {
     );
     const res = await request(app)
       .get('/api/acl/rules')
-      .set('Authorization', `Bearer ${token('usr-iso-member', 'user', 'org-iso-open')}`);
+      .set('Authorization', `Bearer ${await token('usr-iso-member', 'user', 'org-iso-open')}`);
     assert.strictEqual(res.status, 200);
     assert.ok(!res.body.rules.some((r) => r.organization_id === 'org-iso-deny'));
   });

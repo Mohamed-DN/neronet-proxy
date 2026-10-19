@@ -1,7 +1,7 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const config = require('../config/env');
 const { setupTestDatabase } = require('./helpers/db');
@@ -48,7 +48,7 @@ describe('Duress passwords are scoped to what their holder may delete', () => {
       orgId,
       orgRole
     ]);
-    return jwt.sign({ sub: id, id, username: id, role: platformRole, organization_id: orgId }, config.JWT_SECRET);
+    return await issueConsoleTestToken({ sub: id, id, username: id, role: platformRole, organization_id: orgId });
   }
 
   let ipCounter = 10;
@@ -287,16 +287,13 @@ describe('Duress passwords are scoped to what their holder may delete', () => {
     it('the vault unlock path is scoped the same way', async () => {
       await addCompartment('cmp-stealth-a-hidden-2', orgA, true);
       await withStealthPassword('usr-stealth-unlock', 'admin', 'Stealth-Pass-3!');
-      const token = jwt.sign(
-        {
-          sub: 'usr-stealth-unlock',
-          id: 'usr-stealth-unlock',
-          username: 'usr-stealth-unlock',
-          role: 'user',
-          organization_id: orgA
-        },
-        config.JWT_SECRET
-      );
+      const token = await issueConsoleTestToken({
+        sub: 'usr-stealth-unlock',
+        id: 'usr-stealth-unlock',
+        username: 'usr-stealth-unlock',
+        role: 'user',
+        organization_id: orgA
+      });
 
       const res = await request(app)
         .post('/api/compartments/unlock')

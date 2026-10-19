@@ -1,10 +1,11 @@
+const config = require('../config/env');
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 const { setTimeout: delay } = require('node:timers/promises');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
-const { signToken } = require('../middleware/auth');
 const { CryptoShreddingService: governance } = require('../services/CryptoShreddingService');
 
 function deferred() {
@@ -56,7 +57,10 @@ describe('Console enrollment follows current organization and account authority'
           role
         ]);
     }
-    const token = signToken({ id: member, username: member, role: 'user', organization_id: legacy ? undefined : org });
+    const token = await issueConsoleTestToken(
+      { id: member, username: member, role: 'user', organization_id: legacy ? undefined : org },
+      { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+    );
     return { prefix, org, member, initiator, approver, token, name: `${prefix}-new-node` };
   }
 
@@ -238,7 +242,10 @@ describe('Console enrollment follows current organization and account authority'
     it(`${endpoint} refuses a still-active super-admin creating a node in a destroyed organization`, async (t) => {
       const f = await fixture();
       await pool.query("UPDATE users SET role='super-admin' WHERE id=$1", [f.member]);
-      f.token = signToken({ id: f.member, username: f.member, role: 'super-admin', organization_id: f.org });
+      f.token = await issueConsoleTestToken(
+        { id: f.member, username: f.member, role: 'super-admin', organization_id: f.org },
+        { expiresIn: config.JWT_EXPIRES_IN || '15m' }
+      );
       const authorization = await authorizeShred(f);
       assert.equal((await governance.approveAndExecuteDestruction(authorization.id, f.approver)).success, true);
       assert.equal((await pool.query('SELECT status FROM users WHERE id=$1', [f.member])).rows[0].status, 'active');

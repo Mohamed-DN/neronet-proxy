@@ -1,8 +1,8 @@
+const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
 
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -51,14 +51,13 @@ describe('WP-210: MagicDNS, In-Mesh Gateway & Keystore', () => {
       [userId, testOrgId]
     );
 
-    userToken = jwt.sign(
+    userToken = await issueConsoleTestToken(
       {
         id: userId,
         username: 'dnsadmin',
         role: 'admin',
         organization_id: testOrgId
       },
-      config.JWT_SECRET,
       { expiresIn: '1h' }
     );
 

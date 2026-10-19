@@ -5,7 +5,16 @@ const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
 const MetricsCollector = require('../services/MetricsCollector');
 const { seedNative, advanceFromLegacy } = require('./helpers/nativeMetricsFixture');
-const { seedHiddenTier, tokens, NODES, ORG_A, ORG_B, DEFAULT_COMPARTMENT } = require('./helpers/hiddenTier');
+const {
+  seedHiddenTier,
+  tokens,
+  tokenFor,
+  USERS,
+  NODES,
+  ORG_A,
+  ORG_B,
+  DEFAULT_COMPARTMENT
+} = require('./helpers/hiddenTier');
 
 describe('Statistics obey current tenant and node visibility before aggregation', () => {
   let db;
@@ -20,7 +29,7 @@ describe('Statistics obey current tenant and node visibility before aggregation'
     await db.pool.query('DELETE FROM nodes');
     await db.pool.query('DELETE FROM system_metrics');
     await seedHiddenTier(db.pool);
-    auth = tokens();
+    auth = await tokens();
     for (const [node, rx, tx, cpu, country, posture] of [
       [NODES.v1, 10, 5, 10, 'IT', { disk_encrypted: true, firewall_active: true }],
       [NODES.v2, 20, 10, 20, 'IT', { disk_encrypted: false, firewall_active: true }],
@@ -124,6 +133,10 @@ describe('Statistics obey current tenant and node visibility before aggregation'
       await db.pool.query("DELETE FROM memberships WHERE id='stats-moved-owner'");
       await db.pool.query("UPDATE users SET organization_id=$1 WHERE id='usr-sec-owner'", [ORG_A]);
     }
+    // Returning home cannot revive a root proof from before the transfer. Later
+    // history tests need a fresh root session rather than this invalidated grant.
+    assert.equal((await get('/overview', 'rootOwner')).body.total_nodes, 2);
+    auth.rootOwner = await tokenFor(USERS.rootOwner);
   });
   it('cannot select another organisation through a query parameter', async () => {
     const response = await get(`/overview?org_id=${ORG_B}`);
