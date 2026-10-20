@@ -25,20 +25,20 @@ function mode() {
   return config.IS_PRODUCTION ? 'admins' : 'off';
 }
 
-async function isAdministrator(user) {
+async function isAdministrator(user, client = getPgPool()) {
   if (user.role === 'super-admin') return true;
-  const res = await getPgPool().query(
+  const res = await client.query(
     "SELECT 1 FROM memberships WHERE user_id = $1 AND role IN ('owner', 'admin') LIMIT 1",
     [user.id]
   );
   return res.rows.length > 0;
 }
 
-async function isMfaRequired(user) {
+async function isMfaRequired(user, client = getPgPool()) {
   if (user.totp_enabled) return true;
   const m = mode();
   if (m === 'all') return true;
-  if (m === 'admins') return isAdministrator(user);
+  if (m === 'admins') return isAdministrator(user, client);
   return false;
 }
 

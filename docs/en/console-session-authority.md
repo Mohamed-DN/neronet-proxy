@@ -83,6 +83,50 @@ Organization changes have two additional boundaries:
   context before creating a node. After a transfer, obtain a token for the new
   organization before creating a node or generating a configuration there.
 
+## MFA password steps and enrollment
+
+Migration 040 registers five-minute password steps in `console_mfa_challenges`.
+Only the exact issued token digest, account, organization, authentication epoch
+and unconsumed SQL deadline authorize completion. Signature validity alone is
+insufficient. Local registration returns HTTP 201 with `mfa_required`,
+`mfa_setup_required` and `mfa_token` when policy requires enrollment; it does not
+return a full access token or authentication cookies at that point.
+
+Completion locks the account exclusively before the challenge or existing family.
+It consumes the challenge and recovery code, or activates the pending factor,
+and persists the session using the same SQL client and transaction. Failed writes
+roll back all these changes; the same proof can be retried after recovery. A second
+API process without a matching cache entry cannot reuse a completed proof. An
+invalid OTP does not consume it, and independent password proofs remain independent.
+
+An authentication epoch invalidates old proofs after password, organization,
+status, platform-role or active-authenticator changes, including when the previous
+value is restored. Account-wide revocation invalidates outstanding password steps
+too. Login rechecks its verified password snapshot under the account lock before
+registering a challenge or issuing a session with a directly supplied OTP. MFA
+policy is read on that transaction's client at admission; this is not retroactive
+enforcement on already-open sessions after membership changes.
+
+A pending QR setup is bound to the initiating challenge or family, its epoch and
+a database deadline bounded by the proof/family lifetime and ten minutes. Another
+sign-in cannot confirm it or overwrite an unexpired setup. Repeating setup from
+the same proof replaces the earlier QR. A revoked initiating family's setup can
+remain in conflict until its lease expires, but cannot be confirmed. Full-session
+confirmation locks and rechecks the family before changing the factor, retains
+the same SID and clears its root grant. A fresh root-password MFA login preserves
+the root tier only while its registered password proof remains current.
+
+Upgrade all APIs together with migration 040. Enrolled factors, remaining recovery
+codes and existing session families are preserved. Old unregistered MFA tokens
+and pending QR setups require a new password login and setup. Automatic challenge
+pruning is not implemented. Opening/sealing organization secrets completes before
+account locks; the transaction checks the prepared value again before use.
+
+This does not track TOTP time-step replay globally across independent password
+logins. It does not establish assurance for an OIDC provider's authentication or
+provide an authorized resealing workflow for moving an enrolled factor to a new
+organization. See [ADR 0024](../adr/0024-durable-mfa-password-proofs.md).
+
 ## Topology connections
 
 The WebSocket upgrade validates current authority before sending its greeting.
@@ -113,11 +157,12 @@ Enrollment
 tests also check that denied requests leave no node behind and that a fresh login
 can enroll in the new organization.
 
-Durable consumption of password-step MFA challenges and recovery codes, audit
-delivery guarantees, multi-host failover, every topology payload's compartment
-filtering and large-fleet fanout performance remain open. An MFA operation that
-already passed admission is not canceled retroactively by logout; full-session
-confirmation cannot create a new independent family afterward. PostgreSQL/Valkey HA is a separate
+MFA tests add cross-process consumption and recovery races, rollback after session
+insertion failures, both lock-queued confirmation/logout orderings, current
+password snapshots, SQL deadlines despite API clock skew and a populated 039→040
+upgrade with sealed and legacy factors. Audit delivery guarantees, multi-host
+failover, every topology payload's compartment filtering and large-fleet fanout
+performance remain open. PostgreSQL/Valkey HA is a separate
 deployment capability; single-node authority checks do not certify it.
 
 See [ADR 0018](../adr/0018-console-session-hardening-and-mfa.md) for the session

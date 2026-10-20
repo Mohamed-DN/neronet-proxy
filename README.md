@@ -351,11 +351,15 @@ In place, and checked by tests or by the CI jobs:
 - Console sign-ins have PostgreSQL session families: logout and refresh replay
   revoke earlier access tokens in the same chain, independently of the cache.
   Other sign-ins stay independent; account-wide revocation closes all of them.
+- Local password login and registration follow the server MFA policy. Registered
+  password steps and recovery codes are consumed with session persistence in one
+  PostgreSQL transaction; pending authenticator setup belongs to its initiating login.
 
 Known gaps:
 
-- Durable password-step MFA challenges and recovery-code consumption remain open
-  security work. These checks do not certify multi-host HA.
+- Global TOTP time-step replay tracking, audit delivery/retention and an authorized
+  workflow for moving organization-sealed authenticators between tenants remain
+  security work. Local MFA checks do not certify IdP assurance or multi-host HA.
 - No external audit and no penetration test. `pkg/crypto` and `pkg/routing` have had no
   external review; a nonce-reuse defect was found and fixed in the onion layer in
   September 2026.

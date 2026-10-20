@@ -88,31 +88,35 @@ async function persistPair(client, user, family, ipAddress, root = false) {
 }
 
 async function issueSession({ user: verifiedUser, ipAddress }) {
-  return transaction(async (client) => {
-    const user = await currentUser(client, verifiedUser.id);
-    const organization = user.organization_id || 'org-default';
-    const root =
-      verifiedUser.compartment_access === 'root' &&
-      (verifiedUser.organization_id || 'org-default') === organization &&
-      verifiedUser.password_hash_root === user.password_hash_root;
-    const family = { id: uuidv4(), root_grant_id: root ? uuidv4() : null };
-    const initialRefresh = signRefreshToken(principal(user, family, root));
-    family.expires_at = new Date(jwt.decode(initialRefresh).exp * 1000);
-    await client.query(
-      `INSERT INTO console_sessions(id,user_id,issued_organization_id,expires_at,root_grant_id,root_grant_expires_at,root_organization_id)
+  return transaction((client) => issueSessionWithClient(client, { user: verifiedUser, ipAddress }));
+}
+
+// MFA consumption and session creation must commit on the same connection.
+// The caller owns the transaction; this function never commits or acquires a pool client.
+async function issueSessionWithClient(client, { user: verifiedUser, ipAddress }) {
+  const user = await currentUser(client, verifiedUser.id);
+  const organization = user.organization_id || 'org-default';
+  const root =
+    verifiedUser.compartment_access === 'root' &&
+    (verifiedUser.organization_id || 'org-default') === organization &&
+    verifiedUser.password_hash_root === user.password_hash_root;
+  const family = { id: uuidv4(), root_grant_id: root ? uuidv4() : null };
+  const initialRefresh = signRefreshToken(principal(user, family, root));
+  family.expires_at = new Date(jwt.decode(initialRefresh).exp * 1000);
+  await client.query(
+    `INSERT INTO console_sessions(id,user_id,issued_organization_id,expires_at,root_grant_id,root_grant_expires_at,root_organization_id)
        VALUES($1,$2,$3,$4,$5,$6,$7)`,
-      [
-        family.id,
-        user.id,
-        organization,
-        family.expires_at,
-        family.root_grant_id,
-        root ? family.expires_at : null,
-        root ? organization : null
-      ]
-    );
-    return persistPair(client, user, family, ipAddress, root);
-  });
+    [
+      family.id,
+      user.id,
+      organization,
+      family.expires_at,
+      family.root_grant_id,
+      root ? family.expires_at : null,
+      root ? organization : null
+    ]
+  );
+  return persistPair(client, user, family, ipAddress, root);
 }
 
 async function revokeFamily(client, userId, sessionId, reason) {
@@ -162,33 +166,47 @@ async function rotateSession({ decoded, refreshToken, ipAddress }) {
 }
 
 async function changeRootGrant({ userId, sessionId, root, verifiedRootHash, organizationIdAtIssue, ipAddress }) {
-  return transaction(async (client) => {
-    const user = await currentUser(client, userId);
-    const family = await lockFamily(client, userId, sessionId);
-    if (
-      root &&
-      (!verifiedRootHash ||
-        user.password_hash_root !== verifiedRootHash ||
-        organizationIdAtIssue !== (user.organization_id || 'org-default'))
-    ) {
-      throw new SessionAuthorityError(401, 'Fresh vault password verification required');
-    }
-    family.root_grant_id = root ? uuidv4() : null;
-    await client.query(
-      'UPDATE console_sessions SET root_grant_id=$2,root_grant_expires_at=$3,root_organization_id=$4 WHERE id=$1',
-      [
-        family.id,
-        family.root_grant_id,
-        root ? family.expires_at : null,
-        root ? user.organization_id || 'org-default' : null
-      ]
-    );
-    await client.query('UPDATE refresh_tokens SET revoked=TRUE,revoked_at=NOW() WHERE session_id=$1 AND user_id=$2', [
+  return transaction((client) =>
+    changeRootGrantWithClient(client, {
+      userId,
+      sessionId,
+      root,
+      verifiedRootHash,
+      organizationIdAtIssue,
+      ipAddress
+    })
+  );
+}
+
+async function changeRootGrantWithClient(
+  client,
+  { userId, sessionId, root, verifiedRootHash, organizationIdAtIssue, ipAddress }
+) {
+  const user = await currentUser(client, userId);
+  const family = await lockFamily(client, userId, sessionId);
+  if (
+    root &&
+    (!verifiedRootHash ||
+      user.password_hash_root !== verifiedRootHash ||
+      organizationIdAtIssue !== (user.organization_id || 'org-default'))
+  ) {
+    throw new SessionAuthorityError(401, 'Fresh vault password verification required');
+  }
+  family.root_grant_id = root ? uuidv4() : null;
+  await client.query(
+    'UPDATE console_sessions SET root_grant_id=$2,root_grant_expires_at=$3,root_organization_id=$4 WHERE id=$1',
+    [
       family.id,
-      userId
-    ]);
-    return persistPair(client, user, family, ipAddress, root);
-  });
+      family.root_grant_id,
+      root ? family.expires_at : null,
+      root ? user.organization_id || 'org-default' : null
+    ]
+  );
+  await client.query('UPDATE refresh_tokens SET revoked=TRUE,revoked_at=NOW() WHERE session_id=$1 AND user_id=$2', [
+    family.id,
+    userId
+  ]);
+  return persistPair(client, user, family, ipAddress, root);
 }
 
 async function revokeUserSessions(userId) {
@@ -196,6 +214,13 @@ async function revokeUserSessions(userId) {
     // Exclusive account admission serializes the cut with creation of new families.
     const user = await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [userId]);
     if (!user.rowCount) throw new SessionAuthorityError(404, 'User not found');
+    await client.query(
+      `UPDATE users SET console_auth_epoch=console_auth_epoch+1,
+      totp_pending_secret=NULL,totp_pending_recovery_codes=NULL,
+      totp_pending_proof_id=NULL,totp_pending_proof_type=NULL,
+      totp_pending_expires_at=NULL,totp_pending_auth_epoch=NULL WHERE id=$1`,
+      [userId]
+    );
     await client.query('SELECT id FROM console_sessions WHERE user_id=$1 ORDER BY id FOR UPDATE', [userId]);
     await client.query(
       `UPDATE console_sessions SET revoked_at=COALESCE(revoked_at,NOW()),
@@ -212,8 +237,10 @@ async function revokeUserSessions(userId) {
 
 module.exports = {
   issueSession,
+  issueSessionWithClient,
   rotateSession,
   changeRootGrant,
+  changeRootGrantWithClient,
   revokeUserSessions,
   transaction,
   currentUser,

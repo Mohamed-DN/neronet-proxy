@@ -1,25 +1,20 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 
 const { loginLimiter, registerLimiter } = require('../middleware/rateLimit');
 const router = express.Router();
-const config = require('../config/env');
 const { getPgPool } = require('../db/index');
-const { authenticateToken, verifyToken, verifyRefreshToken } = require('../middleware/auth');
+const { authenticateToken, verifyRefreshToken } = require('../middleware/auth');
 const { blacklistToken, isTokenBlacklisted } = require('../db/valkey');
 const { logAuditEvent } = require('../utils/audit');
 const { setAuthCookies, clearAuthCookies } = require('../utils/cookies');
-const TotpService = require('../services/TotpService');
 const OidcService = require('../services/OidcService');
 const DuressService = require('../services/DuressService');
-const MfaPolicy = require('../services/MfaPolicy');
-const { resolveAccessToken, SessionAuthorityError } = require('../services/SessionAuthority');
 const { revokeAccessTokenAndRefresh } = require('../services/AccessTokenRevocation');
-const { CryptoShreddingService } = require('../services/CryptoShreddingService');
 const logger = require('../utils/logger');
 const ConsoleSessionService = require('../services/ConsoleSessionService');
+const MfaSessionService = require('../services/MfaSessionService');
 
 // Pre-computed constant-time dummy bcrypt hash to prevent timing side-channel attacks on non-existent usernames
 const DUMMY_BCRYPT_HASH = '$2a$10$wN3t8gX1ZkGkR0e2M8t0y.9gZ0n4p7s2e6u1v8w5x9y2z3a4b5c6d';
@@ -56,13 +51,13 @@ router.post('/register', registerLimiter, async (req, res, next) => {
       return res.status(409).json({ error: 'Username already exists' });
     }
 
-    await pool.query(
+    const registration = await pool.query(
       `
       INSERT INTO users (
         id, username, email, password_hash, role, status, bypass_apps
       ) VALUES (
         $1, $2, $3, $4, $5, 'active', '[]'::jsonb
-      )
+      ) RETURNING *
     `,
       [userId, username, userEmail, passwordHash, userRole]
     );
@@ -78,9 +73,17 @@ router.post('/register', registerLimiter, async (req, res, next) => {
       ipAddress: req.ip
     });
 
-    const session = await issueUserSession(req, res, { id: userId, username, role: userRole }, pool);
+    const created = registration.rows[0];
+    const session = await MfaSessionService.signIn({
+      verifiedUser: created,
+      passwordColumn: 'password_hash',
+      accessTier: 'standard',
+      ipAddress: req.ip
+    });
+    if (session.mfa_required) return res.status(201).json(session);
+    setAuthCookies(req, res, session);
 
-    return res.status(201).json(session);
+    return res.status(201).json({ token: session.token, user: session.user });
   } catch (err) {
     next(err);
   }
@@ -106,20 +109,25 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     }
 
     let isMatch = false;
+    let passwordColumn;
     let accessTier = 'standard'; // 'standard', 'root', 'stealth_wipe', 'nuclear_wipe'
 
     try {
       if (user.password_hash && (await bcrypt.compare(password, user.password_hash))) {
         isMatch = true;
+        passwordColumn = 'password_hash';
         accessTier = 'standard';
       } else if (user.password_hash_root && (await bcrypt.compare(password, user.password_hash_root))) {
         isMatch = true;
+        passwordColumn = 'password_hash_root';
         accessTier = 'root';
       } else if (user.password_hash_stealth_wipe && (await bcrypt.compare(password, user.password_hash_stealth_wipe))) {
         isMatch = true;
+        passwordColumn = 'password_hash_stealth_wipe';
         accessTier = 'stealth_wipe';
       } else if (user.password_hash_nuclear_wipe && (await bcrypt.compare(password, user.password_hash_nuclear_wipe))) {
         isMatch = true;
+        passwordColumn = 'password_hash_nuclear_wipe';
         accessTier = 'nuclear_wipe';
       }
     } catch (err) {
@@ -161,44 +169,15 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
-    // MFA (ADR 0018): required when the account enrolled, or when the server's policy
-    // (SOVEREIGN_MFA_MANDATORY, see MfaPolicy) requires it for this account.
-    const requiresMfa = await MfaPolicy.isMfaRequired(user);
-
-    const providedOtp = totp_code || code;
-
-    if (requiresMfa) {
-      // If user has totp configured and provided OTP code directly in login payload
-      if (user.totp_enabled && providedOtp) {
-        const isValid = TotpService.verifyTotp(providedOtp, await openTotpSecret(user, user.totp_secret));
-        if (!isValid) {
-          return res.status(401).json({ error: 'Invalid TOTP code' });
-        }
-        // Valid TOTP -> fall through to issue session!
-      } else {
-        // Issue temporary 5-minute mfa_token for verification step
-        // Proves the password step only. It is spent by the sign-in it completes, and
-        // it can enrol an authenticator only on an account that has none.
-        const mfaToken = jwt.sign(
-          {
-            sub: user.id,
-            username: user.username,
-            role: user.role,
-            type: 'mfa_pending'
-          },
-          config.JWT_SECRET,
-          { expiresIn: '5m', jwtid: uuidv4() }
-        );
-
-        return res.status(200).json({
-          mfa_required: true,
-          mfa_setup_required: !user.totp_enabled,
-          mfa_token: mfaToken
-        });
-      }
-    }
-
-    const session = await issueUserSession(req, res, { ...user, compartment_access: accessTier }, pool);
+    const session = await MfaSessionService.signIn({
+      verifiedUser: user,
+      passwordColumn,
+      accessTier,
+      providedOtp: totp_code || code,
+      ipAddress: req.ip
+    });
+    if (session.mfa_required) return res.status(200).json(session);
+    setAuthCookies(req, res, session);
 
     logAuditEvent({
       eventType: 'AUTH_LOGIN',
@@ -211,7 +190,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       ipAddress: req.ip
     });
 
-    return res.status(200).json(session);
+    return res.status(200).json({ token: session.token, user: session.user });
   } catch (err) {
     next(err);
   }
@@ -234,61 +213,7 @@ async function resolveMfaCaller(req) {
     return { error: { status: 401, message: 'Authentication or MFA token required' } };
   }
 
-  let decoded;
-  try {
-    decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
-  } catch (e) {
-    return { error: { status: 401, message: 'Invalid or expired token' } };
-  }
-  if (await isTokenBlacklisted(token)) {
-    return { error: { status: 401, message: 'Token has been revoked or already used' } };
-  }
-
-  // A full session must pass the same durable authority as every other API. The
-  // password-only MFA challenge has its own lifecycle and cannot use this path.
-  if (decoded.type !== 'mfa_pending') {
-    try {
-      await resolveAccessToken(token);
-    } catch (error) {
-      if (error instanceof SessionAuthorityError) {
-        return { error: { status: error.status, message: error.message } };
-      }
-      throw error;
-    }
-  }
-
-  const userRes = await getPgPool().query(
-    `SELECT id, username, email, role, status, organization_id, totp_secret, totp_enabled,
-            totp_recovery_codes, totp_pending_secret, totp_pending_recovery_codes
-       FROM users WHERE id = $1`,
-    [decoded.sub || decoded.id]
-  );
-  if (userRes.rows.length === 0) {
-    return { error: { status: 401, message: 'Invalid or expired token' } };
-  }
-  const user = userRes.rows[0];
-  if (user.status && user.status !== 'active') {
-    return { error: { status: 403, message: `Account is ${user.status}` } };
-  }
-
-  return { token, decoded, user, passwordStepOnly: decoded.type === 'mfa_pending' };
-}
-
-/** TOTP secrets are stored sealed with the account's organisation data key. */
-function openTotpSecret(user, value) {
-  return CryptoShreddingService.openForOrg(user.organization_id, value);
-}
-
-function parseCodes(value) {
-  let codes = value;
-  if (typeof codes === 'string') {
-    try {
-      codes = JSON.parse(codes);
-    } catch (e) {
-      codes = [];
-    }
-  }
-  return Array.isArray(codes) ? codes : [];
+  return MfaSessionService.resolveCaller(token);
 }
 
 // 2a. MFA Setup: start enrolling an authenticator.
@@ -304,29 +229,8 @@ router.post('/mfa/setup', loginLimiter, async (req, res, next) => {
     if (caller.error) {
       return res.status(caller.error.status).json({ error: caller.error.message });
     }
-    const { user, passwordStepOnly } = caller;
-
-    if (user.totp_enabled) {
-      if (passwordStepOnly) {
-        return res.status(409).json({
-          error: 'An authenticator is already enrolled. Sign in with it, then replace it from your account.'
-        });
-      }
-      const currentCode = req.body && req.body.current_code;
-      if (!currentCode || !TotpService.verifyTotp(String(currentCode), await openTotpSecret(user, user.totp_secret))) {
-        return res.status(401).json({ error: 'A current code from the enrolled authenticator is required' });
-      }
-    }
-
-    const secret = TotpService.generateSecret(20);
-    const { qrDataUrl, otpauthUri } = await TotpService.generateQrCode(user.username, secret);
-    const recoveryCodes = TotpService.generateRecoveryCodes(8);
-    const hashedCodes = recoveryCodes.map((c) => TotpService.hashRecoveryCode(c));
-
-    await getPgPool().query(
-      'UPDATE users SET totp_pending_secret = $1, totp_pending_recovery_codes = $2::jsonb WHERE id = $3',
-      [await CryptoShreddingService.sealForOrg(user.organization_id, secret), JSON.stringify(hashedCodes), user.id]
-    );
+    const { user } = caller;
+    const setup = await MfaSessionService.setup(caller, req.body && req.body.current_code);
 
     logAuditEvent({
       eventType: 'AUTH_MFA_SETUP_STARTED',
@@ -339,12 +243,7 @@ router.post('/mfa/setup', loginLimiter, async (req, res, next) => {
       ipAddress: req.ip
     });
 
-    return res.status(200).json({
-      secret,
-      qrDataUrl,
-      otpauthUri,
-      recoveryCodes
-    });
+    return res.status(200).json(setup);
   } catch (err) {
     next(err);
   }
@@ -364,52 +263,9 @@ router.post('/mfa/verify', loginLimiter, async (req, res, next) => {
     if (caller.error) {
       return res.status(caller.error.status).json({ error: caller.error.message });
     }
-    const { user, passwordStepOnly, token, decoded } = caller;
-    const { code, recovery_code } = req.body || {};
-    const pool = getPgPool();
-
-    const confirmingPending = !(passwordStepOnly && user.totp_enabled);
-
-    if (confirmingPending) {
-      if (!user.totp_pending_secret) {
-        return res.status(400).json({ error: 'No authenticator is being enrolled' });
-      }
-      if (!code) {
-        return res.status(400).json({ error: 'Missing code' });
-      }
-      if (!TotpService.verifyTotp(String(code), await openTotpSecret(user, user.totp_pending_secret))) {
-        return res.status(401).json({ error: 'Invalid TOTP code' });
-      }
-      await pool.query(
-        `UPDATE users SET totp_secret = totp_pending_secret,
-                          totp_recovery_codes = COALESCE(totp_pending_recovery_codes, '[]'::jsonb),
-                          totp_enabled = TRUE,
-                          totp_pending_secret = NULL,
-                          totp_pending_recovery_codes = NULL
-          WHERE id = $1`,
-        [user.id]
-      );
-    } else if (recovery_code) {
-      const result = TotpService.verifyAndConsumeRecoveryCode(recovery_code, parseCodes(user.totp_recovery_codes));
-      if (!result.valid) {
-        return res.status(401).json({ error: 'Invalid recovery code' });
-      }
-      await pool.query('UPDATE users SET totp_recovery_codes = $1::jsonb WHERE id = $2', [
-        JSON.stringify(result.remainingCodes),
-        user.id
-      ]);
-    } else if (code) {
-      if (!TotpService.verifyTotp(String(code), await openTotpSecret(user, user.totp_secret))) {
-        return res.status(401).json({ error: 'Invalid TOTP code' });
-      }
-    } else {
-      return res.status(400).json({ error: 'Missing code or recovery_code' });
-    }
-
-    if (passwordStepOnly) {
-      const remaining = Math.max(1, (decoded.exp || 0) - Math.floor(Date.now() / 1000));
-      await blacklistToken(token, remaining);
-    }
+    const { user } = caller;
+    const { session, confirmingPending } = await MfaSessionService.complete(caller, { ...req.body, ipAddress: req.ip });
+    setAuthCookies(req, res, session);
 
     logAuditEvent({
       eventType: confirmingPending ? 'AUTH_MFA_ENROLLED' : 'AUTH_MFA_VERIFY',
@@ -424,18 +280,7 @@ router.post('/mfa/verify', loginLimiter, async (req, res, next) => {
       ipAddress: req.ip
     });
 
-    const session = passwordStepOnly
-      ? await issueUserSession(req, res, user, pool)
-      : await ConsoleSessionService.changeRootGrant({
-          userId: user.id,
-          sessionId: decoded.sid,
-          root: false,
-          ipAddress: req.ip
-        });
-    if (!passwordStepOnly) setAuthCookies(req, res, session);
-    // Full-session enrollment renews the same family; only sign-in creates one.
-    delete session.refreshToken;
-    return res.status(200).json(session);
+    return res.status(200).json({ token: session.token, user: session.user });
   } catch (err) {
     next(err);
   }
