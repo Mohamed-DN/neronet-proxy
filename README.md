@@ -13,6 +13,15 @@ target users are banks and public administration
 ([ADR 0006](docs/adr/0006-target-market-banks-and-public-administration.md)). The
 licence is AGPL-3.0.
 
+## Choose a reading path
+
+| Goal | Start with |
+| --- | --- |
+| Understand the implemented system | [Engineering handbook](docs/HANDBOOK.md), then [current state](#current-state) |
+| Build a development environment | [Developer setup](DEVELOPER_SETUP.md) and [installation below](#install-and-run-with-podman) |
+| Plan a deployment | [Deployment profiles](docs/en/deployment-profiles.md), [security status](#security-status) and the exact revision's CI |
+| Review the design or contribute | [Decision records](docs/adr/), [roadmap](docs/ROADMAP.md) and [contributing](CONTRIBUTING.md) |
+
 ## Current state
 
 The development fleet contains thirteen WireGuard nodes and two relay services.
@@ -432,3 +441,4 @@ document are not evidence that its feature is delivered.
 ## Licence
 
 AGPL-3.0. See [LICENSE](LICENSE).
+
