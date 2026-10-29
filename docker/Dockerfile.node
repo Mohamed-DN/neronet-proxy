@@ -2,7 +2,7 @@
 #
 # Separate from docker/Dockerfile, which builds the security daemon.
 # Keep the builder at the security patch level required by go.mod.
-FROM golang:1.26.9 AS builder
+FROM golang:1.26.10 AS builder
 
 WORKDIR /build
 COPY go.mod go.sum ./
