@@ -1,0 +1,2174 @@
+{
+  "observed_on": "2026-10-29",
+  "baseline_commit": "2279cf76a3b10a4b918a6377c1f91b308886a1d7",
+  "upstream_code_executed": false,
+  "license_compatibility_approved": false,
+  "records": [
+    {
+      "repository": "andydunstall/piko",
+      "commit": "558223199257e23cdce533cf21477446228caebe",
+      "commit_date": "2026-10-25T10:10:16Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "agent/reverseproxy/reverseproxy.go",
+          "kind": "source",
+          "sha256": "db0a7c1605400e3e19a19292f9b103ab75e5b3c70ccd25b8aa6188e1a67bafc8",
+          "bytes": 2627,
+          "url": "https://github.com/andydunstall/piko/blob/558223199257e23cdce533cf21477446228caebe/agent/reverseproxy/reverseproxy.go"
+        },
+        {
+          "path": "agent/tcpproxy/server.go",
+          "kind": "source",
+          "sha256": "3bd3e3ea89811668587adb49f38adb1c0c94a194531f491c08e95b6d7ac464f5",
+          "bytes": 2692,
+          "url": "https://github.com/andydunstall/piko/blob/558223199257e23cdce533cf21477446228caebe/agent/tcpproxy/server.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "fae9b8aea520164ca40d492c850011af294555990933b59d4c71a1e455c20a5a",
+          "bytes": 1097,
+          "url": "https://github.com/andydunstall/piko/blob/558223199257e23cdce533cf21477446228caebe/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "apernet/hysteria",
+      "commit": "fb25dc852ebbc70658e67889f411887a82b7c281",
+      "commit_date": "2026-10-26T19:44:08-07:00",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "core/internal/congestion/brutal/brutal.go",
+          "kind": "source",
+          "sha256": "c620671ca0bfff791c512fda1b0a3cda48e44688430e30c8ab57677e4a87f83a",
+          "bytes": 5724,
+          "url": "https://github.com/apernet/hysteria/blob/fb25dc852ebbc70658e67889f411887a82b7c281/core/internal/congestion/brutal/brutal.go"
+        },
+        {
+          "path": "core/internal/protocol/proxy.go",
+          "kind": "source",
+          "sha256": "55f25354b9fe04bebdef60cb95e7fcceee646f2cdbba10189a078a0c27ca6eb5",
+          "bytes": 6172,
+          "url": "https://github.com/apernet/hysteria/blob/fb25dc852ebbc70658e67889f411887a82b7c281/core/internal/protocol/proxy.go"
+        },
+        {
+          "path": "extras/obfs/salamander.go",
+          "kind": "source",
+          "sha256": "210cabcba2751158186b7f5874a6eb6441fe452b79b84c3cc34e66afaa1f2534",
+          "bytes": 2179,
+          "url": "https://github.com/apernet/hysteria/blob/fb25dc852ebbc70658e67889f411887a82b7c281/extras/obfs/salamander.go"
+        },
+        {
+          "path": "LICENSE.md",
+          "kind": "license",
+          "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+          "bytes": 1052,
+          "url": "https://github.com/apernet/hysteria/blob/fb25dc852ebbc70658e67889f411887a82b7c281/LICENSE.md"
+        },
+        {
+          "path": "app/LICENSE.md",
+          "kind": "license",
+          "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+          "bytes": 1052,
+          "url": "https://github.com/apernet/hysteria/blob/fb25dc852ebbc70658e67889f411887a82b7c281/app/LICENSE.md"
+        },
+        {
+          "path": "core/LICENSE.md",
+          "kind": "license",
+          "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+          "bytes": 1052,
+          "url": "https://github.com/apernet/hysteria/blob/fb25dc852ebbc70658e67889f411887a82b7c281/core/LICENSE.md"
+        },
+        {
+          "path": "extras/LICENSE.md",
+          "kind": "license",
+          "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+          "bytes": 1052,
+          "url": "https://github.com/apernet/hysteria/blob/fb25dc852ebbc70658e67889f411887a82b7c281/extras/LICENSE.md"
+        }
+      ]
+    },
+    {
+      "repository": "aya-rs/aya",
+      "commit": "9317fbc932e83dd5f839ca6f2a4af043c1dbeec6",
+      "commit_date": "2026-10-29T10:08:36Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "aya/src/programs/cgroup_sock_addr.rs",
+          "kind": "downloaded-source",
+          "sha256": "fcdbbcd57cbc685602e96df1bc5326696fc21e906c9eedfc9e8b11b301a0fcc8",
+          "bytes": 6870,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/aya/src/programs/cgroup_sock_addr.rs"
+        },
+        {
+          "path": "LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "937e2efb1ad10b57b31b14d860c2356d012dd33b6ead2e0fc6be2f24d4066326",
+          "bytes": 10852,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/LICENSE-APACHE"
+        },
+        {
+          "path": "LICENSE-MIT",
+          "kind": "license",
+          "sha256": "71f5b27660dcd9b566402a9fb724b04453d6da50a46c5e165c32147b2405a5cb",
+          "bytes": 1062,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/LICENSE-MIT"
+        },
+        {
+          "path": "aya-log-common/LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "154397a08d0cb342110281129971868cd562542d0780b0d10722788cd11a1399",
+          "bytes": 17,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/aya-log-common/LICENSE-APACHE"
+        },
+        {
+          "path": "aya-log-common/LICENSE-MIT",
+          "kind": "license",
+          "sha256": "72af89a828df52a9dcc42512ed64663b3b8d7961dd7a5586d44478eede82bc7a",
+          "bytes": 14,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/aya-log-common/LICENSE-MIT"
+        },
+        {
+          "path": "aya-log/LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "154397a08d0cb342110281129971868cd562542d0780b0d10722788cd11a1399",
+          "bytes": 17,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/aya-log/LICENSE-APACHE"
+        },
+        {
+          "path": "aya-log/LICENSE-MIT",
+          "kind": "license",
+          "sha256": "72af89a828df52a9dcc42512ed64663b3b8d7961dd7a5586d44478eede82bc7a",
+          "bytes": 14,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/aya-log/LICENSE-MIT"
+        },
+        {
+          "path": "aya-obj/LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "154397a08d0cb342110281129971868cd562542d0780b0d10722788cd11a1399",
+          "bytes": 17,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/aya-obj/LICENSE-APACHE"
+        },
+        {
+          "path": "aya-obj/LICENSE-MIT",
+          "kind": "license",
+          "sha256": "72af89a828df52a9dcc42512ed64663b3b8d7961dd7a5586d44478eede82bc7a",
+          "bytes": 14,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/aya-obj/LICENSE-MIT"
+        },
+        {
+          "path": "aya/LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "154397a08d0cb342110281129971868cd562542d0780b0d10722788cd11a1399",
+          "bytes": 17,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/aya/LICENSE-APACHE"
+        },
+        {
+          "path": "aya/LICENSE-MIT",
+          "kind": "license",
+          "sha256": "72af89a828df52a9dcc42512ed64663b3b8d7961dd7a5586d44478eede82bc7a",
+          "bytes": 14,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/aya/LICENSE-MIT"
+        },
+        {
+          "path": "aya/src/maps/sock/sock_hash.rs",
+          "kind": "downloaded-source",
+          "sha256": "e60a47084926be7ae768fa3cb18a656fddd84dc9bc15d99f4238c6657c86e4af",
+          "bytes": 4422,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/aya/src/maps/sock/sock_hash.rs"
+        },
+        {
+          "path": "ebpf/aya-ebpf/src/maps/sock_hash.rs",
+          "kind": "downloaded-source",
+          "sha256": "6e1de175c906c173cbce7845efa264c2e73b0cd087eeaf9b8db0568a438b7e6b",
+          "bytes": 2105,
+          "url": "https://github.com/aya-rs/aya/blob/9317fbc932e83dd5f839ca6f2a4af043c1dbeec6/ebpf/aya-ebpf/src/maps/sock_hash.rs"
+        }
+      ]
+    },
+    {
+      "repository": "cilium/cilium",
+      "commit": "15abc07faf13cfafe6069d516f945c3b8059cdf5",
+      "commit_date": "2026-10-29T15:48:18Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "bpf/bpf_sock.c",
+          "kind": "downloaded-source",
+          "sha256": "794b6aa413e91180a0f0fecfc083c85cc57e1fb7c1482c2d0510230ad9781256",
+          "bytes": 33863,
+          "url": "https://github.com/cilium/cilium/blob/15abc07faf13cfafe6069d516f945c3b8059cdf5/bpf/bpf_sock.c"
+        },
+        {
+          "path": "bpf/lib/sock.h",
+          "kind": "downloaded-source",
+          "sha256": "567215f1edf7c81a436ba9664e936bffad2fd2a2fc04264b3473314935c48f7f",
+          "bytes": 1455,
+          "url": "https://github.com/cilium/cilium/blob/15abc07faf13cfafe6069d516f945c3b8059cdf5/bpf/lib/sock.h"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "f096c31ac0fb2e66df5b7ec20049741ae15accd50c8cd4d100b4db6c9353f6aa",
+          "bytes": 11350,
+          "url": "https://github.com/cilium/cilium/blob/15abc07faf13cfafe6069d516f945c3b8059cdf5/LICENSE"
+        },
+        {
+          "path": "bpf/COPYING",
+          "kind": "license",
+          "sha256": "8ed6cdbc047edbcea7b48dd24bb87f65ab8626a12efc3fb5189ce3ef04c60992",
+          "bytes": 420,
+          "url": "https://github.com/cilium/cilium/blob/15abc07faf13cfafe6069d516f945c3b8059cdf5/bpf/COPYING"
+        },
+        {
+          "path": "bpf/LICENSE.BSD-2-Clause",
+          "kind": "license",
+          "sha256": "87f5bcd709fb87016ce5ddbf19186fa4813846641eb74e9b119afa9a03b29406",
+          "bytes": 1296,
+          "url": "https://github.com/cilium/cilium/blob/15abc07faf13cfafe6069d516f945c3b8059cdf5/bpf/LICENSE.BSD-2-Clause"
+        },
+        {
+          "path": "bpf/LICENSE.GPL-2.0",
+          "kind": "license",
+          "sha256": "0d5bf346df9e635a29dcdddf832dc5b002ca6cdc1c5c9c6c567d2a61bb0c5c15",
+          "bytes": 18012,
+          "url": "https://github.com/cilium/cilium/blob/15abc07faf13cfafe6069d516f945c3b8059cdf5/bpf/LICENSE.GPL-2.0"
+        }
+      ]
+    },
+    {
+      "repository": "cilium/ebpf",
+      "commit": "b5a5a86f850a29988d77b1e626fe981705032020",
+      "commit_date": "2026-10-27T10:08:58Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "link/cgroup.go",
+          "kind": "downloaded-source",
+          "sha256": "c404754f2ae621c8e95c23f927ad15a191a23b3419741556a299bb54795dd103",
+          "bytes": 5372,
+          "url": "https://github.com/cilium/ebpf/blob/b5a5a86f850a29988d77b1e626fe981705032020/link/cgroup.go"
+        },
+        {
+          "path": "map.go",
+          "kind": "downloaded-source",
+          "sha256": "3cff50ce2b3278150073fdd247338f842dd21ffd02b2ed5333e341bfb98b02b5",
+          "bytes": 52500,
+          "url": "https://github.com/cilium/ebpf/blob/b5a5a86f850a29988d77b1e626fe981705032020/map.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "0fdf0f61940491a322e3f8b8cef27f7063f57a6ecc888589468e54e71ab3d70f",
+          "bytes": 1142,
+          "url": "https://github.com/cilium/ebpf/blob/b5a5a86f850a29988d77b1e626fe981705032020/LICENSE"
+        },
+        {
+          "path": "examples/tcprtt_sockops/tcprtt_sockops.c",
+          "kind": "downloaded-source",
+          "sha256": "b028432188241dc68497bd94d1aca428e4ba9c4ed8bb4d0cb586b5ea6de7a9c0",
+          "bytes": 4124,
+          "url": "https://github.com/cilium/ebpf/blob/b5a5a86f850a29988d77b1e626fe981705032020/examples/tcprtt_sockops/tcprtt_sockops.c"
+        }
+      ]
+    },
+    {
+      "repository": "cloudflare/cloudflared",
+      "commit": "35b379ac174d60a4301615defedc821de5625cef",
+      "commit_date": "2026-10-29T11:55:07Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "carrier/websocket.go",
+          "kind": "source",
+          "sha256": "fc1dc6c6e22d61827ec347a0aca01f6eb7eadee12e5fbfed9f3556ffeb861131",
+          "bytes": 5980,
+          "url": "https://github.com/cloudflare/cloudflared/blob/35b379ac174d60a4301615defedc821de5625cef/carrier/websocket.go"
+        },
+        {
+          "path": "connection/quic_connection.go",
+          "kind": "source",
+          "sha256": "977a1b6504981931bcbb295776ec3b06605a3717a8b9579bf53fc82bbc6e65bb",
+          "bytes": 17198,
+          "url": "https://github.com/cloudflare/cloudflared/blob/35b379ac174d60a4301615defedc821de5625cef/connection/quic_connection.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+          "bytes": 11357,
+          "url": "https://github.com/cloudflare/cloudflared/blob/35b379ac174d60a4301615defedc821de5625cef/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "cloudflare/pingora",
+      "commit": "84f21ee9a2c5074bd3b8d98b92a5cb152940ae99",
+      "commit_date": "2026-10-24T13:24:47-07:00",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "pingora-core/src/connectors/l4.rs",
+          "kind": "source",
+          "sha256": "545e6d133ea0bd08c9ca8e0c270345ff5dcd1b14e8e3001abfe00b08ca7fab4f",
+          "bytes": 26088,
+          "url": "https://github.com/cloudflare/pingora/blob/84f21ee9a2c5074bd3b8d98b92a5cb152940ae99/pingora-core/src/connectors/l4.rs"
+        },
+        {
+          "path": "pingora-core/src/listeners/connection_filter.rs",
+          "kind": "source",
+          "sha256": "e5445f4d2df680d7dbc8b35420e35229bc3e65cd31f49557430ec38afc92770b",
+          "bytes": 4757,
+          "url": "https://github.com/cloudflare/pingora/blob/84f21ee9a2c5074bd3b8d98b92a5cb152940ae99/pingora-core/src/listeners/connection_filter.rs"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "bytes": 11358,
+          "url": "https://github.com/cloudflare/pingora/blob/84f21ee9a2c5074bd3b8d98b92a5cb152940ae99/LICENSE"
+        },
+        {
+          "path": "pingora-core/LICENSE",
+          "kind": "license",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "bytes": 11358,
+          "url": "https://github.com/cloudflare/pingora/blob/84f21ee9a2c5074bd3b8d98b92a5cb152940ae99/pingora-core/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "coredns/coredns",
+      "commit": "29e799ba8f53772cf249e89018942c4c5a0e9a4b",
+      "commit_date": "2026-10-29T14:04:48Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "plugin/forward/forward.go",
+          "kind": "downloaded-source",
+          "sha256": "b646ed8b79b15eb4f9033c26054f6ca15935c2f124fc19cb9095400fe94f3d41",
+          "bytes": 10284,
+          "url": "https://github.com/coredns/coredns/blob/29e799ba8f53772cf249e89018942c4c5a0e9a4b/plugin/forward/forward.go"
+        },
+        {
+          "path": "plugin/cache/handler.go",
+          "kind": "downloaded-source",
+          "sha256": "8ab68aa82078eb39d5becb4d6d2ccca2e2d5ade44f189bf931b15a5fed0315f0",
+          "bytes": 11048,
+          "url": "https://github.com/coredns/coredns/blob/29e799ba8f53772cf249e89018942c4c5a0e9a4b/plugin/cache/handler.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "f0530760b1e2ffcf23df322db638ee06d06fc07fead0ed3ddd710f2e224698a9",
+          "bytes": 11371,
+          "url": "https://github.com/coredns/coredns/blob/29e799ba8f53772cf249e89018942c4c5a0e9a4b/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "DefGuard/defguard",
+      "commit": "12508b40a49121f5439cdb2701b751df1b72826c",
+      "commit_date": "2026-10-28T11:31:42Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE.md",
+          "kind": "license",
+          "sha256": "975c5c508c8781c9fae6f3550a1ec0640b0e0ed23a25eff3a7cc406d9b78d6d1",
+          "bytes": 34805,
+          "url": "https://github.com/DefGuard/defguard/blob/12508b40a49121f5439cdb2701b751df1b72826c/LICENSE.md"
+        },
+        {
+          "path": "crates/defguard_core/src/enterprise/LICENSE.md",
+          "kind": "license",
+          "sha256": "6531a0427047528d86628a87c0829c7399ceb6e28b01b08df0e46d827e47ee00",
+          "bytes": 2121,
+          "url": "https://github.com/DefGuard/defguard/blob/12508b40a49121f5439cdb2701b751df1b72826c/crates/defguard_core/src/enterprise/LICENSE.md"
+        },
+        {
+          "path": "crates/model_derive/LICENSE.md",
+          "kind": "license",
+          "sha256": "314e5373427934c60daf4795e206529420dde84aa7bb02f23ea9a893a65be791",
+          "bytes": 34742,
+          "url": "https://github.com/DefGuard/defguard/blob/12508b40a49121f5439cdb2701b751df1b72826c/crates/model_derive/LICENSE.md"
+        },
+        {
+          "path": "crates/defguard_common/src/db/models/wireguard_peer_stats.rs",
+          "kind": "source",
+          "sha256": "24d364e5c7adf518864a32c7c765689e9755bcb0b09f087ac587d1f650e3ab23",
+          "bytes": 4483,
+          "url": "https://github.com/DefGuard/defguard/blob/12508b40a49121f5439cdb2701b751df1b72826c/crates/defguard_common/src/db/models/wireguard_peer_stats.rs"
+        },
+        {
+          "path": "crates/defguard_core/src/location_management/allowed_peers.rs",
+          "kind": "source",
+          "sha256": "96593a46c2de772a8b4adffbcd59f0c36eb9a44f2abb5c49ec07bf63d5496433",
+          "bytes": 15021,
+          "url": "https://github.com/DefGuard/defguard/blob/12508b40a49121f5439cdb2701b751df1b72826c/crates/defguard_core/src/location_management/allowed_peers.rs"
+        },
+        {
+          "path": "crates/defguard_core/src/handlers/wireguard.rs",
+          "kind": "source",
+          "sha256": "78d086700ca83c2e13c61ab74755754935cfcfa8324e42a5ac5b2ae45e950900",
+          "bytes": 60946,
+          "url": "https://github.com/DefGuard/defguard/blob/12508b40a49121f5439cdb2701b751df1b72826c/crates/defguard_core/src/handlers/wireguard.rs"
+        },
+        {
+          "path": "crates/defguard_common/src/db/models/vpn_client_session.rs",
+          "kind": "source",
+          "sha256": "e30a1a34707281f8a419e9f5c1e169a6750b47a2a8d2526259d9fc8bf157ba9d",
+          "bytes": 5916,
+          "url": "https://github.com/DefGuard/defguard/blob/12508b40a49121f5439cdb2701b751df1b72826c/crates/defguard_common/src/db/models/vpn_client_session.rs"
+        },
+        {
+          "path": "crates/defguard_session_manager/src/session_state.rs",
+          "kind": "source",
+          "sha256": "e4f860afea579a7d46cfca61daeedc12b5f3b38176f1d17d4ec0c9f234455d77",
+          "bytes": 19186,
+          "url": "https://github.com/DefGuard/defguard/blob/12508b40a49121f5439cdb2701b751df1b72826c/crates/defguard_session_manager/src/session_state.rs"
+        }
+      ],
+      "repository_license_signal": "NOASSERTION"
+    },
+    {
+      "repository": "DefGuard/gateway",
+      "commit": "ef08519a1d763754dee6b29f342f67e2e7872cfc",
+      "commit_date": "2026-10-23T09:06:35Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE.md",
+          "kind": "license",
+          "sha256": "314e5373427934c60daf4795e206529420dde84aa7bb02f23ea9a893a65be791",
+          "bytes": 34742,
+          "url": "https://github.com/DefGuard/gateway/blob/ef08519a1d763754dee6b29f342f67e2e7872cfc/LICENSE.md"
+        },
+        {
+          "path": "src/enterprise/LICENSE.md",
+          "kind": "license",
+          "sha256": "6531a0427047528d86628a87c0829c7399ceb6e28b01b08df0e46d827e47ee00",
+          "bytes": 2121,
+          "url": "https://github.com/DefGuard/gateway/blob/ef08519a1d763754dee6b29f342f67e2e7872cfc/src/enterprise/LICENSE.md"
+        },
+        {
+          "path": "src/enterprise/firewall/packetfilter/rule.rs",
+          "kind": "source",
+          "sha256": "490cdaea77a29bcfcbc9ac1059e8999129d5ee5ece6ac5c19a4509915e319695",
+          "bytes": 13717,
+          "url": "https://github.com/DefGuard/gateway/blob/ef08519a1d763754dee6b29f342f67e2e7872cfc/src/enterprise/firewall/packetfilter/rule.rs"
+        },
+        {
+          "path": "src/enterprise/firewall/packetfilter/mod.rs",
+          "kind": "source",
+          "sha256": "f06d8a23cc0d9dc92bb034370588ba0c3a7f41ac9371ad04aec46ccc52944858",
+          "bytes": 2870,
+          "url": "https://github.com/DefGuard/gateway/blob/ef08519a1d763754dee6b29f342f67e2e7872cfc/src/enterprise/firewall/packetfilter/mod.rs"
+        },
+        {
+          "path": "src/enterprise/firewall/packetfilter/calls.rs",
+          "kind": "source",
+          "sha256": "9c658f2d570a446af0ede1a12ba6ed8673560617305e062e13224405a51ef509",
+          "bytes": 22998,
+          "url": "https://github.com/DefGuard/gateway/blob/ef08519a1d763754dee6b29f342f67e2e7872cfc/src/enterprise/firewall/packetfilter/calls.rs"
+        }
+      ],
+      "repository_license_signal": "NOASSERTION"
+    },
+    {
+      "repository": "EasyTier/EasyTier",
+      "commit": "c66076b8f3ec16e3fff20b0df920ebda1652e04c",
+      "commit_date": "2026-10-29T04:31:38Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+          "bytes": 7652,
+          "url": "https://github.com/EasyTier/EasyTier/blob/c66076b8f3ec16e3fff20b0df920ebda1652e04c/LICENSE"
+        },
+        {
+          "path": "easytier-contrib/easytier-ohrs/package/LICENSE",
+          "kind": "license",
+          "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+          "bytes": 7652,
+          "url": "https://github.com/EasyTier/EasyTier/blob/c66076b8f3ec16e3fff20b0df920ebda1652e04c/easytier-contrib/easytier-ohrs/package/LICENSE"
+        },
+        {
+          "path": "easytier-go/LICENSE",
+          "kind": "license",
+          "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+          "bytes": 7652,
+          "url": "https://github.com/EasyTier/EasyTier/blob/c66076b8f3ec16e3fff20b0df920ebda1652e04c/easytier-go/LICENSE"
+        },
+        {
+          "path": "easytier/src/tunnel/wireguard.rs",
+          "kind": "source",
+          "sha256": "8c213b131005e251fd58f59f4562f007b4458ea1ae15c08367af461ecefe3431",
+          "bytes": 30680,
+          "url": "https://github.com/EasyTier/EasyTier/blob/c66076b8f3ec16e3fff20b0df920ebda1652e04c/easytier/src/tunnel/wireguard.rs"
+        },
+        {
+          "path": "easytier/src/tunnel/quic/session_socket.rs",
+          "kind": "source",
+          "sha256": "7b55e1f1d989c64f360a3e0e72a6e5f3cb98623d2c8fa86d22a57d339ee343a2",
+          "bytes": 9482,
+          "url": "https://github.com/EasyTier/EasyTier/blob/c66076b8f3ec16e3fff20b0df920ebda1652e04c/easytier/src/tunnel/quic/session_socket.rs"
+        },
+        {
+          "path": "easytier/src/tunnel/quic.rs",
+          "kind": "source",
+          "sha256": "c62fd35ff32bb1123e0341e60aae217ddd52aeda3d69bf48fce4c0ac2a19d231",
+          "bytes": 28519,
+          "url": "https://github.com/EasyTier/EasyTier/blob/c66076b8f3ec16e3fff20b0df920ebda1652e04c/easytier/src/tunnel/quic.rs"
+        },
+        {
+          "path": "easytier-core/src/peers/route/graph_algo.rs",
+          "kind": "source",
+          "sha256": "fcb12b89ae66e5b55ebcb842bc112ca3fe959c344aeedafaccb83745311ca1b2",
+          "bytes": 5574,
+          "url": "https://github.com/EasyTier/EasyTier/blob/c66076b8f3ec16e3fff20b0df920ebda1652e04c/easytier-core/src/peers/route/graph_algo.rs"
+        },
+        {
+          "path": "easytier-core/src/peers/route/mod.rs",
+          "kind": "source",
+          "sha256": "a4c94eab1c1837c2bde801ac4c9f9b68c07d00db9603e8ba47fb3ad97ed03e17",
+          "bytes": 6515,
+          "url": "https://github.com/EasyTier/EasyTier/blob/c66076b8f3ec16e3fff20b0df920ebda1652e04c/easytier-core/src/peers/route/mod.rs"
+        },
+        {
+          "path": "easytier-core/src/peers/route/peer_ospf_route.rs",
+          "kind": "source",
+          "sha256": "ce34b847844099c28ac6df3ec7276ef61295840ea605cea23c058739d7cc66d8",
+          "bytes": 234839,
+          "url": "https://github.com/EasyTier/EasyTier/blob/c66076b8f3ec16e3fff20b0df920ebda1652e04c/easytier-core/src/peers/route/peer_ospf_route.rs"
+        }
+      ],
+      "repository_license_signal": "LGPL-3.0"
+    },
+    {
+      "repository": "ekzhang/bore",
+      "commit": "00a735a89917642df62d84336a90d9476fa175b5",
+      "commit_date": "2026-02-04T10:00:26-08:00",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "src/client.rs",
+          "kind": "source",
+          "sha256": "17eb9ec23d967ff7b4ea75e79fa091a36d86644ccbce3355fd90e121657c1d81",
+          "bytes": 4602,
+          "url": "https://github.com/ekzhang/bore/blob/00a735a89917642df62d84336a90d9476fa175b5/src/client.rs"
+        },
+        {
+          "path": "src/server.rs",
+          "kind": "source",
+          "sha256": "64cbf5e03e7166a687f6e1c1929b425a8bae4c4491e1f81af1b58f636da4b768",
+          "bytes": 7472,
+          "url": "https://github.com/ekzhang/bore/blob/00a735a89917642df62d84336a90d9476fa175b5/src/server.rs"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "0f0671ef3955721e9003a45f11920a2d8c45d2d08dcb3414b874aa88a1390dc2",
+          "bytes": 1067,
+          "url": "https://github.com/ekzhang/bore/blob/00a735a89917642df62d84336a90d9476fa175b5/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "erebe/wstunnel",
+      "commit": "adc9e7dd99a67a817034240626d2ffdbb160397a",
+      "commit_date": "2026-10-19T20:38:39+02:00",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "wstunnel/src/tunnel/client/connection_pool/l4_stream.rs",
+          "kind": "source",
+          "sha256": "c7d4d553b72a58a5bc89b4e113a6581c91b41fef2451fb2ac7b62e62c3c343d5",
+          "bytes": 6073,
+          "url": "https://github.com/erebe/wstunnel/blob/adc9e7dd99a67a817034240626d2ffdbb160397a/wstunnel/src/tunnel/client/connection_pool/l4_stream.rs"
+        },
+        {
+          "path": "wstunnel/src/tunnel/client/connection_pool/manager.rs",
+          "kind": "source",
+          "sha256": "6f122f7ae5b31012795624cc96c97066f55b2e68ea8dc2f7710ed8c5c890704e",
+          "bytes": 7133,
+          "url": "https://github.com/erebe/wstunnel/blob/adc9e7dd99a67a817034240626d2ffdbb160397a/wstunnel/src/tunnel/client/connection_pool/manager.rs"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "fbb93c6ebd04d1413b36fff9e3226028aeb0624c15e409e48f4b7e19573686c2",
+          "bytes": 1536,
+          "url": "https://github.com/erebe/wstunnel/blob/adc9e7dd99a67a817034240626d2ffdbb160397a/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "fatedier/frp",
+      "commit": "93b52799bb7e6dad7ae1152c8b593eefcc17d595",
+      "commit_date": "2026-10-23T15:52:11+08:00",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "client/connector.go",
+          "kind": "source",
+          "sha256": "b40101402184955ada853b21d1d272e8c0bbdcc2995f860915267270e933e7d1",
+          "bytes": 7799,
+          "url": "https://github.com/fatedier/frp/blob/93b52799bb7e6dad7ae1152c8b593eefcc17d595/client/connector.go"
+        },
+        {
+          "path": "client/proxy/general_tcp.go",
+          "kind": "source",
+          "sha256": "8bc851496a0d88ba14228dcb2378b1d0f7a5107af2a09e3d378afebdf3348413",
+          "bytes": 1345,
+          "url": "https://github.com/fatedier/frp/blob/93b52799bb7e6dad7ae1152c8b593eefcc17d595/client/proxy/general_tcp.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+          "bytes": 11358,
+          "url": "https://github.com/fatedier/frp/blob/93b52799bb7e6dad7ae1152c8b593eefcc17d595/LICENSE"
+        },
+        {
+          "path": "client/visitor/xtcp.go",
+          "kind": "source",
+          "sha256": "58f6ab0f1fb23412f03d5c56c980644c515136d9544544354ca10c992ee66029",
+          "bytes": 12034,
+          "url": "https://github.com/fatedier/frp/blob/93b52799bb7e6dad7ae1152c8b593eefcc17d595/client/visitor/xtcp.go"
+        },
+        {
+          "path": "client/proxy/xtcp.go",
+          "kind": "source",
+          "sha256": "d4d1db2bc2c13f6500aba94e2406748d1b097cbaa31ad96e0aa595fca6c27f7c",
+          "bytes": 6465,
+          "url": "https://github.com/fatedier/frp/blob/93b52799bb7e6dad7ae1152c8b593eefcc17d595/client/proxy/xtcp.go"
+        },
+        {
+          "path": "server/proxy/xtcp.go",
+          "kind": "source",
+          "sha256": "d22ac427db3184e6deb158ea7c9690a60cb1017f6ff0fbda926a6d0342944ed4",
+          "bytes": 2466,
+          "url": "https://github.com/fatedier/frp/blob/93b52799bb7e6dad7ae1152c8b593eefcc17d595/server/proxy/xtcp.go"
+        }
+      ]
+    },
+    {
+      "repository": "firezone/firezone",
+      "commit": "59b63118c9d99cf2667a8fc7768b5aee907b2494",
+      "commit_date": "2026-10-29T13:31:15Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "9bf0df0f18f7a858bc0d8631e809767f047558d988686c5da4fac6540510c9b5",
+          "bytes": 11352,
+          "url": "https://github.com/firezone/firezone/blob/59b63118c9d99cf2667a8fc7768b5aee907b2494/LICENSE"
+        },
+        {
+          "path": "elixir/LICENSE",
+          "kind": "license",
+          "sha256": "48255018b41fc0e965b1115af7e6779bc218bb8a6747d561da800d5022622aa2",
+          "bytes": 3860,
+          "url": "https://github.com/firezone/firezone/blob/59b63118c9d99cf2667a8fc7768b5aee907b2494/elixir/LICENSE"
+        },
+        {
+          "path": "elixir/lib/openid_connect/LICENSE.md",
+          "kind": "license",
+          "sha256": "370b22004e621022297f5f5f8485c7b6a700f9558a346969ec0531c1914ea6ae",
+          "bytes": 1054,
+          "url": "https://github.com/firezone/firezone/blob/59b63118c9d99cf2667a8fc7768b5aee907b2494/elixir/lib/openid_connect/LICENSE.md"
+        },
+        {
+          "path": "rust/relay/ebpf-turn-router/src/try_handle_turn/from_ipv6_udp/to_ipv6_channel.rs",
+          "kind": "source",
+          "sha256": "905f1c2a17a639b35f5c678792e17a7f934df17a5b9d9fea54007d397c198883",
+          "bytes": 4491,
+          "url": "https://github.com/firezone/firezone/blob/59b63118c9d99cf2667a8fc7768b5aee907b2494/rust/relay/ebpf-turn-router/src/try_handle_turn/from_ipv6_udp/to_ipv6_channel.rs"
+        },
+        {
+          "path": "rust/relay/ebpf-turn-router/src/try_handle_turn/from_ipv6_udp/to_ipv4_channel.rs",
+          "kind": "source",
+          "sha256": "6d77d79fa0d6581507569a1468a5a2650b39fd104ec52534a37a448e00ad2d1c",
+          "bytes": 4769,
+          "url": "https://github.com/firezone/firezone/blob/59b63118c9d99cf2667a8fc7768b5aee907b2494/rust/relay/ebpf-turn-router/src/try_handle_turn/from_ipv6_udp/to_ipv4_channel.rs"
+        },
+        {
+          "path": "rust/relay/ebpf-turn-router/src/try_handle_turn/from_ipv6_udp.rs",
+          "kind": "source",
+          "sha256": "4bc6907980a8e336fc9f9439abe124f28ae65520f83f170b8bbfc5fe1f51412b",
+          "bytes": 99,
+          "url": "https://github.com/firezone/firezone/blob/59b63118c9d99cf2667a8fc7768b5aee907b2494/rust/relay/ebpf-turn-router/src/try_handle_turn/from_ipv6_udp.rs"
+        },
+        {
+          "path": "rust/libs/connlib/tunnel-proto/src/client.rs",
+          "kind": "source",
+          "sha256": "3d6bdf73f8a5896c680c0b481762eb340f09358479067bc2dc586bd2e7050941",
+          "bytes": 132602,
+          "url": "https://github.com/firezone/firezone/blob/59b63118c9d99cf2667a8fc7768b5aee907b2494/rust/libs/connlib/tunnel-proto/src/client.rs"
+        },
+        {
+          "path": "rust/libs/connlib/tunnel-proto/src/client/routing.rs",
+          "kind": "source",
+          "sha256": "d69fc7b9823d9c727f2d1f957461381b2e37619b9a18d6cca905fa3d5b66cdfa",
+          "bytes": 16746,
+          "url": "https://github.com/firezone/firezone/blob/59b63118c9d99cf2667a8fc7768b5aee907b2494/rust/libs/connlib/tunnel-proto/src/client/routing.rs"
+        },
+        {
+          "path": "rust/libs/connlib/tunnel/src/lib.rs",
+          "kind": "source",
+          "sha256": "d6bd9d45dec6075909f4bd8e3d7fa9e4bd8ce1433ebe4faeab3a34f664da3264",
+          "bytes": 29092,
+          "url": "https://github.com/firezone/firezone/blob/59b63118c9d99cf2667a8fc7768b5aee907b2494/rust/libs/connlib/tunnel/src/lib.rs"
+        }
+      ],
+      "repository_license_signal": "Apache-2.0"
+    },
+    {
+      "repository": "fosrl/gerbil",
+      "commit": "3d7c34742f18ee039f3539d4a01daf55993ee638",
+      "commit_date": "2026-09-28T10:50:15-04:00",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "proxy/proxy.go",
+          "kind": "source",
+          "sha256": "844e8251b6dcf3df15c5f13544fc5b25be3121f5f042acf7cdc11f661c07272c",
+          "bytes": 31428,
+          "url": "https://github.com/fosrl/gerbil/blob/3d7c34742f18ee039f3539d4a01daf55993ee638/proxy/proxy.go"
+        },
+        {
+          "path": "relay/relay.go",
+          "kind": "source",
+          "sha256": "897216e82dacb0b83941da480f20c955587af35bd5def758ea7bb7b33c723b48",
+          "bytes": 50105,
+          "url": "https://github.com/fosrl/gerbil/blob/3d7c34742f18ee039f3539d4a01daf55993ee638/relay/relay.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+          "bytes": 34523,
+          "url": "https://github.com/fosrl/gerbil/blob/3d7c34742f18ee039f3539d4a01daf55993ee638/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "fosrl/newt",
+      "commit": "b52a893fa659079569c3e33e3aacce21b3c78b33",
+      "commit_date": "2026-10-27T15:33:39-04:00",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "bind/shared_bind.go",
+          "kind": "source",
+          "sha256": "74a0cf8b0160a453c21657f02dde7845b2ee1797707527b5bc4ae0b181f043b3",
+          "bytes": 25040,
+          "url": "https://github.com/fosrl/newt/blob/b52a893fa659079569c3e33e3aacce21b3c78b33/bind/shared_bind.go"
+        },
+        {
+          "path": "newt/tunnel.go",
+          "kind": "source",
+          "sha256": "3b506a420e7d72708bd51664f5c185d1ce85b0f3eaafb804233950aee0b4b938",
+          "bytes": 2770,
+          "url": "https://github.com/fosrl/newt/blob/b52a893fa659079569c3e33e3aacce21b3c78b33/newt/tunnel.go"
+        },
+        {
+          "path": "websocket/client.go",
+          "kind": "source",
+          "sha256": "c6a5fd10edccfb9d7930082a1d0f5a6f6dd5352cc438cf8df72459f2fa4ca64d",
+          "bytes": 29817,
+          "url": "https://github.com/fosrl/newt/blob/b52a893fa659079569c3e33e3aacce21b3c78b33/websocket/client.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+          "bytes": 34523,
+          "url": "https://github.com/fosrl/newt/blob/b52a893fa659079569c3e33e3aacce21b3c78b33/LICENSE"
+        },
+        {
+          "path": "newt/connect.go",
+          "kind": "source",
+          "sha256": "b3c6b4380731acc9c95db329ce7300eb64ac6d288f3b15be5cfd5ab8cc83b51e",
+          "bytes": 10863,
+          "url": "https://github.com/fosrl/newt/blob/b52a893fa659079569c3e33e3aacce21b3c78b33/newt/connect.go"
+        },
+        {
+          "path": "netstack2/tun.go",
+          "kind": "source",
+          "sha256": "54b32e75995d4f9ed5000460729abe4e87d218b992304597286128b84c0da482",
+          "bytes": 32250,
+          "url": "https://github.com/fosrl/newt/blob/b52a893fa659079569c3e33e3aacce21b3c78b33/netstack2/tun.go"
+        }
+      ]
+    },
+    {
+      "repository": "fosrl/pangolin",
+      "commit": "3f352ef2d3907ae87f21a5f46a753335be93512c",
+      "commit_date": "2026-10-28T14:51:10-04:00",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "server/routers/newt/getNewtToken.ts",
+          "kind": "source",
+          "sha256": "bc9c3ab4bb3a3b97766fa442be1ce25c043480b8f50054f43162b5124c910044",
+          "bytes": 4264,
+          "url": "https://github.com/fosrl/pangolin/blob/3f352ef2d3907ae87f21a5f46a753335be93512c/server/routers/newt/getNewtToken.ts"
+        },
+        {
+          "path": "server/routers/newt/handleSocketMessages.ts",
+          "kind": "source",
+          "sha256": "0d79fabd6244200efac66eb65d0baa4bd6aa3bd73c71b18f6b7f0ee9d49fda61",
+          "bytes": 2164,
+          "url": "https://github.com/fosrl/pangolin/blob/3f352ef2d3907ae87f21a5f46a753335be93512c/server/routers/newt/handleSocketMessages.ts"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "437c7ec25c30cf1acfdfc04c4031497ffefac1117678b2f38d862db342e816d5",
+          "bytes": 36027,
+          "url": "https://github.com/fosrl/pangolin/blob/3f352ef2d3907ae87f21a5f46a753335be93512c/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "go-gost/gost",
+      "commit": "7dca9e67cb34561d49ea0926fe3d609d23b4fd8c",
+      "commit_date": "2026-10-27T13:48:58Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "go.mod",
+          "kind": "source",
+          "sha256": "dc203f04aa3b22a19a1c73850ae8232e0fb6c97a57ee88547b4e5fbefa6c44c0",
+          "bytes": 8538,
+          "url": "https://github.com/go-gost/gost/blob/7dca9e67cb34561d49ea0926fe3d609d23b4fd8c/go.mod"
+        },
+        {
+          "path": "cmd/gost/register.go",
+          "kind": "source",
+          "sha256": "96d8a92eb898c55b57798c05167390292863fccd62424a8b08e7f2e6ba31e683",
+          "bytes": 4422,
+          "url": "https://github.com/go-gost/gost/blob/7dca9e67cb34561d49ea0926fe3d609d23b4fd8c/cmd/gost/register.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "8daa97cece759cad4410e9e0282eb80380f9736c12032a495e2c040e1a7e0651",
+          "bytes": 1065,
+          "url": "https://github.com/go-gost/gost/blob/7dca9e67cb34561d49ea0926fe3d609d23b4fd8c/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "go-gost/x",
+      "commit": "6aa2c632fa16d3d3401d4d29f5eb53c18b51d27d",
+      "commit_date": "2026-10-27T06:50:55Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "handler/http/websocket.go",
+          "kind": "source",
+          "sha256": "69e34662b8510ab14770f58986aacce002e9add3831091d778541fb919b695a3",
+          "bytes": 4069,
+          "url": "https://github.com/go-gost/x/blob/6aa2c632fa16d3d3401d4d29f5eb53c18b51d27d/handler/http/websocket.go"
+        },
+        {
+          "path": "chain/router.go",
+          "kind": "source",
+          "sha256": "50aa7ec87c7ef34cc8e9ba4b1fbe770f950612e38c589c67d843ccd4caed8c67",
+          "bytes": 7378,
+          "url": "https://github.com/go-gost/x/blob/6aa2c632fa16d3d3401d4d29f5eb53c18b51d27d/chain/router.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "8daa97cece759cad4410e9e0282eb80380f9736c12032a495e2c040e1a7e0651",
+          "bytes": 1065,
+          "url": "https://github.com/go-gost/x/blob/6aa2c632fa16d3d3401d4d29f5eb53c18b51d27d/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "google/gvisor",
+      "commit": "0fa6803f2a5991dc066a29fc50414b4a3b519590",
+      "commit_date": "2026-10-29T15:10:32Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "pkg/tcpip/adapters/gonet/gonet.go",
+          "kind": "downloaded-source",
+          "sha256": "700235f948cc7e363057e61ebf7d5186ea9fbfcc08d5abdea3b03f16879e809d",
+          "bytes": 18885,
+          "url": "https://github.com/google/gvisor/blob/0fa6803f2a5991dc066a29fc50414b4a3b519590/pkg/tcpip/adapters/gonet/gonet.go"
+        },
+        {
+          "path": "pkg/tcpip/link/channel/channel.go",
+          "kind": "downloaded-source",
+          "sha256": "9aa42961028d5d6e0b24df5f0883e33384fb8f804775b4d54061a23123a8ab2a",
+          "bytes": 8799,
+          "url": "https://github.com/google/gvisor/blob/0fa6803f2a5991dc066a29fc50414b4a3b519590/pkg/tcpip/link/channel/channel.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "0fbab5c58efbdf6d31e8085214f2dd821659c03d73cff3ed2b08e98826ea1cd9",
+          "bytes": 14110,
+          "url": "https://github.com/google/gvisor/blob/0fa6803f2a5991dc066a29fc50414b4a3b519590/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "juanfont/headscale",
+      "commit": "beb1214926870ff401007c18860cfe230e258698",
+      "commit_date": "2026-10-29T14:39:30Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "hscontrol/policy/v2/filter.go",
+          "kind": "downloaded-source",
+          "sha256": "d2c70e18d622c4c9d49f3977bb73809b5e4bb074090e760708c91f1922eb4fb2",
+          "bytes": 17384,
+          "url": "https://github.com/juanfont/headscale/blob/beb1214926870ff401007c18860cfe230e258698/hscontrol/policy/v2/filter.go"
+        },
+        {
+          "path": "hscontrol/policy/v2/policy.go",
+          "kind": "downloaded-source",
+          "sha256": "504cd682f3fca1bea2e5019c2641bd284982d33a7c3121d8e03d8c643a4813a5",
+          "bytes": 66881,
+          "url": "https://github.com/juanfont/headscale/blob/beb1214926870ff401007c18860cfe230e258698/hscontrol/policy/v2/policy.go"
+        },
+        {
+          "path": "hscontrol/policy/policy.go",
+          "kind": "downloaded-source",
+          "sha256": "24bd8a44de332a87977a46052b2f3a263015a1bf52c030e00a14ba1059941303",
+          "bytes": 2952,
+          "url": "https://github.com/juanfont/headscale/blob/beb1214926870ff401007c18860cfe230e258698/hscontrol/policy/policy.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "e77c52635a2043a215a2905d3cf5288562acdf119a32bc8fd794d45b542c9fd8",
+          "bytes": 1517,
+          "url": "https://github.com/juanfont/headscale/blob/beb1214926870ff401007c18860cfe230e258698/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "libp2p/go-libp2p",
+      "commit": "03349944847387886bf06b65993b2a03c1e6d12d",
+      "commit_date": "2026-10-23T07:14:36Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "2537fe8521436047428c527abe7ecc9d5b5ec14af85bd8bd7ed29cfb8075146d",
+          "bytes": 1083,
+          "url": "https://github.com/libp2p/go-libp2p/blob/03349944847387886bf06b65993b2a03c1e6d12d/LICENSE"
+        },
+        {
+          "path": "examples/multipro/LICENSE",
+          "kind": "license",
+          "sha256": "2b8f8ace5b69d53ecca76090f53355682ee524ac638405be9e441c26ea201dcc",
+          "bytes": 1076,
+          "url": "https://github.com/libp2p/go-libp2p/blob/03349944847387886bf06b65993b2a03c1e6d12d/examples/multipro/LICENSE"
+        },
+        {
+          "path": "p2p/net/nat/internal/nat/LICENSE",
+          "kind": "license",
+          "sha256": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68",
+          "bytes": 10273,
+          "url": "https://github.com/libp2p/go-libp2p/blob/03349944847387886bf06b65993b2a03c1e6d12d/p2p/net/nat/internal/nat/LICENSE"
+        },
+        {
+          "path": "p2p/transport/webrtc/udpmux/muxed_connection.go",
+          "kind": "source",
+          "sha256": "0baa11359bd2df861c93ffa4a9269fcb75220291ed8c5d1126db525f361f9ad1",
+          "bytes": 2658,
+          "url": "https://github.com/libp2p/go-libp2p/blob/03349944847387886bf06b65993b2a03c1e6d12d/p2p/transport/webrtc/udpmux/muxed_connection.go"
+        },
+        {
+          "path": "p2p/transport/quicreuse/nonquic_packetconn.go",
+          "kind": "source",
+          "sha256": "b8810ee24bc92d86e50c794e69f3497d11a07d4bd1bdcc59e21f0a98e9817ca4",
+          "bytes": 1910,
+          "url": "https://github.com/libp2p/go-libp2p/blob/03349944847387886bf06b65993b2a03c1e6d12d/p2p/transport/quicreuse/nonquic_packetconn.go"
+        },
+        {
+          "path": "p2p/transport/webrtc/udpmux/ufrag.go",
+          "kind": "source",
+          "sha256": "d4c7ac65375be2acdc4bac974551a4e76d7fad2c0974bce7c3d8f9674e497066",
+          "bytes": 2410,
+          "url": "https://github.com/libp2p/go-libp2p/blob/03349944847387886bf06b65993b2a03c1e6d12d/p2p/transport/webrtc/udpmux/ufrag.go"
+        },
+        {
+          "path": "p2p/host/autorelay/autorelay.go",
+          "kind": "source",
+          "sha256": "015debc66996413c8bf0e6e1f575ce8ff876866065e85bcb7db959e0e08aff93",
+          "bytes": 2643,
+          "url": "https://github.com/libp2p/go-libp2p/blob/03349944847387886bf06b65993b2a03c1e6d12d/p2p/host/autorelay/autorelay.go"
+        },
+        {
+          "path": "p2p/host/autonat/svc.go",
+          "kind": "source",
+          "sha256": "fb4f9bf8745a05055705637f25247e0cfefeb78f0508a511d6ae6e0193de1b6a",
+          "bytes": 8074,
+          "url": "https://github.com/libp2p/go-libp2p/blob/03349944847387886bf06b65993b2a03c1e6d12d/p2p/host/autonat/svc.go"
+        },
+        {
+          "path": "p2p/protocol/holepunch/holepuncher.go",
+          "kind": "source",
+          "sha256": "10dd32c3c88af68e34111090665b8ad1a398b09561b3065ab3d73e24a9e4b77d",
+          "bytes": 9684,
+          "url": "https://github.com/libp2p/go-libp2p/blob/03349944847387886bf06b65993b2a03c1e6d12d/p2p/protocol/holepunch/holepuncher.go"
+        },
+        {
+          "path": "p2p/protocol/holepunch/svc.go",
+          "kind": "source",
+          "sha256": "88fa3fcd9b62db2f74eadede97275b7ffdf13408af5d972ae4fb8c565a8b1425",
+          "bytes": 8571,
+          "url": "https://github.com/libp2p/go-libp2p/blob/03349944847387886bf06b65993b2a03c1e6d12d/p2p/protocol/holepunch/svc.go"
+        }
+      ],
+      "repository_license_signal": "MIT"
+    },
+    {
+      "repository": "libp2p/rust-libp2p",
+      "commit": "c449090f49b5ae2338e8f0727be98e0a739ba135",
+      "commit_date": "2026-10-27T18:03:18Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "e10098b8c52fd18ad0f116aac2c0dba1e99ca125d6848640c00688e160a3ee7d",
+          "bytes": 1074,
+          "url": "https://github.com/libp2p/rust-libp2p/blob/c449090f49b5ae2338e8f0727be98e0a739ba135/LICENSE"
+        },
+        {
+          "path": "transports/quic/src/connection/stream.rs",
+          "kind": "source",
+          "sha256": "381e9faefc20b82238bb40fa9f46d43111b2687af5c767e29d9ec48cfd2d01a0",
+          "bytes": 2991,
+          "url": "https://github.com/libp2p/rust-libp2p/blob/c449090f49b5ae2338e8f0727be98e0a739ba135/transports/quic/src/connection/stream.rs"
+        },
+        {
+          "path": "transports/quic/src/connection/connecting.rs",
+          "kind": "source",
+          "sha256": "f23d4309ef22599bff3ef7de414e38fbfb62e1c2ea8fe1337e632833ed6e701e",
+          "bytes": 3575,
+          "url": "https://github.com/libp2p/rust-libp2p/blob/c449090f49b5ae2338e8f0727be98e0a739ba135/transports/quic/src/connection/connecting.rs"
+        },
+        {
+          "path": "transports/quic/src/connection.rs",
+          "kind": "source",
+          "sha256": "007266c5491d3e2155f996ab31c255eaa94fcb284459f9ced30b40520068fa2b",
+          "bytes": 4753,
+          "url": "https://github.com/libp2p/rust-libp2p/blob/c449090f49b5ae2338e8f0727be98e0a739ba135/transports/quic/src/connection.rs"
+        },
+        {
+          "path": "transports/quic/src/transport.rs",
+          "kind": "source",
+          "sha256": "f2cd925c73d2c4f23ef038715dc35ac68e222616427741cf360fd43c5eac2fc6",
+          "bytes": 34450,
+          "url": "https://github.com/libp2p/rust-libp2p/blob/c449090f49b5ae2338e8f0727be98e0a739ba135/transports/quic/src/transport.rs"
+        },
+        {
+          "path": "swarm/src/connection.rs",
+          "kind": "source",
+          "sha256": "aa0104e14c428983f27ea06c20d267ef9937d74fb1dac6b2ed417a7202e1ce8c",
+          "bytes": 48002,
+          "url": "https://github.com/libp2p/rust-libp2p/blob/c449090f49b5ae2338e8f0727be98e0a739ba135/swarm/src/connection.rs"
+        },
+        {
+          "path": "protocols/autonat/src/v1/behaviour.rs",
+          "kind": "source",
+          "sha256": "72b671a990b168facf783aac47523503ee8d203a03701a1afcc9bb8dc21a15a3",
+          "bytes": 25389,
+          "url": "https://github.com/libp2p/rust-libp2p/blob/c449090f49b5ae2338e8f0727be98e0a739ba135/protocols/autonat/src/v1/behaviour.rs"
+        },
+        {
+          "path": "protocols/autonat/src/v2/client/behaviour.rs",
+          "kind": "source",
+          "sha256": "f0c918c1fbd27599d7013e20caa7f56483ce1433f5b72a57525d1d4b10ad9eed",
+          "bytes": 13325,
+          "url": "https://github.com/libp2p/rust-libp2p/blob/c449090f49b5ae2338e8f0727be98e0a739ba135/protocols/autonat/src/v2/client/behaviour.rs"
+        },
+        {
+          "path": "protocols/dcutr/src/behaviour.rs",
+          "kind": "source",
+          "sha256": "d5c147d953ab7f5703913704a7ff43e7ac632ffabc8048ca8309c6280c783ab2",
+          "bytes": 13663,
+          "url": "https://github.com/libp2p/rust-libp2p/blob/c449090f49b5ae2338e8f0727be98e0a739ba135/protocols/dcutr/src/behaviour.rs"
+        }
+      ],
+      "repository_license_signal": "MIT"
+    },
+    {
+      "repository": "MetaCubeX/mihomo",
+      "commit": "008b91bfe8c0e2daca0ab69061efd9ea1ad71bd2",
+      "commit_date": "2025-02-21T05:06:54Z",
+      "runtime_tested": false,
+      "coverage": "Requested networking source unresolved: observed repository is an unrelated Python API client; only license downloaded",
+      "files": [
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "2278f74ad468f0995467b5bd9df3c7bbf1bdfd57a135dac7a9d14c0e366b75a3",
+          "bytes": 1049,
+          "url": "https://github.com/MetaCubeX/mihomo/blob/008b91bfe8c0e2daca0ab69061efd9ea1ad71bd2/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "mullvad/gotatun",
+      "commit": "2a867b3f322d95dc08043498d34eb91fb4266590",
+      "commit_date": "2026-10-23T09:19:55Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
+          "bytes": 16726,
+          "url": "https://github.com/mullvad/gotatun/blob/2a867b3f322d95dc08043498d34eb91fb4266590/LICENSE"
+        },
+        {
+          "path": "gotatun/src/packet/udp.rs",
+          "kind": "source",
+          "sha256": "015534a90d05854c56108898eb6638dabc1d164c47dc87120ddd6693995b5a18",
+          "bytes": 3599,
+          "url": "https://github.com/mullvad/gotatun/blob/2a867b3f322d95dc08043498d34eb91fb4266590/gotatun/src/packet/udp.rs"
+        },
+        {
+          "path": "gotatun/src/udp/socket/windows.rs",
+          "kind": "source",
+          "sha256": "fba2da7864bac1dac3fd186bfd304c8d775cbc0efcfa24328f3e5ea64340fbbc",
+          "bytes": 19144,
+          "url": "https://github.com/mullvad/gotatun/blob/2a867b3f322d95dc08043498d34eb91fb4266590/gotatun/src/udp/socket/windows.rs"
+        },
+        {
+          "path": "gotatun/src/udp/socket/mod.rs",
+          "kind": "source",
+          "sha256": "2ea25f2f8841cafdc5364a85ebea8106a78df1c5c99c2f3b016f7c5fe6d7e99d",
+          "bytes": 16133,
+          "url": "https://github.com/mullvad/gotatun/blob/2a867b3f322d95dc08043498d34eb91fb4266590/gotatun/src/udp/socket/mod.rs"
+        }
+      ],
+      "repository_license_signal": "MPL-2.0"
+    },
+    {
+      "repository": "n0-computer/dumbpipe",
+      "commit": "13253d8b97c83ded85fda2c8fc0297bfde2247d0",
+      "commit_date": "2026-10-21T17:18:12Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "src/main.rs",
+          "kind": "downloaded-source",
+          "sha256": "2c54ed3b3b55a283540efba30567b91c8d09f424fe4154826ee37ac0a33624e9",
+          "bytes": 32536,
+          "url": "https://github.com/n0-computer/dumbpipe/blob/13253d8b97c83ded85fda2c8fc0297bfde2247d0/src/main.rs"
+        },
+        {
+          "path": "src/lib.rs",
+          "kind": "downloaded-source",
+          "sha256": "5294a5c5d76d104e83c8f324ceca9af32bbb44217dc43a005ebb425ad76c1f67",
+          "bytes": 484,
+          "url": "https://github.com/n0-computer/dumbpipe/blob/13253d8b97c83ded85fda2c8fc0297bfde2247d0/src/lib.rs"
+        },
+        {
+          "path": "LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "7ee92352fcac2b427c4754822087d0aeb3afc99951b71bd15cc4c2e5c61c1b60",
+          "bytes": 519,
+          "url": "https://github.com/n0-computer/dumbpipe/blob/13253d8b97c83ded85fda2c8fc0297bfde2247d0/LICENSE-APACHE"
+        },
+        {
+          "path": "LICENSE-MIT",
+          "kind": "license",
+          "sha256": "b801c8d677ef9701149e05cf98f28b82a56832dd67c94d96d36d25d063b1b353",
+          "bytes": 1045,
+          "url": "https://github.com/n0-computer/dumbpipe/blob/13253d8b97c83ded85fda2c8fc0297bfde2247d0/LICENSE-MIT"
+        }
+      ]
+    },
+    {
+      "repository": "n0-computer/iroh",
+      "commit": "ebdaaefecc4b04300694ba4732e06a93a7f81f35",
+      "commit_date": "2026-10-28T13:38:21Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "iroh-relay/src/server.rs",
+          "kind": "downloaded-source",
+          "sha256": "4a30762a874a6f0ba078ba484e6e91dd991bea9448fca087556bd5bf4ec33232",
+          "bytes": 59728,
+          "url": "https://github.com/n0-computer/iroh/blob/ebdaaefecc4b04300694ba4732e06a93a7f81f35/iroh-relay/src/server.rs"
+        },
+        {
+          "path": "iroh-dns-server/src/http/pkarr.rs",
+          "kind": "downloaded-source",
+          "sha256": "a34705272950eddb504f58bc7001a0f87c826555479df2c31b591bfa855b5a5d",
+          "bytes": 1680,
+          "url": "https://github.com/n0-computer/iroh/blob/ebdaaefecc4b04300694ba4732e06a93a7f81f35/iroh-dns-server/src/http/pkarr.rs"
+        },
+        {
+          "path": "iroh-dns-server/src/state.rs",
+          "kind": "downloaded-source",
+          "sha256": "b52e3b2e9a7a88209c0d7463354b1c4651115ee6156cff585683c08071a56199",
+          "bytes": 392,
+          "url": "https://github.com/n0-computer/iroh/blob/ebdaaefecc4b04300694ba4732e06a93a7f81f35/iroh-dns-server/src/state.rs"
+        },
+        {
+          "path": "LICENSE-MIT",
+          "kind": "license",
+          "sha256": "f169adb8124d3b005416d8485d00777c9a7bdd9099982c52a4493f9732e6d050",
+          "bytes": 1048,
+          "url": "https://github.com/n0-computer/iroh/blob/ebdaaefecc4b04300694ba4732e06a93a7f81f35/LICENSE-MIT"
+        },
+        {
+          "path": "LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "903131e2786f073a942fbf8fae122d9e576e4dad758c6da7f9f2ba58fd8611ab",
+          "bytes": 10831,
+          "url": "https://github.com/n0-computer/iroh/blob/ebdaaefecc4b04300694ba4732e06a93a7f81f35/LICENSE-APACHE"
+        },
+        {
+          "path": "iroh/src/socket/transports/relay/actor.rs",
+          "kind": "source",
+          "sha256": "f002a5e999fc17035a078b31bb09a8f2f9e67dcfaff4820eb6224816b009d3d9",
+          "bytes": 79331,
+          "url": "https://github.com/n0-computer/iroh/blob/ebdaaefecc4b04300694ba4732e06a93a7f81f35/iroh/src/socket/transports/relay/actor.rs"
+        },
+        {
+          "path": "iroh/src/socket/transports/relay.rs",
+          "kind": "source",
+          "sha256": "76eacef72874e352f7a5d887dfd21031f9700ce0b74c8c75d43896f113043847",
+          "bytes": 21505,
+          "url": "https://github.com/n0-computer/iroh/blob/ebdaaefecc4b04300694ba4732e06a93a7f81f35/iroh/src/socket/transports/relay.rs"
+        },
+        {
+          "path": "iroh/src/endpoint/quic.rs",
+          "kind": "source",
+          "sha256": "fce7a3aac9502c01d90377dff8c767649e30ad2fd11f67b45bdb1ad87c9fbb65",
+          "bytes": 32061,
+          "url": "https://github.com/n0-computer/iroh/blob/ebdaaefecc4b04300694ba4732e06a93a7f81f35/iroh/src/endpoint/quic.rs"
+        }
+      ],
+      "repository_license_signal": "Apache-2.0"
+    },
+    {
+      "repository": "n0-computer/iroh-dns",
+      "commit": "1e436916f31c725a8d0d881cb15b494b4d0a4a24",
+      "commit_date": "2024-04-24T20:26:18Z",
+      "runtime_tested": false,
+      "coverage": "Historical standalone 2024 source; current server sampled separately in n0-computer/iroh; not a current dependency recommendation",
+      "files": [
+        {
+          "path": "LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "7986218ec4ea89de3511a843ae27fea2584a525036c220ff7b26589179f07888",
+          "bytes": 10831,
+          "url": "https://github.com/n0-computer/iroh-dns/blob/1e436916f31c725a8d0d881cb15b494b4d0a4a24/LICENSE-APACHE"
+        },
+        {
+          "path": "LICENSE-MIT",
+          "kind": "license",
+          "sha256": "9a14096e2e8182ec0ca9351adbf3beb45e3f8be313fecf021429a74c976ba452",
+          "bytes": 1048,
+          "url": "https://github.com/n0-computer/iroh-dns/blob/1e436916f31c725a8d0d881cb15b494b4d0a4a24/LICENSE-MIT"
+        },
+        {
+          "path": "iroh-dns-server/src/lib.rs",
+          "kind": "downloaded-source",
+          "sha256": "186104383356506fd8ef838642ac061a211e71532e40def409d1fbea9f9d3284",
+          "bytes": 2290,
+          "url": "https://github.com/n0-computer/iroh-dns/blob/1e436916f31c725a8d0d881cb15b494b4d0a4a24/iroh-dns-server/src/lib.rs"
+        },
+        {
+          "path": "iroh-dns-server/src/main.rs",
+          "kind": "downloaded-source",
+          "sha256": "4c946f6fc093d5af4f1544410e323e3127b9cd0c5d2a434b1f9a70c1e6a736ee",
+          "bytes": 879,
+          "url": "https://github.com/n0-computer/iroh-dns/blob/1e436916f31c725a8d0d881cb15b494b4d0a4a24/iroh-dns-server/src/main.rs"
+        }
+      ]
+    },
+    {
+      "repository": "netbirdio/netbird",
+      "commit": "de7fd30c550eec95ea569e73b5055f2bb9c539ba",
+      "commit_date": "2026-10-29T15:34:04Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "8343fe949e32a30e2261c4f0967365271d08c4644e879dec5b998d1af666fdb3",
+          "bytes": 1788,
+          "url": "https://github.com/netbirdio/netbird/blob/de7fd30c550eec95ea569e73b5055f2bb9c539ba/LICENSE"
+        },
+        {
+          "path": "combined/LICENSE",
+          "kind": "license",
+          "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+          "bytes": 34523,
+          "url": "https://github.com/netbirdio/netbird/blob/de7fd30c550eec95ea569e73b5055f2bb9c539ba/combined/LICENSE"
+        },
+        {
+          "path": "management/LICENSE",
+          "kind": "license",
+          "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+          "bytes": 34523,
+          "url": "https://github.com/netbirdio/netbird/blob/de7fd30c550eec95ea569e73b5055f2bb9c539ba/management/LICENSE"
+        },
+        {
+          "path": "shared/relay/messages/peer_state.go",
+          "kind": "source",
+          "sha256": "c8704ccc8ff1da5ca4e2287ffc7fefdfec351e1e9cfa740bfc02f752c89105ab",
+          "bytes": 2446,
+          "url": "https://github.com/netbirdio/netbird/blob/de7fd30c550eec95ea569e73b5055f2bb9c539ba/shared/relay/messages/peer_state.go"
+        },
+        {
+          "path": "shared/relay/client/transport.go",
+          "kind": "source",
+          "sha256": "1cdbafd0ed0eeec1cc01fb846dc330c69f995ed5a97fa52075be6ae7cb013a63",
+          "bytes": 4214,
+          "url": "https://github.com/netbirdio/netbird/blob/de7fd30c550eec95ea569e73b5055f2bb9c539ba/shared/relay/client/transport.go"
+        },
+        {
+          "path": "shared/relay/client/peer_subscription.go",
+          "kind": "source",
+          "sha256": "4111c95b89f22a56d2cf77dc53817719980a327e7b9c905cd000e884adeacae8",
+          "bytes": 5284,
+          "url": "https://github.com/netbirdio/netbird/blob/de7fd30c550eec95ea569e73b5055f2bb9c539ba/shared/relay/client/peer_subscription.go"
+        },
+        {
+          "path": "client/internal/rosenpass/manager.go",
+          "kind": "source",
+          "sha256": "331678625e84638951c9c95586bbbdd08468f405e5cf95acec3a8d1e08ef8f75",
+          "bytes": 8852,
+          "url": "https://github.com/netbirdio/netbird/blob/de7fd30c550eec95ea569e73b5055f2bb9c539ba/client/internal/rosenpass/manager.go"
+        },
+        {
+          "path": "client/internal/rosenpass/netbird_handler.go",
+          "kind": "source",
+          "sha256": "7a8101c2dfd70fca71764478b6bab96ce68826faf1e2b01e14fd337a07fa2101",
+          "bytes": 6437,
+          "url": "https://github.com/netbirdio/netbird/blob/de7fd30c550eec95ea569e73b5055f2bb9c539ba/client/internal/rosenpass/netbird_handler.go"
+        },
+        {
+          "path": "client/firewall/uspfilter/filter.go",
+          "kind": "source",
+          "sha256": "ad358c0eb44bacbf1b8304c46481eb56c8d4086dda6dd3025905f621c51e7871",
+          "bytes": 60582,
+          "url": "https://github.com/netbirdio/netbird/blob/de7fd30c550eec95ea569e73b5055f2bb9c539ba/client/firewall/uspfilter/filter.go"
+        },
+        {
+          "path": "client/firewall/manager/firewall.go",
+          "kind": "source",
+          "sha256": "efde6879561e03a1c3e56ee909c67ba56c52768f6d92cda6917f8c8eeefa2215",
+          "bytes": 8422,
+          "url": "https://github.com/netbirdio/netbird/blob/de7fd30c550eec95ea569e73b5055f2bb9c539ba/client/firewall/manager/firewall.go"
+        }
+      ],
+      "repository_license_signal": "NOASSERTION"
+    },
+    {
+      "repository": "openziti/ziti",
+      "commit": "843cfd2375a3fa5f466952379164cda3130a6f3a",
+      "commit_date": "2026-10-29T03:18:32Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "7986f7c237c744491414962f37d990e7c440a50bbc6b59573364642bcbd92b28",
+          "bytes": 11340,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/LICENSE"
+        },
+        {
+          "path": "router/xgress_transport_udp/connection.go",
+          "kind": "source",
+          "sha256": "bef7aa587c5370bedc0a1fc43ef56c9ef622d2b57c8713dde44a6f55c81157c9",
+          "bytes": 1649,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/router/xgress_transport_udp/connection.go"
+        },
+        {
+          "path": "router/xgress_transport_udp/listener.go",
+          "kind": "source",
+          "sha256": "7c78e069ff9d7c515a8a1ef1b65e553e09b2d86c80c4a760b59b246a4345c067",
+          "bytes": 6525,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/router/xgress_transport_udp/listener.go"
+        },
+        {
+          "path": "router/xgress_transport_udp/factory.go",
+          "kind": "source",
+          "sha256": "798bf54c553cd0547f091e5637436b121e532cef6123a22b9c980a6b0e763ae5",
+          "bytes": 1622,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/router/xgress_transport_udp/factory.go"
+        },
+        {
+          "path": "router/handler_ctrl/route.go",
+          "kind": "source",
+          "sha256": "cde3238d2eafaa15b170356311f687ac3ad2f2a9981819e4706c9200071cd9dc",
+          "bytes": 9766,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/router/handler_ctrl/route.go"
+        },
+        {
+          "path": "router/link/link_state.go",
+          "kind": "source",
+          "sha256": "68842173dd3a76c3c7cf9e2f41e34e91106e078ba6ede504aea782bf4e68131e",
+          "bytes": 5880,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/router/link/link_state.go"
+        },
+        {
+          "path": "controller/handler_edge_ctrl/create_circuit_v3.go",
+          "kind": "source",
+          "sha256": "7415f4dca7bcca56e1b6ae13e58e6ea9025607e97f9321366efdbf31ce89cf8a",
+          "bytes": 9934,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/controller/handler_edge_ctrl/create_circuit_v3.go"
+        },
+        {
+          "path": "controller/handler_edge_ctrl/create_circuit.go",
+          "kind": "source",
+          "sha256": "d835c145bb8092adc88cb42ef1ee2c3ae51689d87c1095b24322d663f89e9a35",
+          "bytes": 4411,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/controller/handler_edge_ctrl/create_circuit.go"
+        },
+        {
+          "path": "controller/network/routesender.go",
+          "kind": "source",
+          "sha256": "ebb7e287fadbf22104e9eda9990da0651ead26954feff23b5cba3a07c1237e61",
+          "bytes": 9366,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/controller/network/routesender.go"
+        },
+        {
+          "path": "router/forwarder/forwarder.go",
+          "kind": "source",
+          "sha256": "576cceaf37343c44573b4812f822be26f4380c59e021b7b1d3c93933cda57242",
+          "bytes": 15581,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/router/forwarder/forwarder.go"
+        },
+        {
+          "path": "controller/model/path.go",
+          "kind": "source",
+          "sha256": "69f91295667354e916638d11a2f764157e829caa2940643c1b554d2e20a9cbbd",
+          "bytes": 2190,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/controller/model/path.go"
+        },
+        {
+          "path": "controller/model/circuit_manager.go",
+          "kind": "source",
+          "sha256": "3b110c7c0ce2a7706ce7d94c1884c059349dfc17dd25bdae63ec64a4f7833493",
+          "bytes": 4772,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/controller/model/circuit_manager.go"
+        },
+        {
+          "path": "controller/network/network_path.go",
+          "kind": "source",
+          "sha256": "63be45749aba4a17dbf9420d298787eeafa93b847132c9aa4ab08953221aa14a",
+          "bytes": 6807,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/controller/network/network_path.go"
+        },
+        {
+          "path": "controller/model/terminator_manager.go",
+          "kind": "source",
+          "sha256": "60d8af72f7befb9a6c539caf959681af125eef8dc2ba439507566b731490e7cb",
+          "bytes": 17006,
+          "url": "https://github.com/openziti/ziti/blob/843cfd2375a3fa5f466952379164cda3130a6f3a/controller/model/terminator_manager.go"
+        }
+      ],
+      "repository_license_signal": "Apache-2.0"
+    },
+    {
+      "repository": "openziti/zrok",
+      "commit": "09ed814eaa62032e33dd5f5ee8f684a40661e1e6",
+      "commit_date": "2026-10-08T18:02:32Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "a1ac6968b53d0542a930420fc9933ee1ec3644bcf4278c77e8909c1876349dee",
+          "bytes": 11346,
+          "url": "https://github.com/openziti/zrok/blob/09ed814eaa62032e33dd5f5ee8f684a40661e1e6/LICENSE"
+        },
+        {
+          "path": "endpoints/udpTunnel/frontend.go",
+          "kind": "source",
+          "sha256": "c463e14437ad7a625e0170000a188573550e16664856a766810d7c4fa8fa2f63",
+          "bytes": 4651,
+          "url": "https://github.com/openziti/zrok/blob/09ed814eaa62032e33dd5f5ee8f684a40661e1e6/endpoints/udpTunnel/frontend.go"
+        },
+        {
+          "path": "endpoints/udpTunnel/backend.go",
+          "kind": "source",
+          "sha256": "483cde35e44dea1acf60a9f8e3ac8681fb2726d45d06b800c48c9c88fcaadef6",
+          "bytes": 2176,
+          "url": "https://github.com/openziti/zrok/blob/09ed814eaa62032e33dd5f5ee8f684a40661e1e6/endpoints/udpTunnel/backend.go"
+        },
+        {
+          "path": "endpoints/dynamicProxy/authOauthRouter.go",
+          "kind": "source",
+          "sha256": "fe435d807c8be82f2a9e9d5b13ce05f6eedf2d75c30a7fb5f37656004a76580e",
+          "bytes": 3691,
+          "url": "https://github.com/openziti/zrok/blob/09ed814eaa62032e33dd5f5ee8f684a40661e1e6/endpoints/dynamicProxy/authOauthRouter.go"
+        }
+      ],
+      "repository_license_signal": "Apache-2.0"
+    },
+    {
+      "repository": "pion/ice",
+      "commit": "2981def637a57266ed577c842ed7368815ce30af",
+      "commit_date": "2026-10-27T20:11:37Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "agent.go",
+          "kind": "downloaded-source",
+          "sha256": "83162b3d40476f214004b619c716c7de9e9752f59c1f08f673a49b482f3cbcc8",
+          "bytes": 68585,
+          "url": "https://github.com/pion/ice/blob/2981def637a57266ed577c842ed7368815ce30af/agent.go"
+        },
+        {
+          "path": "agent_handlers.go",
+          "kind": "downloaded-source",
+          "sha256": "49591176762f9bc02a69b10e26f5c70251e174f6b72ac1d6e818b656f34c7bda",
+          "bytes": 2300,
+          "url": "https://github.com/pion/ice/blob/2981def637a57266ed577c842ed7368815ce30af/agent_handlers.go"
+        },
+        {
+          "path": "selection.go",
+          "kind": "downloaded-source",
+          "sha256": "90d2b1def226a9c14120e448b7f16de1e627d3e6f5baf3cd004b30c6a75b5da8",
+          "bytes": 18522,
+          "url": "https://github.com/pion/ice/blob/2981def637a57266ed577c842ed7368815ce30af/selection.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "6483daf6c8aa2c8192528e60be098aa82dd18f6d7b96dc8246f4f7c3333fbf3f",
+          "bytes": 1093,
+          "url": "https://github.com/pion/ice/blob/2981def637a57266ed577c842ed7368815ce30af/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "quic-go/quic-go",
+      "commit": "ede8e51f8a4cefbfb55a5724e28f5e364059f9b4",
+      "commit_date": "2026-10-29T16:12:49Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "sys_conn_oob.go",
+          "kind": "downloaded-source",
+          "sha256": "6d8ab083cd19dce1a93d8cc4aa7c50cd7aaf424fe383b49ba47016defe641a39",
+          "bytes": 9570,
+          "url": "https://github.com/quic-go/quic-go/blob/ede8e51f8a4cefbfb55a5724e28f5e364059f9b4/sys_conn_oob.go"
+        },
+        {
+          "path": "send_conn.go",
+          "kind": "downloaded-source",
+          "sha256": "69d07d84541928e275fc8738bb68a40eed526aca8ba70e4f0ba53f64a502edd3",
+          "bytes": 3147,
+          "url": "https://github.com/quic-go/quic-go/blob/ede8e51f8a4cefbfb55a5724e28f5e364059f9b4/send_conn.go"
+        },
+        {
+          "path": "datagram_queue.go",
+          "kind": "downloaded-source",
+          "sha256": "4718b339d237ac3762e728c19d97089657b4a92a117ceb96a13c404bd2e37882",
+          "bytes": 3670,
+          "url": "https://github.com/quic-go/quic-go/blob/ede8e51f8a4cefbfb55a5724e28f5e364059f9b4/datagram_queue.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "77d0b7b53e8abb84cf4dd3f9945a7fdf27044240d2e8023966a721a9a46fe96e",
+          "bytes": 1091,
+          "url": "https://github.com/quic-go/quic-go/blob/ede8e51f8a4cefbfb55a5724e28f5e364059f9b4/LICENSE"
+        },
+        {
+          "path": "assets/LICENSE.md",
+          "kind": "license",
+          "sha256": "2c8d4ff4244edf09d99dcd428d278e47a059d24f0030b38c1ab38e93b1c8030c",
+          "bytes": 1413,
+          "url": "https://github.com/quic-go/quic-go/blob/ede8e51f8a4cefbfb55a5724e28f5e364059f9b4/assets/LICENSE.md"
+        }
+      ]
+    },
+    {
+      "repository": "quinn-rs/quinn",
+      "commit": "2697de1e1314cb9f98502b7323acd5bdd836b582",
+      "commit_date": "2026-10-28T08:54:47Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "quinn-udp/src/unix.rs",
+          "kind": "downloaded-source",
+          "sha256": "e193253633cce7a89dc8dc9716c6b6c2d95ed67e7486a471b4553da960642fa9",
+          "bytes": 40053,
+          "url": "https://github.com/quinn-rs/quinn/blob/2697de1e1314cb9f98502b7323acd5bdd836b582/quinn-udp/src/unix.rs"
+        },
+        {
+          "path": "quinn-udp/src/lib.rs",
+          "kind": "downloaded-source",
+          "sha256": "500c187fcb5ea941898ceb56d51c447ce00cfe8df8fa76ef1110b719134b8ec3",
+          "bytes": 13842,
+          "url": "https://github.com/quinn-rs/quinn/blob/2697de1e1314cb9f98502b7323acd5bdd836b582/quinn-udp/src/lib.rs"
+        },
+        {
+          "path": "quinn-proto/src/connection/mod.rs",
+          "kind": "downloaded-source",
+          "sha256": "b403c07fbd23987ba74bc68360e36f5082febbbe60f7b87d697a97af8c76af3e",
+          "bytes": 176050,
+          "url": "https://github.com/quinn-rs/quinn/blob/2697de1e1314cb9f98502b7323acd5bdd836b582/quinn-proto/src/connection/mod.rs"
+        },
+        {
+          "path": "LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+          "bytes": 11357,
+          "url": "https://github.com/quinn-rs/quinn/blob/2697de1e1314cb9f98502b7323acd5bdd836b582/LICENSE-APACHE"
+        },
+        {
+          "path": "LICENSE-MIT",
+          "kind": "license",
+          "sha256": "4b2d0aca6789fa39e03d6738e869ea0988cceba210ca34ebb59c15c463e93a04",
+          "bytes": 1064,
+          "url": "https://github.com/quinn-rs/quinn/blob/2697de1e1314cb9f98502b7323acd5bdd836b582/LICENSE-MIT"
+        },
+        {
+          "path": "quinn-proto/LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "154397a08d0cb342110281129971868cd562542d0780b0d10722788cd11a1399",
+          "bytes": 17,
+          "url": "https://github.com/quinn-rs/quinn/blob/2697de1e1314cb9f98502b7323acd5bdd836b582/quinn-proto/LICENSE-APACHE"
+        },
+        {
+          "path": "quinn-proto/LICENSE-MIT",
+          "kind": "license",
+          "sha256": "72af89a828df52a9dcc42512ed64663b3b8d7961dd7a5586d44478eede82bc7a",
+          "bytes": 14,
+          "url": "https://github.com/quinn-rs/quinn/blob/2697de1e1314cb9f98502b7323acd5bdd836b582/quinn-proto/LICENSE-MIT"
+        },
+        {
+          "path": "quinn-udp/LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "154397a08d0cb342110281129971868cd562542d0780b0d10722788cd11a1399",
+          "bytes": 17,
+          "url": "https://github.com/quinn-rs/quinn/blob/2697de1e1314cb9f98502b7323acd5bdd836b582/quinn-udp/LICENSE-APACHE"
+        },
+        {
+          "path": "quinn-udp/LICENSE-MIT",
+          "kind": "license",
+          "sha256": "72af89a828df52a9dcc42512ed64663b3b8d7961dd7a5586d44478eede82bc7a",
+          "bytes": 14,
+          "url": "https://github.com/quinn-rs/quinn/blob/2697de1e1314cb9f98502b7323acd5bdd836b582/quinn-udp/LICENSE-MIT"
+        },
+        {
+          "path": "quinn/LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "154397a08d0cb342110281129971868cd562542d0780b0d10722788cd11a1399",
+          "bytes": 17,
+          "url": "https://github.com/quinn-rs/quinn/blob/2697de1e1314cb9f98502b7323acd5bdd836b582/quinn/LICENSE-APACHE"
+        },
+        {
+          "path": "quinn/LICENSE-MIT",
+          "kind": "license",
+          "sha256": "72af89a828df52a9dcc42512ed64663b3b8d7961dd7a5586d44478eede82bc7a",
+          "bytes": 14,
+          "url": "https://github.com/quinn-rs/quinn/blob/2697de1e1314cb9f98502b7323acd5bdd836b582/quinn/LICENSE-MIT"
+        }
+      ]
+    },
+    {
+      "repository": "rapiz1/rathole",
+      "commit": "a292f7ed5402f840415fc6a53827da2f34337856",
+      "commit_date": "2026-08-23T23:38:43+08:00",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "src/transport/mod.rs",
+          "kind": "source",
+          "sha256": "935f47a5350a98333ef35288c781018a1fecbb211dbe3bf0219bde6a63f3455b",
+          "bytes": 5342,
+          "url": "https://github.com/rapiz1/rathole/blob/a292f7ed5402f840415fc6a53827da2f34337856/src/transport/mod.rs"
+        },
+        {
+          "path": "src/transport/noise.rs",
+          "kind": "source",
+          "sha256": "3d1eaa5f98bbb81cfbde250cfd00ee7ef3470371f5f4e49be6d53ce2f3932d7a",
+          "bytes": 3345,
+          "url": "https://github.com/rapiz1/rathole/blob/a292f7ed5402f840415fc6a53827da2f34337856/src/transport/noise.rs"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+          "bytes": 10173,
+          "url": "https://github.com/rapiz1/rathole/blob/a292f7ed5402f840415fc6a53827da2f34337856/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "rosenpass/rosenpass",
+      "commit": "2edecf5c39cf4dac16dbbf8ac20930733b4dfc71",
+      "commit_date": "2026-10-28T11:39:19Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "rosenpass/src/protocol/protocol.rs",
+          "kind": "downloaded-source",
+          "sha256": "9beb0afa05c9d5103b2a714784fac3ef9f9768e82482f84284e472ae25bdaf8d",
+          "bytes": 164506,
+          "url": "https://github.com/rosenpass/rosenpass/blob/2edecf5c39cf4dac16dbbf8ac20930733b4dfc71/rosenpass/src/protocol/protocol.rs"
+        },
+        {
+          "path": "rosenpass/src/app_server.rs",
+          "kind": "downloaded-source",
+          "sha256": "8bf2a0b701d92602d68c6f50b25b6b3733049fb53fe6f7530c5b9a4dab5ff6c2",
+          "bytes": 66879,
+          "url": "https://github.com/rosenpass/rosenpass/blob/2edecf5c39cf4dac16dbbf8ac20930733b4dfc71/rosenpass/src/app_server.rs"
+        },
+        {
+          "path": "LICENSE-APACHE",
+          "kind": "license",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "bytes": 9723,
+          "url": "https://github.com/rosenpass/rosenpass/blob/2edecf5c39cf4dac16dbbf8ac20930733b4dfc71/LICENSE-APACHE"
+        },
+        {
+          "path": "LICENSE-MIT",
+          "kind": "license",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "url": "https://github.com/rosenpass/rosenpass/blob/2edecf5c39cf4dac16dbbf8ac20930733b4dfc71/LICENSE-MIT"
+        }
+      ]
+    },
+    {
+      "repository": "SagerNet/sing-box",
+      "commit": "e5d91fa79f6319d5de940d6c81d81f0fe53b9476",
+      "commit_date": "2026-10-28T10:42:34+08:00",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "common/tls/reality_client.go",
+          "kind": "source",
+          "sha256": "38a5d553fffd108afca51bde0b0888512d2f4633daa608e03767838b8fdcdbc0",
+          "bytes": 9926,
+          "url": "https://github.com/SagerNet/sing-box/blob/e5d91fa79f6319d5de940d6c81d81f0fe53b9476/common/tls/reality_client.go"
+        },
+        {
+          "path": "common/tls/reality_server.go",
+          "kind": "source",
+          "sha256": "c0a09a064f2898fb8a796a906bf79cdc4cbb3e4dd8165900ac95cf6f1eb36a47",
+          "bytes": 7501,
+          "url": "https://github.com/SagerNet/sing-box/blob/e5d91fa79f6319d5de940d6c81d81f0fe53b9476/common/tls/reality_server.go"
+        },
+        {
+          "path": "protocol/hysteria2/outbound.go",
+          "kind": "source",
+          "sha256": "25b9c083a39a7d47be9fac675a8672e68654179858f7589ae60398ece0c48d80",
+          "bytes": 8060,
+          "url": "https://github.com/SagerNet/sing-box/blob/e5d91fa79f6319d5de940d6c81d81f0fe53b9476/protocol/hysteria2/outbound.go"
+        },
+        {
+          "path": "transport/wireguard/client_bind.go",
+          "kind": "source",
+          "sha256": "04c21f7775124c65551c7f96a4db7d18ec242c35801414fff9486df56f78dfb9",
+          "bytes": 5955,
+          "url": "https://github.com/SagerNet/sing-box/blob/e5d91fa79f6319d5de940d6c81d81f0fe53b9476/transport/wireguard/client_bind.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "650d5e3b99a446fb38e820fa87a49562e0c79eab868fff58618ac487a58e554c",
+          "bytes": 791,
+          "url": "https://github.com/SagerNet/sing-box/blob/e5d91fa79f6319d5de940d6c81d81f0fe53b9476/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "skywind3000/kcp",
+      "commit": "b1a7a2101dcbb96017681a500d6b82bbe5a88766",
+      "commit_date": "2026-06-23T14:21:10+08:00",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "ikcp.c",
+          "kind": "source",
+          "sha256": "8654038a70d1bbe605aa94f066554ffb30bf28580a58769970221de3ba5027f0",
+          "bytes": 36330,
+          "url": "https://github.com/skywind3000/kcp/blob/b1a7a2101dcbb96017681a500d6b82bbe5a88766/ikcp.c"
+        },
+        {
+          "path": "README.md",
+          "kind": "source",
+          "sha256": "023b219d44190f7910352d65dea3b321ca7bdbfb4e23547d40445d8ef60555f1",
+          "bytes": 20802,
+          "url": "https://github.com/skywind3000/kcp/blob/b1a7a2101dcbb96017681a500d6b82bbe5a88766/README.md"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "6587fd02a924b97dbd6758b0573ddec056fb494a84f3709c5aaa33ce1f7f029c",
+          "bytes": 1090,
+          "url": "https://github.com/skywind3000/kcp/blob/b1a7a2101dcbb96017681a500d6b82bbe5a88766/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "slackhq/nebula",
+      "commit": "fb4ef139cbb4af67d142c72083fb735f56460e50",
+      "commit_date": "2026-10-29T15:03:40Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "aefd0cce553f24945ce1c692c3c4f9fda581f078ba82977845715cd18565b3bd",
+          "bytes": 1088,
+          "url": "https://github.com/slackhq/nebula/blob/fb4ef139cbb4af67d142c72083fb735f56460e50/LICENSE"
+        },
+        {
+          "path": "dist/windows/wintun/LICENSE.txt",
+          "kind": "license",
+          "sha256": "183adac21e7d96c508c8fd34d394b7b6708bc81564ad1bad61ab66143a008cd2",
+          "bytes": 5431,
+          "url": "https://github.com/slackhq/nebula/blob/fb4ef139cbb4af67d142c72083fb735f56460e50/dist/windows/wintun/LICENSE.txt"
+        },
+        {
+          "path": "e2e/router/hostmap.go",
+          "kind": "source",
+          "sha256": "03232550356363ce6e2efff998aedf057912685e821e8ebbf39eb1a33905565b",
+          "bytes": 3681,
+          "url": "https://github.com/slackhq/nebula/blob/fb4ef139cbb4af67d142c72083fb735f56460e50/e2e/router/hostmap.go"
+        },
+        {
+          "path": "e2e/router/router.go",
+          "kind": "source",
+          "sha256": "0161eb346e80707ac9a31ae5234578406151abf2a3d69bb8ab7c4f2b9681b73b",
+          "bytes": 27987,
+          "url": "https://github.com/slackhq/nebula/blob/fb4ef139cbb4af67d142c72083fb735f56460e50/e2e/router/router.go"
+        },
+        {
+          "path": "e2e/router/doc.go",
+          "kind": "source",
+          "sha256": "0e5f01561ee744505feaf98cc9660f3754605ec9aa37002c27bc3d5591a4f65c",
+          "bytes": 125,
+          "url": "https://github.com/slackhq/nebula/blob/fb4ef139cbb4af67d142c72083fb735f56460e50/e2e/router/doc.go"
+        },
+        {
+          "path": "cert/cert.go",
+          "kind": "source",
+          "sha256": "a622e5a558551da28d1530e196bd8eb3286dc99c413280928fb04b1c51e71c97",
+          "bytes": 6789,
+          "url": "https://github.com/slackhq/nebula/blob/fb4ef139cbb4af67d142c72083fb735f56460e50/cert/cert.go"
+        },
+        {
+          "path": "cert/cert_v2.go",
+          "kind": "source",
+          "sha256": "8f6c28bd55b63e3d0ebe0aa4db363c71f9ad8181f7b562da751c153ff66683ea",
+          "bytes": 19173,
+          "url": "https://github.com/slackhq/nebula/blob/fb4ef139cbb4af67d142c72083fb735f56460e50/cert/cert_v2.go"
+        },
+        {
+          "path": "cert/sign.go",
+          "kind": "source",
+          "sha256": "2376b35f2b39103fb124bca85f98ce23587a1b89fbf409279a791b0f14f2be50",
+          "bytes": 4482,
+          "url": "https://github.com/slackhq/nebula/blob/fb4ef139cbb4af67d142c72083fb735f56460e50/cert/sign.go"
+        },
+        {
+          "path": "cert/ca_pool.go",
+          "kind": "source",
+          "sha256": "4e55dcb9f2d73622d5e40b1b82d214de3fd131ee6ba4d3e5ee6f30ee32405000",
+          "bytes": 10785,
+          "url": "https://github.com/slackhq/nebula/blob/fb4ef139cbb4af67d142c72083fb735f56460e50/cert/ca_pool.go"
+        }
+      ],
+      "repository_license_signal": "MIT"
+    },
+    {
+      "repository": "smoltcp-rs/smoltcp",
+      "commit": "24bda3b4f982625d8453d4360172557d24921c76",
+      "commit_date": "2026-10-23T02:49:55Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "src/iface/interface/mod.rs",
+          "kind": "downloaded-source",
+          "sha256": "b490b161e1ddc3fb44e2a9c8d765d3599f48c234560b1210d7a29bc93abc666e",
+          "bytes": 54477,
+          "url": "https://github.com/smoltcp-rs/smoltcp/blob/24bda3b4f982625d8453d4360172557d24921c76/src/iface/interface/mod.rs"
+        },
+        {
+          "path": "src/socket/tcp.rs",
+          "kind": "downloaded-source",
+          "sha256": "2bf7a6fcf55e4de7380de68ac95bb7382d1a2fe6bf8a2d4bb0e9cac4d21131ef",
+          "bytes": 341478,
+          "url": "https://github.com/smoltcp-rs/smoltcp/blob/24bda3b4f982625d8453d4360172557d24921c76/src/socket/tcp.rs"
+        },
+        {
+          "path": "LICENSE-0BSD.txt",
+          "kind": "license",
+          "sha256": "beb2cad88fab8447f7975564e21f9506e733e14c344836f146fa02e811216694",
+          "bytes": 644,
+          "url": "https://github.com/smoltcp-rs/smoltcp/blob/24bda3b4f982625d8453d4360172557d24921c76/LICENSE-0BSD.txt"
+        }
+      ]
+    },
+    {
+      "repository": "tailscale/tailscale",
+      "commit": "5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115",
+      "commit_date": "2026-09-24T21:38:37Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "wgengine/magicsock/magicsock.go",
+          "kind": "downloaded-source",
+          "sha256": "f80c9d9d2f18b659ec5281cb94b24c599e9d3ed837a158ffde76ea81cea914b8",
+          "bytes": 165168,
+          "url": "https://github.com/tailscale/tailscale/blob/5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115/wgengine/magicsock/magicsock.go"
+        },
+        {
+          "path": "derp/derp_client.go",
+          "kind": "downloaded-source",
+          "sha256": "93d44a19c0f35bfdea70b02c5e72e3c0690aaf4fabe0e4c2271021327c5316f6",
+          "bytes": 20093,
+          "url": "https://github.com/tailscale/tailscale/blob/5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115/derp/derp_client.go"
+        },
+        {
+          "path": "tsnet/tsnet.go",
+          "kind": "downloaded-source",
+          "sha256": "6a8d6cc7deae3006729ef688ed5d33770284e04699f2dd040bc52c08de667ca5",
+          "bytes": 72621,
+          "url": "https://github.com/tailscale/tailscale/blob/5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115/tsnet/tsnet.go"
+        },
+        {
+          "path": "net/netcheck/netcheck.go",
+          "kind": "downloaded-source",
+          "sha256": "0ad91fd8d8367ce291d7cb04f0ec98f688bd7f809cf402de1e39498355f87689",
+          "bytes": 54717,
+          "url": "https://github.com/tailscale/tailscale/blob/5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115/net/netcheck/netcheck.go"
+        },
+        {
+          "path": ".github/licenses.tmpl",
+          "kind": "license",
+          "sha256": "d449925239921c1f51ad832efc4a43d4fe85c4b9df1b1702b5e6f509b004249d",
+          "bytes": 629,
+          "url": "https://github.com/tailscale/tailscale/blob/5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115/.github/licenses.tmpl"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "a7ca6186a7963a0a60740f6047760eecd7a0234e8c38bd7e1e0bbcb324bda45b",
+          "bytes": 1515,
+          "url": "https://github.com/tailscale/tailscale/blob/5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115/LICENSE"
+        },
+        {
+          "path": "derp/xdp/headers/LICENSE.BSD-2-Clause",
+          "kind": "license",
+          "sha256": "e1638b9a0c68ca90fad3df1d6b4e430804d2fbdc15e58d02cffddfae38953bbf",
+          "bytes": 1649,
+          "url": "https://github.com/tailscale/tailscale/blob/5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115/derp/xdp/headers/LICENSE.BSD-2-Clause"
+        },
+        {
+          "path": "license_test.go",
+          "kind": "license",
+          "sha256": "375975145ef64a22c9ce6310333ef920f43cdaa39feb23dc7609dfdcfe008eb6",
+          "bytes": 2717,
+          "url": "https://github.com/tailscale/tailscale/blob/5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115/license_test.go"
+        },
+        {
+          "path": "licenses/licenses.go",
+          "kind": "license",
+          "sha256": "7c3b3ec700df78e56eb955df2c5c9140ed79e2b736e03d272d27d585f3d40339",
+          "bytes": 634,
+          "url": "https://github.com/tailscale/tailscale/blob/5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115/licenses/licenses.go"
+        },
+        {
+          "path": "derp/derpserver/derpserver.go",
+          "kind": "downloaded-source",
+          "sha256": "27d37ba14f316d48406984361262152a7ae900d7f145106d1238d4060ca310e0",
+          "bytes": 83824,
+          "url": "https://github.com/tailscale/tailscale/blob/5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115/derp/derpserver/derpserver.go"
+        },
+        {
+          "path": "wgengine/magicsock/endpoint.go",
+          "kind": "downloaded-source",
+          "sha256": "76c57d8075e74b9461e71ee05e1d91b89ee4b284b56fdb6417c40240eaaa1e8c",
+          "bytes": 71873,
+          "url": "https://github.com/tailscale/tailscale/blob/5fb2a81b065b0a0bbbfc67ab20a0d9c6a1108115/wgengine/magicsock/endpoint.go"
+        }
+      ]
+    },
+    {
+      "repository": "XTLS/Xray-core",
+      "commit": "0afec66085a85191e9dd2a4a6646c7c9a94688d1",
+      "commit_date": "2026-10-29T08:38:50Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "proxy/vless/encoding/encoding.go",
+          "kind": "source",
+          "sha256": "ce5bd3a0ad9d2405c42b48794cfa7a52a01104c9560e78a27888c012e7441f84",
+          "bytes": 6573,
+          "url": "https://github.com/XTLS/Xray-core/blob/0afec66085a85191e9dd2a4a6646c7c9a94688d1/proxy/vless/encoding/encoding.go"
+        },
+        {
+          "path": "proxy/vless/outbound/outbound.go",
+          "kind": "source",
+          "sha256": "c8fe91583d2de7d507a8cfb8766e543558910ded8110431076c914443e154537",
+          "bytes": 14668,
+          "url": "https://github.com/XTLS/Xray-core/blob/0afec66085a85191e9dd2a4a6646c7c9a94688d1/proxy/vless/outbound/outbound.go"
+        },
+        {
+          "path": "transport/internet/reality/reality.go",
+          "kind": "source",
+          "sha256": "57f294441278261976787f05a03aa3864691c1a076326909beb6c396ea3ce700",
+          "bytes": 9519,
+          "url": "https://github.com/XTLS/Xray-core/blob/0afec66085a85191e9dd2a4a6646c7c9a94688d1/transport/internet/reality/reality.go"
+        },
+        {
+          "path": "LICENSE",
+          "kind": "license",
+          "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+          "bytes": 16725,
+          "url": "https://github.com/XTLS/Xray-core/blob/0afec66085a85191e9dd2a4a6646c7c9a94688d1/LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "zerotier/ZeroTierOne",
+      "commit": "899352e38405968516bb12a770f0ac02f6058fa8",
+      "commit_date": "2026-07-22T19:25:34Z",
+      "runtime_tested": false,
+      "coverage": "Selected source functions only; not an exhaustive audit",
+      "files": [
+        {
+          "path": "LICENSE.txt",
+          "kind": "license",
+          "sha256": "18797d9ced049ddab9a4685e89acbe95de08efdf5eedaf82e870d63f6a3ccc7f",
+          "bytes": 320,
+          "url": "https://github.com/zerotier/ZeroTierOne/blob/899352e38405968516bb12a770f0ac02f6058fa8/LICENSE.txt"
+        },
+        {
+          "path": "attic/historic/anode/LICENSE.txt",
+          "kind": "license",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+          "bytes": 35147,
+          "url": "https://github.com/zerotier/ZeroTierOne/blob/899352e38405968516bb12a770f0ac02f6058fa8/attic/historic/anode/LICENSE.txt"
+        },
+        {
+          "path": "ext/hiredis-0.14.1/COPYING",
+          "kind": "license",
+          "sha256": "dca05ce8fc87a8261783b4aed0deef8becc9350b6aa770bc714d0c1833b896eb",
+          "bytes": 1588,
+          "url": "https://github.com/zerotier/ZeroTierOne/blob/899352e38405968516bb12a770f0ac02f6058fa8/ext/hiredis-0.14.1/COPYING"
+        },
+        {
+          "path": "windows/TapDriver6/txpath.c",
+          "kind": "source",
+          "sha256": "142327fb3a2c65724c00c2e5979a9e1104004e2daab6b5d4c1182d25accd47b2",
+          "bytes": 35557,
+          "url": "https://github.com/zerotier/ZeroTierOne/blob/899352e38405968516bb12a770f0ac02f6058fa8/windows/TapDriver6/txpath.c"
+        },
+        {
+          "path": "windows/TapDriver6/rxpath.c",
+          "kind": "source",
+          "sha256": "b2ee0a5b10287ae1d71e5d9e18c7217d67d1e71ae2f41a1b7fb52e0d5ed6dfcc",
+          "bytes": 22256,
+          "url": "https://github.com/zerotier/ZeroTierOne/blob/899352e38405968516bb12a770f0ac02f6058fa8/windows/TapDriver6/rxpath.c"
+        },
+        {
+          "path": "osdep/ManagedRoute.cpp",
+          "kind": "source",
+          "sha256": "ec65a08bc440eddb11ae9a78de5792af49b8d46462f61e7579197d141622c152",
+          "bytes": 22313,
+          "url": "https://github.com/zerotier/ZeroTierOne/blob/899352e38405968516bb12a770f0ac02f6058fa8/osdep/ManagedRoute.cpp"
+        },
+        {
+          "path": "LICENSE-MPL.txt",
+          "kind": "license",
+          "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+          "bytes": 16725,
+          "url": "https://github.com/zerotier/ZeroTierOne/blob/899352e38405968516bb12a770f0ac02f6058fa8/LICENSE-MPL.txt"
+        },
+        {
+          "path": "nonfree/LICENSE.md",
+          "kind": "license",
+          "sha256": "fc81b5fefa99aa10a73a8c4ba73b4779a0363134040259efa1966e0ca0b01037",
+          "bytes": 6098,
+          "url": "https://github.com/zerotier/ZeroTierOne/blob/899352e38405968516bb12a770f0ac02f6058fa8/nonfree/LICENSE.md"
+        },
+        {
+          "path": "node/IncomingPacket.cpp",
+          "kind": "source",
+          "sha256": "85e9688cf77cbaec3fbad256d993b5d2e7bb85f0c5aaa7245ee8f59f4fd7867f",
+          "bytes": 59885,
+          "url": "https://github.com/zerotier/ZeroTierOne/blob/899352e38405968516bb12a770f0ac02f6058fa8/node/IncomingPacket.cpp"
+        },
+        {
+          "path": "node/Node.cpp",
+          "kind": "source",
+          "sha256": "9a9110e307ccbf10a47d62b67b5aa2dd894a8272cda9792fec86eb187c2f69be",
+          "bytes": 36713,
+          "url": "https://github.com/zerotier/ZeroTierOne/blob/899352e38405968516bb12a770f0ac02f6058fa8/node/Node.cpp"
+        }
+      ],
+      "repository_license_signal": "NOASSERTION"
+    }
+  ]
+}

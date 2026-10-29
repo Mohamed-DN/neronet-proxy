@@ -1,4 +1,5 @@
 # AI Agent Metadata & Logs (Internal Development)
+.network_research/
 .agents/
 **/.agents/
 *.log

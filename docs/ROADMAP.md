@@ -14,6 +14,13 @@ Moving a feature later does not remove it. The [ADRs](adr/) and [archive](archiv
 preserve its design context. TLS and isolated backup/restore now have implemented
 flows in [TLS certificates](en/tls-certificates.md) and [backup/restore](en/backup-restore.md).
 
+The [networking blueprint](NERONET_MASTER_NETWORKING_BLUEPRINT.md) extends this
+sequence with a pinned upstream-source comparison and packages NR0-NR8. It retains
+one WireGuard device and the accepted UDP/DERP-first architecture. Profiling,
+rootless resource connectors, DNS, ingress, NAT improvements, optional transports,
+multipath and PQC each keep a separate implementation and traffic gate. Research
+does not mark any of those gates complete or replace the retained plans below.
+
 ## Earlier engineering plan
 
 Working document. Figures are measured against a running deployment; the methods are

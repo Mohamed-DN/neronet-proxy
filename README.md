@@ -428,6 +428,9 @@ document are not evidence that its feature is delivered.
   the code. Start here.
 - [Roadmap](docs/ROADMAP.md): load ceilings, high availability, federation, competitor
   parity, post-quantum status, and the features that were offered and do not exist.
+- [Networking blueprint](docs/NERONET_MASTER_NETWORKING_BLUEPRINT.md): source-based
+  comparison, seven networking tracks and incremental acceptance gates. Proposed
+  extensions are distinguished from implemented and measured features.
 - [Decision records](docs/adr/): each architectural decision, with its context and
   consequences.
 - [Developer setup](DEVELOPER_SETUP.md): environments, compose stack, tests, configuration.
