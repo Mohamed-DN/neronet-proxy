@@ -493,15 +493,28 @@ Each event carries an HMAC-SHA256 over its content and its predecessor's hash, k
 `SOVEREIGN_AUDIT_HMAC_SECRET`, which is used for nothing else. The head of the chain is
 signed on request with an Ed25519 key (`SOVEREIGN_AUDIT_SIGNING_KEY`, or one generated
 once into the data directory), and verification checks every signed checkpoint against
-the event it covers. The chain detects edited, deleted and inserted events; the
-checkpoints detect a truncated tail and a chain rewritten from the start.
+the event it covers. New records use canonical version 2, covering event identity,
+user agent, nullable field boundaries, microsecond timestamps and authenticated
+metadata text. Verification compares metadata with PostgreSQL JSONB after checking
+the MAC and reads events and checkpoints in one repeatable-read snapshot. Signed
+checkpoints match both the event identifier and hash.
+
+Migration 041 preserves the original hashes and checkpoints of version-1 records.
+Those records have partial field coverage, shown explicitly in the console and
+verification report. `SOVEREIGN_AUDIT_ACCEPT_LEGACY_CANONICAL=false` refuses their
+format without deleting them. Coordinate API writers during upgrade: a version-1
+record after version 2 is rejected. See [ADR 0025](adr/0025-versioned-audit-content-integrity.md)
+for the format, rollout and verification limits.
 
 What it does not do: checkpoints are not taken on a schedule, and they only mean
 something if their public key is recorded somewhere the server cannot write. Events
 written before the dedicated key existed were keyed with the JWT secret; they verify only
 as an unbroken prefix of the chain, and `SOVEREIGN_AUDIT_ACCEPT_LEGACY=false` refuses
-them. Events carry no organisation, so the ledger is readable in bulk by the platform
-super-admin only.
+them. Deletion of an uncheckpointed tail cannot be established from the remaining
+rows alone. Delivery is best effort; a valid report does not prove every attempted
+action was recorded. Events carry no organisation, so the ledger is readable in
+bulk by the platform super-admin only. Retention and organization attribution
+remain separate work.
 
 ### 6.3 Remaining gaps
 

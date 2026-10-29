@@ -53,8 +53,11 @@ Implemented behavior:
   (`SOVEREIGN_MFA_MANDATORY`), and OpenID Connect single sign-on (authorization code
   with PKCE, ID token verified). The access token lives in page memory; the refresh
   token only in an HttpOnly cookie.
-- **Audit trail.** Every event is chained with an HMAC under a dedicated key, and
-  checkpoints are signed with a pinned Ed25519 key.
+- **Audit trail.** Admitted events are chained with an HMAC under a dedicated key,
+  and checkpoints are signed with a pinned Ed25519 key. New records use a versioned
+  format covering identifiers, user agents and typed metadata. Historical records
+  retain their original hashes and are reported as partial field coverage.
+  See [ADR 0025](docs/adr/0025-versioned-audit-content-integrity.md).
 - **Organisation secrets.** Identity-provider secrets, TOTP seeds and provider refresh
   tokens are sealed with a per-organisation data key, which an organisation shred
   destroys.
@@ -354,7 +357,9 @@ In place, and checked by tests or by the CI jobs:
   scoped to the caller's organisation.
 - Node registration with proof of key possession, per-node credentials, and refusal of
   revoked keys.
-- Tamper-evident audit chain with signed checkpoints.
+- Tamper-evident audit chain with signed checkpoints and explicit historical
+  coverage. Verification uses one database snapshot; recovery retains its own
+  read-only transaction. A matching HMAC report is not a compliance certification.
 - Federation requires a verified Ed25519 signature and a key fingerprint confirmed by
   the operator through another channel.
 - Console sign-ins have PostgreSQL session families: logout and refresh replay

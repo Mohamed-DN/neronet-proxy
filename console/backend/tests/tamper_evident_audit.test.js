@@ -126,8 +126,8 @@ describe('WP-301: Tamper-Evident Audit Log & SIEM Export', () => {
       `INSERT INTO audit_events (
          id, sequence_num, prev_hash, entry_hash, event_type, severity,
          actor_user_id, actor_username, target_id, target_type, message,
-         ip_address, user_agent, metadata_json, created_at, hmac_key_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+         ip_address, user_agent, metadata_json, created_at, hmac_key_id, canonical_version, canonical_metadata_json
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
       [
         deletedRow.id,
         deletedRow.sequence_num,
@@ -144,7 +144,9 @@ describe('WP-301: Tamper-Evident Audit Log & SIEM Export', () => {
         deletedRow.user_agent,
         JSON.stringify(deletedRow.metadata_json),
         deletedRow.created_at,
-        deletedRow.hmac_key_id
+        deletedRow.hmac_key_id,
+        deletedRow.canonical_version,
+        deletedRow.canonical_metadata_json
       ]
     );
 

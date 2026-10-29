@@ -557,6 +557,13 @@
       "checkpoints": "Checkpoint Firmati",
       "siemForwarders": "Destinazioni SIEM",
       "validBadge": "Catena HMAC Valida",
+      "validStatus": "VALIDA",
+      "partialStatus": "PARZIALE",
+      "unknownStatus": "SCONOSCIUTA",
+      "emptyStatus": "VUOTA",
+      "partialBadge": "Copertura parziale per i record precedenti",
+      "unknownBadge": "Copertura dei campi non disponibile",
+      "emptyBadge": "Nessun evento da verificare",
       "tamperedBadge": "Manomissione Rilevata"
     },
     "filters": {
@@ -582,7 +589,15 @@
       "title": "Report di Verifica Crittografica della Catena",
       "subtitle": "Validazione matematica dei collegamenti sequenziali SHA256-HMAC sull'intero database di audit.",
       "validHeadline": "INTEGRITÀ CATENA VERIFICATA (PASS)",
-      "validDesc": "Ogni evento sequenziale corrisponde alla propria firma HMAC crittografica. Nessuna riga è stata inserita, modificata o cancellata fuori banda.",
+      "validDesc": "Tutti gli eventi verificati usano il formato corrente. I campi coperti e i collegamenti HMAC sequenziali corrispondono agli hash memorizzati.",
+      "partialHeadline": "CATENA VERIFICATA CON COPERTURA PARZIALE DEI CAMPI",
+      "partialDesc": "I collegamenti HMAC memorizzati corrispondono. I record precedenti non coprono tutti i campi degli eventi: questa verifica non rileva modifiche ai campi esclusi dal formato originale.",
+      "unknownHeadline": "CATENA VERIFICATA — COPERTURA DEI CAMPI SCONOSCIUTA",
+      "unknownDesc": "Il server riporta collegamenti HMAC corrispondenti. La copertura dei campi non è disponibile: il report non può confermare che tutti i campi degli eventi siano protetti.",
+      "emptyHeadline": "Nessun evento di audit da verificare",
+      "emptyDesc": "Il registro di audit è vuoto. Non ci sono campi o collegamenti HMAC da controllare.",
+      "legacyCount": "Eventi nel formato precedente: {{count}}",
+      "canonicalCount": "Eventi nel formato corrente: {{count}}",
       "tamperedHeadline": "INTEGRITÀ CATENA COMPROMESSA (MANOMESSA)",
       "tamperedDesc": "Validazione crittografica fallita. È stata rilevata un'anomalia o una modifica non autorizzata.",
       "eventsCount": "Eventi Verificati: {{count}}",
@@ -619,10 +634,10 @@
     },
     "exportModal": {
       "title": "Esporta Registro Audit Verificabile",
-      "description": "Scarica registri di audit immutabili per la certificazione di conformità normativa (DORA Articolo 12, NIS2, GDPR Articolo 32).",
+      "description": "Scarica gli eventi di audit per esaminarli. Il pacchetto JSON include anche l'ultimo report di verifica della catena e la copertura dei campi, se fornita dal server.",
       "csvAction": "Scarica File CSV",
       "jsonAction": "Scarica Pacchetto Forense JSON",
-      "complianceSeal": "Include sigillo di verifica crittografica della catena HMAC-SHA256."
+      "complianceSeal": "Esamina il report di verifica prima di fare affidamento sugli eventi esportati. I record precedenti possono avere una copertura parziale dei campi."
     },
     "detailModal": {
       "title": "Dettaglio Evento di Audit — Sequenza #{{seq}}",

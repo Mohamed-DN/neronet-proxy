@@ -78,7 +78,7 @@ class BackupRecoveryProofService {
           throw new Error('Disaster recovery proof failed: required table "' + name + '" missing');
         }
       }
-      auditChainResult = await AuditChainService.verifyChain({ pool: targetClient, secret });
+      auditChainResult = await AuditChainService.verifySnapshot(targetClient, { secret });
       if (!auditChainResult.valid) {
         throw new Error(
           'Disaster recovery proof failed: audit chain validation error [' +

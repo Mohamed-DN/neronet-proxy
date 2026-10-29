@@ -557,6 +557,13 @@
       "checkpoints": "Signed Checkpoints",
       "siemForwarders": "SIEM Targets",
       "validBadge": "HMAC Chain Valid",
+      "validStatus": "VALID",
+      "partialStatus": "PARTIAL",
+      "unknownStatus": "UNKNOWN",
+      "emptyStatus": "EMPTY",
+      "partialBadge": "Older records have partial field coverage",
+      "unknownBadge": "Field coverage unavailable",
+      "emptyBadge": "No events to verify",
       "tamperedBadge": "Tampering Detected"
     },
     "filters": {
@@ -582,7 +589,15 @@
       "title": "Cryptographic Chain Verification Report",
       "subtitle": "Mathematical validation of SHA256-HMAC sequential links across the entire audit database.",
       "validHeadline": "CHAIN INTEGRITY VERIFIED (PASS)",
-      "validDesc": "Every sequential event matches its cryptographic HMAC signature. No rows have been inserted, modified, or deleted out of band.",
+      "validDesc": "All verified events use the current format. Their covered fields and sequential HMAC links match the stored hashes.",
+      "partialHeadline": "CHAIN VERIFIED WITH PARTIAL FIELD COVERAGE",
+      "partialDesc": "The stored HMAC links match. Older records do not cover all event fields, so changes to fields outside their original format cannot be detected by this check.",
+      "unknownHeadline": "CHAIN VERIFIED — FIELD COVERAGE UNKNOWN",
+      "unknownDesc": "The server reports matching HMAC links. Field coverage is unavailable, so this report cannot confirm that all event fields are protected.",
+      "emptyHeadline": "No audit events to verify",
+      "emptyDesc": "The audit ledger is empty. There are no event fields or HMAC links to check.",
+      "legacyCount": "Older-format events: {{count}}",
+      "canonicalCount": "Current-format events: {{count}}",
       "tamperedHeadline": "CHAIN INTEGRITY COMPROMISED (TAMPERED)",
       "tamperedDesc": "Cryptographic validation failed. An anomaly or unauthorized modification was detected.",
       "eventsCount": "Events Verified: {{count}}",
@@ -619,10 +634,10 @@
     },
     "exportModal": {
       "title": "Export Verifiable Audit Log",
-      "description": "Download immutable audit logs for regulatory compliance certification (DORA Article 12, NIS2, GDPR Article 32).",
+      "description": "Download audit events for review. The JSON package also includes the latest chain verification report and its field coverage, when provided by the server.",
       "csvAction": "Download CSV Audit Log",
       "jsonAction": "Download JSON Forensic Package",
-      "complianceSeal": "Includes SHA-256 HMAC cryptographic chain verification seal."
+      "complianceSeal": "Review the verification report before relying on the exported events. Older records may have partial field coverage."
     },
     "detailModal": {
       "title": "Audit Event Detail — Sequence #{{seq}}",

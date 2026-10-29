@@ -10,7 +10,7 @@ import AuthContext, { type AuthValue } from '../../context/AuthContext';
 import { ShellProvider } from '../shell';
 import { createQueryClient } from '../../services/queries/client';
 import type { AuditCheckpoint, AuditEvent, AuditVerificationResult, SiemDestination } from '../../services/types';
-import '../../i18n';
+import i18n from '../../i18n';
 
 const mockEvents: AuditEvent[] = [
   {
@@ -47,6 +47,9 @@ const mockEvents: AuditEvent[] = [
 
 const mockVerification: AuditVerificationResult = {
   valid: true,
+  integrity_profile: 'canonical-v2',
+  legacy_canonical_events: 0,
+  canonical_v2_events: 2,
   events_count: 2,
   first_sequence: 1,
   last_sequence: 2,
@@ -124,16 +127,19 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
   let eventsState: AuditEvent[] = [];
   let siemState: SiemDestination[] = [];
   let checkpointsState: AuditCheckpoint[] = [];
+  let verificationState: AuditVerificationResult & Record<string, unknown>;
 
   beforeEach(() => {
     eventsState = [...mockEvents];
     siemState = [...mockSiemTargets];
     checkpointsState = [...mockCheckpoints];
+    verificationState = { ...mockVerification };
     vi.restoreAllMocks();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    void i18n.changeLanguage('en');
   });
 
   function setupFetchMock() {
@@ -148,7 +154,7 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
 
       // 2. GET /api/audit/verify
       if (urlStr.includes('/api/audit/verify')) {
-        return jsonResponse({ verification: mockVerification });
+        return jsonResponse({ verification: verificationState });
       }
 
       // 3. GET /api/audit/checkpoints
@@ -253,6 +259,104 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
 
     // Check accessibility with modal open
     await expectNoAxeViolations(container);
+  });
+
+  it.each([
+    ['en', 'Older records do not cover all event fields', 'PARTIAL'],
+    ['it', 'I record precedenti non coprono tutti i campi degli eventi', 'PARZIALE']
+  ])('explains partial integrity coverage in %s without a full pass', async (language, explanation, status) => {
+    await i18n.changeLanguage(language);
+    verificationState = {
+      ...mockVerification,
+      integrity_profile: 'legacy-partial',
+      legacy_canonical_events: 1,
+      canonical_v2_events: 1,
+      prefix_events_verified: 2
+    };
+    vi.stubGlobal('fetch', setupFetchMock());
+    renderAudit();
+    expect(await screen.findByText(status)).toBeInTheDocument();
+    await userEvent.setup().click(await screen.findByTestId('verify-chain-button'));
+
+    const card = await screen.findByTestId('verification-partial-card');
+    expect(card).toHaveTextContent(explanation);
+    expect(card).toHaveClass('border-warning/40');
+    expect(card).toHaveTextContent(language === 'en' ? 'Older-format events: 1' : 'Eventi nel formato precedente: 1');
+    expect(card).toHaveTextContent(language === 'en' ? 'Current-format events: 1' : 'Eventi nel formato corrente: 1');
+    expect(screen.queryByTestId('verification-pass-card')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('verification-tamper-card')).not.toBeInTheDocument();
+    await expectNoAxeViolations(document.body);
+  });
+
+  it('does not claim full coverage when an older server omits the coverage profile', async () => {
+    delete verificationState.integrity_profile;
+    vi.stubGlobal('fetch', setupFetchMock());
+    renderAudit();
+    expect(await screen.findByText('UNKNOWN')).toBeInTheDocument();
+    await userEvent.setup().click(await screen.findByTestId('verify-chain-button'));
+    expect(await screen.findByTestId('verification-unknown-card')).toHaveTextContent('Field coverage is unavailable');
+    expect(screen.queryByTestId('verification-pass-card')).not.toBeInTheDocument();
+  });
+
+  it('reports an empty ledger without claiming a verification pass', async () => {
+    verificationState = { valid: true, integrity_profile: 'empty', events_count: 0 };
+    eventsState = [];
+    vi.stubGlobal('fetch', setupFetchMock());
+    renderAudit();
+    expect(await screen.findByText('EMPTY')).toBeInTheDocument();
+    await userEvent.setup().click(await screen.findByTestId('verify-chain-button'));
+    expect(await screen.findByTestId('verification-empty-card')).toHaveTextContent('No audit events to verify');
+    expect(screen.queryByTestId('verification-pass-card')).not.toBeInTheDocument();
+  });
+
+  it('exports the complete partial-coverage report without a fabricated compliance seal', async () => {
+    verificationState = {
+      ...mockVerification,
+      integrity_profile: 'legacy-partial',
+      legacy_canonical_events: 1,
+      canonical_v2_events: 1,
+      prefix_events_verified: 2
+    };
+    vi.stubGlobal('fetch', setupFetchMock());
+    let exported: Blob | undefined;
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, {
+        createObjectURL: vi.fn((blob: Blob) => {
+          exported = blob;
+          return 'blob:audit-test';
+        })
+      })
+    );
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    renderAudit();
+    expect(await screen.findByText('PARTIAL')).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('export-audit-button'));
+    await user.click(await screen.findByTestId('export-json-button'));
+    expect(exported).toBeInstanceOf(Blob);
+    const content = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(exported!);
+    });
+    const bundle = JSON.parse(content);
+    expect(bundle.chain_verification).toEqual(verificationState);
+    expect(bundle).not.toHaveProperty('compliance_seal');
+  });
+
+  it('keeps failed integrity checks in the danger state regardless of profile', async () => {
+    verificationState = {
+      ...mockVerification,
+      valid: false,
+      integrity_profile: 'legacy-partial',
+      broken_at_sequence: 2
+    };
+    vi.stubGlobal('fetch', setupFetchMock());
+    renderAudit();
+    await userEvent.setup().click(await screen.findByTestId('verify-chain-button'));
+    expect(await screen.findByTestId('verification-tamper-card')).toHaveClass('border-danger/40');
+    expect(screen.queryByTestId('verification-pass-card')).not.toBeInTheDocument();
   });
 
   it('4. Opens Checkpoints Dialog and creates signed Ed25519 checkpoint', async () => {

@@ -75,6 +75,15 @@ export default function AuditRoute() {
   // Checkpoints list
   const checkpoints = checkpointData?.checkpoints || [];
 
+  const verificationCoverage =
+    verifyResult?.integrity_profile === 'empty' || verifyResult?.events_count === 0
+      ? 'empty'
+      : verifyResult?.integrity_profile === 'canonical-v2'
+        ? 'valid'
+        : verifyResult?.integrity_profile === 'legacy-partial'
+          ? 'partial'
+          : 'unknown';
+
   // Filtered events
   const filteredEvents = useMemo(() => {
     return events.filter((e) => {
@@ -143,7 +152,6 @@ export default function AuditRoute() {
   const handleExportJson = () => {
     const bundle = {
       export_timestamp: new Date().toISOString(),
-      compliance_seal: 'SHA256-HMAC-VERIFIED',
       chain_verification: verifyResult,
       total_events: filteredEvents.length,
       events: filteredEvents
@@ -336,14 +344,20 @@ export default function AuditRoute() {
         <Stat label={t('audit.stats.totalEvents')} value={events.length} hint="Immutable HMAC ledger" />
         <Stat
           label={t('audit.stats.chainStatus')}
-          value={!isPlatformAdmin || !verifyResult ? '—' : verifyResult.valid ? 'VALID' : 'BROKEN'}
+          value={
+            !isPlatformAdmin || !verifyResult
+              ? '—'
+              : !verifyResult.valid
+                ? 'BROKEN'
+                : t(`audit.stats.${verificationCoverage}Status`)
+          }
           hint={
             !isPlatformAdmin
               ? 'Verified by the platform administrator'
               : !verifyResult
                 ? 'Checking hash link...'
                 : verifyResult.valid
-                  ? t('audit.stats.validBadge')
+                  ? t(`audit.stats.${verificationCoverage}Badge`)
                   : `Broken at #${verifyResult.broken_at_sequence ?? '?'}`
           }
         />
@@ -412,22 +426,48 @@ export default function AuditRoute() {
             <Skeleton className="h-32 w-full rounded-lg" />
           ) : verifyResult?.valid ? (
             <div
-              className="p-4 rounded-xl border border-success/40 bg-success/10 space-y-2"
-              data-testid="verification-pass-card"
+              className={`p-4 rounded-xl border space-y-2 ${
+                verificationCoverage === 'valid'
+                  ? 'border-success/40 bg-success/10'
+                  : verificationCoverage === 'empty'
+                    ? 'border-border bg-surface'
+                    : 'border-warning/40 bg-warning/10'
+              }`}
+              data-testid={`verification-${verificationCoverage === 'valid' ? 'pass' : verificationCoverage}-card`}
             >
-              <div className="flex items-center space-x-2 text-success font-bold text-sm">
-                <ShieldCheck className="w-5 h-5 flex-shrink-0" />
-                <span>{t('audit.verifyModal.validHeadline')}</span>
+              <div
+                className={`flex items-center space-x-2 font-bold text-sm ${
+                  verificationCoverage === 'valid'
+                    ? 'text-success'
+                    : verificationCoverage === 'empty'
+                      ? 'text-content'
+                      : 'text-warning'
+                }`}
+              >
+                {verificationCoverage === 'valid' ? (
+                  <ShieldCheck className="w-5 h-5 flex-shrink-0" />
+                ) : (
+                  <ShieldAlert className="w-5 h-5 flex-shrink-0" />
+                )}
+                <span>{t(`audit.verifyModal.${verificationCoverage}Headline`)}</span>
               </div>
-              <p className="text-xs text-muted leading-relaxed">{t('audit.verifyModal.validDesc')}</p>
+              <p className="text-xs text-muted leading-relaxed">{t(`audit.verifyModal.${verificationCoverage}Desc`)}</p>
               <div className="pt-2 border-t border-border/50 text-xs font-mono text-muted space-y-1">
                 <div>{t('audit.verifyModal.eventsCount', { count: verifyResult.events_count ?? events.length })}</div>
-                <div>
-                  {t('audit.verifyModal.range', {
-                    first: verifyResult.first_sequence ?? 1,
-                    last: verifyResult.last_sequence ?? events.length
-                  })}
-                </div>
+                {verificationCoverage !== 'empty' && (
+                  <div>
+                    {t('audit.verifyModal.range', {
+                      first: verifyResult.first_sequence ?? 1,
+                      last: verifyResult.last_sequence ?? events.length
+                    })}
+                  </div>
+                )}
+                {verifyResult.legacy_canonical_events != null && (
+                  <div>{t('audit.verifyModal.legacyCount', { count: verifyResult.legacy_canonical_events })}</div>
+                )}
+                {verifyResult.canonical_v2_events != null && (
+                  <div>{t('audit.verifyModal.canonicalCount', { count: verifyResult.canonical_v2_events })}</div>
+                )}
               </div>
             </div>
           ) : (

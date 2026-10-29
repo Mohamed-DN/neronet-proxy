@@ -198,6 +198,10 @@ export interface AuditEvent {
 
 export interface AuditVerificationResult {
   valid: boolean;
+  integrity_profile?: 'canonical-v2' | 'legacy-partial' | 'empty';
+  legacy_canonical_events?: number;
+  canonical_v2_events?: number;
+  prefix_events_verified?: number;
   events_count?: number;
   first_sequence?: number;
   last_sequence?: number;

@@ -47,6 +47,10 @@ function acceptLegacy() {
   return String(process.env.SOVEREIGN_AUDIT_ACCEPT_LEGACY || 'true').toLowerCase() !== 'false';
 }
 
+function acceptLegacyCanonical() {
+  return String(process.env.SOVEREIGN_AUDIT_ACCEPT_LEGACY_CANONICAL || 'true').toLowerCase() !== 'false';
+}
+
 // ---------------------------------------------------------------------------
 // Checkpoint signing key
 // ---------------------------------------------------------------------------
@@ -135,6 +139,43 @@ function metadataObject(value) {
  * Deterministically serialize audit event fields for hashing.
  */
 function canonicalizeEvent(event) {
+  const version = Number(event.canonical_version ?? 1);
+  if (version === 2) {
+    if (event.id === undefined || event.id === null || !event.hmac_key_id)
+      throw new Error('Canonical audit v2 requires a stored identifier and HMAC key identity');
+    const nullable = (value) => (value === null || value === undefined ? null : String(value));
+    // New writes use millisecond Date values. PostgreSQL verification additionally
+    // reads the complete microsecond timestamp, so sub-millisecond edits are visible.
+    const timestamp =
+      event.canonical_created_at || new Date(event.created_at).toISOString().replace(/\.(\d{3})Z$/, '.$1000Z');
+    if (typeof event.canonical_metadata_json !== 'string')
+      throw new Error('Canonical audit v2 requires its authenticated metadata text');
+    // Sign the exact text used for the JSONB insert. Verification compares the
+    // authenticated text to JSONB in PostgreSQL after checking the MAC, so pg's
+    // JavaScript number decoding cannot hide high-precision numeric alterations.
+    return canonicalJson([
+      'neronet.audit.event',
+      2,
+      String(event.id),
+      String(event.sequence_num),
+      String(event.prev_hash),
+      nullable(event.event_type),
+      nullable(event.severity),
+      nullable(event.actor_user_id),
+      nullable(event.actor_username),
+      nullable(event.target_id),
+      nullable(event.target_type),
+      nullable(event.message),
+      nullable(event.ip_address),
+      nullable(event.user_agent),
+      timestamp,
+      event.canonical_metadata_json,
+      String(event.hmac_key_id)
+    ]);
+  }
+  if (version !== 1) throw new Error('Unsupported audit canonical version');
+  // Historical bytes must remain unchanged: old hashes cannot be repaired by
+  // rehashing them and pretending the omitted fields had originally been signed.
   const createdAt = event.created_at instanceof Date ? event.created_at.toISOString() : String(event.created_at);
 
   let metadataStr;
@@ -225,7 +266,11 @@ class AuditChainService {
       }
 
       const now = new Date();
+      const identifier = await client.query("SELECT nextval(pg_get_serial_sequence('audit_events', 'id')) AS id");
+      const normalizedMetadata = metadataObject(metadata);
       const eventRecord = {
+        id: identifier.rows[0].id,
+        canonical_version: 2,
         sequence_num: nextSeq,
         prev_hash: prevHash,
         event_type: eventType,
@@ -238,7 +283,8 @@ class AuditChainService {
         ip_address: ipAddress,
         user_agent: userAgent,
         created_at: now,
-        metadata_json: metadataObject(metadata),
+        metadata_json: normalizedMetadata,
+        canonical_metadata_json: canonicalJson(normalizedMetadata),
         hmac_key_id: keyIdFor(DEFAULT_HMAC_SECRET)
       };
 
@@ -250,8 +296,8 @@ class AuditChainService {
            sequence_num, prev_hash, entry_hash,
            event_type, severity, actor_user_id, actor_username,
            target_id, target_type, message, ip_address, user_agent,
-           metadata_json, created_at, hmac_key_id
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+           metadata_json, created_at, hmac_key_id, id, canonical_version, canonical_metadata_json
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          RETURNING *`,
         [
           eventRecord.sequence_num,
@@ -266,9 +312,12 @@ class AuditChainService {
           eventRecord.message,
           eventRecord.ip_address,
           eventRecord.user_agent,
-          JSON.stringify(eventRecord.metadata_json),
+          eventRecord.canonical_metadata_json,
           eventRecord.created_at,
-          eventRecord.hmac_key_id
+          eventRecord.hmac_key_id,
+          eventRecord.id,
+          eventRecord.canonical_version,
+          eventRecord.canonical_metadata_json
         ]
       );
 
@@ -292,8 +341,38 @@ class AuditChainService {
    * signed checkpoints, a truncated tail or a chain rewritten from the start.
    */
   static async verifyChain({ fromSequence = 1, toSequence = null, secret = DEFAULT_HMAC_SECRET, pool = null } = {}) {
-    const activePool = pool || getPgPool();
-    let queryText = `SELECT * FROM audit_events WHERE sequence_num >= $1`;
+    const client = await (pool || getPgPool()).connect();
+    let connectionError = null;
+    const onError = (error) => {
+      connectionError = error;
+    };
+    client.on('error', onError);
+    try {
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const report = await AuditChainService.verifySnapshot(client, { fromSequence, toSequence, secret });
+      await client.query('COMMIT');
+      return report;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.removeListener('error', onError);
+      client.release(connectionError || undefined);
+    }
+  }
+
+  static async verifySnapshot(activePool, { fromSequence = 1, toSequence = null, secret = DEFAULT_HMAC_SECRET } = {}) {
+    // Borrowed clients (including recovery proof) retain transaction ownership.
+    // Never silently fall back to independent read-committed query snapshots.
+    const mode = (
+      await activePool.query(`SELECT current_setting('transaction_isolation') AS isolation,
+      current_setting('transaction_read_only') AS read_only`)
+    ).rows[0];
+    if (!['repeatable read', 'serializable'].includes(mode.isolation) || mode.read_only !== 'on')
+      throw new Error('Audit verification requires a caller-owned repeatable read, read-only snapshot');
+    let queryText = `SELECT *,
+      to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS canonical_created_at
+      FROM audit_events WHERE sequence_num >= $1`;
     const params = [fromSequence];
 
     if (toSequence !== null) {
@@ -317,7 +396,16 @@ class AuditChainService {
 
     // Where the range starts: the genesis hash, or the hash of the event before it.
     let expectedPrevHash = GENESIS_HASH;
+    let prefix = null;
     if (fromSequence > 1) {
+      // Validate the complete prefix in this same snapshot. A range must not
+      // hide a format downgrade or tampered anchor just before its first row.
+      prefix = await AuditChainService.verifySnapshot(activePool, {
+        fromSequence: 1,
+        toSequence: fromSequence - 1,
+        secret
+      });
+      if (!prefix.valid) return prefix;
       const prevRes = await activePool.query('SELECT entry_hash FROM audit_events WHERE sequence_num = $1', [
         fromSequence - 1
       ]);
@@ -331,6 +419,10 @@ class AuditChainService {
     const legacyAllowed = acceptLegacy() && fromSequence === 1;
     let seenCurrent = false;
     let legacyEvents = 0;
+    let seenV2 = Boolean(prefix?.canonical_v2_events);
+    let legacyCanonicalEvents = 0;
+    let canonicalV2Events = 0;
+    const authenticatedMetadata = [];
     let expectedSeq = fromSequence;
 
     for (const row of events) {
@@ -345,6 +437,22 @@ class AuditChainService {
           expected_prev_hash: expectedPrevHash,
           actual_prev_hash: row.prev_hash
         });
+      }
+
+      const version = Number(row.canonical_version);
+      if (version !== 1 && version !== 2)
+        return broken(seq, row, 'UNKNOWN_CANONICAL_VERSION', `Unsupported audit format at sequence ${seq}`);
+      if (version === 1) {
+        if (!acceptLegacyCanonical())
+          return broken(seq, row, 'LEGACY_CANONICAL_FORMAT', `Event ${seq} uses the retired partial format`);
+        legacyCanonicalEvents++;
+      } else {
+        if (!row.hmac_key_id)
+          return broken(seq, row, 'UNKNOWN_KEY', `Canonical v2 event ${seq} requires the audit HMAC key`);
+        seenV2 = true;
+        canonicalV2Events++;
+        if (typeof row.canonical_metadata_json !== 'string')
+          return broken(seq, row, 'HASH_TAMPERED', `Canonical metadata is missing at sequence ${seq}`);
       }
 
       let key;
@@ -369,6 +477,9 @@ class AuditChainService {
         legacyEvents++;
       }
 
+      if (version === 1 && seenV2)
+        return broken(seq, row, 'CANONICAL_DOWNGRADE', `Legacy audit format follows version 2 at sequence ${seq}`);
+
       const computed = computeEventHash(row, key);
       if (row.entry_hash !== computed) {
         return broken(seq, row, 'HASH_TAMPERED', `Tampered event content detected at sequence ${seq}`, {
@@ -376,9 +487,34 @@ class AuditChainService {
           actual_hash: row.entry_hash
         });
       }
+      if (version === 2)
+        authenticatedMetadata.push({ id: String(row.id), sequence: seq, text: row.canonical_metadata_json });
 
       expectedPrevHash = row.entry_hash;
       expectedSeq++;
+    }
+
+    // Only authenticated strings are cast. Batch comparisons preserve JSON types
+    // and PostgreSQL numeric precision without a round-trip through JS Number.
+    for (let offset = 0; offset < authenticatedMetadata.length; offset += 1000) {
+      const batch = authenticatedMetadata.slice(offset, offset + 1000);
+      const comparison = await activePool.query(
+        `SELECT e.id,
+        e.metadata_json IS NOT DISTINCT FROM signed.text::jsonb AS matches
+        FROM unnest($1::bigint[], $2::text[]) AS signed(id,text)
+        JOIN audit_events e ON e.id=signed.id`,
+        [batch.map((row) => row.id), batch.map((row) => row.text)]
+      );
+      const matches = new Map(comparison.rows.map((row) => [String(row.id), row.matches]));
+      for (const row of batch) {
+        if (matches.get(row.id) !== true)
+          return broken(
+            row.sequence,
+            { id: row.id },
+            'HASH_TAMPERED',
+            `Audit metadata differs from authenticated content at sequence ${row.sequence}`
+          );
+      }
     }
 
     // Anchor against the checkpoints this server signed. Checkpoints whose signature
@@ -408,7 +544,7 @@ class AuditChainService {
         );
       }
       const row = bySeq.get(cpSeq);
-      if (!row || row.entry_hash !== cp.checkpoint_hash) {
+      if (!row || String(row.id) !== String(cp.last_event_id) || row.entry_hash !== cp.checkpoint_hash) {
         return broken(cpSeq, row, 'CHECKPOINT_MISMATCH', `Event ${cpSeq} differs from the signed checkpoint`);
       }
       checkpointsVerified++;
@@ -418,6 +554,9 @@ class AuditChainService {
       return {
         valid: true,
         events_count: 0,
+        legacy_canonical_events: 0,
+        canonical_v2_events: 0,
+        integrity_profile: 'empty',
         checkpoints_verified: checkpointsVerified,
         checkpoints_unverifiable: checkpointsUnverifiable,
         message: 'No events to verify in specified range'
@@ -431,6 +570,10 @@ class AuditChainService {
       last_sequence: lastSeq,
       head_hash: events[events.length - 1].entry_hash,
       legacy_events: legacyEvents,
+      legacy_canonical_events: legacyCanonicalEvents,
+      canonical_v2_events: canonicalV2Events,
+      integrity_profile: legacyCanonicalEvents || prefix?.legacy_canonical_events ? 'legacy-partial' : 'canonical-v2',
+      prefix_events_verified: prefix?.events_count || 0,
       checkpoints_verified: checkpointsVerified,
       checkpoints_unverifiable: checkpointsUnverifiable
     };
