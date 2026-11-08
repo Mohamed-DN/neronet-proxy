@@ -251,16 +251,19 @@ func (m *FallbackManager) checkPeer(ctx context.Context, p *PeerPath, relayURLs 
 		return // no relay to fall back to
 	}
 
-	log.Printf("[DERP-FALLBACK] Direct path to peer %x silent for %.1fs — engaging relay %s",
-		p.peerPubKey[:4], time.Since(p.lastDirect).Seconds(), relayURLs[0])
-
-	c := NewClient(relayURLs[0], m.selfPubKey, m.onRelayPacket, nil)
-
-	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	if err := c.Connect(dialCtx); err != nil {
-		log.Printf("[DERP-FALLBACK] Relay connect to %s failed: %v", relayURLs[0], err)
+	var c *Client
+	for _, relayURL := range relayURLs {
+		candidate := NewClient(relayURL, m.selfPubKey, m.onRelayPacket, nil)
+		dialCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		err := candidate.Connect(dialCtx)
+		cancel()
+		if err == nil {
+			c = candidate
+			break
+		}
+		_ = candidate.Close()
+	}
+	if c == nil {
 		return
 	}
 
@@ -271,5 +274,5 @@ func (m *FallbackManager) checkPeer(ctx context.Context, p *PeerPath, relayURLs 
 	m.clients = append(m.clients, c)
 	m.mu.Unlock()
 
-	log.Printf("[DERP-FALLBACK] Relay engaged for peer %x via %s", p.peerPubKey[:4], relayURLs[0])
+	log.Printf("[DERP-FALLBACK] Relay engaged for peer %x", p.peerPubKey[:4])
 }

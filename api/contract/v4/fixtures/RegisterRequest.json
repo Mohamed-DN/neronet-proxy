@@ -23,6 +23,13 @@
     "max_bandwidth_kbps": 100000,
     "max_concurrent_streams": 100,
     "allow_udp": true,
-    "ac_power_only": true
+    "ac_power_only": true,
+    "transports": [
+      "udp",
+      "derp"
+    ],
+    "capabilities": [
+      "derp-v2"
+    ]
   }
 }

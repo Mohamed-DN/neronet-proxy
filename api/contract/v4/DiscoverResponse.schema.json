@@ -6,6 +6,18 @@
         "enabled": {
           "type": "boolean"
         },
+        "transports": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "country_code": {
           "type": "string"
         },

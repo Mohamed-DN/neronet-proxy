@@ -129,6 +129,15 @@ func NewClient(serverURL string) *Client {
 	}
 }
 
+// TransportTLSConfig reuses the installation CA for its sovereign relays. The
+// returned clone contains trust configuration only, never the node credential.
+func (c *Client) TransportTLSConfig() *tls.Config {
+	if t, ok := c.httpClient.Transport.(*http.Transport); ok && t.TLSClientConfig != nil {
+		return t.TLSClientConfig.Clone()
+	}
+	return nil
+}
+
 // NewClientWithCA is NewClient for a control plane whose TLS certificate is signed by
 // the CA in caPEM rather than by one the system trusts: a deployment's own CA, or the
 // development CA scripts/dev/gen-certs.sh writes.
@@ -236,6 +245,7 @@ func (c *Client) SendHeartbeatWithPosture(
 	bat uint32,
 	onBat bool,
 	post *posture.PeerAttestation,
+	decorate ...func(*HeartbeatRequest),
 ) (*HeartbeatResponse, error) {
 	telemetry, err := c.nativeTelemetry()
 	if err != nil {
@@ -254,6 +264,11 @@ func (c *Client) SendHeartbeatWithPosture(
 		OnBatteryPower:  onBat,
 		RTTMillis:       c.lastRTTMillis(),
 		Posture:         post,
+	}
+	for _, add := range decorate {
+		if add != nil {
+			add(&reqBody)
+		}
 	}
 
 	req, err := c.newRequest(ctx, "/v4/control/heartbeat", reqBody)

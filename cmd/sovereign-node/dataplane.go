@@ -16,6 +16,7 @@ import (
 	"github.com/sovereign/proxy/v4/pkg/crypto"
 	"github.com/sovereign/proxy/v4/pkg/crypto/pskepoch"
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
+	"github.com/sovereign/proxy/v4/pkg/transport"
 )
 
 // dataplaneOptions is everything the data plane needs from main.
@@ -145,6 +146,24 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		Verbose: true,
 		Logf:    log.Printf,
 	}
+	activeDoc := fetched
+	if activeDoc == nil && stored != nil && stored.Netmap != nil {
+		doc := stored.Netmap
+		if doc.MaxStalenessSeconds <= 0 || time.Since(documentTime(doc, time.Unix(stored.FetchedAtUnix, 0))) < time.Duration(doc.MaxStalenessSeconds)*time.Second {
+			activeDoc = doc
+		}
+	}
+	allowed, relays, err := documentTransports(activeDoc)
+	if err != nil {
+		return nil, err
+	}
+	trCfg := transport.Config{PrivateKey: opts.Keypair.PrivateKey, SelfKey: opts.Keypair.PublicKey, Relays: relays, Logf: log.Printf}
+	if opts.Control != nil {
+		trCfg.TLSConfig = opts.Control.TransportTLSConfig()
+	}
+	if activeDoc != nil || len(spike.Peers) == 0 {
+		cfg.TransportMux = transport.NewMux(trCfg, allowed)
+	}
 
 	dev, err := dataplane.New(cfg)
 	if err != nil {
@@ -154,22 +173,10 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 	log.Printf("[SOVEREIGN-NODE] Data plane up in %s mode on %v (wireguard public key %s, udp port %d, mtu %d, enforcement on)",
 		dev.Mode(), dev.Addresses(), hex.EncodeToString(opts.Keypair.PublicKey[:]), cfg.ListenPort, cfg.MTU)
 
-	// The relay packet handler forwards packets received over a DERP relay back
-	// into the WireGuard device. Because the payload is already a WireGuard
-	// encrypted datagram, it is passed verbatim — the relay is fully opaque.
-	onRelayPacket := func(_ [32]byte, payload []byte) {
-		// Inject the relay-delivered datagram into the device's read path.
-		// The device will authenticate it like any other WireGuard packet;
-		// a tampered or replayed datagram will be silently dropped.
-		if err := dev.InjectRelayPacket(payload); err != nil {
-			log.Printf("[DERP-FALLBACK] Failed to inject relay packet: %v", err)
-		}
-	}
-
 	manager := newNetmapManager(
 		opts.Control, dev, opts.Netfilter, opts.IdentityPath,
 		cfg.ListenPort, opts.StunServer,
-		opts.Keypair.PublicKey, onRelayPacket,
+		opts.Keypair.PublicKey, nil,
 	)
 
 	pskManager := pskepoch.NewManager(dev, opts.Keypair, pskepoch.DefaultRotationInterval)
@@ -231,6 +238,7 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 
 	loopCtx, stopLoops := context.WithCancel(ctx)
 	go manager.WatchStaleness(loopCtx, stalenessCheckInterval)
+	go dev.WatchAuthenticatedPaths(loopCtx, 200*time.Millisecond)
 	go reportDrops(loopCtx, dev, dropReportInterval)
 	if spike.ProbeTarget != "" {
 		go probeLoop(loopCtx, dev, spike)
@@ -238,13 +246,11 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 
 	// Start the DERP fallback manager now that loopCtx is available. It is a
 	// no-op until the first netmap populates relay URLs.
-	manager.fallback.Start(loopCtx)
 	pskManager.Start(loopCtx)
 
 	return func() {
 		stopLoops()
 		pskManager.Stop()
-		manager.fallback.Stop()
 		if echo != nil {
 			_ = echo.Close()
 		}

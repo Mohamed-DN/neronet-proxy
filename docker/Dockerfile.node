@@ -8,6 +8,7 @@ WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 
+COPY internal ./internal
 COPY pkg ./pkg
 COPY cmd ./cmd
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-node ./cmd/sovereign-node \

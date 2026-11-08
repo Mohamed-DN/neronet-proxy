@@ -160,6 +160,18 @@
         },
         "name": {
           "type": "string"
+        },
+        "allowed_transports": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "relay_homes": {
+          "items": {
+            "$ref": "#/$defs/RelayHome"
+          },
+          "type": "array"
         }
       },
       "additionalProperties": false,
@@ -288,6 +300,42 @@
         "end"
       ]
     },
+    "RelayCandidate": {
+      "properties": {
+        "relay_id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "capability": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "relay_id",
+        "url",
+        "capability"
+      ]
+    },
+    "RelayHome": {
+      "properties": {
+        "relay_id": {
+          "type": "string"
+        },
+        "observed_at_unix": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "relay_id",
+        "observed_at_unix"
+      ]
+    },
     "RoutingPeerSpec": {
       "properties": {
         "node_id": {
@@ -398,6 +446,21 @@
     },
     "max_staleness_seconds": {
       "type": "integer"
+    },
+    "transport_policy_version": {
+      "type": "string"
+    },
+    "allowed_transports": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "relay_candidates": {
+      "items": {
+        "$ref": "#/$defs/RelayCandidate"
+      },
+      "type": "array"
     }
   },
   "additionalProperties": false,

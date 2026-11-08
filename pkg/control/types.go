@@ -53,7 +53,9 @@ func (e *EndpointDesc) UnmarshalJSON(data []byte) error {
 
 // CapabilityDesc describes exit bridge capabilities
 type CapabilityDesc struct {
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled      bool     `json:"enabled,omitempty"`
+	Transports   []string `json:"transports,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
 
 	// CountryCode is declared by the operator, not measured. The node has no way to
 	// establish where it is.
@@ -167,6 +169,40 @@ type HeartbeatRequest struct {
 	RTTMillis uint32 `json:"rtt_ms,omitempty"`
 
 	Posture *posture.PeerAttestation `json:"posture,omitempty"`
+
+	// The version makes an absent/empty homes list an explicit withdrawal. Legacy
+	// nodes omit the version and remain UDP-only.
+	TransportReportVersion string                `json:"transport_report_version,omitempty"`
+	RelayHomes             []RelayHome           `json:"relay_homes,omitempty"`
+	PeerPaths              []PeerPathObservation `json:"peer_paths,omitempty"`
+}
+
+type RelayHome struct {
+	RelayID        string `json:"relay_id"`
+	ObservedAtUnix int64  `json:"observed_at_unix"`
+}
+
+// PeerPathObservation is reported by the node, from authenticated WireGuard state.
+// WG counters cover the session across paths; they are not relay byte counters.
+// They are cumulative uint64 values sent as decimal strings, as NativeTelemetry
+// does: the control plane is JavaScript, and a JSON number above 2^53 is rounded.
+type PeerPathObservation struct {
+	PeerID            string   `json:"peer_id"`
+	Transport         string   `json:"transport,omitempty"`
+	RelayID           string   `json:"relay_id,omitempty"`
+	LastHandshakeUnix *int64   `json:"last_handshake_unix" jsonschema:"nullable"`
+	WGRxBytes         string   `json:"wg_rx_bytes"`
+	WGTxBytes         string   `json:"wg_tx_bytes"`
+	ObservedAtUnix    int64    `json:"observed_at_unix"`
+	State             string   `json:"state"`
+	Reason            string   `json:"reason,omitempty"`
+	RTTMillis         *float64 `json:"rtt_ms" jsonschema:"nullable"`
+}
+
+type RelayCandidate struct {
+	RelayID    string `json:"relay_id"`
+	URL        string `json:"url"`
+	Capability string `json:"capability"`
 }
 
 type HeartbeatResponse struct {
@@ -366,7 +402,9 @@ type NetmapPeer struct {
 	DNSName string `json:"dns_name,omitempty"`
 
 	// Name is the peer's short name.
-	Name string `json:"name,omitempty"`
+	Name              string      `json:"name,omitempty"`
+	AllowedTransports []string    `json:"allowed_transports,omitempty"`
+	RelayHomes        []RelayHome `json:"relay_homes,omitempty"`
 }
 
 // NetmapResponse is the document. When Unchanged is true the node already holds this
@@ -391,4 +429,10 @@ type NetmapResponse struct {
 	// MaxStalenessSeconds is how long the node may keep running on this document
 	// with the control plane unreachable. Past it the node removes every peer.
 	MaxStalenessSeconds int64 `json:"max_staleness_seconds,omitempty"`
+
+	// Versioned policy distinguishes an empty deny-all set from a legacy UDP-only
+	// document. Relay candidates come only from installation configuration.
+	TransportPolicyVersion string           `json:"transport_policy_version,omitempty"`
+	AllowedTransports      []string         `json:"allowed_transports,omitempty"`
+	RelayCandidates        []RelayCandidate `json:"relay_candidates,omitempty"`
 }

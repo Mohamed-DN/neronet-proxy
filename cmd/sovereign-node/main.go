@@ -15,12 +15,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sovereign/proxy/v4/internal/derpwire"
 	"github.com/sovereign/proxy/v4/pkg/acl"
 	"github.com/sovereign/proxy/v4/pkg/bridge"
 	"github.com/sovereign/proxy/v4/pkg/config"
 	"github.com/sovereign/proxy/v4/pkg/control"
 	"github.com/sovereign/proxy/v4/pkg/crypto"
 	"github.com/sovereign/proxy/v4/pkg/posture"
+	"github.com/sovereign/proxy/v4/pkg/transport"
 )
 
 const ClientVersion = "v4.0.0"
@@ -218,7 +220,7 @@ func main() {
 					hbStart := time.Now()
 					hbCtx, hbCancel := context.WithTimeout(ctx, 5*time.Second)
 					hbResp, hbErr := ctrlClient.SendHeartbeatWithPosture(
-						hbCtx, nodeID, netmaps.endpoints(), 0, cpuPctUnmeasured, memoryMB, batteryPctUnmeasured, false, att,
+						hbCtx, nodeID, netmaps.endpoints(), 0, cpuPctUnmeasured, memoryMB, batteryPctUnmeasured, false, att, netmaps.transportReport,
 					)
 					hbCancel()
 					globalNodeMetrics.RecordHeartbeat(time.Since(hbStart), hbErr == nil, hbResp != nil && hbResp.IsQuarantined)
@@ -377,8 +379,10 @@ func capability(enableExit bool, countryCode string, maxBandwidthKbps int) contr
 	}
 
 	return control.CapabilityDesc{
-		Enabled:     enableExit,
-		CountryCode: countryCode,
+		Transports:   transport.Built(),
+		Capabilities: []string{derpwire.Capability},
+		Enabled:      enableExit,
+		CountryCode:  countryCode,
 		// The node cannot tell a residential line from a data centre one. UNKNOWN is
 		// in the schema's CHECK constraint precisely for this.
 		IPClass:          "UNKNOWN",

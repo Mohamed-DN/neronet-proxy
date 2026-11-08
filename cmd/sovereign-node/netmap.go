@@ -20,6 +20,7 @@ import (
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
 	"github.com/sovereign/proxy/v4/pkg/derp"
 	"github.com/sovereign/proxy/v4/pkg/nat"
+	"github.com/sovereign/proxy/v4/pkg/transport"
 )
 
 // The node's side of the netmap.
@@ -66,6 +67,7 @@ type netmapManager struct {
 	// fallback, when non-nil, is the DERP relay fallback manager. It is updated
 	// with fresh relay URLs every time a netmap is applied.
 	fallback *derp.FallbackManager
+	mux      *transport.Mux
 
 	// psk, when non-nil, rotates each peer's pre-shared key (classical; see pkg/crypto/pskepoch).
 	psk *pskepoch.Manager
@@ -73,8 +75,9 @@ type netmapManager struct {
 	mu sync.Mutex
 	// version is the version of the document currently applied. Zero means none has
 	// been applied and the node is at default deny.
-	version uint64
-	peers   []control.NetmapPeer
+	version           uint64
+	peers             []control.NetmapPeer
+	transportDocument *control.NetmapResponse
 	// confirmedAt is the last moment the control plane was known to be reachable:
 	// the document's generated_at when it was applied, and then every heartbeat it
 	// answers.
@@ -187,7 +190,10 @@ func newNetmapManager(
 	selfPubKey [derp.PubKeySize]byte,
 	onRelayPacket derp.PacketHandler,
 ) *netmapManager {
-	fb := derp.NewFallbackManager(nil /* relay URLs come from the first netmap */, selfPubKey, onRelayPacket)
+	var mux *transport.Mux
+	if dev != nil {
+		mux = dev.TransportMux()
+	}
 	return &netmapManager{
 		client:     client,
 		dev:        dev,
@@ -195,7 +201,7 @@ func newNetmapManager(
 		path:       netmapPathFor(identityPath),
 		listenPort: listenPort,
 		stunServer: stunServer,
-		fallback:   fb,
+		mux:        mux,
 		revoked:    make(map[string]uint64),
 	}
 }
@@ -316,9 +322,19 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 		}
 	}
 
-	peers, dropped, err := netmapPeers(netmap.Peers, revoked)
+	peers, dropped, err := netmapPeers(netmap.Peers, revoked, netmap)
 	if err != nil {
 		return err
+	}
+	peers, dropped = m.enforceable(peers, dropped, netmap)
+	if m.mux != nil {
+		allowed, relays, err := documentTransports(netmap)
+		if err != nil {
+			return err
+		}
+		if err := m.dev.ReconfigureTransports(allowed, relays); err != nil {
+			return err
+		}
 	}
 
 	if err := m.dev.SetPeers(peers); err != nil {
@@ -333,6 +349,7 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 	m.mu.Lock()
 	m.version = netmap.Version
 	m.peers = netmap.Peers
+	m.transportDocument = netmap
 	m.confirmedAt = latest(documentTime(netmap, fetchedAt), m.confirmedAt)
 	m.maxStaleness = netmap.MaxStalenessSeconds
 	m.failClosed = false
@@ -405,19 +422,36 @@ func (m *netmapManager) ApplyRevocations(keys []string, atVersion uint64) {
 		revoked[k] = v
 	}
 	current := m.peers
+	doc := m.transportDocument
 	m.mu.Unlock()
 
-	peers, dropped, err := netmapPeers(current, revoked)
+	peers, dropped, err := netmapPeers(current, revoked, doc)
 	if err != nil {
 		log.Printf("[SOVEREIGN-NODE] Could not rebuild the peer set after a revocation: %v", err)
 		return
 	}
+	peers, dropped = m.enforceable(peers, dropped, doc)
 	if err := m.dev.SetPeers(peers); err != nil {
 		log.Printf("[SOVEREIGN-NODE] Could not apply %d revocation(s) to the data plane: %v", newly, err)
 		return
 	}
 
 	log.Printf("[SOVEREIGN-NODE] %d peer key(s) revoked: %d peer(s) remain%s", newly, len(peers), droppedNote(dropped))
+}
+
+// enforceable drops every peer when the document carries a transport policy and the
+// data plane has no multiplexer to enforce it with. That device is the plain UDP
+// Bind of a spike lab start: it would carry each peer over UDP whatever the policy
+// says, while the node has told the control plane it enforces derp-v2.
+func (m *netmapManager) enforceable(peers []dataplane.Peer, dropped []string, doc *control.NetmapResponse) ([]dataplane.Peer, []string) {
+	if m.mux != nil || doc == nil || doc.TransportPolicyVersion == "" || len(peers) == 0 {
+		return peers, dropped
+	}
+	log.Printf("[SOVEREIGN-NODE] Transport policy %q cannot be enforced: the data plane started without the transport multiplexer; carrying no peer until the node restarts", doc.TransportPolicyVersion)
+	for _, p := range peers {
+		dropped = append(dropped, fmt.Sprintf("%.8s unenforceable transport policy", p.PublicKey))
+	}
+	return nil, dropped
 }
 
 // EnforceStaleness removes every peer once the applied document is older than the
@@ -440,6 +474,9 @@ func (m *netmapManager) EnforceStaleness(now time.Time) bool {
 	if err := m.dev.SetPeers(nil); err != nil {
 		log.Printf("[SOVEREIGN-NODE] Could not remove peers after the netmap went stale: %v", err)
 		return false
+	}
+	if m.mux != nil {
+		_ = m.dev.ReconfigureTransports(nil, nil)
 	}
 
 	log.Printf("[SOVEREIGN-NODE] The control plane has been unreachable for %s, past the %s staleness bound: every peer removed (fail-closed)",
@@ -576,7 +613,7 @@ func normaliseKey(key string) string {
 // It returns the peers it dropped rather than silently omitting them: a revoked peer
 // and a malformed one mean very different things, and a node that quietly carries
 // fewer peers than the control plane sent is a node nobody can debug.
-func netmapPeers(in []control.NetmapPeer, revoked map[string]uint64) (peers []dataplane.Peer, dropped []string, err error) {
+func netmapPeers(in []control.NetmapPeer, revoked map[string]uint64, documents ...*control.NetmapResponse) (peers []dataplane.Peer, dropped []string, err error) {
 	for i, p := range in {
 		key := normaliseKey(p.PublicKeyHex)
 		if _, isRevoked := revoked[key]; isRevoked {
@@ -610,7 +647,12 @@ func netmapPeers(in []control.NetmapPeer, revoked map[string]uint64) (peers []da
 			}
 		}
 
+		paths, err := peerTransportPaths(p, documents...)
+		if err != nil {
+			return nil, nil, err
+		}
 		peers = append(peers, dataplane.Peer{
+			Paths:               paths,
 			PublicKey:           key,
 			Endpoint:            endpoint,
 			AllowedIPs:          allowed,

@@ -157,7 +157,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	s.router.Register(session)
 	defer func() {
-		s.router.Unregister(session.PublicKey())
+		s.router.UnregisterSession(session)
 		_ = session.Close()
 	}()
 

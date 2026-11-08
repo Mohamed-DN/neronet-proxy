@@ -35,6 +35,9 @@ import (
 
 	"github.com/sovereign/proxy/v4/pkg/dataplane/daita"
 	"github.com/sovereign/proxy/v4/pkg/dataplane/stealth"
+	"github.com/sovereign/proxy/v4/pkg/transport"
+	_ "github.com/sovereign/proxy/v4/pkg/transport/derp"
+	_ "github.com/sovereign/proxy/v4/pkg/transport/udp"
 )
 
 // Mode selects how the tunnel is attached to an IP stack.
@@ -83,7 +86,8 @@ var (
 
 // Config describes the local end of the tunnel.
 type Config struct {
-	Mode Mode
+	Mode         Mode
+	TransportMux *transport.Mux
 
 	// PrivateKey is the node's X25519 identity private key.
 	PrivateKey [32]byte
@@ -138,6 +142,7 @@ func (c *Config) applyDefaults() {
 
 // Peer is one reachable node in the overlay.
 type Peer struct {
+	Paths []transport.PathSpec `json:"paths,omitempty"`
 	// PublicKey is the peer's X25519 identity public key, hex encoded, exactly as
 	// the control plane stores it.
 	PublicKey string `json:"public_key"`
@@ -177,7 +182,7 @@ func (p Peer) validate() error {
 	if len(p.AllowedIPs) == 0 {
 		return fmt.Errorf("peer %.8s has no allowed IPs: it would never be selected for any packet", p.PublicKey)
 	}
-	if p.Endpoint != "" {
+	if p.Endpoint != "" && p.Endpoint != transport.NoEndpoint && p.Endpoint != transport.PeerEndpoint(p.PublicKey) {
 		if _, _, err := net.SplitHostPort(p.Endpoint); err != nil {
 			return fmt.Errorf("peer %.8s endpoint %q: %w", p.PublicKey, p.Endpoint, err)
 		}
@@ -211,9 +216,13 @@ type backend interface {
 //
 // It is safe for concurrent use. Close is idempotent.
 type Device struct {
-	mode      Mode
-	addresses []netip.Prefix
-	filter    *filteredTUN
+	mux           *transport.Mux
+	transportPort uint16
+	authMu        sync.Mutex
+	authPaths     map[string]PathStatus
+	mode          Mode
+	addresses     []netip.Prefix
+	filter        *filteredTUN
 
 	wg           *device.Device
 	backing      backend
@@ -287,6 +296,9 @@ func New(cfg Config) (*Device, error) {
 		_ = filtered.Close()
 		return nil, err
 	}
+	if cfg.TransportMux != nil {
+		bind = cfg.TransportMux
+	}
 	if cfg.Stealth != nil {
 		obf, err := stealth.NewObfuscator(*cfg.Stealth)
 		if err == nil {
@@ -311,14 +323,16 @@ func New(cfg Config) (*Device, error) {
 	}
 
 	return &Device{
-		mode:         cfg.Mode,
-		addresses:    append([]netip.Prefix(nil), cfg.Addresses...),
-		filter:       filtered,
-		wg:           wgDev,
-		backing:      back,
-		transportMgr: cfg.TransportMgr,
-		daitaShaper:  shaper,
-		counterEpoch: 1,
+		mux:           cfg.TransportMux,
+		transportPort: listenPort,
+		mode:          cfg.Mode,
+		addresses:     append([]netip.Prefix(nil), cfg.Addresses...),
+		filter:        filtered,
+		wg:            wgDev,
+		backing:       back,
+		transportMgr:  cfg.TransportMgr,
+		daitaShaper:   shaper,
+		counterEpoch:  1,
 	}, nil
 }
 
@@ -375,15 +389,46 @@ func (d *Device) SetPeers(peers []Peer) error {
 			return fmt.Errorf("dataplane: peer %d: public key %.8s appears twice", i, key)
 		}
 		seen[key] = struct{}{}
+		if d.mux != nil {
+			if err := d.mux.ValidatePeerPaths(p.PublicKey, p.Paths); err != nil {
+				return err
+			}
+		}
 	}
 
 	var b strings.Builder
+	current := map[string]string{}
+	if d.mux != nil {
+		// setMu is held: Peers would take it again and never return.
+		states, err := d.peersLocked()
+		if err != nil {
+			return err
+		}
+		for _, p := range states {
+			current[p.PublicKey] = p.Endpoint
+		}
+	}
 	for key := range d.peerKeys {
 		if _, stays := seen[key]; !stays {
+			if d.mux != nil {
+				d.mux.RemovePeer(key)
+			}
 			fmt.Fprintf(&b, "public_key=%s\nremove=true\n", key)
 		}
 	}
 	for _, p := range peers {
+		if d.mux != nil {
+			if err := d.mux.SetPeerPaths(p.PublicKey, p.Paths); err != nil {
+				return err
+			}
+			if address := current[p.PublicKey]; d.mux.PeerAllows(p.PublicKey, address) {
+				p.Endpoint = address
+			} else if len(p.Paths) > 0 {
+				p.Endpoint = transport.PeerEndpoint(p.PublicKey)
+			} else {
+				p.Endpoint = transport.NoEndpoint
+			}
+		}
 		fmt.Fprintf(&b, "public_key=%s\n", strings.ToLower(strings.TrimSpace(p.PublicKey)))
 		fmt.Fprintf(&b, "replace_allowed_ips=true\n")
 		for _, aip := range p.AllowedIPs {
@@ -549,11 +594,20 @@ func (d *Device) CounterSnapshot() ([]PeerStatus, uint64, error) {
 		return nil, 0, ErrClosed
 	}
 
+	peers, err := d.peersLocked()
+	if err != nil {
+		return nil, 0, err
+	}
+	return peers, d.counterEpoch, nil
+}
+
+// peersLocked reads the device's peers for a caller that already holds setMu.
+func (d *Device) peersLocked() ([]PeerStatus, error) {
 	raw, err := d.wg.IpcGet()
 	if err != nil {
-		return nil, 0, fmt.Errorf("dataplane: reading device state: %w", err)
+		return nil, fmt.Errorf("dataplane: reading device state: %w", err)
 	}
-	return parsePeerStatus(raw), d.counterEpoch, nil
+	return parsePeerStatus(raw), nil
 }
 
 func parsePeerStatus(raw string) []PeerStatus {

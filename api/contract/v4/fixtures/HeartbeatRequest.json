@@ -28,5 +28,39 @@
     "firewall_active": true,
     "is_rootless": true,
     "timestamp_utc": "2026-09-20T17:30:00Z"
-  }
+  },
+  "transport_report_version": "derp-v2",
+  "relay_homes": [
+    {
+      "relay_id": "relay-a",
+      "observed_at_unix": 1726940000
+    },
+    {
+      "relay_id": "relay-b",
+      "observed_at_unix": 1726940000
+    }
+  ],
+  "peer_paths": [
+    {
+      "peer_id": "pk_fedcba9876543210",
+      "transport": "derp",
+      "relay_id": "relay-a",
+      "last_handshake_unix": 1726939990,
+      "wg_rx_bytes": "18446744073709551615",
+      "wg_tx_bytes": "9007199254740993",
+      "observed_at_unix": 1726939995,
+      "state": "observed",
+      "rtt_ms": null
+    },
+    {
+      "peer_id": "pk_00000000000000aa",
+      "last_handshake_unix": null,
+      "wg_rx_bytes": "0",
+      "wg_tx_bytes": "0",
+      "observed_at_unix": 0,
+      "state": "no_path",
+      "reason": "policy_has_no_candidate",
+      "rtt_ms": null
+    }
+  ]
 }
