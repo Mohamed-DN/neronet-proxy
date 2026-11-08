@@ -1,10 +1,13 @@
 #!/bin/sh
-# Usage: stack.sh up | nodes | fleet | backup | down [compose args] | status | logs [compose args] [service]
+# Usage: stack.sh up | nodes | relays | fleet | backup | down [compose args] | status | logs [compose args] [service]
 #
 #   up      build and start postgres, valkey, backend and console, wait until healthy.
 #           The console is https://127.0.0.1:8443; certs/ca.crt is the CA to trust,
 #           written by gen-certs.sh on the first run
-#   nodes   start the two DERP relays and thirteen Go nodes (starts the core first if needed)
+#   nodes   start the thirteen Go nodes (starts the core first if needed)
+#   relays  (re)create the derp-v2 relays, default derp-a and derp-b, from the node image
+#           `nodes` built, leaving the running core alone. Each needs its certificate
+#           and credential under certs/relays/<name>/ first (the derp scenario does it)
 #   fleet   start the simulated fleet written by scripts/sim/fleet.mjs (see scripts/sim/README.md)
 #   backup  start the backup service and wait for its first backup (needs RESTIC_PASSWORD
 #           in .env: gen-env.sh --append-missing adds it to an older .env)
@@ -131,6 +134,15 @@ case "$cmd" in
     $COMPOSE --profile nodes build relay-de
     # shellcheck disable=SC2086
     $COMPOSE --profile nodes $UP_PROFILES up -d "$@"
+    ;;
+  relays)
+    need_env
+    # --no-deps: a relay depends on the console, and letting Compose reconcile it from
+    # here would recreate the running control plane. --force-recreate: a relay reads
+    # its credential only at start, and a rotated one must take effect.
+    [ "$#" -gt 0 ] || set -- derp-a derp-b
+    # shellcheck disable=SC2086
+    $COMPOSE --profile relays up -d --no-deps --force-recreate "$@"
     ;;
   fleet)
     need_env

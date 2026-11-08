@@ -672,7 +672,10 @@ case "$SCENARIO" in
       chmod 644 "certs/relays/$r/credential"
       rm -f "$WORK/relay.json"
     done
-    $COMPOSE --profile relays up -d --force-recreate derp-a derp-b
+    # Through stack.sh: it names the per-stack node image and the stack's ports. A bare
+    # `compose up` from here would reconcile the console and backend with the default
+    # ports and run the relays from a shared image tag.
+    sh "$REPO_ROOT/scripts/dev/stack.sh" relays derp-a derp-b
 
     org_policy '["udp","derp"]'
     wait_for "both relays homed on every node" homes_ready || rc=1

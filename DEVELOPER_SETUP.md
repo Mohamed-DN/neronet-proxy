@@ -75,6 +75,7 @@ They are POSIX `sh` and run everything in containers.
 | `gen-env.sh` | Writes `.env` with fresh random secrets. Refuses to overwrite an existing file. Never prints the values. |
 | `stack.sh up` | Builds and starts PostgreSQL, Valkey, the backend and the console. Waits until they are healthy. |
 | `stack.sh nodes` | Starts six Go nodes that enrol through the console. The derp-v2 relays are a separate profile, started by the `derp` overlay scenario. |
+| `stack.sh relays [name...]` | (Re)creates the derp-v2 relays (default `derp-a derp-b`) from the stack's node image without touching the running core. Each needs `certs/relays/<name>/` with its certificate and credential first. |
 | `stack.sh status` | Service health, and how many nodes sent a heartbeat in the last 60 seconds. |
 | `stack.sh logs [service]` | Last 200 log lines of all services or of one. Add `-f` to follow. |
 | `stack.sh down [-v]` | Removes the containers and the network. `-v` also removes the volumes (database, node identities). |
