@@ -21,6 +21,14 @@ rootless resource connectors, DNS, ingress, NAT improvements, optional transport
 multipath and PQC each keep a separate implementation and traffic gate. Research
 does not mark any of those gates complete or replace the retained plans below.
 
+The owner selected a Graphify-inspired community graph as the primary console
+direction, within the DarkNero product family. [ADR 0027](adr/0027-graph-console-and-evidence.md)
+records the interaction model, provenance and authorization boundaries. This
+supersedes the earlier fixed radial/straight-edge preference while retaining its
+history. Authenticated peer-path telemetry and real overlay validation remain
+prerequisites for an observed-path view. The intended `neronet.darknero.com`
+service name does not imply that DNS, TLS or a deployment is available.
+
 ## Earlier engineering plan
 
 Working document. Figures are measured against a running deployment; the methods are

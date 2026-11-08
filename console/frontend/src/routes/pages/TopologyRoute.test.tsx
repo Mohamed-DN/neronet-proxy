@@ -111,7 +111,7 @@ function renderTopology(initialEntries = ['/topology']) {
   );
 }
 
-describe('Radial mesh uses policy and observations as distinct evidence', () => {
+describe('Community mesh uses policy and observations as distinct evidence', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
@@ -133,10 +133,51 @@ describe('Radial mesh uses policy and observations as distinct evidence', () => 
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it('opens a thirteen-peer full policy mesh with its connections visible by default', async () => {
+    const nodes = Array.from({ length: 13 }, (_, index) => ({
+      ...mockStandardNodes[0]!,
+      id: `overview-${index}`,
+      name: `Overview ${index}`
+    }));
+    const links = nodes.flatMap((source, index) =>
+      nodes.slice(index + 1).map((target) => ({ source: source.id, target: target.id }))
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/api/stats/topology') ? jsonResponse({ nodes, links }) : jsonResponse({})
+      )
+    );
+    const { container } = renderTopology();
+    await screen.findByRole('heading', { name: 'Communities' });
+    expect(container.querySelectorAll('[data-mesh-link]')).toHaveLength(78);
+  });
+
+  it('offers counted community filters without moving remaining peers or losing search focus', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTopology();
+    await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' });
+    const communities = screen.getByRole('region', { name: 'Communities' });
+    expect(within(communities).getByRole('checkbox', { name: /Corporate Ops.*2/ })).toBeChecked();
+    const peer = screen.getByRole('button', { name: 'Rome Gateway Alpha — RELAY' });
+    const before = peer.querySelector('circle')!.getAttribute('cx');
+    const search = screen.getByRole('textbox', { name: /Search nodes by name/i });
+    await user.type(search, 'Rome');
+    expect(search).toHaveFocus();
+    expect(
+      screen.getByRole('button', { name: 'Rome Gateway Alpha — RELAY' }).querySelector('circle')!.getAttribute('cx')
+    ).toBe(before);
+    await user.click(within(communities).getByRole('checkbox', { name: /Corporate Ops.*2/ }));
+    expect(container.querySelector('[data-node-id]')).not.toBeInTheDocument();
+    expect(within(communities).getByRole('checkbox', { name: /Corporate Ops.*2/ })).not.toBeChecked();
+    await user.click(within(communities).getByRole('checkbox', { name: /Corporate Ops.*2/ }));
+    expect(screen.getByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).toBeInTheDocument();
+  });
+
   it('reserves the workspace for the graph and opens details only on selection', async () => {
     const user = userEvent.setup();
     const { container } = renderTopology();
-    await screen.findByText('Control plane');
+    await screen.findByRole('heading', { name: 'Communities' });
     expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
     (await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).focus();
     await user.keyboard('{Enter}');
@@ -146,10 +187,107 @@ describe('Radial mesh uses policy and observations as distinct evidence', () => 
     expect(container.querySelector('svg[role="group"]')).toHaveFocus();
   });
 
-  it('places coordination at the centre without declaring configured links observed', async () => {
+  it('paints the selected label above every peer without changing keyboard order', async () => {
     const user = userEvent.setup();
     const { container } = renderTopology();
-    expect(await screen.findByText('Control plane')).toBeInTheDocument();
+    const peer = await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' });
+    const orderBefore = [...container.querySelectorAll('[data-node-id]')].map((node) =>
+      node.getAttribute('data-node-id')
+    );
+    peer.focus();
+    await user.keyboard('{Enter}');
+    const orderAfter = [...container.querySelectorAll('[data-node-id]')].map((node) =>
+      node.getAttribute('data-node-id')
+    );
+    expect(orderAfter).toEqual(orderBefore);
+    const overlay = container.querySelector('[data-selected-label]');
+    expect(overlay).toBeInTheDocument();
+    expect(overlay).toHaveAttribute('aria-hidden', 'true');
+    expect(overlay).toHaveTextContent('Rome Gateway Alpha');
+    const groups = [...container.querySelectorAll('[data-node-id]')];
+    const lastPeer = groups[groups.length - 1]!;
+    expect(lastPeer.compareDocumentPosition(overlay!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const selectedGroup = container.querySelector('[data-node-id][aria-pressed="true"]')!;
+    expect(selectedGroup.querySelector('.mesh-node-label')).not.toBeInTheDocument();
+  });
+
+  it('explores one and two policy hops in the inspector while denied peers stay outside the neighborhood', async () => {
+    const nodes = Array.from({ length: 4 }, (_, index) => ({
+      ...mockStandardNodes[0]!,
+      id: `neighbor-${index}`,
+      name: `Neighbor ${index}`
+    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/api/stats/topology')
+          ? jsonResponse({
+              nodes,
+              links: [
+                { source: 'neighbor-0', target: 'neighbor-1' },
+                { source: 'neighbor-1', target: 'neighbor-2' },
+                { source: 'neighbor-0', target: 'neighbor-3', is_visible: false }
+              ]
+            })
+          : jsonResponse({})
+      )
+    );
+    const user = userEvent.setup();
+    renderTopology();
+    (await screen.findByRole('button', { name: 'Neighbor 0 — RELAY' })).focus();
+    await user.keyboard('{Enter}');
+    const neighborhood = within(screen.getByRole('group', { name: 'Policy neighborhood' }));
+    expect(neighborhood.getByRole('button', { name: 'Neighbor 1 RELAY' })).toBeInTheDocument();
+    expect(neighborhood.queryByRole('button', { name: 'Neighbor 2 RELAY' })).not.toBeInTheDocument();
+    await user.click(neighborhood.getByRole('button', { name: '2 hops' }));
+    expect(neighborhood.getByRole('button', { name: 'Neighbor 2 RELAY' })).toBeInTheDocument();
+    expect(neighborhood.queryByRole('button', { name: 'Neighbor 3 RELAY' })).not.toBeInTheDocument();
+    await user.click(neighborhood.getByRole('button', { name: 'Neighbor 2 RELAY' }));
+    expect(within(screen.getByRole('complementary')).getByRole('heading', { name: 'Neighbor 2' })).toBeInTheDocument();
+  });
+
+  it('keeps the path to a second-hop peer emphasised instead of fading its connecting edge', async () => {
+    const nodes = Array.from({ length: 4 }, (_, index) => ({
+      ...mockStandardNodes[0]!,
+      id: `hop-${index}`,
+      name: `Hop ${index}`
+    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/api/stats/topology')
+          ? jsonResponse({
+              nodes,
+              links: [
+                { source: 'hop-0', target: 'hop-1' },
+                { source: 'hop-1', target: 'hop-2' },
+                { source: 'hop-2', target: 'hop-3' }
+              ]
+            })
+          : jsonResponse({})
+      )
+    );
+    const user = userEvent.setup();
+    const { container } = renderTopology();
+    (await screen.findByRole('button', { name: 'Hop 0 — RELAY' })).focus();
+    await user.keyboard('{Enter}');
+    const edgeOpacity = (label: string) =>
+      Number(
+        container.querySelector(`[data-mesh-link][aria-label$="${label}"] path[opacity]`)!.getAttribute('opacity')
+      );
+    expect(edgeOpacity('Hop 0 — Hop 1')).toBeGreaterThan(0.9);
+    expect(edgeOpacity('Hop 1 — Hop 2')).toBeLessThan(0.5);
+    const neighborhood = within(screen.getByRole('group', { name: 'Policy neighborhood' }));
+    await user.click(neighborhood.getByRole('button', { name: '2 hops' }));
+    expect(edgeOpacity('Hop 0 — Hop 1')).toBeGreaterThan(0.9);
+    expect(edgeOpacity('Hop 1 — Hop 2')).toBeGreaterThan(0.9);
+    expect(edgeOpacity('Hop 2 — Hop 3')).toBeLessThan(0.5);
+  });
+
+  it('keeps policy separate from observed paths without an invented central transit node', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTopology();
+    expect(await screen.findByRole('heading', { name: 'Communities' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Observed paths' }));
     expect(screen.getByText('Peer paths have not been measured yet.')).toBeInTheDocument();
     expect(container.querySelectorAll('[data-mesh-link]').length).toBe(0);
@@ -166,31 +304,14 @@ describe('Radial mesh uses policy and observations as distinct evidence', () => 
     expect(screen.getByText('Unhealthy')).toBeInTheDocument();
   });
 
-  it('keeps peer connections clear of the coordination annotation', async () => {
-    renderTopology();
-    const link = await screen.findByRole('button', { name: 'Connection: Rome Gateway Alpha — Berlin Exit Bravo' });
-    const shape = link.querySelector('path, line')!;
-    const values =
-      shape.tagName.toLowerCase() === 'line'
-        ? ['x1', 'y1', 'x2', 'y2'].map((attribute) => Number(shape.getAttribute(attribute)))
-        : (shape.getAttribute('d')!.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
-    const [x1, y1] = values;
-    let closest = Infinity;
-    for (let i = 0; i <= 100; i++) {
-      const t = i / 100;
-      const quadratic = values.length === 6;
-      const x = quadratic
-        ? (1 - t) ** 2 * x1! + 2 * (1 - t) * t * values[2]! + t * t * values[4]!
-        : (1 - t) * x1! + t * values[2]!;
-      const y = quadratic
-        ? (1 - t) ** 2 * y1! + 2 * (1 - t) * t * values[3]! + t * t * values[5]!
-        : (1 - t) * y1! + t * values[3]!;
-      closest = Math.min(closest, Math.hypot(x - 600, y - 320));
-    }
-    expect(closest).toBeGreaterThan(62);
+  it('uses an organic community scene without a central coordination annotation', async () => {
+    const { container } = renderTopology();
+    await screen.findByRole('heading', { name: 'Communities' });
+    expect(screen.queryByText('Control plane')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-node-id]')).toHaveClass('mesh-community-0');
   });
 
-  it('draws a six-node mesh with straight peer segments rather than detour curves', async () => {
+  it('draws each six-node policy pair once with a modest community-colored curve', async () => {
     const nodes = Array.from({ length: 6 }, (_, index) => ({
       ...mockStandardNodes[0],
       id: `peer-${index}`,
@@ -210,26 +331,16 @@ describe('Radial mesh uses policy and observations as distinct evidence', () => 
       )
     );
     const { container } = renderTopology();
-    await screen.findByText('Control plane');
+    await screen.findByRole('heading', { name: 'Communities' });
     const paths = [...container.querySelectorAll('[data-mesh-link] > path:last-child')];
     expect(paths).toHaveLength(15);
     for (const path of paths) {
-      const data = path.getAttribute('d')!;
-      expect(data).toMatch(/^[ML\s\d.-]+$/);
-      const points = data.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
-      for (let segment = 0; segment < points.length; segment += 4) {
-        const [ax, ay, bx, by] = points.slice(segment, segment + 4) as [number, number, number, number];
-        for (let sample = 0; sample <= 20; sample++) {
-          const t = sample / 20;
-          const x = ax + (bx - ax) * t,
-            y = ay + (by - ay) * t;
-          expect(x > 542.1 && x < 657.9 && y > 290.1 && y < 389.9).toBe(false);
-        }
-      }
+      expect(path.getAttribute('d')).toMatch(/^M [\d. -]+ Q [\d. -]+$/);
+      expect(path.parentElement).toHaveClass('mesh-community-0');
     }
   });
 
-  it('keeps expanded groups separate in the hundred-node overview', async () => {
+  it('renders counted communities and stable distinct positions in the hundred-node fixture', async () => {
     const nodes = Array.from({ length: 100 }, (_, index) => ({
       ...mockStandardNodes[0],
       id: `peer-${index}`,
@@ -243,21 +354,19 @@ describe('Radial mesh uses policy and observations as distinct evidence', () => 
       )
     );
     const { container } = renderTopology();
-    await screen.findByText('Control plane');
-    const circles = [...container.querySelectorAll('.mesh-group-control')].map(
-      (control) => control.parentElement!.querySelector('circle')!
-    );
-    expect(circles).toHaveLength(10);
-    for (let i = 0; i < circles.length; i++)
-      for (let j = i + 1; j < circles.length; j++) {
-        const a = circles[i]!,
-          b = circles[j]!;
-        const distance = Math.hypot(
-          Number(a.getAttribute('cx')) - Number(b.getAttribute('cx')),
-          Number(a.getAttribute('cy')) - Number(b.getAttribute('cy'))
-        );
-        expect(distance).toBeGreaterThan(Number(a.getAttribute('r')) + Number(b.getAttribute('r')));
-      }
+    await screen.findByRole('heading', { name: 'Communities' });
+    const communities = screen.getByRole('region', { name: 'Communities' });
+    expect(within(communities).getAllByRole('checkbox')).toHaveLength(11);
+    const peers = [...container.querySelectorAll('[data-node-id]')];
+    expect(peers).toHaveLength(100);
+    expect(
+      new Set(
+        peers.map((peer) => {
+          const circle = peer.querySelector('circle')!;
+          return `${circle.getAttribute('cx')}:${circle.getAttribute('cy')}`;
+        })
+      ).size
+    ).toBe(100);
   });
 
   it('collapses a group without losing its count and search expands matching nodes', async () => {
@@ -301,7 +410,7 @@ describe('Radial mesh uses policy and observations as distinct evidence', () => 
     );
     try {
       const { container } = renderTopology();
-      await screen.findByText('Control plane');
+      await screen.findByRole('heading', { name: 'Communities' });
       const zoom = () => {
         const svg = container.querySelector('svg[role="group"]')!;
         Object.defineProperty(svg, 'getScreenCTM', { value: () => ({ inverse: () => ({}) }) });
@@ -765,19 +874,21 @@ describe('Topology canvas: cutting links and staying readable at scale', () => {
     await user.click(screen.getByRole('option', { name: 'Region' }));
     const node0 = await screen.findByRole('button', { name: 'Node 0 — CLIENT_ORIGIN' });
 
-    // 435 links exist; only the cut one is drawn. The full mesh would be a hairball.
-    expect(screen.getAllByRole('button', { name: /^Connection:/ })).toHaveLength(1);
+    // A bounded overview retains normal policy context and the cut exception.
+    expect(screen.getAllByRole('button', { name: /^Connection:/ }).length).toBeGreaterThanOrEqual(29);
+    expect(screen.getAllByRole('button', { name: /^Connection:/ }).length).toBeLessThanOrEqual(161);
     expect(screen.getByRole('button', { name: 'Connection: Node 1 — Node 2' })).toBeInTheDocument();
     expect(screen.getByText(/Select a node to reveal its connections/)).toBeInTheDocument();
 
     // Switching to region reveals two manageable clusters of fifteen.
-    expect(screen.getByText('DE · 15')).toBeInTheDocument();
-    expect(screen.getByText('IT · 15')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'DE 15' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'IT 15' })).toBeChecked();
 
     node0.focus();
     await user.keyboard('{Enter}');
 
-    // Node 0's 29 links join the cut one; the other 405 stay hidden.
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Connection:/ })).toHaveLength(30));
+    // Selection adds every allowed pair for Node 0 without drawing the full mesh.
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Connection: Node 0 —/ })).toHaveLength(29));
+    expect(screen.getAllByRole('button', { name: /^Connection:/ }).length).toBeLessThan(200);
   });
 });

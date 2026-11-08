@@ -419,6 +419,23 @@
       "allNodes": "Tutti i nodi",
       "closeDetails": "Chiudi dettagli",
       "openPolicy": "Policy aperta"
+    },
+    "graph": {
+      "communities": "Comunità",
+      "inventoryGroups": "Colori per gruppo di inventario",
+      "selectAll": "Mostra tutte le comunità",
+      "fold": "Comprimi",
+      "unfold": "Espandi",
+      "scopedCounts": "I conteggi includono solo l’inventario restituito per il tuo accesso attuale.",
+      "aggregate": "Espandi comunità {{name}}, {{count}} nodi",
+      "noMatches": "Nessun nodo corrisponde a questi filtri.",
+      "resetFilters": "Reimposta filtri",
+      "neighborhood": "Vicinato di policy",
+      "hops_one": "1 salto",
+      "hops_other": "{{count}} salti",
+      "policyOnly": "Coppie consentite dalla policy, non percorsi di trasporto misurati.",
+      "neighborLimit": "Sono mostrati i primi 50 vicini. Usa la ricerca o l’elenco accessibile per l’inventario completo.",
+      "overviewSubset": "Mostrate {{shown}} coppie di policy su {{total}}. Seleziona un nodo per vedere tutte le sue connessioni consentite."
     }
   },
   "acl": {

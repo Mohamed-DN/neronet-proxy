@@ -7,15 +7,11 @@ import {
   Link2,
   List,
   Lock,
-  Minus,
   Network,
-  Plus,
   RotateCcw,
   Scissors,
   Search,
   ShieldAlert,
-  Server,
-  Monitor,
   X,
   ZoomIn,
   ZoomOut
@@ -47,49 +43,38 @@ import {
   useUnlockGhostVaults
 } from '../../services/queries';
 import type { AclRule, Compartment, TopologyLink, TopologyNode } from '../../services/types';
+import {
+  communityLayout,
+  groupValue,
+  policyNeighborhood,
+  policyOverview,
+  type PlacedNode,
+  type GroupBy
+} from './topologyGraph';
 import './TopologyRoute.css';
 
 export type RoleFilter = 'ALL' | 'RELAY' | 'EXIT_BRIDGE' | 'CLIENT_ORIGIN' | 'HYBRID';
 export type ViewMode = 'CANVAS' | 'LIST';
-export type GroupBy = 'compartment' | 'country' | 'role' | 'none';
+export type { GroupBy } from './topologyGraph';
 export type EdgeMode = 'auto' | 'all' | 'selected' | 'none';
 
 const GRAPH_WIDTH = 1200;
 const GRAPH_HEIGHT = 640;
-const BASE_NODE_RADIUS = 16;
+const BASE_NODE_RADIUS = 9;
 
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 6;
 const ZOOM_STEP = 1.2;
 // Pointer travel, in scene units, past which a press is a drag rather than a click.
 const MOVE_EPS = 3;
-// It is the number of lines, not of nodes, that makes a mesh unreadable: a full mesh
-// of 13 nodes is already 78 of them. Above this many, "auto" draws only what departs
-// from the full mesh -- cut links -- plus the selected node's policy connections.
-const EDGE_AUTO_LINK_LIMIT = 30;
-const LABEL_LIMIT = 40;
+// A moderate mesh opens connected. Above this budget automatic mode retains a
+// deterministic overview plus cut exceptions and the selected peer's policy pairs.
+const EDGE_AUTO_LINK_LIMIT = 160;
+const LABEL_LIMIT = 20;
 
 interface Point {
   x: number;
   y: number;
-}
-
-interface PlacedNode {
-  node: TopologyNode;
-  x: number;
-  y: number;
-}
-
-interface ClusterBox {
-  key: string;
-  label: string;
-  cx: number;
-  cy: number;
-  r: number;
-  count: number;
-  expanded: boolean;
-  unhealthy: number;
-  quarantined: number;
 }
 
 /** The pan/zoom of the whole scene. Nodes keep their own coordinates; this only
@@ -110,112 +95,6 @@ interface SelectedLink {
   target: string;
 }
 
-function groupValue(node: TopologyNode, groupBy: GroupBy): { key: string; label: string } {
-  if (groupBy === 'compartment') {
-    return { key: node.compartment_id ?? '__none__', label: node.compartment_name ?? '' };
-  }
-  if (groupBy === 'country') {
-    const c = (node.country ?? '').toUpperCase();
-    return { key: c || '__none__', label: c };
-  }
-  if (groupBy === 'role') {
-    return { key: node.role ?? '__none__', label: node.role ?? '' };
-  }
-  return { key: '__all__', label: '' };
-}
-
-/** Stable spatial groups: refresh order never moves an identity. Large groups
- * start folded, keeping the overview useful without rendering every peer. */
-function clusterLayout(
-  nodes: TopologyNode[],
-  groupBy: GroupBy,
-  otherLabel: string,
-  expansion: Record<string, boolean>,
-  revealMatches: boolean
-): { placed: PlacedNode[]; clusters: ClusterBox[] } {
-  const groups = new Map<string, { label: string; nodes: TopologyNode[] }>();
-  for (const node of nodes) {
-    const { key, label } = groupValue(node, groupBy);
-    const group = groups.get(key) ?? { label: label || otherLabel, nodes: [] };
-    group.nodes.push(node);
-    groups.set(key, group);
-  }
-  const keys = [...groups.keys()].sort();
-  const placed: PlacedNode[] = [];
-  const clusters: ClusterBox[] = [];
-  const centre = { x: GRAPH_WIDTH / 2, y: GRAPH_HEIGHT / 2 };
-  keys.forEach((key, index) => {
-    const group = groups.get(key)!;
-    const members = [...group.nodes].sort((a, b) => a.id.localeCompare(b.id));
-    const angle = -Math.PI / 2 + (index * Math.PI * 2) / keys.length + Math.sin(index * 2.1) * 0.15;
-    const single = keys.length === 1;
-    const orbit = single ? 0 : 1;
-    const expanded = revealMatches || (expansion[key] ?? members.length <= 16);
-    const cx = centre.x + Math.cos(angle) * orbit * (340 + (index % 3) * 35);
-    const cy = single && !expanded ? centre.y - 180 : centre.y + Math.sin(angle) * orbit * (162 + (index % 3) * 21);
-    const r = single ? 270 : Math.max(48, Math.min(92, 225 * Math.sin(Math.PI / keys.length)));
-    clusters.push({
-      key,
-      label: group.label,
-      cx,
-      cy,
-      r,
-      count: members.length,
-      expanded,
-      unhealthy: members.filter((node) => !node.is_healthy && !node.is_quarantined).length,
-      quarantined: members.filter((node) => node.is_quarantined).length
-    });
-    if (!expanded) return;
-    members.forEach((node, ni) => {
-      // Golden-angle placement breaks the regular necklace without idle motion.
-      const theta = -1.1 + ni * 2.3999632297;
-      const radius = single
-        ? 150 + Math.sqrt((ni + 1) / members.length) * 100
-        : members.length === 1
-          ? 0
-          : Math.sqrt((ni + 0.5) / members.length) * (r - 22);
-      placed.push({
-        node,
-        x: cx + Math.cos(theta) * radius * (single ? 1.55 : 1),
-        y: cy + Math.sin(theta) * radius * (single ? 0.8 : 1)
-      });
-    });
-  });
-  if (clusters.length > 1 && clusters.length <= 100) {
-    const origins = new Map(clusters.map((cluster) => [cluster.key, { x: cluster.cx, y: cluster.cy }]));
-    for (let pass = 0; pass < 24; pass++) {
-      for (let i = 0; i < clusters.length; i++)
-        for (let j = i + 1; j < clusters.length; j++) {
-          const a = clusters[i]!,
-            b = clusters[j]!;
-          const dx = b.cx - a.cx,
-            dy = b.cy - a.cy;
-          const distance = Math.hypot(dx, dy) || 1;
-          const required = a.r + b.r + 30;
-          if (distance >= required) continue;
-          const shift = (required - distance) / 2;
-          a.cx -= (dx / distance) * shift;
-          a.cy -= (dy / distance) * shift;
-          b.cx += (dx / distance) * shift;
-          b.cy += (dy / distance) * shift;
-        }
-      for (const cluster of clusters) {
-        cluster.cx = clamp(cluster.cx, cluster.r + 90, GRAPH_WIDTH - cluster.r - 90);
-        cluster.cy = clamp(cluster.cy, cluster.r + 38, GRAPH_HEIGHT - cluster.r - 38);
-      }
-    }
-    const byKey = new Map(clusters.map((cluster) => [cluster.key, cluster]));
-    for (const point of placed) {
-      const key = groupValue(point.node, groupBy).key;
-      const origin = origins.get(key)!;
-      const cluster = byKey.get(key)!;
-      point.x += cluster.cx - origin.x;
-      point.y += cluster.cy - origin.y;
-    }
-  }
-  return { placed, clusters };
-}
-
 function nodeRadiusFor(count: number): number {
   if (count <= 30) return BASE_NODE_RADIUS;
   if (count <= 120) return 9;
@@ -226,38 +105,15 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/** Straight peer segments stop short of node bodies. Coordination is an
- * annotation: leave a clear gap behind it rather than inventing a routed bend. */
-function peerPath(a: Point, b: Point, nodeRadius: number): string {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
+/** A modest curve carries one policy pair, never intermediate hops. */
+function peerPath(a: Point, b: Point, radius: number): string {
+  const dx = b.x - a.x,
+    dy = b.y - a.y;
   const length = Math.hypot(dx, dy);
-  if (length <= 2 * (nodeRadius + 2)) return '';
-  const inset = (nodeRadius + 2) / length;
-  const start = inset;
-  const end = 1 - inset;
-  const centre = { x: GRAPH_WIDTH / 2, y: GRAPH_HEIGHT / 2 };
-  const segment = (from: number, to: number) =>
-    `M ${a.x + from * dx} ${a.y + from * dy} L ${a.x + to * dx} ${a.y + to * dy}`;
-  // Clip only behind the visible coordination annotation, never bare canvas.
-  const halfWidth = 58;
-  let enter = start,
-    leave = end;
-  for (const [origin, delta, lower, upper] of [
-    [a.x, dx, centre.x - halfWidth, centre.x + halfWidth],
-    [a.y, dy, centre.y - 30, centre.y + 70]
-  ] as [number, number, number, number][]) {
-    if (Math.abs(delta) < 0.000001) {
-      if (origin < lower || origin > upper) return segment(start, end);
-      continue;
-    }
-    const first = (lower - origin) / delta,
-      second = (upper - origin) / delta;
-    enter = Math.max(enter, Math.min(first, second));
-    leave = Math.min(leave, Math.max(first, second));
-  }
-  if (enter >= leave) return segment(start, end);
-  return [enter > start ? segment(start, enter) : '', leave < end ? segment(leave, end) : ''].filter(Boolean).join(' ');
+  if (length <= 2 * (radius + 2)) return '';
+  const inset = (radius + 2) / length;
+  const bend = Math.min(24, length * 0.08);
+  return `M ${a.x + dx * inset} ${a.y + dy * inset} Q ${(a.x + b.x) / 2 - (dy / length) * bend} ${(a.y + b.y) / 2 + (dx / length) * bend} ${b.x - dx * inset} ${b.y - dy * inset}`;
 }
 
 /** Scale the view by `factor` while keeping the scene point under `center`
@@ -329,6 +185,9 @@ export function TopologyRoute() {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [evidenceView, setEvidenceView] = useState<'policy' | 'observed'>('policy');
   const [edgeMode, setEdgeMode] = useState<EdgeMode>('auto');
+  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
+  const [neighborhoodHops, setNeighborhoodHops] = useState<1 | 2>(1);
+  const [communitiesOpen, setCommunitiesOpen] = useState(() => !window.matchMedia?.('(max-width: 1280px)').matches);
 
   // Camera and dragged-node positions. The camera starts centred; node overrides
   // start empty and fill in as the operator drags.
@@ -342,6 +201,7 @@ export function TopologyRoute() {
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [canvasWidth, setCanvasWidth] = useState(GRAPH_WIDTH);
+  const [canvasHeight, setCanvasHeight] = useState(GRAPH_HEIGHT);
   const [canvasElement, setCanvasElement] = useState<SVGSVGElement | null>(null);
   const bindCanvas = useCallback((element: SVGSVGElement | null) => {
     svgRef.current = element;
@@ -349,13 +209,16 @@ export function TopologyRoute() {
   }, []);
   useEffect(() => {
     if (!canvasElement || typeof ResizeObserver === 'undefined') return;
-    const measure = () => setCanvasWidth(canvasElement.getBoundingClientRect().width || GRAPH_WIDTH);
+    const measure = () => {
+      const box = canvasElement.getBoundingClientRect();
+      setCanvasWidth(box.width || GRAPH_WIDTH);
+      setCanvasHeight(box.height || GRAPH_HEIGHT);
+    };
     const observer = new ResizeObserver(measure);
     measure();
     observer.observe(canvasElement);
     return () => observer.disconnect();
   }, [canvasElement]);
-  const labelUnit = Math.max(1, GRAPH_WIDTH / Math.max(1, canvasWidth));
   const sceneRef = useRef<SVGGElement | null>(null);
   const interactionRef = useRef<Interaction>(null);
 
@@ -381,11 +244,12 @@ export function TopologyRoute() {
         const ip = (n.overlay_ipv4 ?? '').toLowerCase();
         if (!name.includes(q) && !id.includes(q) && !ip.includes(q)) return false;
       }
+      if (hiddenGroups.has(groupValue(n, groupBy).key)) return false;
       if (selectedRole !== 'ALL' && n.role !== selectedRole) return false;
       if (selectedCompartment !== 'ALL' && n.compartment_id !== selectedCompartment) return false;
       return true;
     });
-  }, [nodes, searchQuery, selectedRole, selectedCompartment]);
+  }, [nodes, searchQuery, selectedRole, selectedCompartment, hiddenGroups, groupBy]);
 
   const filteredLinks = useMemo(() => {
     const visibleIds = new Set(filteredNodes.map((n) => n.id));
@@ -395,16 +259,18 @@ export function TopologyRoute() {
   // The clustered seed, then the operator's per-node overrides laid on top.
   const otherLabel = t(groupBy === 'none' ? 'topology.radial.allNodes' : 'topology.canvas.clusterOther');
   const { placed: basePlaced, clusters } = useMemo(
-    () => clusterLayout(filteredNodes, groupBy, otherLabel, expandedGroups, Boolean(searchQuery.trim())),
-    [filteredNodes, groupBy, otherLabel, expandedGroups, searchQuery]
+    () => communityLayout(nodes, groupBy, otherLabel, expandedGroups, Boolean(searchQuery.trim())),
+    [nodes, groupBy, otherLabel, expandedGroups, searchQuery]
   );
   const placedNodes = useMemo<PlacedNode[]>(
     () =>
-      basePlaced.map((p) => {
-        const override = positions[p.node.id];
-        return override ? { node: p.node, x: override.x, y: override.y } : p;
-      }),
-    [basePlaced, positions]
+      basePlaced
+        .filter((p) => filteredNodes.some((node) => node.id === p.node.id))
+        .map((p) => {
+          const override = positions[p.node.id];
+          return override ? { node: p.node, x: override.x, y: override.y } : p;
+        }),
+    [basePlaced, positions, filteredNodes]
   );
   const positionById = useMemo(() => {
     const map = new Map<string, PlacedNode>();
@@ -412,14 +278,35 @@ export function TopologyRoute() {
     return map;
   }, [placedNodes]);
 
+  // Fit the stable inventory envelope to the actual plot aspect ratio. Filters,
+  // metric refreshes and dragging do not silently refit the operator's camera.
+  const sceneFrame = useMemo(() => {
+    const single = clusters.length === 1;
+    const left = Math.min(...clusters.map((group) => group.cx - group.r * (single ? 1.6 : 1)), 600) - 70;
+    const right = Math.max(...clusters.map((group) => group.cx + group.r * (single ? 1.6 : 1)), 600) + 70;
+    const top = Math.min(...clusters.map((group) => group.cy - group.r), 320) - 55;
+    const bottom = Math.max(...clusters.map((group) => group.cy + group.r), 320) + 65;
+    const aspect = canvasWidth / Math.max(1, canvasHeight);
+    const width = Math.max(right - left, (bottom - top) * aspect);
+    const height = width / aspect;
+    return {
+      x: (left + right - width) / 2,
+      y: (top + bottom - height) / 2,
+      width,
+      height,
+      cx: (left + right) / 2,
+      cy: (top + bottom) / 2
+    };
+  }, [clusters, canvasWidth, canvasHeight]);
+  const labelUnit = sceneFrame.width / Math.max(1, canvasWidth);
+
   const nodeCount = filteredNodes.length;
   const nodeRadius = nodeRadiusFor(nodeCount);
   const showLabels = nodeCount <= LABEL_LIMIT || view.scale >= 1.8;
   // Stable positions make updates comparable and honour reduced motion.
   const renderPos = useMemo(() => new Map(placedNodes.map(({ node, x, y }) => [node.id, { x, y }])), [placedNodes]);
 
-  // "focus" is what auto falls back to on a busy mesh: the exceptions plus the
-  // selection. "selected" is the stricter manual mode: the selection alone.
+  // Busy meshes retain a bounded connected overview, plus exceptions and selection.
   const resolvedEdgeMode: 'all' | 'focus' | 'selected' | 'none' =
     edgeMode === 'auto' ? (filteredLinks.length > EDGE_AUTO_LINK_LIMIT ? 'focus' : 'all') : edgeMode;
 
@@ -428,6 +315,7 @@ export function TopologyRoute() {
     // Keep observed paths explicitly unmeasured until the transport contract exists.
     if (evidenceView === 'observed' || resolvedEdgeMode === 'none') return EMPTY_LINKS;
     if (resolvedEdgeMode === 'all') return filteredLinks;
+    const overview = resolvedEdgeMode === 'focus' ? policyOverview(filteredLinks, EDGE_AUTO_LINK_LIMIT) : null;
     return filteredLinks.filter((l) => {
       const touchesNode = selectedNodeId && (l.source === selectedNodeId || l.target === selectedNodeId);
       const isSelected =
@@ -435,21 +323,23 @@ export function TopologyRoute() {
         ((l.source === selectedLink.source && l.target === selectedLink.target) ||
           (l.source === selectedLink.target && l.target === selectedLink.source));
       const isException = l.is_visible === false;
-      return Boolean(touchesNode || isSelected || (resolvedEdgeMode === 'focus' && isException));
+      return Boolean(touchesNode || isSelected || (resolvedEdgeMode === 'focus' && (isException || overview?.has(l))));
     });
   }, [evidenceView, resolvedEdgeMode, filteredLinks, selectedNodeId, selectedLink]);
 
-  // With a node selected, everything it does not reach directly fades back.
-  const neighbourIds = useMemo(() => {
-    if (!selectedNodeId) return null;
-    const ids = new Set<string>([selectedNodeId]);
-    for (const l of filteredLinks) {
-      if (l.is_visible === false) continue;
-      if (l.source === selectedNodeId) ids.add(l.target);
-      if (l.target === selectedNodeId) ids.add(l.source);
-    }
-    return ids;
-  }, [selectedNodeId, filteredLinks]);
+  const neighbourIds = useMemo(
+    () => (selectedNodeId ? policyNeighborhood(selectedNodeId, filteredLinks, neighborhoodHops) : null),
+    [selectedNodeId, filteredLinks, neighborhoodHops]
+  );
+  // Peers one hop away. In two-hop mode their edges to second-hop peers are the
+  // visible path to the selection, so they keep full weight instead of fading.
+  const firstHopIds = useMemo(
+    () => (selectedNodeId && neighborhoodHops === 2 ? policyNeighborhood(selectedNodeId, filteredLinks, 1) : null),
+    [selectedNodeId, filteredLinks, neighborhoodHops]
+  );
+  const communityByKey = useMemo(() => new Map(clusters.map((group) => [group.key, group])), [clusters]);
+  const communityClass = (node: TopologyNode) =>
+    `mesh-community-${communityByKey.get(groupValue(node, groupBy).key)?.color ?? 0}`;
 
   const selectedNode = selectedNodeId ? (nodes.find((n) => n.id === selectedNodeId) ?? null) : null;
   const selectedNodeLinks = useMemo(() => {
@@ -599,7 +489,7 @@ export function TopologyRoute() {
 
   const zoomBy = (factor: number) => {
     setAnimateView(true);
-    setView((v) => zoomAt(v, { x: GRAPH_WIDTH / 2, y: GRAPH_HEIGHT / 2 }, factor));
+    setView((v) => zoomAt(v, { x: sceneFrame.cx, y: sceneFrame.cy }, factor));
   };
 
   const resetView = () => {
@@ -760,7 +650,6 @@ export function TopologyRoute() {
   const controlButtonClass =
     'inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-content transition-colors hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus';
 
-  const drawClusters = true;
   const needsSelectionHint =
     (resolvedEdgeMode === 'selected' || resolvedEdgeMode === 'focus') && !selectedNodeId && !selectedLink;
 
@@ -869,6 +758,11 @@ export function TopologyRoute() {
                 aria-label={t('topology.filterCompartmentAll')}
               />
             </div>
+            {hiddenGroups.size > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => setHiddenGroups(new Set())}>
+                {t('topology.graph.resetFilters')}
+              </Button>
+            )}
           </div>
         )}
 
@@ -884,12 +778,89 @@ export function TopologyRoute() {
           </Card>
         ) : viewMode === 'CANVAS' ? (
           <Card flush className="mesh-surface overflow-hidden">
-            {filteredNodes.length === 0 ? (
-              <div className="p-8">
-                <EmptyState title={t('topology.empty.title')} body={t('topology.empty.desc')} />
-              </div>
-            ) : (
+            {
               <div className="mesh-workspace">
+                <section
+                  id="mesh-communities"
+                  className="mesh-communities"
+                  hidden={!communitiesOpen}
+                  aria-label={t('topology.graph.communities')}
+                >
+                  <div className="mesh-community-heading">
+                    <h2>{t('topology.graph.communities')}</h2>
+                    <span>{clusters.length}</span>
+                  </div>
+                  <p className="mesh-community-caption">{t('topology.graph.inventoryGroups')}</p>
+                  <label className="mesh-community-all">
+                    <input
+                      type="checkbox"
+                      checked={hiddenGroups.size === 0}
+                      ref={(element) => {
+                        if (element)
+                          element.indeterminate = hiddenGroups.size > 0 && hiddenGroups.size < clusters.length;
+                      }}
+                      onChange={(event) =>
+                        setHiddenGroups(event.target.checked ? new Set() : new Set(clusters.map((group) => group.key)))
+                      }
+                    />
+                    {t('topology.graph.selectAll')}
+                  </label>
+                  <div className="mesh-community-list">
+                    {clusters.map((cluster) => (
+                      <div key={cluster.key} className={`mesh-community-row mesh-community-${cluster.color}`}>
+                        <label className="mesh-community-filter">
+                          <input
+                            type="checkbox"
+                            checked={!hiddenGroups.has(cluster.key)}
+                            onChange={() =>
+                              setHiddenGroups((previous) => {
+                                const next = new Set(previous);
+                                if (next.has(cluster.key)) next.delete(cluster.key);
+                                else next.add(cluster.key);
+                                return next;
+                              })
+                            }
+                          />
+                          <span className="mesh-community-dot" aria-hidden="true" />
+                          <span className="mesh-community-name">{cluster.label}</span>
+                          <span className="mesh-community-count">{cluster.count}</span>
+                        </label>
+                        <button
+                          type="button"
+                          className="mesh-group-control"
+                          aria-expanded={cluster.expanded}
+                          aria-label={[
+                            t(cluster.expanded ? 'topology.radial.collapse' : 'topology.radial.expand', {
+                              name: cluster.label
+                            }),
+                            cluster.unhealthy ? t('topology.radial.groupUnhealthy', { count: cluster.unhealthy }) : '',
+                            cluster.quarantined
+                              ? t('topology.radial.groupQuarantined', { count: cluster.quarantined })
+                              : ''
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                          onClick={() =>
+                            setExpandedGroups((previous) => ({ ...previous, [cluster.key]: !cluster.expanded }))
+                          }
+                        >
+                          <span>{t(cluster.expanded ? 'topology.graph.fold' : 'topology.graph.unfold')}</span>
+                          {cluster.unhealthy > 0 && (
+                            <span className="text-warning">
+                              {t('topology.radial.groupUnhealthy', { count: cluster.unhealthy })}
+                            </span>
+                          )}
+                          {cluster.quarantined > 0 && (
+                            <span className="text-danger">
+                              {t('topology.radial.groupQuarantined', { count: cluster.quarantined })}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mesh-community-footnote">{t('topology.graph.scopedCounts')}</p>
+                </section>
                 <div className="mesh-map-panel">
                   <div className="mesh-toolbar">
                     <div className="mesh-evidence" aria-label={t('topology.radial.evidence')}>
@@ -910,6 +881,15 @@ export function TopologyRoute() {
                       >
                         {t('topology.radial.observed')}
                       </button>
+                      <button
+                        type="button"
+                        className="mesh-community-toggle"
+                        aria-expanded={communitiesOpen}
+                        aria-controls="mesh-communities"
+                        onClick={() => setCommunitiesOpen((open) => !open)}
+                      >
+                        {t('topology.graph.communities')} <span>{clusters.length}</span>
+                      </button>
                     </div>
                     <div className="mesh-options flex flex-col gap-2 sm:flex-row sm:items-center">
                       <div className="flex items-center gap-2">
@@ -917,7 +897,10 @@ export function TopologyRoute() {
                         <div className="w-40">
                           <Select
                             value={groupBy}
-                            onValueChange={(v) => setGroupBy(v as GroupBy)}
+                            onValueChange={(v) => {
+                              setGroupBy(v as GroupBy);
+                              setHiddenGroups(new Set());
+                            }}
                             options={groupOptions}
                             aria-label={t('topology.canvas.groupByLabel')}
                           />
@@ -942,7 +925,7 @@ export function TopologyRoute() {
                   <div className="relative">
                     <svg
                       ref={bindCanvas}
-                      viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
+                      viewBox={`${sceneFrame.x} ${sceneFrame.y} ${sceneFrame.width} ${sceneFrame.height}`}
                       className="mesh-canvas w-full touch-none select-none"
                       preserveAspectRatio="xMidYMid meet"
                       role="group"
@@ -951,137 +934,53 @@ export function TopologyRoute() {
                       style={{ cursor: 'grab' }}
                       onPointerDown={onBackgroundPointerDown}
                     >
-                      <defs>
-                        <pattern id="mesh-grid" width="24" height="24" patternUnits="userSpaceOnUse">
-                          <path d="M 24 0 L 0 0 0 24" fill="none" className="stroke-border" strokeWidth="0.5" />
-                        </pattern>
-                      </defs>
-                      <rect width={GRAPH_WIDTH} height={GRAPH_HEIGHT} fill="url(#mesh-grid)" opacity="0.5" />
                       <g
                         ref={sceneRef}
                         transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}
                         style={{ transition: animateView && prefersMotion ? 'transform 180ms ease-out' : 'none' }}
                       >
-                        {drawClusters &&
-                          clusters.map((cluster) => (
-                            <g key={`cluster-${cluster.key}`}>
-                              <circle
-                                cx={cluster.cx}
-                                cy={cluster.cy}
-                                r={cluster.expanded ? cluster.r : 32}
-                                className={
-                                  cluster.quarantined
-                                    ? 'fill-danger-subtle stroke-danger'
-                                    : cluster.unhealthy
-                                      ? 'fill-warning-subtle stroke-warning'
-                                      : 'fill-surface stroke-border-strong'
+                        {clusters
+                          .filter(
+                            (cluster) =>
+                              !cluster.expanded &&
+                              !hiddenGroups.has(cluster.key) &&
+                              filteredNodes.some((node) => groupValue(node, groupBy).key === cluster.key)
+                          )
+                          .map((cluster) => (
+                            <g
+                              key={cluster.key}
+                              className={`mesh-aggregate mesh-community-${cluster.color}`}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={t('topology.graph.aggregate', { name: cluster.label, count: cluster.count })}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={() => setExpandedGroups((previous) => ({ ...previous, [cluster.key]: true }))}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  setExpandedGroups((previous) => ({ ...previous, [cluster.key]: true }));
                                 }
-                                fillOpacity={cluster.expanded ? 0.12 : 0.8}
-                                strokeOpacity={cluster.expanded ? 0.35 : 1}
-                                strokeDasharray={cluster.expanded ? '3 5' : undefined}
-                              />
-                              <g
-                                role="button"
-                                tabIndex={0}
-                                aria-expanded={cluster.expanded}
-                                aria-label={[
-                                  t(cluster.expanded ? 'topology.radial.collapse' : 'topology.radial.expand', {
-                                    name: cluster.label
-                                  }),
-                                  cluster.unhealthy
-                                    ? t('topology.radial.groupUnhealthy', { count: cluster.unhealthy })
-                                    : '',
-                                  cluster.quarantined
-                                    ? t('topology.radial.groupQuarantined', { count: cluster.quarantined })
-                                    : ''
-                                ]
-                                  .filter(Boolean)
-                                  .join(' · ')}
-                                className="mesh-group-control"
-                                onPointerDown={(event) => event.stopPropagation()}
-                                onClick={() =>
-                                  setExpandedGroups((previous) => ({ ...previous, [cluster.key]: !cluster.expanded }))
-                                }
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault();
-                                    setExpandedGroups((previous) => ({
-                                      ...previous,
-                                      [cluster.key]: !cluster.expanded
-                                    }));
-                                  }
-                                }}
+                              }}
+                            >
+                              <circle cx={cluster.cx} cy={cluster.cy} r={24 * labelUnit} />
+                              <text
+                                x={cluster.cx}
+                                y={cluster.cy + 5}
+                                textAnchor="middle"
+                                className="mesh-aggregate-count"
+                                style={{ fontSize: 18 * labelUnit }}
                               >
-                                <rect
-                                  x={cluster.cx - 110}
-                                  y={cluster.expanded ? cluster.cy - cluster.r - 40 : cluster.cy - 28}
-                                  width={220}
-                                  height={cluster.expanded ? 56 : 116}
-                                  rx={5}
-                                  fill="transparent"
-                                />
-                                {cluster.expanded ? (
-                                  <Minus
-                                    x={cluster.cx - Math.min(100, cluster.label.length * 3.2 + 28)}
-                                    y={cluster.cy - cluster.r - 30}
-                                    width={14}
-                                    height={14}
-                                    className="text-content"
-                                    aria-hidden="true"
-                                  />
-                                ) : (
-                                  <Plus
-                                    x={cluster.cx - Math.min(100, cluster.label.length * 3.2 + 28)}
-                                    y={cluster.cy + 41}
-                                    width={14}
-                                    height={14}
-                                    className="text-content"
-                                    aria-hidden="true"
-                                  />
-                                )}
-                                {!cluster.expanded && (
-                                  <text
-                                    x={cluster.cx}
-                                    y={cluster.cy + 5}
-                                    textAnchor="middle"
-                                    className="fill-content text-[18px] font-semibold"
-                                  >
-                                    {cluster.count}
-                                  </text>
-                                )}
-                                <text
-                                  x={cluster.cx}
-                                  y={cluster.expanded ? cluster.cy - cluster.r - 18 : cluster.cy + 53}
-                                  textAnchor="middle"
-                                  className="fill-content text-[12px] font-medium"
-                                >
-                                  {cluster.label} · {cluster.count}
-                                </text>
-                                {cluster.unhealthy > 0 && (
-                                  <text
-                                    x={cluster.cx}
-                                    y={cluster.expanded ? cluster.cy - cluster.r - 2 : cluster.cy + 70}
-                                    textAnchor="middle"
-                                    className="fill-content text-[11px]"
-                                  >
-                                    {t('topology.radial.groupUnhealthy', { count: cluster.unhealthy })}
-                                  </text>
-                                )}
-                                {cluster.quarantined > 0 && (
-                                  <text
-                                    x={cluster.cx}
-                                    y={
-                                      cluster.expanded
-                                        ? cluster.cy - cluster.r + (cluster.unhealthy ? 14 : -2)
-                                        : cluster.cy + (cluster.unhealthy ? 85 : 70)
-                                    }
-                                    textAnchor="middle"
-                                    className="fill-content text-[11px]"
-                                  >
-                                    {t('topology.radial.groupQuarantined', { count: cluster.quarantined })}
-                                  </text>
-                                )}
-                              </g>
+                                {cluster.count}
+                              </text>
+                              <text
+                                x={cluster.cx}
+                                y={cluster.cy + 48 * labelUnit}
+                                textAnchor="middle"
+                                className="fill-content"
+                                style={{ fontSize: 13 * labelUnit }}
+                              >
+                                {cluster.label} · {cluster.count}
+                              </text>
                             </g>
                           ))}
 
@@ -1095,12 +994,15 @@ export function TopologyRoute() {
                             selectedLink &&
                             ((selectedLink.source === link.source && selectedLink.target === link.target) ||
                               (selectedLink.source === link.target && selectedLink.target === link.source));
-                          const isNeighbourLink = selectedNodeId === link.source || selectedNodeId === link.target;
-                          const modeClass = isCut
-                            ? 'stroke-danger'
-                            : isNeighbourLink
-                              ? 'stroke-accent'
-                              : 'stroke-border-strong';
+                          const isNeighbourLink =
+                            selectedNodeId === link.source ||
+                            selectedNodeId === link.target ||
+                            (firstHopIds !== null &&
+                              neighbourIds !== null &&
+                              neighbourIds.has(link.source) &&
+                              neighbourIds.has(link.target) &&
+                              (firstHopIds.has(link.source) || firstHopIds.has(link.target)));
+                          const modeClass = isCut ? 'stroke-danger' : 'mesh-community-stroke';
                           return (
                             <g
                               key={`${link.source}-${link.target}`}
@@ -1108,7 +1010,7 @@ export function TopologyRoute() {
                               role="button"
                               tabIndex={0}
                               aria-label={`${t('topology.canvas.linkTitle')}: ${positionById.get(link.source)?.node.name || link.source} — ${positionById.get(link.target)?.node.name || link.target}`}
-                              className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+                              className={`mesh-policy-edge ${communityClass(positionById.get(link.source)!.node)} cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus`}
                               onPointerDown={(e) => e.stopPropagation()}
                               onClick={() => selectLink(link)}
                               onKeyDown={(e) => {
@@ -1123,8 +1025,9 @@ export function TopologyRoute() {
                               <path
                                 d={path}
                                 fill="none"
-                                strokeWidth={isSelectedLink || isNeighbourLink ? 2 : 1}
-                                opacity={selectedNodeId && !isNeighbourLink ? 0.18 : 0.8}
+                                strokeWidth={isSelectedLink || isNeighbourLink ? 2 : 1.5}
+                                vectorEffect="non-scaling-stroke"
+                                opacity={selectedNodeId && !isNeighbourLink ? 0.12 : 0.95}
                                 strokeDasharray={isCut ? '4 4' : undefined}
                                 className={isSelectedLink ? 'stroke-content' : modeClass}
                               />
@@ -1141,12 +1044,12 @@ export function TopologyRoute() {
                           const fillClass = isQuarantined
                             ? 'fill-danger-subtle'
                             : node.is_healthy
-                              ? 'fill-accent-subtle'
+                              ? 'mesh-community-fill'
                               : 'fill-warning-subtle';
                           const strokeClass = isQuarantined
                             ? 'stroke-danger'
                             : node.is_healthy
-                              ? 'stroke-accent'
+                              ? 'mesh-community-stroke'
                               : 'stroke-warning';
                           const faded = neighbourIds !== null && !neighbourIds.has(node.id);
                           return (
@@ -1156,7 +1059,8 @@ export function TopologyRoute() {
                               tabIndex={0}
                               aria-label={`${node.name || node.id} — ${node.role}`}
                               aria-pressed={isSelected}
-                              className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+                              data-node-id={node.id}
+                              className={`${communityClass(node)} focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus`}
                               style={{ cursor: 'grab', opacity: faded ? 0.3 : 1 }}
                               data-neighbour={faded ? 'false' : 'true'}
                               onPointerDown={(e) => onNodePointerDown(e, node.id)}
@@ -1187,112 +1091,85 @@ export function TopologyRoute() {
                                 strokeDasharray={!node.is_healthy && !isQuarantined ? '4 3' : undefined}
                                 className={`${fillClass} ${isSelected ? 'stroke-content' : strokeClass}`}
                               />
-                              <circle cx={x} cy={y} r={Math.max(22, nodeRadius)} fill="transparent" />
-                              {nodeRadius >= 9 &&
-                                (node.role === 'CLIENT_ORIGIN' ? (
-                                  <Monitor
-                                    x={x - 7}
-                                    y={y - 7}
-                                    width={14}
-                                    height={14}
-                                    className="text-content pointer-events-none"
-                                    aria-hidden="true"
-                                  />
-                                ) : (
-                                  <Server
-                                    x={x - 7}
-                                    y={y - 7}
-                                    width={14}
-                                    height={14}
-                                    className="text-content pointer-events-none"
-                                    aria-hidden="true"
-                                  />
-                                ))}
-                              {(showLabels || isSelected) && (
+                              <circle cx={x} cy={y} r={Math.max(22 * labelUnit, nodeRadius)} fill="transparent" />
+                              {/* The selected label is painted in an overlay after every peer (below). */}
+                              {showLabels && !isSelected && (
                                 <g className="pointer-events-none mesh-node-label">
                                   <text
                                     x={x}
                                     y={y + nodeRadius + 20 * labelUnit}
                                     textAnchor="middle"
                                     className="fill-content font-semibold"
-                                    style={{ fontSize: 14 * labelUnit }}
+                                    style={{ fontSize: 13 * labelUnit }}
                                   >
                                     {(node.name || node.id).slice(0, 28)}
                                   </text>
-                                  <text
-                                    x={x}
-                                    y={y + nodeRadius + 38 * labelUnit}
-                                    textAnchor="middle"
-                                    className="fill-subtle font-mono"
-                                    style={{ fontSize: 12 * labelUnit }}
-                                  >
-                                    {node.overlay_ipv4 || '—'} · {node.country || '—'}
-                                  </text>
-                                  <text
-                                    x={x}
-                                    y={y + nodeRadius + 54 * labelUnit}
-                                    textAnchor="middle"
-                                    className="fill-subtle"
-                                    style={{ fontSize: 12 * labelUnit }}
-                                  >
-                                    {t(
-                                      node.is_quarantined
-                                        ? 'topology.nodeDrawer.quarantined'
-                                        : node.is_healthy
-                                          ? 'topology.nodeDrawer.healthy'
-                                          : 'topology.nodeDrawer.unhealthy'
-                                    )}
-                                  </text>
+                                  {view.scale >= 1.8 && (
+                                    <text
+                                      x={x}
+                                      y={y + nodeRadius + 38 * labelUnit}
+                                      textAnchor="middle"
+                                      className="fill-subtle font-mono"
+                                      style={{ fontSize: 11 * labelUnit }}
+                                    >
+                                      {node.overlay_ipv4 || '—'} · {node.country || '—'}
+                                    </text>
+                                  )}
                                 </g>
                               )}
                             </g>
                           );
                         })}
-                        <g className="pointer-events-none" aria-label={t('topology.radial.controlPlane')}>
-                          <rect
-                            x={GRAPH_WIDTH / 2 - 58}
-                            y={GRAPH_HEIGHT / 2 - 30}
-                            width={116}
-                            height={100}
-                            rx={8}
-                            className="fill-surface-sunken stroke-border"
-                            strokeDasharray="2 4"
-                          />
-                          <circle
-                            cx={GRAPH_WIDTH / 2}
-                            cy={GRAPH_HEIGHT / 2}
-                            r={20}
-                            className="fill-surface stroke-border-strong"
-                            strokeWidth={1.5}
-                          />
-                          <Network
-                            x={GRAPH_WIDTH / 2 - 9}
-                            y={GRAPH_HEIGHT / 2 - 9}
-                            width={18}
-                            height={18}
-                            className="text-accent"
-                            aria-hidden="true"
-                          />
-                          <text
-                            x={GRAPH_WIDTH / 2}
-                            y={GRAPH_HEIGHT / 2 + 40}
-                            textAnchor="middle"
-                            className="fill-content text-[12px] font-semibold"
-                          >
-                            {t('topology.radial.controlPlane')}
-                          </text>
-                          <text
-                            x={GRAPH_WIDTH / 2}
-                            y={GRAPH_HEIGHT / 2 + 57}
-                            textAnchor="middle"
-                            className="fill-subtle text-[10px]"
-                          >
-                            {t('topology.radial.coordination')}
-                          </text>
-                        </g>
+
+                        {(() => {
+                          // Painted last so neighbouring peers never cover it; DOM order of the
+                          // focusable peers (and therefore keyboard order) stays unchanged.
+                          if (!selectedNode || !placedNodes.some(({ node }) => node.id === selectedNode.id))
+                            return null;
+                          const pos = renderPos.get(selectedNode.id);
+                          if (!pos) return null;
+                          return (
+                            <g aria-hidden="true" data-selected-label className="pointer-events-none mesh-node-label">
+                              <text
+                                x={pos.x}
+                                y={pos.y + nodeRadius + 20 * labelUnit}
+                                textAnchor="middle"
+                                className="fill-content font-semibold"
+                                style={{ fontSize: 13 * labelUnit }}
+                              >
+                                {(selectedNode.name || selectedNode.id).slice(0, 28)}
+                              </text>
+                              <text
+                                x={pos.x}
+                                y={pos.y + nodeRadius + 38 * labelUnit}
+                                textAnchor="middle"
+                                className="fill-subtle font-mono"
+                                style={{ fontSize: 11 * labelUnit }}
+                              >
+                                {selectedNode.overlay_ipv4 || '—'} · {selectedNode.country || '—'}
+                              </text>
+                            </g>
+                          );
+                        })()}
                       </g>
                     </svg>
 
+                    {filteredNodes.length === 0 && (
+                      <div className="mesh-no-matches" role="status">
+                        <p>{t('topology.graph.noMatches')}</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchQuery('');
+                            setSelectedRole('ALL');
+                            setSelectedCompartment('ALL');
+                            setHiddenGroups(new Set());
+                          }}
+                        >
+                          {t('topology.graph.resetFilters')}
+                        </button>
+                      </div>
+                    )}
                     {evidenceView === 'policy' && needsSelectionHint && (
                       <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
                         <span className="rounded-full border border-border bg-surface/90 px-3 py-1 text-caption text-muted shadow-sm backdrop-blur">
@@ -1336,6 +1213,11 @@ export function TopologyRoute() {
                   {evidenceView === 'observed' && (
                     <p role="status" className="mesh-unmeasured">
                       {t('topology.radial.unmeasured')}
+                    </p>
+                  )}
+                  {evidenceView === 'policy' && resolvedEdgeMode === 'focus' && (
+                    <p className="mesh-overview-caption">
+                      {t('topology.graph.overviewSubset', { shown: visibleLinks.length, total: filteredLinks.length })}
                     </p>
                   )}
                   <p className="mesh-explanation text-caption text-subtle">
@@ -1492,6 +1374,50 @@ export function TopologyRoute() {
                         <div className="text-caption text-muted">
                           {t('topology.radial.allowedPairs')}: {selectedNodeLinks.length}
                         </div>
+                        <div className="mesh-neighborhood" role="group" aria-label={t('topology.graph.neighborhood')}>
+                          <div className="mesh-neighborhood-heading">
+                            <h3>{t('topology.graph.neighborhood')}</h3>
+                            <span className="mesh-community-count" data-neighbour-count>
+                              {neighbourIds ? Math.max(0, neighbourIds.size - 1) : 0}
+                            </span>
+                          </div>
+                          <div className="mesh-hop-controls">
+                            {([1, 2] as const).map((hops) => (
+                              <button
+                                key={hops}
+                                type="button"
+                                aria-pressed={neighborhoodHops === hops}
+                                onClick={() => setNeighborhoodHops(hops)}
+                              >
+                                {t('topology.graph.hops', { count: hops })}
+                              </button>
+                            ))}
+                          </div>
+                          <p>{t('topology.graph.policyOnly')}</p>
+                          <ul>
+                            {filteredNodes
+                              .filter((node) => node.id !== selectedNode.id && neighbourIds?.has(node.id))
+                              .slice(0, 50)
+                              .map((node) => (
+                                <li key={node.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedNodeId(node.id);
+                                      setExpandedGroups((previous) => ({
+                                        ...previous,
+                                        [groupValue(node, groupBy).key]: true
+                                      }));
+                                    }}
+                                  >
+                                    {node.name || node.id}
+                                    <span>{node.role}</span>
+                                  </button>
+                                </li>
+                              ))}
+                          </ul>
+                          {neighbourIds && neighbourIds.size > 51 && <p>{t('topology.graph.neighborLimit')}</p>}
+                        </div>
 
                         <Button
                           variant="secondary"
@@ -1508,7 +1434,7 @@ export function TopologyRoute() {
                   </aside>
                 )}
               </div>
-            )}
+            }
           </Card>
         ) : (
           <Card flush>

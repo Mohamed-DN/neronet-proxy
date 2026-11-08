@@ -419,6 +419,23 @@
       "allNodes": "All nodes",
       "closeDetails": "Close details",
       "openPolicy": "Open policy"
+    },
+    "graph": {
+      "communities": "Communities",
+      "inventoryGroups": "Color by inventory group",
+      "selectAll": "Show all communities",
+      "fold": "Collapse",
+      "unfold": "Expand",
+      "scopedCounts": "Counts include only inventory returned for your current access.",
+      "aggregate": "Expand community {{name}}, {{count}} nodes",
+      "noMatches": "No nodes match these filters.",
+      "resetFilters": "Reset filters",
+      "neighborhood": "Policy neighborhood",
+      "hops_one": "1 hop",
+      "hops_other": "{{count}} hops",
+      "policyOnly": "Allowed policy pairs, not measured transport paths.",
+      "neighborLimit": "Showing the first 50 neighbors. Use search or the accessible list for the full inventory.",
+      "overviewSubset": "Showing {{shown}} of {{total}} policy pairs. Select a node to see all its allowed connections."
     }
   },
   "acl": {
