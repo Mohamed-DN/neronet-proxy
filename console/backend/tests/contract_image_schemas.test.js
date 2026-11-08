@@ -18,9 +18,12 @@ process.env.SOVEREIGN_CONTRACT_SCHEMA_DIR = IMAGE_DIR;
 const { validateResponse, validators } = require('../middleware/contractValidator');
 
 describe('backend image copy of the wire schemas', () => {
-
   it('has the same schema files as the generated root copy', () => {
-    const names = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.schema.json')).sort();
+    const names = (dir) =>
+      fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith('.schema.json'))
+        .sort();
     assert.deepStrictEqual(names(IMAGE_DIR), names(ROOT_DIR));
     for (const file of names(ROOT_DIR)) {
       assert.strictEqual(
@@ -31,7 +34,10 @@ describe('backend image copy of the wire schemas', () => {
     }
   });
 
-  for (const file of fs.readdirSync(FIXTURES_DIR).filter((f) => f.endsWith('.json')).sort()) {
+  for (const file of fs
+    .readdirSync(FIXTURES_DIR)
+    .filter((f) => f.endsWith('.json'))
+    .sort()) {
     const typeName = file.replace('.json', '');
     it(`accepts the shared fixture ${file}`, () => {
       assert.ok(validators.has(typeName), `the image copy has no schema for ${typeName}`);
