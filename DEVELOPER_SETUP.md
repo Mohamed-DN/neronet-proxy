@@ -26,8 +26,8 @@ system is and does, read [the handbook](docs/HANDBOOK.md) first.
         │  local SOCKS5 and HTTP proxy                            │  /api, /ws, /v4
         │  dials destinations directly                            ▼
         │                                                    Node.js API (console/backend)
-   DERP relays + STUN (cmd/sovereign-derp-relay)                  │             │
-   started by the compose stack, used by no node               PostgreSQL     Valkey
+   derp-v2 relays (cmd/sovereign-derp-relay)                      │             │
+   admit only what /v4/control/relay/admission lists          PostgreSQL     Valkey
 ```
 
 There is no data plane in the default configuration: nodes do not tunnel to each other.
@@ -41,7 +41,7 @@ A spike of one exists behind the node's `-dataplane` flag; see
 | Control plane | `console/backend` | REST API, WebSocket, and `/v4/control` for nodes. Node enrolment, overlay addresses, ACL and route delivery, posture, revocation |
 | Console | `console/frontend` | React single-page application, served by nginx, which also proxies `/api` and `/v4` |
 | Node | `cmd/sovereign-node` | Enrols, sends heartbeats, syncs ACLs and routes, runs a local SOCKS5 (`127.0.0.1:1080`) and HTTP CONNECT (`127.0.0.1:8080`) proxy |
-| DERP relay | `cmd/sovereign-derp-relay` | Relay server and STUN server. Started by the compose stack; no node connects to it |
+| DERP relay | `cmd/sovereign-derp-relay` | derp-v2 relay (ADR 0022). Admits a node only while the control plane's admission snapshot lists its key, and closes its sessions when the snapshot drops it or goes stale. Started by the `derp` overlay scenario |
 | Operator CLI | `cmd/sovereign-cli` | `status`, `peers`, `circuit`, `keygen`, `stun-ping` |
 | Go control plane | `cmd/sovereign-control-plane` | Not the control plane to run. Scheduled for removal ([ADR 0007](docs/adr/0007-remove-go-control-plane-server.md)) |
 | Security daemon | `cmd/sovereign-security-daemon` | Honeypot listener, threat scorer and firewall drivers. Separate Go module, has tests, not started by the compose stack |
@@ -74,7 +74,7 @@ They are POSIX `sh` and run everything in containers.
 |---|---|
 | `gen-env.sh` | Writes `.env` with fresh random secrets. Refuses to overwrite an existing file. Never prints the values. |
 | `stack.sh up` | Builds and starts PostgreSQL, Valkey, the backend and the console. Waits until they are healthy. |
-| `stack.sh nodes` | Starts two DERP relays and six Go nodes that enrol through the console. |
+| `stack.sh nodes` | Starts six Go nodes that enrol through the console. The derp-v2 relays are a separate profile, started by the `derp` overlay scenario. |
 | `stack.sh status` | Service health, and how many nodes sent a heartbeat in the last 60 seconds. |
 | `stack.sh logs [service]` | Last 200 log lines of all services or of one. Add `-f` to follow. |
 | `stack.sh down [-v]` | Removes the containers and the network. `-v` also removes the volumes (database, node identities). |
@@ -225,9 +225,20 @@ stack uses; only the variables below matter to the running stack.
 
 ### DERP relay
 
-`SOVEREIGN_RELAY_LISTEN_ADDR` (`-listen-addr`), `SOVEREIGN_STUN_LISTEN_ADDR`
-(`-stun-addr`), `SOVEREIGN_RELAY_REGION` (`-region`), `SOVEREIGN_DECOY_TITLE`
-(`-decoy-title`).
+| Variable | Flag | Meaning |
+|---|---|---|
+| `SOVEREIGN_RELAY_LISTEN_ADDR` | `-listen-addr` | HTTPS listen address, default `0.0.0.0:8443`. Nodes connect to `/derp`; `/healthz` answers 503 until a valid admission snapshot is held |
+| `SOVEREIGN_RELAY_TLS_CERT`, `SOVEREIGN_RELAY_TLS_KEY` | `-tls-cert`, `-tls-key` | Certificate nodes verify against the CA they pin; its name must be the host in the relay URL the control plane lists |
+| `SOVEREIGN_RELAY_IDENTITY_FILE` | `-identity-file` | Relay identity, created on first start (0600) and kept across restarts |
+| `SOVEREIGN_RELAY_ADMISSION_URL` | `-admission-url` | `https://<console>/v4/control/relay/admission` |
+| `SOVEREIGN_RELAY_CREDENTIAL_FILE` | `-credential-file` | The relay's `nrr1_` credential, shown once by `POST /api/transports/relays` or `.../rotate-credential` |
+| `SOVEREIGN_RELAY_CA_FILE` | `-ca-file` | CA for the control plane; system roots when empty |
+| | `-refresh` | Admission refresh interval, default 15s |
+
+The relay refuses to start without TLS, a relay credential or an https admission URL. Nothing is
+admitted before the first snapshot, and the snapshot carries its own lifetime
+(`SOVEREIGN_RELAY_ADMISSION_MAX_STALENESS_SECONDS` on the backend): with the control
+plane unreachable past it, the relay closes every session.
 
 ### Backend
 
@@ -265,7 +276,7 @@ matter:
 | `postgres`, `valkey` | always | Durable state and hot state. Not published to the host. |
 | `backend` | always | Node.js control plane API. |
 | `frontend` | always | nginx: the console SPA, and the entry point Go nodes enrol through. |
-| `derp-eu`, `derp-us` | `nodes` | DERP relays; each also answers STUN on UDP. |
+| `derp-a`, `derp-b` | `relays` | derp-v2 relays (ADR 0022). Started by the `derp` overlay scenario once the control plane lists them; see below. |
 | `relay-de`, `relay-fr`, `relay-us`, `relay-nl`, `client-it`, `client-es` | `nodes` | Go nodes. Each keeps its identity key in its own volume. |
 | `postgres-debug`, `valkey-debug` | `debug-ports` | Loopback forwarders to PostgreSQL and Valkey. |
 
@@ -279,10 +290,6 @@ All ports are bound to `127.0.0.1`.
 |---|---:|---|
 | `NERONET_CONSOLE_PORT` | 8443 | `frontend` |
 | `NERONET_API_PORT` | 8081 | `backend` |
-| `NERONET_DERP_EU_PORT` | 8444 | `derp-eu` (TCP) |
-| `NERONET_DERP_US_PORT` | 8445 | `derp-us` (TCP) |
-| `NERONET_STUN_EU_PORT` | 3478 | `derp-eu` (UDP) |
-| `NERONET_STUN_US_PORT` | 3479 | `derp-us` (UDP) |
 | `NERONET_POSTGRES_PORT` | 5432 | `postgres-debug` |
 | `NERONET_VALKEY_PORT` | 6379 | `valkey-debug` |
 
@@ -355,6 +362,7 @@ sh scripts/dev/e2e.sh --keep matrix   # one scenario, and leave the stack runnin
 | `quarantine` | a quarantined node is cut off from every peer, and comes back when lifted |
 | `fail-static` | the overlay keeps running with the backend stopped, fails closed past the staleness bound, recovers when the backend returns |
 | `revoke` | a revoked node is gone from every peer, and the rest of the mesh is unaffected |
+| `derp` | with UDP dropped by iptables in one node's own network namespace, that node reaches every peer through the two derp-v2 relays; it is cut off when its organisation's policy withdraws DERP or both relays stop, and comes back when DERP is allowed again or the relays return. Not in the default `e2e.sh` list: it needs `NERONET_TRANSPORT_CEILING=udp,derp` on the backend and builds `docker/netfault` (alpine with iptables) when its image is missing |
 
 It forces `SOVEREIGN_MFA_MANDATORY=off` (the scenarios sign in with the admin password)
 and a 60 second netmap staleness bound for the run.

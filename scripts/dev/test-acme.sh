@@ -226,7 +226,7 @@ if [ "$MODE" = all ]; then
   export NERONET_TLS_MODE=internal
   unset NERONET_EXTRA_COMPOSE_FILE NERONET_CONTROL_PLANE_CA_FILE NERONET_NODE_CA NERONET_CONTROL_PLANE_URL
   sh scripts/dev/stack.sh up
-  sh scripts/dev/stack.sh nodes derp-eu relay-de client-it
+  sh scripts/dev/stack.sh nodes relay-de client-it
   sh scripts/dev/smoke.sh 2 180
   wait_overlay
   echo "PASS  internal CA and overlay traffic"
@@ -306,7 +306,7 @@ echo "$redirect" | grep -qi "location: https://$NERONET_PUBLIC_DOMAIN:$NERONET_C
 renew
 reject_bad_certificate
 reject_untrusted_ca
-sh scripts/dev/stack.sh nodes derp-eu relay-de client-it
+sh scripts/dev/stack.sh nodes relay-de client-it
 # These are new containers: old heartbeat rows alone cannot prove that a node
 # accepted the new certificate. Require registration in each current process.
 elapsed=0

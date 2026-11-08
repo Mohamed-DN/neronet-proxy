@@ -17,9 +17,9 @@
 #   COMPOSE_PROJECT_NAME   stack name. Default: the checkout folder name, as Compose does.
 #                          Use a different name for each stack running at the same time.
 #   NERONET_PORT_OFFSET    added to every default host port (console 8443, API 8081,
-#                          DERP 8444/8445, STUN 3478/3479, debug 5432/6379)
+#                          debug 5432/6379)
 #   NERONET_<NAME>_PORT    sets one port explicitly and wins over the offset:
-#                          CONSOLE, API, DERP_EU, DERP_US, STUN_EU, STUN_US, POSTGRES, VALKEY
+#                          CONSOLE, API, POSTGRES, VALKEY
 #   NERONET_DEBUG_PORTS=1  also publish PostgreSQL and Valkey on 127.0.0.1
 #   NERONET_FLEET_FILE     the compose override the fleet generator wrote, relative to the repository
 #                          root. Default: scripts/sim/out/docker-compose.fleet.yml. When the file
@@ -40,10 +40,6 @@ default_port() {
 }
 default_port NERONET_CONSOLE_PORT 8443
 default_port NERONET_API_PORT 8081
-default_port NERONET_DERP_EU_PORT 8444
-default_port NERONET_DERP_US_PORT 8445
-default_port NERONET_STUN_EU_PORT 3478
-default_port NERONET_STUN_US_PORT 3479
 default_port NERONET_POSTGRES_PORT 5432
 default_port NERONET_VALKEY_PORT 6379
 default_port NERONET_HTTP_PORT 8080
@@ -59,7 +55,7 @@ export NERONET_BACKUP_IMAGE="${NERONET_BACKUP_IMAGE:-${_project}-backup:dev}"
 # paths also sidestep the Windows path notation mismatch with the compose provider.
 cd "$REPO_ROOT"
 
-PROFILES="--profile nodes --profile debug-ports --profile backup --profile restore"
+PROFILES="--profile nodes --profile relays --profile debug-ports --profile backup --profile restore"
 
 # Read only these non-secret settings from .env, without executing it. Environment
 # values take precedence, as they do for Compose. Shell expansion inside .env is
@@ -132,7 +128,7 @@ case "$cmd" in
     # All node-image services share one image. Build it through one service,
     # then start everything without rebuilding, so it is built only once.
     # shellcheck disable=SC2086
-    $COMPOSE --profile nodes build derp-eu
+    $COMPOSE --profile nodes build relay-de
     # shellcheck disable=SC2086
     $COMPOSE --profile nodes $UP_PROFILES up -d "$@"
     ;;

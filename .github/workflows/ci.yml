@@ -261,7 +261,7 @@ jobs:
       - name: Start core and two real netstack nodes
         run: |
           sh scripts/dev/stack.sh up
-          sh scripts/dev/stack.sh nodes derp-eu relay-de client-it
+          sh scripts/dev/stack.sh nodes relay-de client-it
           sh scripts/dev/smoke.sh 2 180
 
       - name: Start periodic restic backup and wait for success

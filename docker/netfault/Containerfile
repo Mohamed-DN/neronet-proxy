@@ -1,0 +1,7 @@
+# Fault injection for the overlay scenarios only, never part of a deployment.
+# scripts/dev/scenarios/overlay.sh runs it with --network container:<node> and
+# NET_ADMIN, so the iptables rules land in that one node's network namespace and
+# nowhere else.
+FROM docker.io/library/alpine:3.20
+RUN apk add --no-cache iptables ip6tables
+ENTRYPOINT ["/bin/sh", "-c"]

@@ -57,10 +57,32 @@ x-node: &node
     frontend:
       condition: service_healthy
 
+# derp-v2 relays (ADR 0022). Their own profile: a relay is useful only once the
+# control plane lists it (POST /api/transports/relays) and its credential and
+# certificate are in certs/relays/<name>/ (scripts/dev/gen-relay-certs.sh), which the
+# derp scenario does. Until its first admission snapshot a relay refuses every client.
 x-derp: &derp
   <<: *node-build
-  profiles: ["nodes"]
+  profiles: ["relays"]
   entrypoint: ["/bin/sovereign-derp-relay"]
+  environment:
+    - SOVEREIGN_RELAY_LISTEN_ADDR=0.0.0.0:8443
+    - SOVEREIGN_RELAY_TLS_CERT=/run/relay/tls.crt
+    - SOVEREIGN_RELAY_TLS_KEY=/run/relay/tls.key
+    - SOVEREIGN_RELAY_CREDENTIAL_FILE=/run/relay/credential
+    - SOVEREIGN_RELAY_IDENTITY_FILE=/var/lib/neronet/relay-identity
+    - SOVEREIGN_RELAY_ADMISSION_URL=${NERONET_CONTROL_PLANE_URL:-https://frontend:8443}/v4/control/relay/admission
+    - SOVEREIGN_RELAY_CA_FILE=/run/secrets/control_plane_ca
+  secrets:
+    - control_plane_ca
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  depends_on:
+    frontend:
+      condition: service_healthy
 
 x-backup: &backup
   # One image for the periodic backup and for restore.sh: pg_dump/pg_restore of the
@@ -260,22 +282,21 @@ services:
   # filters and circuit selection have something to choose between.
   # ---------------------------------------------------------------------------
 
-  # DERP relays: the fallback path for peers that cannot reach each other directly.
-  # Two regions so relay selection has a choice. Each also answers STUN on UDP, which
-  # is what a node behind NAT uses to learn its own public address.
-  derp-eu:
+  # The fallback path for peers that cannot reach each other directly: two distinct
+  # relay processes, identities and certificates, so a node's two homes are really two
+  # relays. Nodes reach them inside the network as https://<name>:8443/derp; nothing is
+  # published to the host. No mesh key, no link between the two.
+  derp-a:
     <<: *derp
-    command: ["-listen-addr", "0.0.0.0:8444", "-stun-addr", "0.0.0.0:3478", "-region", "eu-central", "-decoy-title", "Apache2 Ubuntu Default Page"]
-    ports:
-      - "127.0.0.1:${NERONET_DERP_EU_PORT:-8444}:8444"
-      - "127.0.0.1:${NERONET_STUN_EU_PORT:-3478}:3478/udp"
+    volumes:
+      - identity-derp-a:/var/lib/neronet
+      - ./certs/relays/derp-a:/run/relay:ro
 
-  derp-us:
+  derp-b:
     <<: *derp
-    command: ["-listen-addr", "0.0.0.0:8444", "-stun-addr", "0.0.0.0:3478", "-region", "us-east", "-decoy-title", "Apache2 Ubuntu Default Page"]
-    ports:
-      - "127.0.0.1:${NERONET_DERP_US_PORT:-8445}:8444"
-      - "127.0.0.1:${NERONET_STUN_US_PORT:-3479}:3478/udp"
+    volumes:
+      - identity-derp-b:/var/lib/neronet
+      - ./certs/relays/derp-b:/run/relay:ro
 
   relay-de:
     <<: *node
@@ -505,3 +526,6 @@ volumes:
   identity-client-jp:
   identity-client-ch:
   identity-relay-se:
+  # A relay's long-lived DERP identity.
+  identity-derp-a:
+  identity-derp-b:

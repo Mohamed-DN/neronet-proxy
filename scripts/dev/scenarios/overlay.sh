@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static]
+# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static|derp]
 #
 # Measures the overlay between the fleet nodes of a running stack. Every cell of the
 # matrix is a real TCP exchange: node A dials node B's overlay address through node
@@ -16,6 +16,10 @@
 #   quarantine    quarantine one node through the API, re-measure, lift it, re-measure
 #   revoke        revoke one node through the API and re-measure
 #   fail-static   stop the backend, re-measure, restart it, re-measure
+#   derp          register and start the two derp-v2 relays, drop UDP in one node's
+#                 network namespace, and measure DERP allowed, withdrawn, restored,
+#                 both relays stopped and restarted, and UDP restored; needs a backend
+#                 started with NERONET_TRANSPORT_CEILING=udp,derp
 #
 # The stack must be running with the data plane on:
 #
@@ -584,8 +588,141 @@ case "$SCENARIO" in
     expect_all ok || rc=1
     ;;
 
+  derp)
+    # T0: DERP through the two derp-v2 relays under the control plane's policy, with
+    # UDP really dropped in one node's network namespace (not a flag in the node).
+    # Requires a stack whose backend runs with NERONET_TRANSPORT_CEILING=udp,derp.
+    A=$(first_service)
+    B=$(second_service)
+    ORG=${NERONET_OVERLAY_ORG:-org-default}
+
+    psql_q() { $COMPOSE exec -T postgres psql -U neronet -d neronet_db -tA -F ' ' -c "$1"; }
+    org_policy() {
+      api PUT "/api/organizations/$ORG/transports" "{\"allowed_transports\":$1}" > "$WORK/policy.json"
+      grep -q '"effective_transports"' "$WORK/policy.json" || die "setting the transport policy failed: $(cat "$WORK/policy.json")"
+      echo "transport policy of $ORG: $(sed -n 's/.*"effective_transports":\(\[[^]]*\]\).*/\1/p' "$WORK/policy.json") effective"
+    }
+    container_of() { $COMPOSE --profile nodes ps -q "$1" | head -1; }
+    netfault() {
+      # Runs iptables inside the node container's own network namespace. Only that
+      # namespace is touched; the host and the other containers are not.
+      $ENGINE run --rm --network "container:$(container_of "$1")" --cap-add NET_ADMIN \
+        "$NETFAULT_IMAGE" "$2"
+    }
+    NETFAULT_IMAGE=${NERONET_NETFAULT_IMAGE:-localhost/neronet-netfault:dev}
+    $ENGINE image inspect "$NETFAULT_IMAGE" > /dev/null 2>&1 ||
+      $ENGINE build -t "$NETFAULT_IMAGE" -f docker/netfault/Containerfile docker/netfault ||
+      die "building $NETFAULT_IMAGE failed"
+    udp_block() {
+      netfault "$1" 'iptables -I OUTPUT 1 -p udp ! --dport 53 -j DROP -m comment --comment neronet-t0 &&
+                     iptables -I INPUT 1 -p udp ! --sport 53 -j DROP -m comment --comment neronet-t0'
+    }
+    udp_unblock() {
+      netfault "$1" 'while iptables -D OUTPUT -p udp ! --dport 53 -j DROP -m comment --comment neronet-t0 2>/dev/null; do :; done;
+                     while iptables -D INPUT -p udp ! --sport 53 -j DROP -m comment --comment neronet-t0 2>/dev/null; do :; done'
+    }
+    udp_counters() {
+      netfault "$1" 'iptables -L -v -x -n | grep neronet-t0' | awk '{p+=$1} END {print p+0}'
+    }
+    admission_keys() {
+      curl -sS --cacert certs/ca.crt -X POST "https://127.0.0.1:$((8443 + ${NERONET_PORT_OFFSET:-0}))/v4/control/relay/admission" \
+        -H "Authorization: Bearer $(cat "certs/relays/$1/credential")" | tr ',' '\n' | grep -c '[0-9a-f]\{64\}' || true
+    }
+    homes_ready() {
+      # Every fleet node reports both relays as homes.
+      want=$(wc -l < "$WORK/fleet")
+      got=$(psql_q "SELECT count(*) FROM nodes WHERE jsonb_array_length(relay_homes) = 2 AND relay_homes_reported_at > now() - interval '60 seconds'")
+      [ "${got:-0}" -ge "$want" ]
+    }
+    expect_isolated() {
+      bad=0
+      while read -r src dst state rest; do
+        want=ok
+        { [ "$src" = "$1" ] || [ "$dst" = "$1" ]; } && want=$2
+        if [ "$state" != "$want" ]; then
+          echo "unexpected: $src -> $dst is $state, expected $want" >&2
+          bad=1
+        fi
+      done < "$WORK/matrix"
+      return $bad
+    }
+    reaches() { [ "$(dial "$1" "$2" | awk '{print $1}')" = ok ]; }
+    unreachable() { ! reaches "$1" "$2"; }
+    wait_for() {
+      what=$1; shift
+      i=0
+      until "$@"; do
+        i=$((i + 5)); [ "$i" -le "${NERONET_DERP_WAIT:-180}" ] || { echo "timed out waiting for $what" >&2; return 1; }
+        sleep 5
+      done
+      echo "$what after ${i}s"
+    }
+
+    echo "registering the relays with the control plane"
+    sh scripts/dev/gen-relay-certs.sh "$REPO_ROOT/certs" derp-a derp-b
+    for r in derp-a derp-b; do
+      api POST /api/transports/relays "{\"relay_id\":\"$r\",\"url\":\"https://$r:8443/derp\"}" > "$WORK/relay.json"
+      if ! grep -q '"credential"' "$WORK/relay.json"; then
+        api POST "/api/transports/relays/$r/rotate-credential" > "$WORK/relay.json"
+        api PATCH "/api/transports/relays/$r" '{"enabled":true}' > /dev/null
+      fi
+      # World-readable inside a directory only the developer can enter: see gen-relay-certs.sh.
+      (umask 022; sed -n 's/.*"credential":"\(nrr1_[0-9a-f]*\)".*/\1/p' "$WORK/relay.json" > "certs/relays/$r/credential")
+      [ -s "certs/relays/$r/credential" ] || die "no credential for $r"
+      chmod 644 "certs/relays/$r/credential"
+      rm -f "$WORK/relay.json"
+    done
+    $COMPOSE --profile relays up -d --force-recreate derp-a derp-b
+
+    org_policy '["udp","derp"]'
+    wait_for "both relays homed on every node" homes_ready || rc=1
+    echo "admission snapshot: $(admission_keys derp-a) keys"
+    measure_matrix "UDP and DERP allowed"
+    expect_all ok || rc=1
+
+    echo "dropping UDP in $A's network namespace, both directions (DNS excepted)"
+    udp_block "$A"
+    wait_for "$A reaching $B without UDP" reaches "$A" "$(vip_of "$B")" || rc=1
+    measure_matrix "UDP dropped at $A, DERP allowed"
+    expect_all ok || rc=1
+    echo "UDP packets dropped at $A so far: $(udp_counters "$A")"
+
+    echo "withdrawing DERP from $ORG"
+    org_policy '["udp"]'
+    wait_for "$A cut off from $B" unreachable "$A" "$(vip_of "$B")" || rc=1
+    echo "admission snapshot: $(admission_keys derp-a) keys"
+    measure_matrix "UDP dropped at $A, DERP withdrawn"
+    expect_isolated "$A" timeout || rc=1
+
+    echo "allowing DERP again"
+    org_policy '["udp","derp"]'
+    wait_for "$A reaching $B again over DERP" reaches "$A" "$(vip_of "$B")" || rc=1
+    measure_matrix "UDP dropped at $A, DERP allowed again"
+    expect_all ok || rc=1
+
+    echo "stopping both relays"
+    $COMPOSE --profile relays stop derp-a derp-b
+    wait_for "$A cut off without relays" unreachable "$A" "$(vip_of "$B")" || rc=1
+    measure_matrix "UDP dropped at $A, no relay"
+    expect_isolated "$A" timeout || rc=1
+    $COMPOSE --profile relays start derp-a derp-b
+    wait_for "both relays homed again" homes_ready || rc=1
+    wait_for "$A reaching $B through the restarted relays" reaches "$A" "$(vip_of "$B")" || rc=1
+    measure_matrix "UDP dropped at $A, relays back"
+    expect_all ok || rc=1
+
+    echo "restoring UDP at $A"
+    before=$(udp_counters "$A")
+    udp_unblock "$A"
+    converge
+    measure_matrix "UDP restored"
+    expect_all ok || rc=1
+    echo "UDP drops counted while blocked: $before; rules left: $(netfault "$A" 'iptables -S | grep -c neronet-t0 || true')"
+    org_policy '["udp"]'
+    ;;
+
   *)
-    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac

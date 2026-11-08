@@ -71,7 +71,7 @@ generata per il test:
 export COMPOSE_PROJECT_NAME=neronet-backup-drill NERONET_PORT_OFFSET=400
 export NERONET_NODE_SERVICES='relay-de client-it'
 sh scripts/dev/stack.sh up
-sh scripts/dev/stack.sh nodes derp-eu relay-de client-it
+sh scripts/dev/stack.sh nodes relay-de client-it
 sh scripts/dev/smoke.sh 2 180
 sh scripts/ops/backup-drill.sh --destroy-test-data --secondary-test
 NERONET_FLEET_FILE=docker/backup/docker-compose.test.yml sh scripts/dev/stack.sh down -v
