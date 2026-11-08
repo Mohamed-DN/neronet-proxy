@@ -191,6 +191,8 @@ class BackupRecoveryProofService {
     }
     await logAuditEvent({
       eventType: 'DR_RECOVERY_PROOF_VERIFIED',
+      // System event from the DR prover; not tied to any tenant.
+      organizationId: null,
       severity: 'info',
       actorUserId,
       actorUsername: 'dr-prover',
@@ -242,6 +244,8 @@ class BackupRecoveryProofService {
     try {
       await logAuditEvent({
         eventType: 'DR_RECOVERY_PROOF_FAILED',
+        // System event from the DR prover; not tied to any tenant.
+        organizationId: null,
         severity: 'critical',
         actorUserId,
         actorUsername: 'dr-prover',

@@ -40,8 +40,10 @@ router.post('/', async (req, res) => {
 
     await logAuditEvent({
       eventType: 'preauth_key.created',
+      organizationId: key.organization_id,
       severity: 'info',
-      userId: req.user.id,
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
       targetId: key.id,
       targetType: 'preauth_key',
       message: `Created pre-auth key ${key.key_prefix} (org: ${key.organization_id})`,
@@ -75,16 +77,20 @@ router.get('/', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const isSuperAdmin = req.user.role === 'super-admin';
-    const success = await revokePreAuthKey(req.params.id, req.user.id, isSuperAdmin, req.user.organization_id);
+    const revoked = await revokePreAuthKey(req.params.id, req.user.id, isSuperAdmin, req.user.organization_id, {
+      returnAuditContext: true
+    });
 
-    if (!success) {
+    if (!revoked) {
       return res.status(404).json({ error: 'pre-auth key not found or already revoked' });
     }
 
     await logAuditEvent({
       eventType: 'preauth_key.revoked',
+      organizationId: revoked.organization_id,
       severity: 'warn',
-      userId: req.user.id,
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
       targetId: req.params.id,
       targetType: 'preauth_key',
       message: `Revoked pre-auth key ${req.params.id}`,

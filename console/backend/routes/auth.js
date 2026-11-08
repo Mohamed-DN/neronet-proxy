@@ -1,8 +1,9 @@
+const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 
-const { loginLimiter, registerLimiter } = require('../middleware/rateLimit');
+const { loginLimiter, registerLimiter, mfaChallengeLimiter } = require('../middleware/rateLimit');
 const router = express.Router();
 const { getPgPool } = require('../db/index');
 const { authenticateToken, verifyRefreshToken } = require('../middleware/auth');
@@ -15,6 +16,10 @@ const { revokeAccessTokenAndRefresh } = require('../services/AccessTokenRevocati
 const logger = require('../utils/logger');
 const ConsoleSessionService = require('../services/ConsoleSessionService');
 const MfaSessionService = require('../services/MfaSessionService');
+const Browser = require('../services/BrowserContextService');
+const { SessionAuthorityError, authenticateConsoleRequest } = require('../services/SessionAuthority');
+const { setBrowserCookies, clearBrowserCookies, browserOperation } = require('../utils/browserCredentials');
+const jwt = require('jsonwebtoken');
 
 // Pre-computed constant-time dummy bcrypt hash to prevent timing side-channel attacks on non-existent usernames
 const DUMMY_BCRYPT_HASH = '$2a$10$wN3t8gX1ZkGkR0e2M8t0y.9gZ0n4p7s2e6u1v8w5x9y2z3a4b5c6d';
@@ -34,6 +39,7 @@ router.post('/register', registerLimiter, async (req, res, next) => {
     // A role in the body is ignored. This endpoint is public; letting it choose the
     // role handed platform super-admin to anyone who asked.
     const { username, password, email } = req.body || {};
+    const browser = browserOperation(req);
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Missing required registration fields' });
@@ -50,6 +56,9 @@ router.post('/register', registerLimiter, async (req, res, next) => {
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'Username already exists' });
     }
+    // The account row is written outside the session transaction: refuse a stale
+    // v2 intent before creating it, so a refused admission leaves no account.
+    if (browser) await Browser.checkOperation(browser.proof, browser.operationId, ['register']);
 
     const registration = await pool.query(
       `
@@ -64,6 +73,8 @@ router.post('/register', registerLimiter, async (req, res, next) => {
 
     logAuditEvent({
       eventType: 'USER_REGISTER',
+      // Public self-registration assigns no tenant: the created row's value (null).
+      organizationId: registration.rows[0].organization_id ?? null,
       severity: 'info',
       actorUserId: userId,
       actorUsername: username,
@@ -78,9 +89,14 @@ router.post('/register', registerLimiter, async (req, res, next) => {
       verifiedUser: created,
       passwordColumn: 'password_hash',
       accessTier: 'standard',
-      ipAddress: req.ip
+      ipAddress: req.ip,
+      browser
     });
     if (session.mfa_required) return res.status(201).json(session);
+    if (browser) {
+      setBrowserCookies(req, res, session);
+      return res.status(201).json({ candidate: session.browser, user: session.user });
+    }
     setAuthCookies(req, res, session);
 
     return res.status(201).json({ token: session.token, user: session.user });
@@ -93,6 +109,7 @@ router.post('/register', registerLimiter, async (req, res, next) => {
 router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { username, password, totp_code, code } = req.body || {};
+    const browser = browserOperation(req);
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Missing username or password' });
@@ -174,22 +191,26 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       passwordColumn,
       accessTier,
       providedOtp: totp_code || code,
-      ipAddress: req.ip
+      ipAddress: req.ip,
+      browser
     });
     if (session.mfa_required) return res.status(200).json(session);
-    setAuthCookies(req, res, session);
+    if (browser) setBrowserCookies(req, res, session);
+    else setAuthCookies(req, res, session);
 
     logAuditEvent({
       eventType: 'AUTH_LOGIN',
+      organizationId: session.user.organization_id,
       severity: 'info',
-      actorUserId: user.id,
-      actorUsername: user.username,
-      targetId: user.id,
+      actorUserId: session.user.id,
+      actorUsername: session.user.username,
+      targetId: session.user.id,
       targetType: 'user',
-      message: `User ${user.username} logged in successfully`,
+      message: `User ${session.user.username} logged in successfully`,
       ipAddress: req.ip
     });
 
+    if (browser) return res.status(200).json({ candidate: session.browser, user: session.user });
     return res.status(200).json({ token: session.token, user: session.user });
   } catch (err) {
     next(err);
@@ -202,6 +223,17 @@ router.post('/login', loginLimiter, async (req, res, next) => {
  * same is what let the password step replace an enrolled authenticator.
  */
 async function resolveMfaCaller(req) {
+  if (Browser.browserProtocol(req)) {
+    // v2: the password step presents its in-memory challenge token; a full session
+    // is only the selected issuance. Never a legacy cookie or a Bearer header.
+    const pending = req.body && req.body.mfa_token;
+    if (pending) {
+      if (jwt.decode(pending)?.type !== 'mfa_pending') throw new SessionAuthorityError(401, 'MFA challenge required');
+      return MfaSessionService.resolveCaller(pending);
+    }
+    await authenticateConsoleRequest(req);
+    return MfaSessionService.resolveCaller(req.token);
+  }
   let token = (req.body && req.body.mfa_token) || '';
   const authHeader = req.headers['authorization'] || '';
   if (!token && authHeader.startsWith('Bearer ')) {
@@ -229,11 +261,13 @@ router.post('/mfa/setup', loginLimiter, async (req, res, next) => {
     if (caller.error) {
       return res.status(caller.error.status).json({ error: caller.error.message });
     }
-    const { user } = caller;
-    const setup = await MfaSessionService.setup(caller, req.body && req.body.current_code);
+    const { setup, auditUser: user } = await MfaSessionService.setup(caller, req.body && req.body.current_code, {
+      returnAuditContext: true
+    });
 
     logAuditEvent({
       eventType: 'AUTH_MFA_SETUP_STARTED',
+      organizationId: user.organization_id,
       severity: 'info',
       actorUserId: user.id,
       actorUsername: user.username,
@@ -257,18 +291,27 @@ router.post('/mfa/setup', loginLimiter, async (req, res, next) => {
 //   it and completes the sign-in.
 // - Full session: a code from the pending authenticator replaces the enrolled one.
 // The password-step token is spent when it completes a sign-in.
-router.post('/mfa/verify', loginLimiter, async (req, res, next) => {
+router.post('/mfa/verify', loginLimiter, mfaChallengeLimiter, async (req, res, next) => {
   try {
     const caller = await resolveMfaCaller(req);
     if (caller.error) {
       return res.status(caller.error.status).json({ error: caller.error.message });
     }
-    const { user } = caller;
-    const { session, confirmingPending } = await MfaSessionService.complete(caller, { ...req.body, ipAddress: req.ip });
-    setAuthCookies(req, res, session);
+    const browser = browserOperation(req);
+    const { session, confirmingPending } = await MfaSessionService.complete(
+      caller,
+      { ...req.body, ipAddress: req.ip },
+      browser
+    );
+    if (browser) {
+      setBrowserCookies(req, res, session);
+      if (!caller.passwordStepOnly && req.browserIssuance) clearBrowserCookies(req, res, req.browserIssuance.id);
+    } else setAuthCookies(req, res, session);
+    const user = session.user;
 
     logAuditEvent({
       eventType: confirmingPending ? 'AUTH_MFA_ENROLLED' : 'AUTH_MFA_VERIFY',
+      organizationId: user.organization_id,
       severity: 'info',
       actorUserId: user.id,
       actorUsername: user.username,
@@ -280,15 +323,75 @@ router.post('/mfa/verify', loginLimiter, async (req, res, next) => {
       ipAddress: req.ip
     });
 
+    if (browser)
+      return res
+        .status(200)
+        .json(
+          caller.passwordStepOnly
+            ? { candidate: session.browser, user: session.user }
+            : { selected: session.browser, user: session.user }
+        );
     return res.status(200).json({ token: session.token, user: session.user });
   } catch (err) {
     next(err);
   }
 });
 
+// Browser-v2 refresh: only the selected issuance's refresh cookie, admitted by an
+// operation whose expected predecessor is that issuance. A lost response is never
+// repaired by replaying the consumed credential: the stale operation is refused at
+// admission before any token row is touched. No cookie is written on refusal.
+async function refreshBrowser(req, res) {
+  const credential = await Browser.selectedRefresh(req);
+  const operationId = req.body && req.body.operation_id;
+  if (await isTokenBlacklisted(credential.token)) return res.status(401).json({ error: 'Token has been revoked' });
+  const decoded = verifyRefreshToken(credential.token);
+  const userId = decoded && (decoded.sub || decoded.id);
+  if (!decoded || !ConsoleSessionService.validSessionId(decoded.sid) || typeof userId !== 'string')
+    return res.status(401).json({ error: 'Fresh sign-in required' });
+  const idpStatus = await OidcService.verifyUserActiveOnIdP(userId);
+  if (!idpStatus.active)
+    return res.status(401).json({ error: idpStatus.reason || 'Account deactivated on identity provider' });
+  const session = await ConsoleSessionService.rotateSession({
+    decoded,
+    refreshToken: credential.token,
+    ipAddress: req.ip,
+    browser: {
+      admit: async (client) => {
+        const admitted = await Browser.admitOperation(client, credential.proof, operationId, ['refresh']);
+        if (
+          admitted.context.selected_issuance_id !== credential.issuanceId ||
+          admitted.context.refresh_jti !== decoded.jti
+        )
+          throw new SessionAuthorityError(409, 'Browser selection changed');
+        return admitted;
+      },
+      record: (client, admitted, rotated) => Browser.recordIssuance(client, admitted, rotated, { select: true })
+    }
+  });
+  if (session.replay) {
+    logAuditEvent({
+      eventType: 'AUTH_REFRESH_REPLAY_DETECTED',
+      organizationId: session.organizationId ?? null,
+      severity: 'critical',
+      actorUserId: session.userId,
+      targetId: session.userId,
+      targetType: 'user',
+      message: 'Refresh replay detected; the affected session family was revoked.',
+      ipAddress: req.ip
+    });
+    return res.status(401).json({ error: 'Revoked refresh token presented: entire session chain terminated' });
+  }
+  setBrowserCookies(req, res, session);
+  clearBrowserCookies(req, res, credential.issuanceId);
+  res.set('Cache-Control', 'no-store');
+  return res.status(200).json({ selected: session.browser, user: session.user });
+}
+
 // 3. Refresh Token (With atomic single-use rotation, replay detection, role re-read from PG, and HttpOnly cookies)
 router.post('/refresh', async (req, res, next) => {
   try {
+    if (Browser.browserProtocol(req)) return await refreshBrowser(req, res);
     const authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
     let token = '';
 
@@ -331,6 +434,7 @@ router.post('/refresh', async (req, res, next) => {
     if (session.replay) {
       logAuditEvent({
         eventType: 'AUTH_REFRESH_REPLAY_DETECTED',
+        organizationId: session.organizationId ?? null,
         severity: 'critical',
         actorUserId: session.userId,
         targetId: session.userId,
@@ -391,6 +495,49 @@ router.get('/me', authenticateToken, async (req, res, next) => {
 // 5. Logout: commit durable access and refresh revocations before acknowledging.
 router.post('/logout', authenticateToken, async (req, res, next) => {
   try {
+    if (req.browserIssuance) {
+      // The selected issuance is retired and its family revoked in one transaction,
+      // ordered account -> context -> family. Only its own cookies are cleared.
+      const issuance = req.browserIssuance;
+      await ConsoleSessionService.transaction(async (client) => {
+        await ConsoleSessionService.currentUser(client, req.user.id);
+        const admitted = await Browser.admitOperation(client, req.browserProof, req.body && req.body.operation_id, [
+          'logout'
+        ]);
+        if (admitted.context.selected_issuance_id !== issuance.id)
+          throw new SessionAuthorityError(409, 'Browser selection changed');
+        await ConsoleSessionService.lockFamily(client, req.user.id, req.sessionAuthority.sessionId);
+        await client.query(
+          `INSERT INTO access_token_revocations (token_hash, user_id, expires_at)
+           VALUES ($1, $2, $3) ON CONFLICT (token_hash) DO NOTHING`,
+          [
+            crypto.createHash('sha256').update(req.token).digest('hex'),
+            req.user.id,
+            req.sessionAuthority.expiresAt ? new Date(req.sessionAuthority.expiresAt) : null
+          ]
+        );
+        await ConsoleSessionService.revokeFamily(client, req.user.id, req.sessionAuthority.sessionId, 'logout');
+        await Browser.recordLogout(client, admitted);
+      });
+      const remaining = req.sessionAuthority.expiresAt
+        ? Math.max(1, Math.ceil((req.sessionAuthority.expiresAt - Date.now()) / 1000))
+        : 900;
+      await blacklistToken(req.token, remaining);
+      clearBrowserCookies(req, res, issuance.id);
+      logAuditEvent({
+        eventType: 'AUTH_LOGOUT',
+        organizationId: req.user.organization_id,
+        severity: 'info',
+        actorUserId: req.user.id,
+        actorUsername: req.user.username,
+        targetId: req.user.id,
+        targetType: 'user',
+        message: `User ${req.user.username} logged out`,
+        ipAddress: req.ip
+      });
+      return res.status(200).json({ success: true, message: 'Logged out successfully' });
+    }
+
     const token = req.token;
     const refreshToken = (req.cookies && req.cookies.refreshToken) || (req.body && req.body.refreshToken);
 
@@ -411,6 +558,7 @@ router.post('/logout', authenticateToken, async (req, res, next) => {
 
     logAuditEvent({
       eventType: 'AUTH_LOGOUT',
+      organizationId: req.user.organization_id,
       severity: 'info',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
@@ -445,6 +593,10 @@ router.get('/oidc/authorize', async (req, res, next) => {
 
 router.post('/oidc/callback', loginLimiter, async (req, res, next) => {
   try {
+    // SSO issues a session through issueUserSession, which writes legacy cookies and
+    // returns a token. Until it is ported to issuance cookies, a v2 browser is refused.
+    if (Browser.browserProtocol(req))
+      return res.status(400).json({ error: 'SSO sign-in is not available for browser-v2 sessions yet' });
     const { organization_id, code, state, redirect_uri } = req.body || {};
     if (!organization_id || !code || !state) {
       return res.status(400).json({ error: 'Missing required OIDC callback parameters' });
@@ -462,6 +614,7 @@ router.post('/oidc/callback', loginLimiter, async (req, res, next) => {
 
     logAuditEvent({
       eventType: 'AUTH_SSO_LOGIN_SUCCESS',
+      organizationId: user.organization_id,
       severity: 'info',
       actorUserId: user.id,
       actorUsername: user.username,

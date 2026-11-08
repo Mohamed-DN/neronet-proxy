@@ -73,6 +73,7 @@ router.post('/setup-passwords', authenticateToken, async (req, res, next) => {
 
     logAuditEvent({
       eventType: 'AUTH_STEGANO_UPDATE',
+      organizationId: req.user.organization_id,
       severity: 'warn',
       actorUserId: req.user.id,
       actorUsername: req.user.username,

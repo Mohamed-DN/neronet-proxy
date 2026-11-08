@@ -131,12 +131,15 @@ async function revokeFamily(client, userId, sessionId, reason) {
   ]);
 }
 
-async function rotateSession({ decoded, refreshToken, ipAddress }) {
+// browser: optional { admit(client), record(client, admitted, session) } of a browser-v2
+// refresh, run after the account lock and before the family/token locks.
+async function rotateSession({ decoded, refreshToken, ipAddress, browser = null }) {
   const userId = decoded.sub || decoded.id;
   if (!validSessionId(decoded.sid) || typeof userId !== 'string')
     throw new SessionAuthorityError(401, 'Fresh sign-in required');
   return transaction(async (client) => {
     const user = await currentUser(client, userId);
+    const admitted = browser ? await browser.admit(client) : null;
     const family = await lockFamily(client, userId, decoded.sid);
     const hash = crypto.createHash('sha256').update(refreshToken).digest('hex');
     const result = await client.query(
@@ -149,7 +152,7 @@ async function rotateSession({ decoded, refreshToken, ipAddress }) {
     if (credential.revoked || credential.revoked_at) {
       await revokeFamily(client, userId, family.id, 'refresh_replay');
       // Returning an error decision commits the revocation; throwing would roll it back.
-      return { replay: true, userId };
+      return { replay: true, userId, organizationId: family.issued_organization_id ?? null };
     }
     if (credential.expired) throw new SessionAuthorityError(401, 'Refresh token expired');
     const consumed = await client.query(
@@ -161,11 +164,21 @@ async function rotateSession({ decoded, refreshToken, ipAddress }) {
       'UPDATE console_sessions SET root_grant_id=NULL,root_grant_expires_at=NULL,root_organization_id=NULL WHERE id=$1',
       [family.id]
     );
-    return persistPair(client, user, family, ipAddress);
+    const session = await persistPair(client, user, family, ipAddress);
+    if (admitted) session.browser = await browser.record(client, admitted, session);
+    return session;
   });
 }
 
-async function changeRootGrant({ userId, sessionId, root, verifiedRootHash, organizationIdAtIssue, ipAddress }) {
+async function changeRootGrant({
+  userId,
+  sessionId,
+  root,
+  verifiedRootHash,
+  organizationIdAtIssue,
+  ipAddress,
+  browser = null
+}) {
   return transaction((client) =>
     changeRootGrantWithClient(client, {
       userId,
@@ -173,16 +186,19 @@ async function changeRootGrant({ userId, sessionId, root, verifiedRootHash, orga
       root,
       verifiedRootHash,
       organizationIdAtIssue,
-      ipAddress
+      ipAddress,
+      browser
     })
   );
 }
 
 async function changeRootGrantWithClient(
   client,
-  { userId, sessionId, root, verifiedRootHash, organizationIdAtIssue, ipAddress }
+  { userId, sessionId, root, verifiedRootHash, organizationIdAtIssue, ipAddress, browser = null }
 ) {
   const user = await currentUser(client, userId);
+  // browser: optional rotation hooks of a v2 session, after the account lock.
+  const admitted = browser ? await browser.admit(client) : null;
   const family = await lockFamily(client, userId, sessionId);
   if (
     root &&
@@ -206,13 +222,15 @@ async function changeRootGrantWithClient(
     family.id,
     userId
   ]);
-  return persistPair(client, user, family, ipAddress, root);
+  const session = await persistPair(client, user, family, ipAddress, root);
+  if (admitted) session.browser = await browser.record(client, admitted, session);
+  return session;
 }
 
-async function revokeUserSessions(userId) {
+async function revokeUserSessions(userId, { returnAuditContext = false } = {}) {
   return transaction(async (client) => {
     // Exclusive account admission serializes the cut with creation of new families.
-    const user = await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [userId]);
+    const user = await client.query('SELECT id, organization_id FROM users WHERE id=$1 FOR UPDATE', [userId]);
     if (!user.rowCount) throw new SessionAuthorityError(404, 'User not found');
     await client.query(
       `UPDATE users SET console_auth_epoch=console_auth_epoch+1,
@@ -231,7 +249,8 @@ async function revokeUserSessions(userId) {
       'UPDATE refresh_tokens SET revoked=TRUE,revoked_at=NOW() WHERE user_id=$1 AND (revoked=FALSE OR revoked IS NULL)',
       [userId]
     );
-    return result.rowCount || 0;
+    const revokedCount = result.rowCount || 0;
+    return returnAuditContext ? { revokedCount, organizationId: user.rows[0].organization_id } : revokedCount;
   });
 }
 

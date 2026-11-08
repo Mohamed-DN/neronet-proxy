@@ -95,6 +95,7 @@ router.post('/generate', async (req, res, next) => {
       afterCommit.push(() =>
         logAuditEvent({
           eventType: 'CONFIG_GENERATE',
+          organizationId,
           severity: 'info',
           actorUserId: actor.id,
           actorUsername: actor.username,

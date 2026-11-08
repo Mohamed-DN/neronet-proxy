@@ -7,6 +7,7 @@ const { SessionAuthorityError, resolveAccessToken } = require('./SessionAuthorit
 const { CryptoShreddingService } = require('./CryptoShreddingService');
 const TotpService = require('./TotpService');
 const MfaPolicy = require('./MfaPolicy');
+const Browser = require('./BrowserContextService');
 
 const organization = (user) => user.organization_id || 'org-default';
 const digest = (token) => crypto.createHash('sha256').update(token).digest('hex');
@@ -83,7 +84,9 @@ async function openSecret(user, value) {
   return CryptoShreddingService.openForOrg(user.organization_id, value);
 }
 
-async function signIn({ verifiedUser, passwordColumn, accessTier, providedOtp, ipAddress }) {
+// browser: optional { proof, operationId } of a browser-v2 login. Its context is locked
+// after the account and before any family/token row, in this same transaction.
+async function signIn({ verifiedUser, passwordColumn, accessTier, providedOtp, ipAddress, browser = null }) {
   const secret =
     verifiedUser.totp_enabled && providedOtp ? await openSecret(verifiedUser, verifiedUser.totp_secret) : null;
   return Sessions.transaction(async (client) => {
@@ -91,6 +94,9 @@ async function signIn({ verifiedUser, passwordColumn, accessTier, providedOtp, i
     requireSnapshot(user, verifiedUser);
     if (!passwordColumn || !verifiedUser[passwordColumn] || verifiedUser[passwordColumn] !== user[passwordColumn])
       deny();
+    const admitted = browser
+      ? await Browser.admitOperation(client, browser.proof, browser.operationId, ['login', 'register'])
+      : null;
     if (await MfaPolicy.isMfaRequired(user, client)) {
       if (user.totp_enabled && providedOtp) {
         if (user.totp_secret !== verifiedUser.totp_secret || !TotpService.verifyTotp(String(providedOtp), secret))
@@ -117,7 +123,12 @@ async function signIn({ verifiedUser, passwordColumn, accessTier, providedOtp, i
         return { mfa_required: true, mfa_setup_required: !user.totp_enabled, mfa_token: token };
       }
     }
-    return Sessions.issueSessionWithClient(client, { user: { ...user, compartment_access: accessTier }, ipAddress });
+    const session = await Sessions.issueSessionWithClient(client, {
+      user: { ...user, compartment_access: accessTier },
+      ipAddress
+    });
+    if (admitted) session.browser = await Browser.recordIssuance(client, admitted, session, { select: false });
+    return session;
   });
 }
 
@@ -137,26 +148,35 @@ async function resolveCaller(token) {
   }
 }
 
-async function callerLocked(client, caller) {
+async function callerLocked(client, caller, browser = null) {
   const decoded = verifyJwt(caller.token); // Recheck expiry after waiting for a SQL lock.
   const user = await lockedUser(client, caller.user.id);
   verifyJwt(caller.token);
   const now = new Date((await client.query('SELECT clock_timestamp() AS now')).rows[0].now).getTime();
   if (decoded.exp && decoded.exp * 1000 <= now) deny('Invalid or expired token');
   requireSnapshot(user, caller.user);
+  // Lock order: account -> browser context -> MFA proof -> family -> token.
+  const admitted = browser
+    ? await Browser.admitOperation(
+        client,
+        browser.proof,
+        browser.operationId,
+        caller.passwordStepOnly ? ['login', 'register'] : ['mfa']
+      )
+    : null;
   const proof = caller.passwordStepOnly
     ? await challenge(client, caller.token, decoded, user, true)
     : await fullSession(client, caller.token, decoded, user);
-  return { user, proof, decoded, now };
+  return { user, proof, decoded, now, admitted };
 }
 
-async function setup(caller, currentCode) {
+async function setup(caller, currentCode, { returnAuditContext = false } = {}) {
   const priorSecret = caller.user.totp_enabled ? await openSecret(caller.user, caller.user.totp_secret) : null;
   const secret = TotpService.generateSecret(20);
   const qr = await TotpService.generateQrCode(caller.user.username, secret);
   const recoveryCodes = TotpService.generateRecoveryCodes(8);
   const sealed = await CryptoShreddingService.sealForOrg(caller.user.organization_id, secret);
-  await Sessions.transaction(async (client) => {
+  const auditUser = await Sessions.transaction(async (client) => {
     const { user, proof, decoded, now } = await callerLocked(client, caller);
     if (user.totp_enabled) {
       if (caller.passwordStepOnly)
@@ -197,16 +217,23 @@ async function setup(caller, currentCode) {
         user.console_auth_epoch
       ]
     );
+    return {
+      id: user.id,
+      username: user.username,
+      organization_id: user.organization_id,
+      totp_enabled: user.totp_enabled
+    };
   });
-  return { secret, ...qr, recoveryCodes };
+  const setup = { secret, ...qr, recoveryCodes };
+  return returnAuditContext ? { setup, auditUser } : setup;
 }
 
-async function complete(caller, { code, recovery_code, ipAddress }) {
+async function complete(caller, { code, recovery_code, ipAddress }, browser = null) {
   const confirmingPending = !(caller.passwordStepOnly && caller.user.totp_enabled);
   const sealed = confirmingPending ? caller.user.totp_pending_secret : caller.user.totp_secret;
   const secret = recovery_code && !confirmingPending ? null : await openSecret(caller.user, sealed);
   return Sessions.transaction(async (client) => {
-    const { user, proof, decoded, now } = await callerLocked(client, caller);
+    const { user, proof, decoded, now, admitted } = await callerLocked(client, caller, browser);
     let sessionUser = user;
     if (confirmingPending) {
       if (!user.totp_pending_secret) throw new SessionAuthorityError(400, 'No authenticator is being enrolled');
@@ -261,6 +288,9 @@ async function complete(caller, { code, recovery_code, ipAddress }) {
         ipAddress
       });
     }
+    // A sign-in yields a candidate; rotating the selected session selects atomically.
+    if (admitted)
+      session.browser = await Browser.recordIssuance(client, admitted, session, { select: !caller.passwordStepOnly });
     return { session, confirmingPending };
   });
 }

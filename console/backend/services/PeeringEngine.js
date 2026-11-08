@@ -305,6 +305,8 @@ async function createPeeringRequest({
 
   logAuditEvent({
     eventType: 'PEERING_REQUEST',
+    // Peering agreements are platform-level (super-admin only, no org column).
+    organizationId: null,
     severity: 'info',
     actorUserId: userId,
     actorUsername: actor ? actor.username : 'admin',
@@ -491,6 +493,8 @@ async function acceptPeeringAgreement(peeringToken, actor, expectedFingerprint =
 
   logAuditEvent({
     eventType: 'PEERING_ACCEPT',
+    // Peering agreements are platform-level (super-admin only, no org column).
+    organizationId: null,
     severity: 'info',
     actorUserId: userId,
     actorUsername: actor ? actor.username : 'admin',
@@ -584,6 +588,8 @@ async function revokePeeringAgreement(peeringId, actor) {
 
   logAuditEvent({
     eventType: 'PEERING_REVOKE',
+    // Peering agreements are platform-level (super-admin only, no org column).
+    organizationId: null,
     severity: 'warn',
     actorUserId: actor ? actor.id : null,
     actorUsername: actor ? actor.username : 'admin',

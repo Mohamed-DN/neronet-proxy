@@ -287,6 +287,7 @@ router.post('/', async (req, res, next) => {
       afterCommit.push(() =>
         logAuditEvent({
           eventType: 'NODE_CREATE',
+          organizationId: orgId,
           severity: 'info',
           actorUserId: actor.id,
           actorUsername: actor.username,
@@ -437,6 +438,7 @@ router.delete('/:id', async (req, res, next) => {
 
     logAuditEvent({
       eventType: 'NODE_REVOKE',
+      organizationId: node.organization_id || 'org-default',
       severity: 'warn',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
@@ -477,6 +479,7 @@ router.post('/:id/revoke', async (req, res, next) => {
 
     logAuditEvent({
       eventType: 'NODE_REVOKE',
+      organizationId: node.organization_id || 'org-default',
       severity: 'warn',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
@@ -522,6 +525,7 @@ router.post('/:id/quarantine', async (req, res, next) => {
 
     logAuditEvent({
       eventType: 'NODE_QUARANTINE',
+      organizationId: node.organization_id || 'org-default',
       severity: 'warn',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
@@ -564,6 +568,7 @@ router.post('/:id/unquarantine', async (req, res, next) => {
 
     logAuditEvent({
       eventType: 'NODE_LIFT_QUARANTINE',
+      organizationId: node.organization_id || 'org-default',
       severity: 'info',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
@@ -609,6 +614,7 @@ router.post('/:id/action', async (req, res, next) => {
       const jitter_ms = 1.1;
       logAuditEvent({
         eventType: 'NODE_PING',
+        organizationId: node.organization_id || 'org-default',
         severity: 'info',
         actorUserId: req.user.id,
         actorUsername: req.user.username,
@@ -633,6 +639,7 @@ router.post('/:id/action', async (req, res, next) => {
 
       logAuditEvent({
         eventType: 'NODE_SET_EXIT',
+        organizationId: node.organization_id || 'org-default',
         severity: 'info',
         actorUserId: req.user.id,
         actorUsername: req.user.username,
@@ -687,6 +694,7 @@ router.post('/:id/action', async (req, res, next) => {
 
       logAuditEvent({
         eventType: 'NODE_ONION_TOGGLE',
+        organizationId: node.organization_id || 'org-default',
         severity: 'info',
         actorUserId: req.user.id,
         actorUsername: req.user.username,
@@ -740,6 +748,7 @@ router.post('/:id/action', async (req, res, next) => {
 
       logAuditEvent({
         eventType: 'NODE_QUARANTINE',
+        organizationId: node.organization_id || 'org-default',
         severity: 'warn',
         actorUserId: req.user.id,
         actorUsername: req.user.username,
@@ -780,6 +789,7 @@ router.post('/:id/action', async (req, res, next) => {
 
       logAuditEvent({
         eventType: 'NODE_LIFT_QUARANTINE',
+        organizationId: node.organization_id || 'org-default',
         severity: 'info',
         actorUserId: req.user.id,
         actorUsername: req.user.username,
@@ -821,6 +831,7 @@ router.post('/:id/action', async (req, res, next) => {
 
       logAuditEvent({
         eventType: 'NODE_SET_TRANSPORT',
+        organizationId: node.organization_id || 'org-default',
         severity: 'info',
         actorUserId: req.user.id,
         actorUsername: req.user.username,
@@ -857,6 +868,7 @@ router.post('/:id/action', async (req, res, next) => {
 
       logAuditEvent({
         eventType: 'NODE_SET_DAITA',
+        organizationId: node.organization_id || 'org-default',
         severity: 'info',
         actorUserId: req.user.id,
         actorUsername: req.user.username,
@@ -894,6 +906,7 @@ router.post('/:id/action', async (req, res, next) => {
 
       logAuditEvent({
         eventType: 'NODE_SET_DNS_NAME',
+        organizationId: node.organization_id || 'org-default',
         severity: 'info',
         actorUserId: req.user.id,
         actorUsername: req.user.username,

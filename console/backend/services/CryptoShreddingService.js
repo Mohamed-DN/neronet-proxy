@@ -465,6 +465,7 @@ class CryptoShreddingService {
       afterCommit.push(() =>
         logAuditEvent({
           eventType: 'LEGAL_HOLD_IMPOSED',
+          organizationId: res.rows[0].organization_id,
           severity: 'warn',
           actorUserId: userId,
           targetId: orgId,
@@ -495,6 +496,7 @@ class CryptoShreddingService {
       afterCommit.push(() =>
         logAuditEvent({
           eventType: 'LEGAL_HOLD_RELEASED',
+          organizationId: orgId,
           severity: 'warn',
           actorUserId: userId,
           targetId: orgId,
@@ -544,6 +546,8 @@ class CryptoShreddingService {
       afterCommit.push(() =>
         logAuditEvent({
           eventType: 'NUKE_AUTHORIZATION_REQUESTED',
+          // Global requests are platform-level and have no tenant.
+          organizationId: targetType === 'organization' ? res.rows[0].target_id : null,
           severity: 'critical',
           actorUserId: initiatorUserId,
           targetId,
@@ -666,6 +670,7 @@ class CryptoShreddingService {
     afterCommit.push(() =>
       logAuditEvent({
         eventType: 'ORG_CRYPTO_SHREDDED',
+        organizationId: orgId,
         severity: 'critical',
         actorUserId: approverId,
         targetId: orgId,
@@ -720,6 +725,8 @@ class CryptoShreddingService {
     afterCommit.push(() =>
       logAuditEvent({
         eventType: 'GLOBAL_CRYPTO_SHREDDED',
+        // Platform-wide shred of all fleet keys; no single tenant.
+        organizationId: null,
         severity: 'critical',
         actorUserId: approverId,
         targetId: 'global',

@@ -15,6 +15,7 @@
  */
 
 import { readAccessToken } from './authToken';
+import { BROWSER_PROTOCOL, currentContextId } from './browserContext';
 import { reportSocketClosed, reportSocketIdle, reportSocketOpen } from './connection';
 
 export interface LiveEvent {
@@ -57,6 +58,14 @@ export function liveSocketUrl(path = '/ws/topology', token: string | null = read
   if (!token) return null;
   if (typeof window === 'undefined') return null;
   const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  if (BROWSER_PROTOCOL) {
+    // v2 holds no token: name the context and selected issuance (non-secret);
+    // the credential travels as the issuance's HttpOnly cookie on the upgrade.
+    const context = currentContextId();
+    if (!context) return null;
+    const query = new URLSearchParams({ protocol: '2', context, issuance: token });
+    return `${scheme}//${window.location.host}${path}?${query.toString()}`;
+  }
   return `${scheme}//${window.location.host}${path}?token=${encodeURIComponent(token)}`;
 }
 

@@ -576,6 +576,9 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes('/api/auth/refresh')) {
+          return jsonResponse({ error: 'No active session.' }, 401);
+        }
         if (url.includes('/api/compartments/unlock') && init?.method === 'POST') {
           return jsonResponse({ error: 'Invalid master authorization password.' }, 401);
         }

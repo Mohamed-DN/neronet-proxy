@@ -140,22 +140,22 @@ function metadataObject(value) {
  */
 function canonicalizeEvent(event) {
   const version = Number(event.canonical_version ?? 1);
-  if (version === 2) {
+  if (version === 2 || version === 3) {
     if (event.id === undefined || event.id === null || !event.hmac_key_id)
-      throw new Error('Canonical audit v2 requires a stored identifier and HMAC key identity');
+      throw new Error(`Canonical audit v${version} requires a stored identifier and HMAC key identity`);
     const nullable = (value) => (value === null || value === undefined ? null : String(value));
     // New writes use millisecond Date values. PostgreSQL verification additionally
     // reads the complete microsecond timestamp, so sub-millisecond edits are visible.
     const timestamp =
       event.canonical_created_at || new Date(event.created_at).toISOString().replace(/\.(\d{3})Z$/, '.$1000Z');
     if (typeof event.canonical_metadata_json !== 'string')
-      throw new Error('Canonical audit v2 requires its authenticated metadata text');
+      throw new Error(`Canonical audit v${version} requires its authenticated metadata text`);
     // Sign the exact text used for the JSONB insert. Verification compares the
     // authenticated text to JSONB in PostgreSQL after checking the MAC, so pg's
     // JavaScript number decoding cannot hide high-precision numeric alterations.
-    return canonicalJson([
+    const fields = [
       'neronet.audit.event',
-      2,
+      version,
       String(event.id),
       String(event.sequence_num),
       String(event.prev_hash),
@@ -171,7 +171,11 @@ function canonicalizeEvent(event) {
       timestamp,
       event.canonical_metadata_json,
       String(event.hmac_key_id)
-    ]);
+    ];
+    // Version 2's authenticated bytes remain exact. The new field has its own
+    // version rather than retroactively assigning ownership to old records.
+    if (version === 3) fields.push(nullable(event.organization_id));
+    return canonicalJson(fields);
   }
   if (version !== 1) throw new Error('Unsupported audit canonical version');
   // Historical bytes must remain unchanged: old hashes cannot be repaired by
@@ -222,6 +226,7 @@ class AuditChainService {
    */
   static async appendEvent({
     eventType,
+    organizationId = null,
     severity = 'info',
     actorUserId = null,
     actorUsername = 'system',
@@ -270,7 +275,8 @@ class AuditChainService {
       const normalizedMetadata = metadataObject(metadata);
       const eventRecord = {
         id: identifier.rows[0].id,
-        canonical_version: 2,
+        canonical_version: 3,
+        organization_id: organizationId,
         sequence_num: nextSeq,
         prev_hash: prevHash,
         event_type: eventType,
@@ -296,8 +302,8 @@ class AuditChainService {
            sequence_num, prev_hash, entry_hash,
            event_type, severity, actor_user_id, actor_username,
            target_id, target_type, message, ip_address, user_agent,
-           metadata_json, created_at, hmac_key_id, id, canonical_version, canonical_metadata_json
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+           metadata_json, created_at, hmac_key_id, id, canonical_version, canonical_metadata_json, organization_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
          RETURNING *`,
         [
           eventRecord.sequence_num,
@@ -317,7 +323,8 @@ class AuditChainService {
           eventRecord.hmac_key_id,
           eventRecord.id,
           eventRecord.canonical_version,
-          eventRecord.canonical_metadata_json
+          eventRecord.canonical_metadata_json,
+          eventRecord.organization_id
         ]
       );
 
@@ -419,9 +426,11 @@ class AuditChainService {
     const legacyAllowed = acceptLegacy() && fromSequence === 1;
     let seenCurrent = false;
     let legacyEvents = 0;
-    let seenV2 = Boolean(prefix?.canonical_v2_events);
+    let highestCanonicalVersion = Number(prefix?.highest_canonical_version || 0);
     let legacyCanonicalEvents = 0;
     let canonicalV2Events = 0;
+    let canonicalV3Events = 0;
+    let organizationAttributedEvents = 0;
     const authenticatedMetadata = [];
     let expectedSeq = fromSequence;
 
@@ -440,8 +449,10 @@ class AuditChainService {
       }
 
       const version = Number(row.canonical_version);
-      if (version !== 1 && version !== 2)
+      if (version !== 1 && version !== 2 && version !== 3)
         return broken(seq, row, 'UNKNOWN_CANONICAL_VERSION', `Unsupported audit format at sequence ${seq}`);
+      if (version < 3 && row.organization_id != null)
+        return broken(seq, row, 'UNSIGNED_ORGANIZATION', `Historical event ${seq} cannot authenticate a tenant`);
       if (version === 1) {
         if (!acceptLegacyCanonical())
           return broken(seq, row, 'LEGACY_CANONICAL_FORMAT', `Event ${seq} uses the retired partial format`);
@@ -449,8 +460,9 @@ class AuditChainService {
       } else {
         if (!row.hmac_key_id)
           return broken(seq, row, 'UNKNOWN_KEY', `Canonical v2 event ${seq} requires the audit HMAC key`);
-        seenV2 = true;
-        canonicalV2Events++;
+        if (version === 2) canonicalV2Events++;
+        else canonicalV3Events++;
+        if (version === 3 && row.organization_id !== null) organizationAttributedEvents++;
         if (typeof row.canonical_metadata_json !== 'string')
           return broken(seq, row, 'HASH_TAMPERED', `Canonical metadata is missing at sequence ${seq}`);
       }
@@ -477,8 +489,9 @@ class AuditChainService {
         legacyEvents++;
       }
 
-      if (version === 1 && seenV2)
-        return broken(seq, row, 'CANONICAL_DOWNGRADE', `Legacy audit format follows version 2 at sequence ${seq}`);
+      if (version < highestCanonicalVersion)
+        return broken(seq, row, 'CANONICAL_DOWNGRADE', `Audit format follows a newer version at sequence ${seq}`);
+      highestCanonicalVersion = Math.max(highestCanonicalVersion, version);
 
       const computed = computeEventHash(row, key);
       if (row.entry_hash !== computed) {
@@ -487,7 +500,7 @@ class AuditChainService {
           actual_hash: row.entry_hash
         });
       }
-      if (version === 2)
+      if (version >= 2)
         authenticatedMetadata.push({ id: String(row.id), sequence: seq, text: row.canonical_metadata_json });
 
       expectedPrevHash = row.entry_hash;
@@ -556,6 +569,10 @@ class AuditChainService {
         events_count: 0,
         legacy_canonical_events: 0,
         canonical_v2_events: 0,
+        canonical_v3_events: 0,
+        organization_attributed_events: 0,
+        unattributed_events: 0,
+        highest_canonical_version: highestCanonicalVersion,
         integrity_profile: 'empty',
         checkpoints_verified: checkpointsVerified,
         checkpoints_unverifiable: checkpointsUnverifiable,
@@ -572,7 +589,16 @@ class AuditChainService {
       legacy_events: legacyEvents,
       legacy_canonical_events: legacyCanonicalEvents,
       canonical_v2_events: canonicalV2Events,
-      integrity_profile: legacyCanonicalEvents || prefix?.legacy_canonical_events ? 'legacy-partial' : 'canonical-v2',
+      canonical_v3_events: canonicalV3Events,
+      organization_attributed_events: organizationAttributedEvents,
+      unattributed_events: events.length - organizationAttributedEvents,
+      highest_canonical_version: highestCanonicalVersion,
+      integrity_profile:
+        legacyCanonicalEvents || prefix?.legacy_canonical_events
+          ? 'legacy-partial'
+          : highestCanonicalVersion === 3
+            ? 'canonical-v3'
+            : 'canonical-v2',
       prefix_events_verified: prefix?.events_count || 0,
       checkpoints_verified: checkpointsVerified,
       checkpoints_unverifiable: checkpointsUnverifiable

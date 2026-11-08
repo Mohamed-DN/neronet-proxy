@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowDownLeft, ArrowUpRight, Bell, PlusCircle, Search, Shield, UserCheck, Zap } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Bell, LogOut, PlusCircle, Search, Shield, UserCheck, Zap } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { useStatsOverview } from '../services/queries';
@@ -12,7 +12,7 @@ export interface HeaderProps {
 
 export default function Header({ onOpenEnrollModal }: HeaderProps) {
   const { t } = useTranslation('chrome');
-  const { user, role, switchRole } = useAuth();
+  const { user, role, switchRole, logout } = useAuth();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   // The ticker printed "RX: 88.4 MB/s | TX: 64.1 MB/s | Circuits: 142" as
@@ -164,6 +164,16 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
               {user?.role === 'super-admin' ? t('header.superAdmin') : t('header.user')}
             </div>
           </div>
+          {/* The console had no way to end a session short of destroying the account. */}
+          <button
+            type="button"
+            onClick={() => void logout()}
+            aria-label={t('header.signOut')}
+            title={t('header.signOut')}
+            className="rounded-control border border-border bg-surface-sunken p-2 text-muted transition-colors hover:text-content focus-visible:outline-focus"
+          >
+            <LogOut aria-hidden="true" className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </header>

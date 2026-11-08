@@ -88,6 +88,7 @@ class OrgService {
 
     logAuditEvent({
       eventType: 'ORG_CREATE',
+      organizationId: org.id,
       severity: 'info',
       actorUserId: creator?.id || 'system',
       actorUsername: creator?.username || 'system',
@@ -190,6 +191,7 @@ class OrgService {
       `UPDATE organizations SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
       params
     );
+    if (!res.rows.length) return null;
 
     // The default policy is compiled into every node's policy; nodes re-sync on a new epoch.
     if (default_policy) {
@@ -198,6 +200,7 @@ class OrgService {
 
     logAuditEvent({
       eventType: 'ORG_UPDATE',
+      organizationId: res.rows[0].id,
       severity: 'info',
       actorUserId: actor?.id,
       actorUsername: actor?.username,
@@ -225,6 +228,7 @@ class OrgService {
 
     logAuditEvent({
       eventType: 'ORG_DELETE',
+      organizationId: res.rows[0].id,
       severity: 'warn',
       actorUserId: actor?.id,
       actorUsername: actor?.username,
@@ -285,6 +289,7 @@ class OrgService {
 
     logAuditEvent({
       eventType: 'ORG_MEMBER_ADD',
+      organizationId: res.rows[0].organization_id,
       severity: 'info',
       actorUserId: actor?.id,
       actorUsername: actor?.username,
@@ -332,9 +337,11 @@ class OrgService {
        RETURNING *`,
       [newRole, orgId, userId]
     );
+    if (!res.rows.length) return null;
 
     logAuditEvent({
       eventType: 'ORG_MEMBER_ROLE_CHANGE',
+      organizationId: res.rows[0].organization_id,
       severity: 'info',
       actorUserId: actor?.id,
       actorUsername: actor?.username,
@@ -372,10 +379,15 @@ class OrgService {
       }
     }
 
-    await pool.query('DELETE FROM memberships WHERE organization_id = $1 AND user_id = $2', [orgId, userId]);
+    const removed = await pool.query(
+      'DELETE FROM memberships WHERE organization_id = $1 AND user_id = $2 RETURNING organization_id',
+      [orgId, userId]
+    );
+    if (!removed.rows.length) return false;
 
     logAuditEvent({
       eventType: 'ORG_MEMBER_REMOVE',
+      organizationId: removed.rows[0].organization_id,
       severity: 'warn',
       actorUserId: actor?.id,
       actorUsername: actor?.username,

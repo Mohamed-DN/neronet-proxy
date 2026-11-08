@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import { apiRequest } from '../apiClient';
-import { storeAccessToken } from '../authToken';
+import { captureSession, isCurrentCredential, readAccessToken, storeAccessToken } from '../authToken';
+import { BROWSER_PROTOCOL, beginBrowserOperation, rememberSelection, type Selection } from '../browserContext';
 import type { Compartment, CompartmentPeering, TopologyData } from '../types';
 import { queryKeys } from './keys';
 
@@ -106,7 +107,37 @@ export interface VaultUnlockResponse {
   success: boolean;
   compartment_access: string;
   token?: string;
+  /** Browser-v2: the rotated issuance, selected atomically by the server. */
+  selected?: Selection;
   error?: string;
+}
+
+/**
+ * Vault unlock/lock rotate the session. In browser-v2 the rotation is admitted by
+ * an intent expecting the current issuance and returns only its successor selector.
+ */
+async function changeVault(path: string, kind: 'unlock' | 'lock', body: Record<string, unknown>) {
+  if (BROWSER_PROTOCOL) {
+    const snapshot = captureSession();
+    const operation = await beginBrowserOperation(kind, readAccessToken());
+    const res = await apiRequest<VaultUnlockResponse>(path, {
+      method: 'POST',
+      body: { ...body, operation_id: operation.operation_id }
+    });
+    // A response that lands after a newer sign-in must not overwrite its selection.
+    if (res?.selected && isCurrentCredential(snapshot)) {
+      await rememberSelection(res.selected);
+      storeAccessToken(res.selected.issuance_id);
+    }
+    return res;
+  }
+  // Legacy clients keep the exact earlier request shape (no body for lock).
+  const res = await apiRequest<VaultUnlockResponse>(path, {
+    method: 'POST',
+    body: Object.keys(body).length ? body : undefined
+  });
+  if (res?.token) storeAccessToken(res.token);
+  return res;
 }
 
 /**
@@ -116,16 +147,7 @@ export function useUnlockGhostVaults() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (password: string) => {
-      const res = await apiRequest<VaultUnlockResponse>('/compartments/unlock', {
-        method: 'POST',
-        body: { password }
-      });
-      if (res?.token) {
-        storeAccessToken(res.token);
-      }
-      return res;
-    },
+    mutationFn: (password: string) => changeVault('/compartments/unlock', 'unlock', { password }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.statsTopology });
       queryClient.invalidateQueries({ queryKey: queryKeys.compartments });
@@ -142,15 +164,7 @@ export function useLockGhostVaults() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest<VaultUnlockResponse>('/compartments/lock', {
-        method: 'POST'
-      });
-      if (res?.token) {
-        storeAccessToken(res.token);
-      }
-      return res;
-    },
+    mutationFn: () => changeVault('/compartments/lock', 'lock', {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.statsTopology });
       queryClient.invalidateQueries({ queryKey: queryKeys.compartments });

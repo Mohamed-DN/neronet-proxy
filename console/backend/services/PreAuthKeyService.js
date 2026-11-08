@@ -47,10 +47,10 @@ async function createPreAuthKey({
   const orgId = organizationId || 'org-default';
 
   const pool = getPgPool();
-  await pool.query(
+  const inserted = await pool.query(
     `INSERT INTO preauth_keys
        (id, key_hash, key_prefix, owner_id, organization_id, allowed_role, is_reusable, used_count, max_uses, expires_at, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, NOW())`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, NOW()) RETURNING organization_id`,
     [keyId, keyHash, keyPrefix, ownerId, orgId, allowedRole || null, Boolean(isReusable), effectiveMaxUses, expiresAt]
   );
 
@@ -59,7 +59,7 @@ async function createPreAuthKey({
     secret,
     key_prefix: keyPrefix,
     owner_id: ownerId,
-    organization_id: orgId,
+    organization_id: inserted.rows[0].organization_id,
     allowed_role: allowedRole || null,
     is_reusable: Boolean(isReusable),
     max_uses: effectiveMaxUses,
@@ -173,7 +173,13 @@ async function listPreAuthKeys(userId, isSuperAdmin = false, orgId = null) {
 /**
  * Revokes a pre-auth key.
  */
-async function revokePreAuthKey(keyId, userId, isSuperAdmin = false, orgId = null) {
+async function revokePreAuthKey(
+  keyId,
+  userId,
+  isSuperAdmin = false,
+  orgId = null,
+  { returnAuditContext = false } = {}
+) {
   const pool = getPgPool();
   let queryText = 'UPDATE preauth_keys SET revoked_at = NOW() WHERE id = $1';
   const params = [keyId];
@@ -188,8 +194,8 @@ async function revokePreAuthKey(keyId, userId, isSuperAdmin = false, orgId = nul
     }
   }
 
-  const res = await pool.query(queryText, params);
-  return res.rowCount > 0;
+  const res = await pool.query(queryText + ' RETURNING id, organization_id', params);
+  return returnAuditContext ? res.rows[0] || null : res.rowCount > 0;
 }
 
 /**

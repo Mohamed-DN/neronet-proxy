@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const { authenticateToken } = require('../middleware/auth');
 const { changeRootGrant } = require('../services/ConsoleSessionService');
 const { setAuthCookies } = require('../utils/cookies');
+const { browserRotation, applyBrowserRotation } = require('../utils/browserCredentials');
 const { requireOrgRole, resolveUserOrg } = require('../middleware/rbac');
 const { getPgPool } = require('../db/index');
 const { logAuditEvent } = require('../utils/audit');
@@ -70,6 +71,7 @@ router.post('/unlock', async (req, res, next) => {
     if (!isMatch) {
       logAuditEvent({
         eventType: 'VAULT_UNLOCK_FAILED',
+        organizationId: req.user.organization_id,
         severity: 'warn',
         actorUserId: user.id,
         actorUsername: user.username,
@@ -84,12 +86,15 @@ router.post('/unlock', async (req, res, next) => {
       root: true,
       verifiedRootHash: user.password_hash_root,
       organizationIdAtIssue: req.sessionAuthority.organizationIdAtIssue,
-      ipAddress: req.ip
+      ipAddress: req.ip,
+      browser: browserRotation(req, ['unlock'])
     });
-    setAuthCookies(req, res, session);
+    if (req.browserIssuance) applyBrowserRotation(req, res, session);
+    else setAuthCookies(req, res, session);
 
     logAuditEvent({
       eventType: 'VAULT_UNLOCKED',
+      organizationId: session.user.organization_id,
       severity: 'info',
       actorUserId: user.id,
       actorUsername: user.username,
@@ -99,7 +104,7 @@ router.post('/unlock', async (req, res, next) => {
     return res.status(200).json({
       success: true,
       compartment_access: 'root',
-      token: session.token,
+      ...(req.browserIssuance ? { selected: session.browser } : { token: session.token }),
       user: session.user
     });
   } catch (err) {
@@ -115,13 +120,16 @@ router.post('/lock', async (req, res, next) => {
       userId: req.user.id,
       sessionId: req.sessionAuthority.sessionId,
       root: false,
-      ipAddress: req.ip
+      ipAddress: req.ip,
+      browser: browserRotation(req, ['lock'])
     });
-    setAuthCookies(req, res, session);
+    if (req.browserIssuance) applyBrowserRotation(req, res, session);
+    else setAuthCookies(req, res, session);
     const user = session.user;
 
     logAuditEvent({
       eventType: 'VAULT_LOCKED',
+      organizationId: user.organization_id,
       severity: 'info',
       actorUserId: user.id,
       actorUsername: user.username,
@@ -131,7 +139,7 @@ router.post('/lock', async (req, res, next) => {
     return res.status(200).json({
       success: true,
       compartment_access: 'standard',
-      token: session.token,
+      ...(req.browserIssuance ? { selected: session.browser } : { token: session.token }),
       user: session.user
     });
   } catch (err) {

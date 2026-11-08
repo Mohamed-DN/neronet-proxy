@@ -210,6 +210,7 @@ async function provisionInstance({ name, device_id, specs = { vcpus: 4, ram_gb: 
 
   logAuditEvent({
     eventType: 'CLOUDPC_PROVISION',
+    organizationId: actor?.organization_id ?? null,
     severity: 'info',
     actorUserId: userId,
     actorUsername: actor ? actor.username : 'user',
@@ -254,6 +255,7 @@ async function projectDevice(instanceId, actor) {
 
   logAuditEvent({
     eventType: 'CLOUDPC_PROJECT',
+    organizationId: actor?.organization_id ?? null,
     severity: 'info',
     actorUserId: actor ? actor.id : null,
     actorUsername: actor ? actor.username : 'user',
@@ -291,6 +293,7 @@ async function teardownSession(instanceId, actor) {
 
   logAuditEvent({
     eventType: 'CLOUDPC_TEARDOWN',
+    organizationId: actor?.organization_id ?? null,
     severity: 'info',
     actorUserId: actor ? actor.id : null,
     actorUsername: actor ? actor.username : 'user',

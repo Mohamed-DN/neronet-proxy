@@ -87,6 +87,7 @@ async function wipeOwnAccount(user, { ipAddress } = {}) {
 
   logAuditEvent({
     eventType: revokedKeys === null ? 'DURESS_NUCLEAR_LOCK' : 'DURESS_NUCLEAR_WIPE',
+    organizationId: orgOf(user),
     severity: 'critical',
     actorUserId: user.id,
     actorUsername: user.username,
@@ -113,6 +114,7 @@ async function wipeHiddenCompartments(user, { ipAddress, via = 'login' } = {}) {
   if (!COMPARTMENT_DELETE_ROLES.has(role)) {
     logAuditEvent({
       eventType: 'DURESS_STEALTH_WIPE_REFUSED',
+      organizationId: orgId,
       severity: 'critical',
       actorUserId: user.id,
       actorUsername: user.username,
@@ -145,6 +147,7 @@ async function wipeHiddenCompartments(user, { ipAddress, via = 'login' } = {}) {
 
   logAuditEvent({
     eventType: 'DURESS_STEALTH_WIPE',
+    organizationId: orgId,
     severity: 'critical',
     actorUserId: user.id,
     actorUsername: user.username,

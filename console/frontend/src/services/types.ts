@@ -193,14 +193,20 @@ export interface AuditEvent {
   ip_address?: string;
   user_agent?: string;
   metadata_json?: Record<string, unknown> | null;
+  organization_id?: string | null;
+  canonical_version?: number;
   created_at: string;
 }
 
 export interface AuditVerificationResult {
   valid: boolean;
-  integrity_profile?: 'canonical-v2' | 'legacy-partial' | 'empty';
+  integrity_profile?: 'canonical-v2' | 'canonical-v3' | 'legacy-partial' | 'empty';
   legacy_canonical_events?: number;
   canonical_v2_events?: number;
+  canonical_v3_events?: number;
+  organization_attributed_events?: number;
+  unattributed_events?: number;
+  highest_canonical_version?: number;
   prefix_events_verified?: number;
   events_count?: number;
   first_sequence?: number;

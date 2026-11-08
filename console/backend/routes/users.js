@@ -90,6 +90,8 @@ router.post('/', requireRole('super-admin'), async (req, res, next) => {
 
     logAuditEvent({
       eventType: 'USER_CREATE',
+      // The inserted account (the resource) carries no organization yet: its value, null.
+      organizationId: createdRes.rows[0]?.organization_id ?? null,
       severity: 'info',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
@@ -182,15 +184,17 @@ router.put('/:id', requireSelfOrAdmin, async (req, res, next) => {
 router.delete('/:id', requireRole('super-admin'), async (req, res, next) => {
   try {
     const pool = getPgPool();
-    const existingRes = await pool.query('SELECT id, username FROM users WHERE id = $1', [req.params.id]);
+    const existingRes = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id, username, organization_id', [
+      req.params.id
+    ]);
     if (existingRes.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
     const existing = existingRes.rows[0];
-    await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
 
     logAuditEvent({
       eventType: 'USER_DELETE',
+      organizationId: existing.organization_id,
       severity: 'warn',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
@@ -232,9 +236,10 @@ router.get('/:id/quota', requireSelfOrAdmin, async (req, res, next) => {
 // 7. Revoke All User Sessions (Super-Admin or Self)
 router.post('/:id/revoke-sessions', requireSelfOrAdmin, async (req, res, next) => {
   try {
-    const revokedCount = await revokeUserSessions(req.params.id);
+    const { revokedCount, organizationId } = await revokeUserSessions(req.params.id, { returnAuditContext: true });
     logAuditEvent({
       eventType: 'USER_REVOKE_SESSIONS',
+      organizationId,
       severity: 'warn',
       actorUserId: req.user.id,
       actorUsername: req.user.username,

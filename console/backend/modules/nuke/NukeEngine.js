@@ -168,6 +168,12 @@ async function executeInstantUserDestruction(userId, token = null, actorUsername
     await blacklistToken(token, 86400);
   }
 
+  // The account row is gone when the event is written: capture its tenant first.
+  const targetOrganizationId = isPostgres()
+    ? ((await getPgPool().query('SELECT organization_id FROM users WHERE id = $1', [userId])).rows[0]
+        ?.organization_id ?? null)
+    : null;
+
   // 2. Overwrite sensitive fields, then delete, in one transaction. A failure used to
   // be logged and the function went on to report the account wiped.
   if (isPostgres()) {
@@ -269,6 +275,7 @@ async function executeInstantUserDestruction(userId, token = null, actorUsername
   // Log Audit Event
   logAuditEvent({
     eventType: 'NUKE_USER_INSTANT',
+    organizationId: targetOrganizationId,
     severity: 'critical',
     actorUserId: userId,
     actorUsername: actorUsername,

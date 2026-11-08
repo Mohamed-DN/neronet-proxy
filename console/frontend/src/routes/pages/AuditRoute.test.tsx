@@ -256,6 +256,11 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
       expect(screen.getByTestId('verification-pass-card')).toBeInTheDocument();
       expect(screen.getByText(/CHAIN INTEGRITY VERIFIED/i)).toBeInTheDocument();
     });
+    expect(screen.getByTestId('verification-pass-card')).not.toHaveTextContent('Attributed to an organization:');
+    expect(screen.getByTestId('verification-pass-card')).not.toHaveTextContent('Global or unattributed events:');
+    expect(screen.getByTestId('verification-pass-card')).toHaveTextContent(
+      'Organization attribution is unavailable or incomplete in this server report.'
+    );
 
     // Check accessibility with modal open
     await expectNoAxeViolations(container);
@@ -282,11 +287,45 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
     expect(card).toHaveTextContent(explanation);
     expect(card).toHaveClass('border-warning/40');
     expect(card).toHaveTextContent(language === 'en' ? 'Older-format events: 1' : 'Eventi nel formato precedente: 1');
-    expect(card).toHaveTextContent(language === 'en' ? 'Current-format events: 1' : 'Eventi nel formato corrente: 1');
+    expect(card).toHaveTextContent(
+      language === 'en' ? 'Events without signed scope: 1' : 'Eventi senza ambito firmato: 1'
+    );
     expect(screen.queryByTestId('verification-pass-card')).not.toBeInTheDocument();
     expect(screen.queryByTestId('verification-tamper-card')).not.toBeInTheDocument();
     await expectNoAxeViolations(document.body);
   });
+
+  it.each(['en', 'it'])(
+    'separates verified v3 content from actual organization attribution in %s',
+    async (language) => {
+      await i18n.changeLanguage(language);
+      verificationState = {
+        ...mockVerification,
+        integrity_profile: 'canonical-v3',
+        canonical_v2_events: 1,
+        canonical_v3_events: 1,
+        organization_attributed_events: 1,
+        unattributed_events: 1,
+        highest_canonical_version: 3
+      };
+      vi.stubGlobal('fetch', setupFetchMock());
+      renderAudit();
+      expect(await screen.findByText(language === 'en' ? 'VALID' : 'VALIDA')).toBeInTheDocument();
+      await userEvent.setup().click(await screen.findByTestId('verify-chain-button'));
+      const card = await screen.findByTestId('verification-pass-card');
+      expect(card).toHaveTextContent(
+        language === 'en' ? 'Events with signed scope: 1' : 'Eventi con ambito firmato: 1'
+      );
+      expect(card).toHaveTextContent(
+        language === 'en' ? 'Attributed to an organization: 1' : "Attribuiti a un'organizzazione: 1"
+      );
+      expect(card).toHaveTextContent(
+        language === 'en' ? 'Global or unattributed events: 1' : 'Eventi globali o non attribuiti: 1'
+      );
+      expect(screen.queryByTestId('verification-unknown-card')).not.toBeInTheDocument();
+      await expectNoAxeViolations(document.body);
+    }
+  );
 
   it('does not claim full coverage when an older server omits the coverage profile', async () => {
     delete verificationState.integrity_profile;

@@ -5,6 +5,11 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+# Browser session protocol baked into the SPA: 2 = per-issuance HttpOnly credentials
+# selected by the server (src/services/browserContext.ts). The backend of the same
+# release accepts both; an empty value builds the legacy client for a rollback.
+ARG VITE_BROWSER_PROTOCOL=2
+ENV VITE_BROWSER_PROTOCOL=$VITE_BROWSER_PROTOCOL
 RUN npm run build
 
 # Stage 2: Production Nginx Server

@@ -588,9 +588,13 @@ async function auditLogsHandler(req, res, next) {
       const qRes = await pool.query('SELECT * FROM audit_events ORDER BY created_at DESC LIMIT $1', [limit]);
       rows = qRes.rows;
     } else {
+      const organizationWide = ['owner', 'admin', 'auditor'].includes(req.user.org_role);
       const qRes = await pool.query(
-        'SELECT * FROM audit_events WHERE actor_user_id = $1 ORDER BY created_at DESC LIMIT $2',
-        [req.user.id, limit]
+        `SELECT * FROM audit_events
+         WHERE canonical_version = 3 AND organization_id = $1
+           AND ($2::boolean OR actor_user_id = $3)
+         ORDER BY created_at DESC LIMIT $4`,
+        [req.user.organization_id || 'org-default', organizationWide, req.user.id, limit]
       );
       rows = qRes.rows;
     }
@@ -605,6 +609,8 @@ async function auditLogsHandler(req, res, next) {
       actor: r.actor_username || 'system',
       actor_username: r.actor_username || 'system',
       actor_user_id: r.actor_user_id,
+      organization_id: r.organization_id,
+      canonical_version: r.canonical_version,
       action: r.event_type,
       event_type: r.event_type,
       resource: r.target_id || r.target_type || 'system',

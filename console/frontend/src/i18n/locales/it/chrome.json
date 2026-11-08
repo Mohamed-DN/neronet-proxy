@@ -66,6 +66,7 @@
     "alerts": "Avvisi di sicurezza",
     "markAllRead": "Segna tutte come lette",
     "account": "Account",
+    "signOut": "Esci",
     "noAlerts": "Nessun avviso. Dietro a questo la console non ha ancora un flusso di notifiche."
   },
   "connection": {

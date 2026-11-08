@@ -1,13 +1,40 @@
 const { WebSocketServer, WebSocket } = require('ws');
 const logger = require('../utils/logger');
-const { resolveAccessToken, SessionAuthorityError } = require('../services/SessionAuthority');
+const { resolveAccessToken, browserV2Authority, SessionAuthorityError } = require('../services/SessionAuthority');
+const { parseCookies } = require('../utils/cookies');
+// Lazy: BrowserContextService loads SessionAuthority, which this module also uses.
+const isSelected = (...args) => require('../services/BrowserContextService').isSelected(...args);
 const { registerWsBroadcaster } = require('../services/TopologySync');
 
 let wss = null;
 const clients = new Set();
 
+// Browser-v2 sockets name their context and selected issuance (non-secret) in the
+// query; the credential is that issuance's HttpOnly cookie on the upgrade request.
+// The same authenticator as HTTP decides, so a late or retired cookie grants nothing.
+async function authenticateBrowserSocket(req, parsedUrl) {
+  if (parsedUrl.searchParams.get('protocol') !== '2')
+    throw new SessionAuthorityError(400, 'Unsupported browser protocol');
+  // Browsers always send Origin on a WebSocket upgrade; its absence is not a browser.
+  if (!req.headers.origin) throw new SessionAuthorityError(403, 'Browser origin is required');
+  const headers = {
+    origin: req.headers.origin,
+    'x-neronet-browser-protocol': '2',
+    'x-neronet-browser-context': parsedUrl.searchParams.get('context') || undefined,
+    'x-neronet-browser-issuance': parsedUrl.searchParams.get('issuance') || undefined
+  };
+  const browserRequest = { headers, cookies: parseCookies(req), get: (name) => headers[name.toLowerCase()] };
+  const browser = await browserV2Authority(browserRequest);
+  return {
+    token: browser.token,
+    ...browser.authority,
+    browser: { contextId: browser.proof.id, issuanceId: browser.issuance.id }
+  };
+}
+
 async function authenticateSocket(req) {
   const parsedUrl = new URL(req.url, 'http://localhost');
+  if (parsedUrl.searchParams.has('protocol')) return authenticateBrowserSocket(req, parsedUrl);
   let token = parsedUrl.searchParams.get('token');
 
   if (!token && req.headers['authorization']) {
@@ -51,6 +78,7 @@ function initTopologyWebSocket(httpServer) {
       ws.user = authResult.user;
       ws.token = authResult.token;
       ws.expiresAt = authResult.expiresAt;
+      ws.browser = authResult.browser || null;
       ws.isAlive = true;
       wss.emit('connection', ws, req);
     });
@@ -187,6 +215,10 @@ async function refreshSocketAuthority(client) {
   if (client.readyState !== WebSocket.OPEN) return false;
   try {
     const authority = await resolveAccessToken(client.token);
+    // A v2 socket holds one issuance; once its context selects another (refresh,
+    // account switch, logout) that issuance grants nothing, socket included.
+    if (client.browser && !(await isSelected(client.browser.contextId, client.browser.issuanceId)))
+      throw new SessionAuthorityError(401, 'Browser issuance no longer selected');
     if (client.readyState !== WebSocket.OPEN) return false;
     client.user = authority.user;
     return true;

@@ -66,6 +66,7 @@
     "alerts": "Security alerts",
     "markAllRead": "Mark all read",
     "account": "Account",
+    "signOut": "Sign out",
     "noAlerts": "No alerts. The console has no notification feed behind this yet."
   },
   "connection": {

@@ -11,6 +11,8 @@ function errorHandler(err, req, res, next) {
 
   res.status(status).json({
     error: message,
+    // A machine-readable reason only on deliberate client errors, never on a 5xx.
+    ...(status < 500 && typeof err.code === 'string' && /^[a-z_]+$/.test(err.code) ? { code: err.code } : {}),
     ...(process.env.NODE_ENV === 'development' ? { stack: err.stack } : {})
   });
 }

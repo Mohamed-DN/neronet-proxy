@@ -152,7 +152,7 @@ async function listRules(organizationId) {
  * Create a rule. organizationId scopes it to one organisation's nodes; null makes it a
  * platform rule, which applies in every organisation.
  */
-async function createRule(rule, { organizationId = null } = {}) {
+async function createRule(rule, { organizationId = null, returnAuditContext = false } = {}) {
   const id = rule.id || `acl-${crypto.randomBytes(6).toString('hex')}`;
 
   const values = [
@@ -176,9 +176,9 @@ async function createRule(rule, { organizationId = null } = {}) {
     }
   }
 
-  await query(
+  const inserted = await query(
     `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, organization_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING organization_id`,
     values,
     `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, organization_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -186,12 +186,18 @@ async function createRule(rule, { organizationId = null } = {}) {
   );
 
   await bumpEpoch('acl');
-  return id;
+  return returnAuditContext ? { id, organizationId: inserted[0].organization_id } : id;
 }
 
-async function deleteRule(id) {
-  await query('DELETE FROM acl_rules WHERE id = $1', [id], 'DELETE FROM acl_rules WHERE id = ?', [id]);
-  return bumpEpoch('acl');
+async function deleteRule(id, { returnAuditContext = false } = {}) {
+  const removed = await query(
+    'DELETE FROM acl_rules WHERE id = $1 RETURNING id, organization_id',
+    [id],
+    'DELETE FROM acl_rules WHERE id = ?',
+    [id]
+  );
+  const epoch = await bumpEpoch('acl');
+  return returnAuditContext ? { epoch, rule: removed[0] || null } : epoch;
 }
 
 // --- Compilation -------------------------------------------------------------
@@ -410,9 +416,9 @@ async function updateRule(id, updates = {}) {
     }
   }
 
-  await query(
+  const updatedRows = await query(
     `UPDATE acl_rules SET priority = $1, source_cidr = $2, destination_cidr = $3, protocol = $4,
-     port_start = $5, port_end = $6, action = $7, description = $8, enabled = $9, updated_at = NOW() WHERE id = $10`,
+     port_start = $5, port_end = $6, action = $7, description = $8, enabled = $9, updated_at = NOW() WHERE id = $10 RETURNING *`,
     [priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, description, enabled, id],
     `UPDATE acl_rules SET priority = ?, source_cidr = ?, destination_cidr = ?, protocol = ?,
      port_start = ?, port_end = ?, action = ?, description = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
@@ -420,13 +426,14 @@ async function updateRule(id, updates = {}) {
   );
 
   await bumpEpoch('acl');
-  const updatedRows = await query(
+  if (isPostgres()) return updatedRows[0] || null;
+  const legacyRows = await query(
     'SELECT * FROM acl_rules WHERE id = $1',
     [id],
     'SELECT * FROM acl_rules WHERE id = ?',
     [id]
   );
-  return updatedRows[0] || null;
+  return legacyRows[0] || null;
 }
 
 /**

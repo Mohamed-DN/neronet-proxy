@@ -25,6 +25,34 @@ const listeners = new Set<Listener>();
 
 let accessToken: string | null = null;
 let activeRole: string | null = null;
+let authorityVersion = 0;
+let credentialRevision = 0;
+let intentVersion = 0;
+
+export interface SessionSnapshot {
+  readonly authorityVersion: number;
+  readonly credentialRevision: number;
+  readonly intentVersion: number;
+  readonly token: string | null;
+}
+
+/** A request keeps the authority it was dispatched under, even after an await. */
+export function captureSession(): SessionSnapshot {
+  return { authorityVersion, credentialRevision, intentVersion, token: accessToken };
+}
+
+/** Explicit admission intent invalidates earlier results before network I/O. */
+export function beginSessionIntent(): void {
+  intentVersion++;
+}
+
+export function isCurrentAuthority(snapshot: SessionSnapshot): boolean {
+  return snapshot.authorityVersion === authorityVersion && snapshot.intentVersion === intentVersion;
+}
+
+export function isCurrentCredential(snapshot: SessionSnapshot): boolean {
+  return isCurrentAuthority(snapshot) && snapshot.credentialRevision === credentialRevision;
+}
 
 function purgeLegacyStorage(): void {
   try {
@@ -62,6 +90,8 @@ export function storeActiveRole(role: string | null): void {
 }
 
 export function storeSession(session: Session): void {
+  authorityVersion++;
+  credentialRevision++;
   accessToken = session.token;
   if (session.role !== undefined) activeRole = session.role ?? null;
   notify();
@@ -69,6 +99,7 @@ export function storeSession(session: Session): void {
 
 /** Replace only the access token, after a refresh. */
 export function storeAccessToken(token: string | null): void {
+  credentialRevision++;
   accessToken = token;
   notify();
 }
@@ -78,6 +109,8 @@ export function storeAccessToken(token: string | null): void {
  * sign-out and whenever a refresh is refused.
  */
 export function clearSession(): void {
+  authorityVersion++;
+  credentialRevision++;
   accessToken = null;
   activeRole = null;
   notify();
@@ -93,6 +126,8 @@ export function subscribeToSession(listener: Listener): () => void {
 
 /** The header the control plane authenticates with. */
 export function authHeader(): Record<string, string> {
+  // Browser-v2 holds an issuance selector, never a bearer token.
+  if (import.meta.env.VITE_BROWSER_PROTOCOL === '2') return {};
   const token = readAccessToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }

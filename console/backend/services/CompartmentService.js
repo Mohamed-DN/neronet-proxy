@@ -112,6 +112,7 @@ class CompartmentService {
 
     logAuditEvent({
       eventType: 'COMPARTMENT_CREATE',
+      organizationId: res.rows[0].organization_id,
       severity: isHidden ? 'warn' : 'info',
       actorUserId: actor?.id,
       actorUsername: actor?.username,
@@ -164,6 +165,7 @@ class CompartmentService {
 
     logAuditEvent({
       eventType: 'COMPARTMENT_UPDATE',
+      organizationId: res.rows[0]?.organization_id || organizationId,
       severity: 'info',
       actorUserId: actor?.id,
       actorUsername: actor?.username,
@@ -194,6 +196,7 @@ class CompartmentService {
 
     logAuditEvent({
       eventType: 'COMPARTMENT_DELETE',
+      organizationId: organizationId,
       severity: 'warn',
       actorUserId: actor?.id,
       actorUsername: actor?.username,
@@ -272,6 +275,7 @@ class CompartmentService {
 
     logAuditEvent({
       eventType: 'COMPARTMENT_PEER_CREATE',
+      organizationId: res.rows[0].organization_id,
       severity: 'info',
       actorUserId: actor?.id,
       actorUsername: actor?.username,
@@ -287,7 +291,7 @@ class CompartmentService {
   static async deletePeeringRule(id, organizationId, actor) {
     const pool = getPgPool();
     const res = await pool.query(
-      'DELETE FROM compartment_peerings WHERE id = $1 AND organization_id = $2 RETURNING src_compartment_id, dst_compartment_id',
+      'DELETE FROM compartment_peerings WHERE id = $1 AND organization_id = $2 RETURNING organization_id, src_compartment_id, dst_compartment_id',
       [id, organizationId]
     );
     if (res.rows.length === 0) return false;
@@ -295,6 +299,7 @@ class CompartmentService {
 
     logAuditEvent({
       eventType: 'COMPARTMENT_PEER_DELETE',
+      organizationId: res.rows[0].organization_id,
       severity: 'info',
       actorUserId: actor?.id,
       actorUsername: actor?.username,
@@ -341,6 +346,7 @@ class CompartmentService {
       await AclEngine.bumpEpoch('acl');
       logAuditEvent({
         eventType: 'COMPARTMENT_MEMBERS_SET',
+        organizationId: target.organization_id,
         severity: target.is_hidden ? 'warn' : 'info',
         actorUserId: actor?.id,
         actorUsername: actor?.username,

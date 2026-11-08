@@ -5,9 +5,12 @@ const { getPgPool } = require('../db');
 const { isTokenBlacklisted } = require('../db/valkey');
 
 class SessionAuthorityError extends Error {
-  constructor(status, message) {
+  // code: optional machine-readable reason, e.g. 'browser_selection_changed', so a
+  // client can tell a session change from an ordinary 409 conflict of a resource.
+  constructor(status, message, code = null) {
     super(message);
     this.status = status;
+    if (code) this.code = code;
   }
 }
 
@@ -106,15 +109,43 @@ async function resolveAccessToken(token) {
 // A module guard and its downstream router share one verified request decision.
 // This is request-local, never a cache of principals across requests or sockets.
 const requestDecisions = new WeakMap();
+async function browserV2Authority(req) {
+  // Lazy: BrowserContextService depends on this module for its error type.
+  const Browser = require('./BrowserContextService');
+  const credential = await Browser.authenticate(req);
+  const authority = await resolveAccessToken(credential.token);
+  const claims = jwt.decode(credential.token);
+  // The cookie must be exactly the selected issuance's access credential.
+  if (claims?.jti !== credential.issuance.accessJti || authority.sessionId !== credential.issuance.sessionId)
+    throw new SessionAuthorityError(401, 'Browser credential does not match its issuance');
+  return { token: credential.token, authority, issuance: credential.issuance, proof: credential.proof };
+}
+
 async function authenticateConsoleRequest(req) {
+  let decision = requestDecisions.get(req);
+  const protocol = req.headers?.['x-neronet-browser-protocol'];
+  if (protocol !== undefined) {
+    // Versioned browsers never fall back to ambient legacy cookies or headers.
+    if (protocol !== '2') throw new SessionAuthorityError(400, 'Unsupported browser protocol');
+    if (!decision || !decision.browser) {
+      decision = { browser: browserV2Authority(req) };
+      requestDecisions.set(req, decision);
+    }
+    const browser = await decision.browser;
+    req.browserIssuance = browser.issuance;
+    req.browserProof = browser.proof;
+    return admit(req, browser.token, browser.authority);
+  }
   const token = accessTokenFromRequest(req);
   if (!token) throw new SessionAuthorityError(401, 'Missing or malformed Authorization header');
-  let decision = requestDecisions.get(req);
   if (!decision || decision.token !== token) {
     decision = { token, authority: resolveAccessToken(token) };
     requestDecisions.set(req, decision);
   }
-  const authority = await decision.authority;
+  return admit(req, token, await decision.authority);
+}
+
+function admit(req, token, authority) {
   req.user = authority.user;
   req.token = token;
   req.sessionAuthority = {
@@ -125,4 +156,10 @@ async function authenticateConsoleRequest(req) {
   return authority;
 }
 
-module.exports = { resolveAccessToken, authenticateConsoleRequest, accessTokenFromRequest, SessionAuthorityError };
+module.exports = {
+  resolveAccessToken,
+  authenticateConsoleRequest,
+  accessTokenFromRequest,
+  browserV2Authority,
+  SessionAuthorityError
+};

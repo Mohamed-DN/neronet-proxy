@@ -23,6 +23,7 @@ const metricsRoutes = require('./routes/metrics');
 const requestMetrics = require('./middleware/requestMetrics');
 const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
+const browserSessionRoutes = require('./routes/browserSessions');
 const usersRoutes = require('./routes/users');
 const nodesRoutes = require('./routes/nodes');
 const configsRoutes = require('./routes/configs');
@@ -84,6 +85,7 @@ function createApp() {
   app.use('/api', apiLimiter);
 
   app.use('/api', healthRoutes);
+  app.use('/api/auth/browser', browserSessionRoutes);
   app.use('/api/auth', authRoutes);
   app.use('/api/users', usersRoutes);
   app.use('/api/nodes', nodesRoutes);

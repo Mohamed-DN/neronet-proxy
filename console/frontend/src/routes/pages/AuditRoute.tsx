@@ -34,9 +34,8 @@ import {
 export default function AuditRoute() {
   const { t } = useTranslation('ui');
 
-  // The ledger is platform wide (events carry no organisation), so verification,
-  // checkpoints, SIEM sinks and export are the platform super-admin's. Other users
-  // see their own events only.
+  // Verification, checkpoints, SIEM sinks and global export remain platform-only.
+  // The server filters event listings by signed organization and admitted role.
   const auth = useContext(AuthContext);
   const isPlatformAdmin = auth?.user?.role === 'super-admin';
 
@@ -78,7 +77,7 @@ export default function AuditRoute() {
   const verificationCoverage =
     verifyResult?.integrity_profile === 'empty' || verifyResult?.events_count === 0
       ? 'empty'
-      : verifyResult?.integrity_profile === 'canonical-v2'
+      : verifyResult?.integrity_profile === 'canonical-v2' || verifyResult?.integrity_profile === 'canonical-v3'
         ? 'valid'
         : verifyResult?.integrity_profile === 'legacy-partial'
           ? 'partial'
@@ -467,6 +466,20 @@ export default function AuditRoute() {
                 )}
                 {verifyResult.canonical_v2_events != null && (
                   <div>{t('audit.verifyModal.canonicalCount', { count: verifyResult.canonical_v2_events })}</div>
+                )}
+                {verifyResult.canonical_v3_events != null && (
+                  <div>{t('audit.verifyModal.signedScopeCount', { count: verifyResult.canonical_v3_events })}</div>
+                )}
+                {verifyResult.organization_attributed_events != null && (
+                  <div>
+                    {t('audit.verifyModal.attributedCount', { count: verifyResult.organization_attributed_events })}
+                  </div>
+                )}
+                {verifyResult.unattributed_events != null && (
+                  <div>{t('audit.verifyModal.unattributedCount', { count: verifyResult.unattributed_events })}</div>
+                )}
+                {(verifyResult.organization_attributed_events == null || verifyResult.unattributed_events == null) && (
+                  <div>{t('audit.verifyModal.attributionUnavailable')}</div>
                 )}
               </div>
             </div>

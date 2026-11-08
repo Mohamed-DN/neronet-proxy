@@ -27,6 +27,7 @@ function logAuditEvent(event) {
 
 async function writeAuditEvent({
   eventType,
+  organizationId = null,
   severity = 'info',
   actorUserId = null,
   actorUsername = 'system',
@@ -42,6 +43,7 @@ async function writeAuditEvent({
   try {
     const row = await AuditChainService.appendEvent({
       eventType,
+      organizationId,
       severity,
       actorUserId,
       actorUsername,

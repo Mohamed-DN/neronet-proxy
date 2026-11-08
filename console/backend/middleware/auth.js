@@ -5,7 +5,10 @@ async function authenticateToken(req, res, next) {
   try {
     await authenticateConsoleRequest(req);
   } catch (err) {
-    return res.status(err.status || 503).json({ error: err.status ? err.message : 'Session authority unavailable' });
+    return res.status(err.status || 503).json({
+      error: err.status ? err.message : 'Session authority unavailable',
+      ...(err.status && err.code ? { code: err.code } : {})
+    });
   }
   return next();
 }

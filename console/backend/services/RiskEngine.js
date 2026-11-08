@@ -301,6 +301,7 @@ async function ingestTelemetry(nodeId, telemetry) {
     logger.warn(`Node ${nodeId} (${node.name}) auto-quarantined due to risk score ${finalRiskScore}`);
     logAuditEvent({
       eventType: 'NODE_QUARANTINED',
+      organizationId: node.organization_id || 'org-default',
       severity: 'critical',
       actorUsername: 'RiskEngine',
       targetId: nodeId,
@@ -459,6 +460,7 @@ async function attestNode(nodeId, actor) {
 
   logAuditEvent({
     eventType: 'RISK_ATTESTATION',
+    organizationId: node.organization_id || 'org-default',
     severity: 'info',
     actorUserId: actor ? actor.id : null,
     actorUsername: actor ? actor.username : 'admin',

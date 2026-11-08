@@ -308,6 +308,8 @@ router.post('/owner-dms/trigger', authenticateToken, requireRole('super-admin'),
     if (!hash || !(await bcrypt.compare(password, hash))) {
       await logAuditEvent({
         eventType: 'NUKE_WIPE_REJECTED',
+        // Global cascading wipe: platform-wide, no single tenant.
+        organizationId: null,
         severity: 'critical',
         actorUserId: req.user.id,
         actorUsername: req.user.username,
@@ -322,6 +324,8 @@ router.post('/owner-dms/trigger', authenticateToken, requireRole('super-admin'),
     // with nothing to place it against.
     await logAuditEvent({
       eventType: 'NUKE_WIPE_EXECUTED',
+      // Global cascading wipe: platform-wide, no single tenant.
+      organizationId: null,
       severity: 'critical',
       actorUserId: req.user.id,
       actorUsername: req.user.username,

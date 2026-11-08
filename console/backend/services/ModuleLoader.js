@@ -215,7 +215,9 @@ class ModuleLoader {
       // Node credentials remain the node router's responsibility. Console tokens
       // use the same current principal as HTTP authorization, including legacy
       // tokens without an organization claim and accounts moved between tenants.
-      if (token && !token.startsWith('nnt1_') && verifyToken(token)) {
+      // A versioned browser request authenticates only through its selected issuance.
+      const browserV2 = req.headers['x-neronet-browser-protocol'] !== undefined;
+      if (browserV2 || (token && !token.startsWith('nnt1_') && verifyToken(token))) {
         try {
           await authenticateConsoleRequest(req);
           orgId = req.user.organization_id;
@@ -268,6 +270,7 @@ class ModuleLoader {
 
     logAuditEvent({
       eventType: 'ORG_MODULE_TOGGLE',
+      organizationId: orgId,
       severity: 'warn',
       actorUserId: actor?.id,
       actorUsername: actor?.username,

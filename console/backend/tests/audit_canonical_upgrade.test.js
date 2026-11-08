@@ -9,6 +9,7 @@ const { issueConsoleTestToken } = require('./helpers/consoleSession');
 const { createApp } = require('../server');
 const config = require('../config/env');
 const { AuditChainService } = require('../services/AuditChainService');
+const { appendHistoricalV2 } = require('./helpers/auditCanonicalV2');
 const { settleAuditWrites } = require('../utils/audit');
 
 const GENESIS = '0'.repeat(64);
@@ -121,7 +122,7 @@ describe('Audit canonical format upgrade with historical PostgreSQL rows and HTT
   }
 
   async function append(overrides = {}) {
-    return AuditChainService.appendEvent({
+    return appendHistoricalV2(db.pool, {
       eventType: 'CANONICAL_V2_UPGRADE',
       severity: 'info',
       actorUsername: 'operator',
@@ -194,8 +195,10 @@ describe('Audit canonical format upgrade with historical PostgreSQL rows and HTT
     const client = await db.pool.connect();
     try {
       // setupTestDatabase supplies the complete migrated schema; removing only
-      // migration 041's two columns reconstructs the real schema at migration 040.
-      await client.query('ALTER TABLE audit_events DROP COLUMN canonical_version, DROP COLUMN canonical_metadata_json');
+      // migrations 041/042's additions reconstructs the real schema at migration 040.
+      await client.query(
+        'ALTER TABLE audit_events DROP COLUMN organization_id, DROP COLUMN canonical_version, DROP COLUMN canonical_metadata_json'
+      );
       const absent = (
         await client.query(`SELECT NOT EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -258,7 +261,84 @@ describe('Audit canonical format upgrade with historical PostgreSQL rows and HTT
               AND column_name IN ('canonical_version', 'canonical_metadata_json')`)
         ).rows[0].missing;
         if (needsMigration) await client.query(migrationSql);
+        const needsAttribution = (
+          await client.query(
+            "SELECT NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='audit_events' AND column_name='organization_id') AS missing"
+          )
+        ).rows[0].missing;
+        if (needsAttribution)
+          await client.query(
+            fs.readFileSync(path.join(__dirname, '../db/migrations/042_audit_organization_attribution.sql'), 'utf8')
+          );
         await client.query('DROP TABLE IF EXISTS audit_upgrade_events_before, audit_upgrade_checkpoints_before');
+      } finally {
+        client.release();
+      }
+    }
+  });
+
+  it('upgrades populated schema 041 to 042 without assigning or rewriting historical evidence', async () => {
+    await assertIsolatedDatabase();
+    const client = await db.pool.connect();
+    const attributionSql = fs.readFileSync(
+      path.join(__dirname, '../db/migrations/042_audit_organization_attribution.sql'),
+      'utf8'
+    );
+    try {
+      await client.query('ALTER TABLE audit_events DROP COLUMN organization_id');
+      await client.query('ALTER TABLE audit_events DROP CONSTRAINT audit_events_canonical_version_check');
+      await client.query(
+        'ALTER TABLE audit_events ADD CONSTRAINT audit_events_canonical_version_check CHECK (canonical_version IN (1,2))'
+      );
+      const first = await insertHistorical();
+      const second = await appendHistoricalV2(db.pool, {
+        metadataText: '{"nested":{"n":0.100000000000000005,"text":"1"}}'
+      });
+      assert.equal(Number(second.sequence_num), Number(first.sequence_num) + 1);
+      await AuditChainService.createCheckpoint();
+      assert.equal((await verify()).valid, true);
+      await client.query('CREATE TEMP TABLE attribution_events_before AS TABLE audit_events');
+      await client.query('CREATE TEMP TABLE attribution_checkpoints_before AS TABLE audit_checkpoints');
+      await client.query(attributionSql);
+      const preserved = (
+        await client.query(`SELECT
+        NOT EXISTS (SELECT to_jsonb(e)-'organization_id' FROM audit_events e
+          EXCEPT SELECT to_jsonb(b) FROM attribution_events_before b)
+        AND (SELECT count(*) FROM audit_events)=(SELECT count(*) FROM attribution_events_before) AS events,
+        NOT EXISTS (SELECT to_jsonb(c) FROM audit_checkpoints c
+          EXCEPT SELECT to_jsonb(b) FROM attribution_checkpoints_before b)
+        AND (SELECT count(*) FROM audit_checkpoints)=(SELECT count(*) FROM attribution_checkpoints_before) AS checkpoints,
+        (SELECT bool_and(organization_id IS NULL) FROM audit_events) AS unattributed`)
+      ).rows[0];
+      assert.deepEqual(preserved, { events: true, checkpoints: true, unattributed: true });
+      const added = await AuditChainService.appendEvent({
+        eventType: 'AFTER_042',
+        message: 'New attributed event',
+        organizationId: 'org-default'
+      });
+      assert.equal(added.canonical_version, 3);
+      const report = await verify();
+      assert.equal(report.valid, true);
+      assert.equal(report.legacy_canonical_events, 1);
+      assert.equal(report.canonical_v2_events, 1);
+      assert.equal(report.canonical_v3_events, 1);
+      assert.equal(report.organization_attributed_events, 1);
+      assert.equal(report.unattributed_events, 2);
+      assert.equal(report.checkpoints_verified, 1);
+      assert.equal(report.integrity_profile, 'legacy-partial');
+      const ranged = await verify({ from: 3, to: 3 });
+      assert.equal(ranged.valid, true);
+      assert.equal(ranged.integrity_profile, 'legacy-partial');
+      assert.equal(ranged.prefix_events_verified, 2);
+    } finally {
+      try {
+        const absent = (
+          await client.query(
+            "SELECT NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='audit_events' AND column_name='organization_id') AS missing"
+          )
+        ).rows[0].missing;
+        if (absent) await client.query(attributionSql);
+        await client.query('DROP TABLE IF EXISTS attribution_events_before, attribution_checkpoints_before');
       } finally {
         client.release();
       }

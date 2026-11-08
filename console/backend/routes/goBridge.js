@@ -186,6 +186,7 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
         const refusal = EnrollmentService.denied(403, 'this key has been revoked');
         refusal.auditEvent = {
           eventType: 'node.revoked_key_register_refused',
+          organizationId: existing[0]?.organization_id ?? null,
           severity: 'warn',
           targetId: nodeId,
           targetType: 'node',
@@ -370,9 +371,11 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       // trace. Written after the upsert, so a failed write does not leave an event
       // describing a change that did not happen.
       if (mismatch) {
+        const auditOrganizationId = organizationId;
         afterCommit.push(() =>
           logAuditEvent({
             eventType: 'node.reregister_mismatch',
+            organizationId: auditOrganizationId,
             severity: 'warn',
             targetId: nodeId,
             targetType: 'node',

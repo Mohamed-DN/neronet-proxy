@@ -179,6 +179,31 @@ const loginLimiter = rateLimit({
   }
 });
 
+// Second-factor completion is metered per password-step challenge (its jti), not
+// per claimed username: the username in the body is ignored on this path, so the
+// login limiter alone let a password holder spray TOTP codes across fresh buckets.
+// A full-session caller has no challenge and is metered per address.
+const mfaChallengeLimiter = rateLimit({
+  name: 'mfa-challenge',
+  limit: 5,
+  windowMs: 15 * 60_000,
+  failClosed: true,
+  message: 'too many second-factor attempts; sign in again',
+  keyFn: (req) => {
+    const token = typeof req.body?.mfa_token === 'string' ? req.body.mfa_token : null;
+    let jti = null;
+    try {
+      // Only a bucket key: the challenge itself is verified by the route.
+      jti = token ? JSON.parse(Buffer.from(token.split('.')[1] || '', 'base64url').toString('utf8')).jti : null;
+    } catch {
+      jti = null;
+    }
+    if (typeof jti === 'string' && /^[0-9a-f-]{36}$/i.test(jti)) return `challenge:${jti.toLowerCase()}`;
+    const ip = clientIp(req);
+    return ip ? `address:${ip}` : null;
+  }
+});
+
 // Account creation is cheap for the caller and expensive for us.
 const registerLimiter = rateLimit({
   name: 'register',
@@ -334,6 +359,7 @@ module.exports = {
   rateLimit,
   LIMITING_DISABLED,
   loginLimiter,
+  mfaChallengeLimiter,
   registerLimiter,
   enrolmentLimiter,
   apiLimiter,

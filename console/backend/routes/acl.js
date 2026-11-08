@@ -121,12 +121,14 @@ router.post('/rules', requireAclAdmin, async (req, res, next) => {
   try {
     const body = req.body || {};
     const organizationId = isSuperAdmin(req) ? body.organization_id || null : orgOf(req);
-    const id = await AclEngine.createRule(body, { organizationId });
+    const creation = await AclEngine.createRule(body, { organizationId, returnAuditContext: true });
+    const id = creation.id;
     const rules = await AclEngine.listRules();
     const created = rules.find((r) => r.id === id) || { id };
 
     await logAuditEvent({
       eventType: 'ACL_RULE_CREATED',
+      organizationId: creation.organizationId,
       severity: 'warn',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
@@ -158,6 +160,7 @@ router.put('/rules/:id', requireAclAdmin, async (req, res, next) => {
 
     await logAuditEvent({
       eventType: 'ACL_RULE_UPDATED',
+      organizationId: updated.organization_id,
       severity: 'warn',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
@@ -185,10 +188,12 @@ router.delete('/rules/:id', requireAclAdmin, async (req, res, next) => {
       return res.status(404).json({ error: `no ACL rule ${req.params.id}` });
     }
 
-    await AclEngine.deleteRule(req.params.id);
+    const removal = await AclEngine.deleteRule(req.params.id, { returnAuditContext: true });
+    if (!removal.rule) return res.status(404).json({ error: `no ACL rule ${req.params.id}` });
 
     await logAuditEvent({
       eventType: 'ACL_RULE_DELETED',
+      organizationId: removal.rule.organization_id,
       severity: 'warn',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
@@ -257,6 +262,7 @@ router.put('/default-policy', requireAclAdmin, async (req, res, next) => {
 
     await logAuditEvent({
       eventType: 'ACL_DEFAULT_POLICY_CHANGED',
+      organizationId: orgId,
       severity: 'warn',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
