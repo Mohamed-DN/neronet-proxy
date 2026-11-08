@@ -36,6 +36,7 @@ const PreAuthKeyService = require('../services/PreAuthKeyService');
 const NodeCredentialService = require('../services/NodeCredentialService');
 const EnrollmentService = require('../services/EnrollmentService');
 const NativeTelemetry = require('../services/NativeTelemetry');
+const TransportPolicyService = require('../services/TransportPolicyService');
 const logger = require('../utils/logger');
 const { logAuditEvent } = require('../utils/audit');
 const { checkNodeAuth, checkEnrolmentToken } = require('../middleware/nodeAuth');
@@ -52,7 +53,8 @@ router.use(
     '/circuit': 'CircuitResponse',
     '/sync-acls': 'ACLSyncResponse',
     '/sync-routes': 'RouteSyncResponse',
-    '/netmap': 'NetmapResponse'
+    '/netmap': 'NetmapResponse',
+    '/relay/admission': 'RelayAdmissionSnapshot'
   })
 );
 
@@ -349,6 +351,14 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
         versionAdvanced = recorded.bumped;
       }
 
+      // The transports and capabilities describe the binary that proved possession of
+      // the key just now, so unlike role or country they follow every registration: a
+      // node upgraded to a build with DERP must be offered DERP, and one downgraded must
+      // stop being offered it. Unknown values are not stored.
+      if (await TransportPolicyService.recordNodeCapability(nodeId, capability, client)) {
+        versionAdvanced = true;
+      }
+
       // The declared position is written only while the row has none, which is the
       // same rule the country follows: a re-registration cannot move an enrolled node.
       // A node enrolled before it could declare a position gets one the first time it
@@ -440,6 +450,27 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
   }
 });
 
+// POST /v4/control/relay/admission
+//
+// The node keys a DERP relay may admit, for the relay's admission cache
+// (internal/derpwire/admission.go). Service-only: the caller must present an enabled
+// relay's own credential. A fleet token, a node credential or a console session names
+// no relay and is refused, so no node can list the fleet's keys. The snapshot carries
+// its own absolute lifetime; a relay that cannot refresh stops admitting when it ends.
+router.post('/relay/admission', async (req, res) => {
+  try {
+    const relayId = await TransportPolicyService.authenticateRelay(req.get('authorization'));
+    if (!relayId) {
+      return res.status(401).json({ error: 'relay credential required' });
+    }
+    res.set('Cache-Control', 'no-store');
+    return res.json(await TransportPolicyService.admissionSnapshot());
+  } catch (err) {
+    logger.error(`[GO-BRIDGE] Relay admission failed: ${err.message}`);
+    return res.status(500).json({ error: 'admission snapshot unavailable' });
+  }
+});
+
 // POST /v4/control/heartbeat
 router.post('/heartbeat', normalizeRegisterBody, validateRequest('HeartbeatRequest'), async (req, res) => {
   try {
@@ -476,6 +507,10 @@ router.post('/heartbeat', normalizeRegisterBody, validateRequest('HeartbeatReque
     if (known.length === 0) {
       return res.status(404).json({ error: `unknown node_id ${nodeId}` });
     }
+
+    // Relay homes the node reports. A report the control plane cannot use is ignored
+    // inside; the beat itself is never refused for it.
+    await TransportPolicyService.recordRelayHomes(nodeId, req.body);
 
     if (req.body.telemetry) {
       await NativeTelemetry.record(nodeId, auth.node?.credentialId, req.body.telemetry);
@@ -637,6 +672,7 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
       filters.push(clause.replace('$$', `$${params.length}`));
     };
 
+    let udpPeers = null;
     if (auth.node) {
       // A node credential names one overlay participant, not the whole fleet.
       // Use the same peer set its WireGuard device receives: organisation,
@@ -647,6 +683,13 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
       add(
         'id = ANY($$::text[])',
         netmap.peers.map((peer) => peer.node_id)
+      );
+      // Exactly the UDP endpoints its netmap carries: a pair the transport policy
+      // limits to DERP gets none here either.
+      udpPeers = new Set(
+        netmap.peers
+          .filter((peer) => !peer.allowed_transports || peer.allowed_transports.includes('udp'))
+          .map((peer) => peer.node_id)
       );
     }
 
@@ -671,6 +714,7 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
                      FROM nodes WHERE ${where} ${order} LIMIT $${params.length + 1}`;
 
     const rows = await runQuery(pgSql, [...params, limit]);
+    if (!udpPeers) udpPeers = await TransportPolicyService.udpReachable(rows.map((row) => row.id));
 
     // The nodes table holds hex from Go nodes and base64 from console-minted keys.
     // The wire field is public_key_hex, so the base64 form must be converted or the
@@ -682,7 +726,7 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
         node_id: row.id,
         public_key_hex: row.public_key_hex,
         overlay_ipv4: row.overlay_ipv4,
-        endpoints: parseEndpoints(row.endpoints),
+        endpoints: udpPeers.has(row.id) ? parseEndpoints(row.endpoints) : [],
         capability: {
           enabled: true,
           country_code: row.country_code || 'US',

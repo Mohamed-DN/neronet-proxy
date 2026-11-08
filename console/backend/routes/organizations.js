@@ -3,6 +3,8 @@ const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const { resolveUserOrg, requireRole, requireOrgRole, requireNotAuditor } = require('../middleware/rbac');
 const OrgService = require('../services/OrgService');
+const TransportPolicyService = require('../services/TransportPolicyService');
+const { logAuditEvent } = require('../utils/audit');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -69,6 +71,52 @@ router.put('/:id', requireOrgRole('owner', 'admin'), async (req, res, next) => {
 
     return res.status(200).json({ organization: updated });
   } catch (err) {
+    next(err);
+  }
+});
+
+// Transport policy of an organisation (T0 P1). Bounded by the installation ceiling,
+// which only the operator sets; the response reports both and their intersection.
+router.get('/:id/transports', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'super-admin' && req.user.organization_id !== req.params.id) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    const policy = await TransportPolicyService.getOrganisationPolicy(req.params.id);
+    if (!policy) return res.status(404).json({ error: 'Organization not found' });
+    return res.status(200).json(policy);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/:id/transports', requireOrgRole('owner', 'admin'), async (req, res, next) => {
+  try {
+    if (req.user.role !== 'super-admin' && req.user.organization_id !== req.params.id) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    const policy = await TransportPolicyService.setOrganisationPolicy(
+      req.params.id,
+      (req.body || {}).allowed_transports
+    );
+    // The organisation the service changed, not the one the request named.
+    await logAuditEvent({
+      eventType: 'TRANSPORT_ORG_POLICY_UPDATED',
+      organizationId: policy.organization_id,
+      severity: 'warn',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: policy.organization_id,
+      targetType: 'organization',
+      message: `Transport policy of ${policy.organization_id} set to ${policy.allowed_transports.join(',') || '(none)'}; effective ${policy.effective_transports.join(',') || '(none)'}`,
+      ipAddress: req.ip,
+      metadata: policy
+    });
+    return res.status(200).json(policy);
+  } catch (err) {
+    if (err instanceof TransportPolicyService.RelayError) {
+      return res.status(err.status).json({ error: err.message });
+    }
     next(err);
   }
 });

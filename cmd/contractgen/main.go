@@ -42,6 +42,7 @@ func main() {
 		{Name: "RouteSyncResponse", Instance: &control.RouteSyncResponse{}},
 		{Name: "NetmapRequest", Instance: &control.NetmapRequest{}},
 		{Name: "NetmapResponse", Instance: &control.NetmapResponse{}},
+		{Name: "RelayAdmissionSnapshot", Instance: &control.RelayAdmissionSnapshot{}},
 	}
 
 	for _, entry := range entries {

@@ -26,7 +26,7 @@ func TestAdmissionServiceCredentialRevocationAndAbsoluteExpiry(t *testing.T) {
 		if revoked.Load() {
 			keys = nil
 		}
-		_ = json.NewEncoder(w).Encode(AdmissionSnapshot{keys, time.Now().Unix(), 2})
+		_ = json.NewEncoder(w).Encode(AdmissionSnapshot{Keys: keys, GeneratedAtUnix: time.Now().Unix(), MaxStalenessSeconds: 2})
 	}))
 	defer s.Close()
 	roots := x509.NewCertPool()

@@ -199,6 +199,16 @@ type PeerPathObservation struct {
 	RTTMillis         *float64 `json:"rtt_ms" jsonschema:"nullable"`
 }
 
+// RelayAdmissionSnapshot is the service-only answer of POST /v4/control/relay/admission:
+// the WireGuard public keys (hex) a DERP relay may admit. Its expiry is absolute,
+// generated_at_unix + max_staleness_seconds: failing to refresh cannot prolong it.
+// A key here grants a relay session, never a peer; peers come only from the netmap.
+type RelayAdmissionSnapshot struct {
+	Keys                []string `json:"keys"`
+	GeneratedAtUnix     int64    `json:"generated_at_unix"`
+	MaxStalenessSeconds int64    `json:"max_staleness_seconds"`
+}
+
 type RelayCandidate struct {
 	RelayID    string `json:"relay_id"`
 	URL        string `json:"url"`

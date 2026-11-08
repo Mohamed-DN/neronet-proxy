@@ -36,6 +36,7 @@ const cloudPcRoutes = require('./routes/cloudPc');
 const canaryRoutes = require('./routes/canary');
 const preauthKeysRoutes = require('./routes/preauthKeys');
 const organizationsRoutes = require('./routes/organizations');
+const transportsRoutes = require('./routes/transports');
 const compartmentsRoutes = require('./routes/compartments');
 const ModuleLoader = require('./services/ModuleLoader');
 const securityHeaders = require('./middleware/securityHeaders');
@@ -100,6 +101,7 @@ function createApp() {
   app.use('/api/cloud-pc', requireFeature('cloud_pc'), cloudPcRoutes);
   app.use('/api/preauth-keys', preauthKeysRoutes);
   app.use('/api/organizations', organizationsRoutes);
+  app.use('/api/transports', transportsRoutes);
   app.use('/api/compartments', compartmentsRoutes);
 
   // Load and mount discrete feature modules (WP-107: nuke, onion, deniability)
@@ -130,6 +132,13 @@ async function initDatabase() {
     const pool = getPgPool();
     await runMigrations(pool);
     await bootstrapPostgresAdmin(pool);
+
+    // A ceiling naming an unknown transport stops the process here rather than at the
+    // first netmap. A ceiling different from the one the netmap was last built under
+    // moves the version, or nodes holding it would be told "unchanged".
+    const TransportPolicyService = require('./services/TransportPolicyService');
+    await TransportPolicyService.reconcileCeiling();
+    TransportPolicyService.startSweeper();
 
     // Organisation secrets stored before they were sealed with the organisation's
     // data key are sealed now, and data keys wrapped with a retiring KEK re-wrapped.

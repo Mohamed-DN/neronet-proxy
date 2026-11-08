@@ -1,0 +1,8 @@
+{
+  "keys": [
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+  ],
+  "generated_at_unix": 1762600000,
+  "max_staleness_seconds": 60
+}

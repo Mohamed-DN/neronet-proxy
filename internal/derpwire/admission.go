@@ -12,15 +12,14 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/sovereign/proxy/v4/pkg/control"
 )
 
-// AdmissionSnapshot is service-only control-plane data. Its expiry is absolute:
-// repeatedly failing to refresh cannot prolong the cached authority.
-type AdmissionSnapshot struct {
-	Keys                []string `json:"keys"`
-	GeneratedAtUnix     int64    `json:"generated_at_unix"`
-	MaxStalenessSeconds int64    `json:"max_staleness_seconds"`
-}
+// AdmissionSnapshot is service-only control-plane data, defined by the wire contract
+// (control.RelayAdmissionSnapshot). Its expiry is absolute: repeatedly failing to
+// refresh cannot prolong the cached authority.
+type AdmissionSnapshot = control.RelayAdmissionSnapshot
 
 type AdmissionCache struct {
 	mu              sync.RWMutex
@@ -51,6 +50,14 @@ func (c *AdmissionCache) Allows(k [32]byte) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return time.Now().Before(c.expires) && c.keys[k]
+}
+
+// Valid reports whether the cache holds an unexpired snapshot, i.e. whether the relay
+// can admit anyone at all.
+func (c *AdmissionCache) Valid() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return !c.invalidated && time.Now().Before(c.expires)
 }
 
 func (c *AdmissionCache) Refresh(ctx context.Context) error {

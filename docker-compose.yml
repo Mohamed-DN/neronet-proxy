@@ -195,6 +195,12 @@ services:
       # default is a day; the fail-static scenario lowers it so the fail-closed
       # transition can be observed in one test run.
       - SOVEREIGN_MAX_NETMAP_STALENESS_SECONDS=${NERONET_MAX_NETMAP_STALENESS_SECONDS:-86400}
+      # The installation's transport ceiling (T0, ADR 0022): what any organisation may
+      # allow at most. udp alone is the behaviour before relays existed; udp,derp lets
+      # organisations that allow DERP use the relays listed under /api/transports.
+      - SOVEREIGN_TRANSPORT_CEILING=${NERONET_TRANSPORT_CEILING:-udp}
+      - SOVEREIGN_RELAY_HOME_TTL_SECONDS=${NERONET_RELAY_HOME_TTL_SECONDS:-120}
+      - SOVEREIGN_RELAY_ADMISSION_MAX_STALENESS_SECONDS=${NERONET_RELAY_ADMISSION_MAX_STALENESS_SECONDS:-60}
       - SOVEREIGN_DATA_DIR=/app/data
       - SOVEREIGN_CONTRACT_SCHEMA_DIR=/app/api/contract/v4
       - SOVEREIGN_FEATURE_CLOUD_PC=${SOVEREIGN_FEATURE_CLOUD_PC:-false}
