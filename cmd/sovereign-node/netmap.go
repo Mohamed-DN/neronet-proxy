@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -396,11 +397,7 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 	psk := m.psk
 	m.mu.Unlock()
 	if psk != nil {
-		keys := make([]string, 0, len(netmap.Peers))
-		for _, p := range netmap.Peers {
-			keys = append(keys, p.PublicKeyHex)
-		}
-		psk.SetPeers(keys)
+		psk.SetPeers(rotatingPSKPeers(netmap.Peers))
 	}
 
 	if err := m.persist(netmap, fetchedAt); err != nil {
@@ -648,6 +645,30 @@ func normaliseKey(key string) string {
 	return strings.ToLower(strings.TrimSpace(key))
 }
 
+// rotatingPSKPeers are the peers whose PSK the epoch rotation derives. A profile
+// device (ADR 0029) runs a standard WireGuard app that cannot compute an epoch key:
+// it keeps the static PSK its netmap entry carries, and the rotation must not
+// overwrite it.
+func rotatingPSKPeers(in []control.NetmapPeer) []string {
+	keys := make([]string, 0, len(in))
+	for _, p := range in {
+		if p.Profile {
+			continue
+		}
+		keys = append(keys, p.PublicKeyHex)
+	}
+	return keys
+}
+
+// staticPSK is a profile device's PSK, or "" when the entry carries none usable.
+func staticPSK(p control.NetmapPeer) string {
+	k := strings.ToLower(strings.TrimSpace(p.PresharedKeyHex))
+	if raw, err := hex.DecodeString(k); err != nil || len(raw) != 32 {
+		return ""
+	}
+	return k
+}
+
 // netmapPeers converts the document's peers into device peers.
 //
 // It returns the peers it dropped rather than silently omitting them: a revoked peer
@@ -659,6 +680,17 @@ func netmapPeers(in []control.NetmapPeer, revoked map[string]uint64, documents .
 		if _, isRevoked := revoked[key]; isRevoked {
 			dropped = append(dropped, fmt.Sprintf("%s revoked", p.NodeID))
 			continue
+		}
+
+		// A profile device without its PSK would handshake with no PSK at all, which
+		// its own configuration refuses: dropping it says so. A mesh peer's PSK is the
+		// epoch rotation's, never the document's.
+		presharedKey := ""
+		if p.Profile {
+			if presharedKey = staticPSK(p); presharedKey == "" {
+				dropped = append(dropped, fmt.Sprintf("%s profile device without a usable static PSK", p.NodeID))
+				continue
+			}
 		}
 
 		allowed := make([]netip.Prefix, 0, len(p.AllowedIPs))
@@ -697,6 +729,7 @@ func netmapPeers(in []control.NetmapPeer, revoked map[string]uint64, documents .
 			Endpoint:            endpoint,
 			AllowedIPs:          allowed,
 			PersistentKeepalive: p.KeepaliveSeconds,
+			PresharedKey:        presharedKey,
 		})
 	}
 

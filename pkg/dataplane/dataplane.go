@@ -159,8 +159,9 @@ type Peer struct {
 	// non-zero value for the mapping to survive.
 	PersistentKeepalive uint16 `json:"persistent_keepalive,omitempty"`
 
-	// PresharedKey is hex encoded and optional. Nothing sets it here: pkg/crypto/pskepoch
-	// installs rotating keys on the device through UpdatePeerPSK instead.
+	// PresharedKey is hex encoded and optional. Mesh peers leave it empty: pkg/crypto/pskepoch
+	// installs rotating keys on the device through UpdatePeerPSK. A profile device on a
+	// gateway (ADR 0029) carries its static PSK here, and the rotation leaves it alone.
 	PresharedKey string `json:"preshared_key,omitempty"`
 
 	// Transport specifies the peer's preferred transport protocol ("wireguard", "amneziawg", "openvpn", "vless").
