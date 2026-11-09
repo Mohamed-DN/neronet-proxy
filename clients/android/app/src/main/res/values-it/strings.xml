@@ -1,30 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">NeroNet</string>
-    <string name="profiles_title">Profili</string>
-    <string name="no_profiles">Nessun profilo. Importa un profilo NeroNet per iniziare.</string>
-    <string name="select_first">Seleziona prima un profilo.</string>
+    <string name="no_profiles">Nessun profilo. Importa un profilo per collegarti.</string>
+    <string name="select_first">Seleziona un profilo per connetterti.</string>
     <string name="import_file">Importa file</string>
     <string name="paste_text">Incolla testo</string>
     <string name="paste_title">Incolla un profilo NeroNet</string>
     <string name="paste_hint">Incolla qui il testo del profilo</string>
     <string name="import_action">Importa</string>
     <string name="cancel">Annulla</string>
+    <string name="dismiss">Chiudi</string>
     <string name="delete">Elimina</string>
     <string name="delete_title">Eliminare %1$s?</string>
-    <string name="delete_message">Il tunnel verrà chiuso e il profilo rimosso da questo dispositivo.</string>
+    <string name="delete_message">La VPN si disconnetterà e il profilo sarà rimosso da questo dispositivo.</string>
     <string name="connect_vpn">Connetti la VPN</string>
     <string name="state_connected">Connesso</string>
     <string name="state_disconnected">Disconnesso</string>
     <string name="state_connecting">Connessione in corso…</string>
-    <string name="traffic_line">Ricevuti %1$s, inviati %2$s. Ultimo handshake: %3$s</string>
-    <string name="handshake_none">nessuno ancora</string>
-    <string name="open_console">Apri la console</string>
-    <string name="console_not_https">L\'indirizzo della console non è https, quindi è stato rifiutato.</string>
+    <string name="state_disconnecting">Disconnessione in corso…</string>
+    <string name="traffic_line">Scaricati %1$s, caricati %2$s. Ultimo handshake: %3$s</string>
+    <string name="handshake_none">mai</string>
+    <string name="open_console">Apri console</string>
+    <string name="console_not_https">L\'indirizzo della console non è sicuro (https), quindi non è stato aperto.</string>
     <string name="no_browser">Nessuna app può aprire questo link.</string>
-    <string name="vpn_denied">Permesso VPN negato.</string>
-    <string name="tunnel_error">Errore del tunnel: %1$s</string>
+    <string name="vpn_denied">Autorizzazione VPN non concessa. Riprova per consentirla.</string>
+    <string name="tunnel_error">Connessione non riuscita: %1$s</string>
+    <string name="tunnel_reason_generic">il servizio VPN non si è avviato</string>
     <string name="imported">Profilo importato.</string>
-    <string name="read_failed">Impossibile leggere il profilo. Deve essere testo e pesare meno di 64 KiB.</string>
-    <string name="import_failed">Profilo rifiutato: %1$s</string>
+    <string name="read_failed">Impossibile leggere il file. Scegli un profilo di testo sotto 64 KB.</string>
+    <string name="import_failed">Questo profilo non è utilizzabile: %1$s</string>
+
+    <!-- Reasons a profile is rejected; shown in import_failed. -->
+    <string name="reason_version">Richiede una versione più recente dell\'app NeroNet.</string>
+    <string name="reason_console_https">L\'indirizzo della console deve iniziare con https.</string>
+    <string name="reason_refused_setting">Contiene un\'impostazione che potrebbe eseguire comandi o cambiare il routing. Non è consentita.</string>
+    <string name="reason_unknown_setting">Contiene un\'impostazione che questa app non supporta.</string>
+    <string name="reason_unknown_section">Contiene una sezione che questa app non supporta.</string>
+    <string name="reason_syntax">Una riga non è un\'impostazione né una sezione.</string>
+    <string name="reason_bad_value">Un\'impostazione ha un valore non valido.</string>
+    <string name="reason_missing_private_key">L\'interfaccia non ha una chiave privata.</string>
+    <string name="reason_missing_peer">Manca la sezione del peer (server).</string>
+    <string name="reason_missing_public_key">Un peer non ha una chiave pubblica.</string>
+    <string name="reason_wireguard">WireGuard non può usare questa configurazione.</string>
+    <string name="reason_other">Il profilo non è valido.</string>
 </resources>

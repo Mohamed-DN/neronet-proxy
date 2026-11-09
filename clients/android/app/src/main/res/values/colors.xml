@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="nn_primary">#FF1D4ED8</color>
+    <color name="nn_on_primary">#FFFFFFFF</color>
+    <color name="nn_primary_container">#FFE6EEFF</color>
+    <color name="nn_on_primary_container">#FF1E40AF</color>
+    <color name="nn_secondary">#FF6D28D9</color>
+    <color name="nn_on_secondary">#FFFFFFFF</color>
+    <color name="nn_error">#FFB91C1C</color>
+    <color name="nn_on_error">#FFFFFFFF</color>
+    <color name="nn_background">#FFF8FAFC</color>
+    <color name="nn_surface">#FFF8FAFC</color>
+    <color name="nn_surface_container">#FFFFFFFF</color>
+    <color name="nn_on_surface">#FF0F172A</color>
+    <color name="nn_on_surface_variant">#FF475569</color>
+    <color name="nn_outline">#FF64748B</color>
+    <color name="nn_outline_variant">#FFCBD5E1</color>
+    <color name="nn_connected">#FF15803D</color>
+</resources>

@@ -1,30 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">NeroNet</string>
-    <string name="profiles_title">Profiles</string>
-    <string name="no_profiles">No profiles yet. Import a NeroNet profile to start.</string>
-    <string name="select_first">Select a profile first.</string>
+    <string name="no_profiles">No profiles yet. Import a profile to connect.</string>
+    <string name="select_first">Select a profile to connect.</string>
     <string name="import_file">Import file</string>
     <string name="paste_text">Paste text</string>
     <string name="paste_title">Paste a NeroNet profile</string>
     <string name="paste_hint">Paste the profile text here</string>
     <string name="import_action">Import</string>
     <string name="cancel">Cancel</string>
+    <string name="dismiss">Dismiss</string>
     <string name="delete">Delete</string>
     <string name="delete_title">Delete %1$s?</string>
-    <string name="delete_message">The tunnel will be brought down and the profile removed from this device.</string>
+    <string name="delete_message">The VPN will disconnect and the profile will be removed from this device.</string>
     <string name="connect_vpn">Connect VPN</string>
     <string name="state_connected">Connected</string>
     <string name="state_disconnected">Disconnected</string>
     <string name="state_connecting">Connecting…</string>
-    <string name="traffic_line">Received %1$s, sent %2$s. Last handshake: %3$s</string>
-    <string name="handshake_none">none yet</string>
-    <string name="open_console">Open the console</string>
-    <string name="console_not_https">The console address is not https, so it was refused.</string>
+    <string name="state_disconnecting">Disconnecting…</string>
+    <string name="traffic_line">Downloaded %1$s, uploaded %2$s. Last handshake: %3$s</string>
+    <string name="handshake_none">never</string>
+    <string name="open_console">Open console</string>
+    <string name="console_not_https">The console address is not secure (https), so it was not opened.</string>
     <string name="no_browser">No app can open this link.</string>
-    <string name="vpn_denied">VPN permission was denied.</string>
-    <string name="tunnel_error">Tunnel error: %1$s</string>
+    <string name="vpn_denied">VPN permission was not granted. Try again to allow it.</string>
+    <string name="tunnel_error">Could not connect: %1$s</string>
+    <string name="tunnel_reason_generic">the VPN service did not start</string>
     <string name="imported">Profile imported.</string>
-    <string name="read_failed">Could not read the profile. It must be text and smaller than 64 KiB.</string>
-    <string name="import_failed">Profile rejected: %1$s</string>
+    <string name="read_failed">Could not read this file. Choose a text profile under 64 KB.</string>
+    <string name="import_failed">This profile cannot be used: %1$s</string>
+
+    <!-- Reasons a profile is rejected; shown in import_failed. -->
+    <string name="reason_version">It needs a newer version of the NeroNet app.</string>
+    <string name="reason_console_https">The console address must start with https.</string>
+    <string name="reason_refused_setting">It has a setting that could run commands or change routing. Those are not allowed.</string>
+    <string name="reason_unknown_setting">It has a setting this app does not support.</string>
+    <string name="reason_unknown_section">It has a section this app does not support.</string>
+    <string name="reason_syntax">A line is neither a setting nor a section.</string>
+    <string name="reason_bad_value">A setting has a value that is not valid.</string>
+    <string name="reason_missing_private_key">The interface has no private key.</string>
+    <string name="reason_missing_peer">It has no peer (server) section.</string>
+    <string name="reason_missing_public_key">A peer has no public key.</string>
+    <string name="reason_wireguard">WireGuard cannot use this configuration.</string>
+    <string name="reason_other">The profile is not valid.</string>
 </resources>
