@@ -118,7 +118,7 @@
     "live": "In tempo reale",
     "unreachable": "Piano di controllo non raggiungibile",
     "staleWarning": "I dati sottostanti potrebbero essere non aggiornati",
-    "viewTopology": "Visualizza Topologia 3D",
+    "viewTopology": "Apri la mappa della rete",
     "activeNodes": "Nodi Sovrani Attivi",
     "enrolled": "Registrati",
     "postureVerified": "postura verificata",
@@ -130,7 +130,7 @@
     "sameAccessHint": "Tutti gli account condividono lo stesso livello di accesso",
     "throughput": "Throughput di Linea in Tempo Reale",
     "rateHint": "Servono due osservazioni aggiornate dagli stessi contatori",
-    "postureScore": "Punteggio Postura Mesh",
+    "postureScore": "Dispositivi che rispondono",
     "allReachable": "Tutti i nodi raggiungibili",
     "degraded": "Degradato",
     "impaired": "Compromesso",
@@ -321,7 +321,6 @@
       "direct": "WireGuard diretto",
       "derp": "Relay DERP",
       "onion": "Onion (3 salti)",
-      "openvpn": "OpenVPN stealth",
       "isolated": "Isolato"
     },
     "stats": {
@@ -336,7 +335,7 @@
       "unlockAction": "Sblocca Ghost Vaults",
       "lockAction": "Blocca Ghost Vaults",
       "dialogTitle": "Sblocca Ghost Vaults",
-      "dialogDesc": "Inserisci la password di autorizzazione master crittografica per rivelare compartimenti L2 nascosti e nodi ghost sovrani. È garantita la negabilità plausibile.",
+      "dialogDesc": "Inserisci la password per mostrare i gruppi nascosti e i dispositivi che contengono. Senza la password restano invisibili.",
       "passwordLabel": "Password Master Vault",
       "passwordPlaceholder": "Inserisci password di sblocco vault",
       "confirmUnlock": "Autorizza e Sblocca",
@@ -589,6 +588,7 @@
   "audit": {
     "title": "Registro Audit a Prova di Manomissione & Esportatore SIEM",
     "description": "Registro di audit con concatenazione crittografica HMAC-SHA256, checkpoint firmati Ed25519, prova di integrità in tempo reale e streaming SIEM.",
+    "captionEntries": "Voci del registro attività",
     "actions": {
       "verifyChain": "Verifica Integrità",
       "createCheckpoint": "Crea Checkpoint",
@@ -612,7 +612,7 @@
       "unknownBadge": "Copertura dei campi non disponibile",
       "emptyBadge": "Nessun evento da verificare",
       "tamperedBadge": "Manomissione Rilevata",
-      "eventsHint": "Registro HMAC immutabile",
+      "eventsHint": "Le modifiche si rilevano: ogni voce è legata alla precedente",
       "checkpointsHint": "Ancore Ed25519 firmate",
       "siemHint": "Collector di streaming attivi",
       "adminOnlyHint": "Verificato dall'amministratore di piattaforma",

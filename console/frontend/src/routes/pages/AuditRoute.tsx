@@ -395,7 +395,7 @@ export default function AuditRoute() {
 
       {/* Audit Table */}
       <Table<AuditEvent>
-        caption="Immutable Cryptographic Audit Events"
+        caption={t('audit.captionEntries')}
         columns={columns}
         rows={filteredEvents}
         rowKey={(e) => String(e.id || e.sequence_num)}

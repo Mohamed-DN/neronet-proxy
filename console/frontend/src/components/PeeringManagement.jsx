@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { NotMeasured } from '../ui';
 import {
   Network,
   Plus,
@@ -191,14 +192,7 @@ export default function PeeringManagement() {
           <div>
             <div className="text-sm font-bold text-content font-mono flex items-center space-x-2">
               <span>Bilateral Sovereign WireGuard Interconnect</span>
-              <span className="text-[10px] font-mono px-2 py-0.2 rounded bg-info/20 text-info border border-info/40">
-                Purple Nodes in 3D Topology
-              </span>
             </div>
-            <p className="text-xs text-muted mt-0.5">
-              Peered nodes appear in your 3D graph with a distinct purple color and route traffic through bilateral
-              encrypted noise channels.
-            </p>
           </div>
         </div>
 
@@ -279,16 +273,16 @@ export default function PeeringManagement() {
                             Mode: {ag.scope_mode}
                           </span>
                           <div className="text-[10px] text-muted">
-                            Subnets: {ag.shared_subnets ? ag.shared_subnets.join(', ') : '100.64.0.0/16'}
-                          </div>
-                          <div className="text-[10px] text-info font-semibold">
-                            {ag.shared_devices_count || 1} Peered Devices Linked
+                            Subnets:{' '}
+                            {ag.scope_mode === 'SPECIFIC_SUBNETS' ? ag.shared_subnets.join(', ') : 'All devices'}
                           </div>
                         </div>
                       </td>
 
                       <td className="p-3.5">
-                        <div className="text-success font-bold">{ag.latency_ms || 18.2} ms</div>
+                        <div className="font-bold">
+                          <NotMeasured />
+                        </div>
                         <div className="text-[10px] text-subtle">Cross-Mesh RTT</div>
                       </td>
 

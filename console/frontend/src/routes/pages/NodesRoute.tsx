@@ -27,7 +27,7 @@ import { Dialog } from '../../ui/Dialog';
 import { FormField } from '../../ui/FormField';
 import { Input } from '../../ui/Input';
 import { PageHeader } from '../../ui/PageHeader';
-import { EmptyState, Skeleton } from '../../ui/States';
+import { EmptyState, NotMeasured, Skeleton } from '../../ui/States';
 import { Stat } from '../../ui/Stat';
 import { StatusBadge } from '../../ui/StatusBadge';
 import { Table, type TableColumn } from '../../ui/Table';
@@ -178,7 +178,8 @@ export default function NodesRoute() {
     {
       id: 'role',
       header: t('nodes.columns.role'),
-      cell: (n) => <Badge tone={n.role === 'EXIT_BRIDGE' ? 'accent' : 'neutral'}>{n.role || 'CLIENT_ORIGIN'}</Badge>
+      cell: (n) =>
+        n.role ? <Badge tone={n.role === 'EXIT_BRIDGE' ? 'accent' : 'neutral'}>{n.role}</Badge> : <NotMeasured />
     },
     {
       id: 'posture',

@@ -118,7 +118,7 @@
     "live": "Live",
     "unreachable": "Control plane unreachable",
     "staleWarning": "Figures below may be stale",
-    "viewTopology": "View 3D Topology",
+    "viewTopology": "Open the network map",
     "activeNodes": "Active Sovereign Nodes",
     "enrolled": "Enrolled",
     "postureVerified": "posture verified",
@@ -130,7 +130,7 @@
     "sameAccessHint": "All accounts have the same access",
     "throughput": "Live Line-Rate (Throughput)",
     "rateHint": "Needs two fresh observations from the same counter sources",
-    "postureScore": "Mesh Posture Score",
+    "postureScore": "Devices answering",
     "allReachable": "All nodes reachable",
     "degraded": "Degraded",
     "impaired": "Impaired",
@@ -321,7 +321,6 @@
       "direct": "Direct WireGuard",
       "derp": "DERP relay",
       "onion": "Onion (3-hop)",
-      "openvpn": "OpenVPN stealth",
       "isolated": "Isolated"
     },
     "stats": {
@@ -336,7 +335,7 @@
       "unlockAction": "Unlock Ghost Vaults",
       "lockAction": "Lock Ghost Vaults",
       "dialogTitle": "Unlock Ghost Vaults",
-      "dialogDesc": "Enter cryptographic master authorization password to reveal concealed L2 compartments and sovereign ghost nodes. Plausible deniability is enforced.",
+      "dialogDesc": "Enter the password to show the hidden groups and the devices in them. Without it they stay hidden.",
       "passwordLabel": "Master Vault Password",
       "passwordPlaceholder": "Enter vault unlock password",
       "confirmUnlock": "Authorize & Unlock",
@@ -589,6 +588,7 @@
   "audit": {
     "title": "Tamper-Evident Audit Ledger & SIEM Exporter",
     "description": "Cryptographically chained HMAC-SHA256 audit ledger, Ed25519 signed checkpoints, live integrity proof, and real-time SIEM streaming.",
+    "captionEntries": "Activity log entries",
     "actions": {
       "verifyChain": "Verify Integrity",
       "createCheckpoint": "Create Checkpoint",
@@ -612,7 +612,7 @@
       "unknownBadge": "Field coverage unavailable",
       "emptyBadge": "No events to verify",
       "tamperedBadge": "Tampering Detected",
-      "eventsHint": "Immutable HMAC ledger",
+      "eventsHint": "Changes can be detected: each entry is linked to the one before",
       "checkpointsHint": "Signed Ed25519 anchors",
       "siemHint": "Active streaming collectors",
       "adminOnlyHint": "Verified by the platform administrator",

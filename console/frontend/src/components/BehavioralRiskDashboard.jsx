@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { NotMeasured } from '../ui';
 import {
   Activity,
   ShieldAlert,
@@ -201,7 +202,8 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                         <div className="font-bold text-content">{node.name}</div>
                         <div className="text-[11px] text-muted">{node.overlay_ipv4}</div>
                         <div className="text-[10px] text-subtle">
-                          {node.country_code} &bull; {node.city || 'Regional'}
+                          {node.country_code || 'Unknown'}
+                          {node.city ? <> &bull; {node.city}</> : null}
                         </div>
                       </td>
 
@@ -235,9 +237,7 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                               </span>
                             ))
                           ) : isHigh ? (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-danger/60 text-danger border border-danger/40">
-                              IMPOSSIBLE_TRAVEL (+50)
-                            </span>
+                            <NotMeasured />
                           ) : (
                             <span className="text-[9px] px-1.5 py-0.2 rounded bg-surface text-subtle">
                               NORMAL_TELEMETRY
@@ -334,7 +334,9 @@ export default function BehavioralRiskDashboard({ onSelectNode }) {
                     <span>
                       Node: <strong className="text-content">{evt.node_name || evt.target_id}</strong>
                     </span>
-                    <span className="font-bold text-danger">+{evt.risk_delta || 50} pts</span>
+                    <span className="font-bold text-danger">
+                      {evt.risk_delta != null ? `+${evt.risk_delta} pts` : '—'}
+                    </span>
                   </div>
                 </div>
               );

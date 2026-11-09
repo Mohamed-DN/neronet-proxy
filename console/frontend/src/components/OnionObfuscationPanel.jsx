@@ -339,7 +339,7 @@ export default function OnionObfuscationPanel() {
                           {node.role}
                         </span>
                       </td>
-                      <td className="py-2.5 text-muted">{node.country_code || 'US'}</td>
+                      <td className="py-2.5 text-muted">{node.country_code || 'Unknown'}</td>
                       <td className="py-2.5">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold ${
