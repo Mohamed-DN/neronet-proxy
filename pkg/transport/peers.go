@@ -320,10 +320,9 @@ func (m *Mux) ConfirmAuthenticated(key, address string) bool {
 	ps.lastAuthenticated = time.Now()
 	ps.winner = tr
 	ps.fails = 0
-	for _, t := range ps.dataTimers {
-		t.Stop()
-	}
-	ps.dataTimers = nil
+	// The race is over (the next stale send starts a new one), but the copies it
+	// scheduled still go out: the confirmed path is the way in, which says nothing
+	// about the first path the race used on the way out.
 	ps.dataRacing = false
 	if a := ps.attempt; a != nil && !a.answered {
 		a.answered = true
@@ -368,6 +367,13 @@ func (m *Mux) raceData(ps *peerState, own *endpoint, bufs [][]byte) error {
 	ps.lastProbe = time.Now()
 	ps.dataGeneration++
 	generation := ps.dataGeneration
+	// Copies left over from an earlier race (one a confirmation ended) are of an
+	// older generation and would be skipped anyway; stopping them keeps the list
+	// bounded.
+	for _, t := range ps.dataTimers {
+		t.Stop()
+	}
+	ps.dataTimers = nil
 	ps.mu.Unlock()
 	cands := m.candidates(ps, nil)
 	if len(cands) == 0 {
@@ -388,8 +394,11 @@ func (m *Mux) raceData(ps *peerState, own *endpoint, bufs [][]byte) error {
 		}
 		cand := c
 		t := m.clock.AfterFunc(time.Duration(i)*m.stagger, func() {
+			// Only a newer race or a change of paths withdraws this copy, not an
+			// authenticated receive: that is evidence about the way in, and the copy
+			// already sent on the first path may be dropped on the way out.
 			ps.mu.Lock()
-			current := ps.dataRacing && ps.dataGeneration == generation
+			current := ps.dataGeneration == generation
 			ps.mu.Unlock()
 			if current {
 				_ = m.sendCandidate(ps, cand, copyOf)

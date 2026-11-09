@@ -144,3 +144,45 @@ func TestRacedSendFallsBackAtOnceWhenAPathFailsLocally(t *testing.T) {
 		}
 	}
 }
+
+// Seen on the dedicated stack (d4228ee, UDP dropped at relay-de, DERP withdrawn and
+// allowed again): relay-fr received relay-de's initiation over DERP and answered it.
+// The answer was raced: UDP first (its local write succeeds; relay-de drops it), the
+// DERP copy one stagger later. Before the stagger ran out, the authentication sampler
+// (every 200 ms) saw the received initiation, confirmed the incoming DERP path and
+// cancelled the race -- the DERP copy with it. relay-de never got a single response
+// for minutes. Evidence about the way in must not withdraw a copy already on its way
+// out over another path.
+func TestConfirmationDoesNotCancelARacedCopy(t *testing.T) {
+	m := NewMux(Config{Relays: []Relay{{Region: "derp-a"}}}, []string{UDP, DERP}, WithStagger(20*time.Millisecond))
+	udp := &fakeTransport{} // the local write succeeds; the far side drops it
+	derp := &fakeTransport{}
+	m.open[UDP] = udp
+	m.open[DERP] = derp
+	std := conn.NewStdNetBind()
+	udpEP, _ := std.ParseEndpoint("10.0.0.2:51820")
+	derpEP, _ := std.ParseEndpoint("10.0.0.3:8443")
+	const key = "b005aa0d27d35fe403f232630cb434f03a8fde5b758b132fb3d4ed15bcf6033b"
+	ps := &peerState{key: key, paths: []candidate{
+		{tr: UDP, addr: udpEP.DstToString(), ep: udpEP},
+		{tr: DERP, addr: derpEP.DstToString(), ep: derpEP},
+	}}
+	ps.lastAuthenticated = time.Now().Add(-time.Minute) // stale: the send races
+	m.peers.byKey[key] = ps
+	heard := newConcrete(DERP, derpEP)
+	heard.peer.Store(ps)
+
+	if err := m.Send([][]byte{wirePacket(msgResponse, sizeResponse)}, heard); err != nil {
+		t.Fatal(err)
+	}
+	if !m.ConfirmAuthenticated(key, "derp://"+derpEP.DstToString()) {
+		t.Fatal("the incoming DERP path was not confirmed")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for derp.count() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if derp.count() == 0 {
+		t.Fatalf("the raced DERP copy of the handshake response was cancelled by the confirmation (UDP sends: %d)", udp.count())
+	}
+}
