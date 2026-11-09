@@ -158,6 +158,31 @@ export interface CompiledPolicy {
   is_preview?: boolean;
 }
 
+/** A stored assertion every ACL save is checked against (ADR 0028). */
+export interface AclPolicyTest {
+  id: string;
+  source_ip: string;
+  destination_ip: string;
+  protocol: 'TCP' | 'UDP' | 'ICMP' | 'ALL';
+  port: number;
+  expect: 'ACCEPT' | 'DROP';
+  description?: string;
+}
+
+/** An assertion a save would break, as the server reports it with HTTP 409. */
+export interface AclPolicyTestFailure {
+  test_id: string | null;
+  organization_id: string;
+  description: string;
+  source_ip: string;
+  destination_ip: string;
+  protocol: string;
+  port: number;
+  expect: 'ACCEPT' | 'DROP';
+  got: 'ACCEPT' | 'DROP';
+  reason: string;
+}
+
 export interface AclSimulationResult {
   verdict: 'ACCEPT' | 'DROP';
   matched_rule: AclRule | null;

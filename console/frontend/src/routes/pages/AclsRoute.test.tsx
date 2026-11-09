@@ -118,10 +118,26 @@ function renderAcls(initialEntries = ['/acls']) {
 describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organization Default Policy)', () => {
   let rulesState: AclRule[] = [];
   let defaultPolicyState = 'deny';
+  let policyTestsState: Array<Record<string, unknown>> = [];
+  let refuseRuleSaves = false;
+  const failure = {
+    test_id: 'apt-1',
+    organization_id: 'org-test',
+    description: 'ops SSH',
+    source_ip: '100.64.10.1',
+    destination_ip: '100.64.10.2',
+    protocol: 'TCP',
+    port: 22,
+    expect: 'ACCEPT',
+    got: 'DROP',
+    reason: 'Matched rule #5'
+  };
 
   beforeEach(() => {
     rulesState = [...mockRules];
     defaultPolicyState = 'deny';
+    policyTestsState = [];
+    refuseRuleSaves = false;
     vi.restoreAllMocks();
   });
 
@@ -143,6 +159,28 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
           count: rulesState.length
         };
         return jsonResponse(payload);
+      }
+
+      // ADR 0028: policy tests
+      if (urlStr.includes('/api/acl/tests/run') && method === 'POST') {
+        return jsonResponse({ total: policyTestsState.length, failures: [] });
+      }
+      if (urlStr.includes('/api/acl/tests') && method === 'GET') {
+        return jsonResponse({ tests: policyTestsState });
+      }
+      if (urlStr.includes('/api/acl/tests') && method === 'POST') {
+        const body = JSON.parse(String(init?.body || '{}'));
+        const test = { id: `apt-${policyTestsState.length + 1}`, ...body };
+        policyTestsState.push(test);
+        return jsonResponse({ test }, 201);
+      }
+      if (urlStr.includes('/api/acl/tests/') && method === 'DELETE') {
+        const id = urlStr.split('/api/acl/tests/')[1];
+        policyTestsState = policyTestsState.filter((t) => t.id !== id);
+        return jsonResponse({ deleted: id });
+      }
+      if (refuseRuleSaves && urlStr.includes('/api/acl/rules') && method !== 'GET') {
+        return jsonResponse({ error: 'policy_tests_failed', failures: [failure] }, 409);
       }
 
       // 2. POST /api/acl/rules
@@ -375,6 +413,63 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
 
     await waitFor(() => {
       expect(screen.queryByText('100.64.10.0/24')).not.toBeInTheDocument();
+    });
+  });
+  it('7. Lists the policy tests and runs them on demand', async () => {
+    policyTestsState = [{ ...failure, id: 'apt-1', expect: 'ACCEPT' }];
+    vi.stubGlobal('fetch', setupFetchMock());
+    const user = userEvent.setup();
+    const { container } = renderAcls();
+
+    const card = await screen.findByTestId('policy-tests-card');
+    await waitFor(() => expect(card).toHaveTextContent('100.64.10.1'));
+    expect(card).toHaveTextContent('100.64.10.2');
+    expect(card).toHaveTextContent('ops SSH');
+
+    await user.click(screen.getByTestId('run-policy-tests'));
+    expect(await screen.findByTestId('policy-tests-run-result')).toHaveTextContent('1/1');
+    await expectNoAxeViolations(container);
+  });
+
+  it('8. A rule save refused by the policy tests lists the failing tests and keeps the dialog open', async () => {
+    refuseRuleSaves = true;
+    vi.stubGlobal('fetch', setupFetchMock());
+    const user = userEvent.setup();
+    renderAcls();
+
+    await waitFor(() => expect(screen.getByText('100.64.10.0/24')).toBeInTheDocument());
+    await user.click(screen.getByTestId('add-rule-button'));
+    await user.click(await screen.findByTestId('save-rule-button'));
+
+    const list = await screen.findByTestId('policy-test-failures');
+    expect(list).toHaveTextContent('100.64.10.1');
+    expect(list).toHaveTextContent('100.64.10.2');
+    expect(list).toHaveTextContent('DROP');
+    expect(screen.getByTestId('save-rule-button')).toBeInTheDocument();
+  });
+
+  it('9. Saves the simulated packet as a policy test expecting the verdict seen', async () => {
+    const fetchMock = setupFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAcls();
+
+    await waitFor(() => expect(screen.getByText('100.64.10.0/24')).toBeInTheDocument());
+    await user.click(screen.getByTestId('preview-simulator-button'));
+    await user.click(await screen.findByText(/Live Packet Simulator/i));
+    await user.click(await screen.findByTestId('simulate-packet-submit'));
+    await screen.findByTestId('simulation-result-card');
+
+    await user.click(screen.getByTestId('save-as-policy-test'));
+    await waitFor(() => expect(policyTestsState.length).toBe(1));
+    // The packet the server says it evaluated, with the verdict it gave: the mock answers for
+    // 100.64.20.1 -> 8.8.8.8 UDP 53, not for what the form held.
+    expect(policyTestsState[0]).toMatchObject({
+      source_ip: '100.64.20.1',
+      destination_ip: '8.8.8.8',
+      protocol: 'UDP',
+      port: 53,
+      expect: 'DROP'
     });
   });
 });

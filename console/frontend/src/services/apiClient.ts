@@ -62,12 +62,15 @@ if (BROWSER_PROTOCOL) {
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
+  /** The parsed error body, for answers that carry more than a message (e.g. a refused ACL save). */
+  readonly details: unknown;
 
-  constructor(message: string, status: number, code: string | null = null) {
+  constructor(message: string, status: number, code: string | null = null, details: unknown = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 
   /** True when retrying the same request cannot help. */
@@ -389,7 +392,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}, 
     // A refused refresh may intentionally end the original authority. Capture
     // that exact transition too: a newer admission must not receive its error.
     requireCredential(responseScope);
-    throw new ApiError(payload?.error || `HTTP error ${res.status}`, res.status, payload?.code ?? null);
+    throw new ApiError(payload?.error || `HTTP error ${res.status}`, res.status, payload?.code ?? null, payload);
   }
 
   reportServerAnswered(res.status);

@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import { apiRequest } from '../apiClient';
 import type {
   AclDefaultPolicyResponse,
+  AclPolicyTest,
+  AclPolicyTestFailure,
   AclRule,
   AclRulesResponse,
   AclSimulationResult,
@@ -160,4 +162,47 @@ export function useCompilePreview() {
       });
     }
   });
+}
+
+/** Policy tests of the caller's organisation (ADR 0028). */
+export function usePolicyTests(): UseQueryResult<AclPolicyTest[], Error> {
+  return useQuery({
+    queryKey: queryKeys.aclTests,
+    queryFn: async ({ signal }) =>
+      (await apiRequest<{ tests: AclPolicyTest[] }>('/acl/tests', { signal }))?.tests ?? [],
+    staleTime: 15_000
+  });
+}
+
+/** Store an assertion; the server refuses one the current policy already breaks (HTTP 409). */
+export function useCreatePolicyTest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (test: Omit<AclPolicyTest, 'id'>) =>
+      apiRequest<{ test: AclPolicyTest }>('/acl/tests', { method: 'POST', body: test }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.aclTests })
+  });
+}
+
+export function useDeletePolicyTest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiRequest<{ deleted: string }>(`/acl/tests/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.aclTests })
+  });
+}
+
+/** Run the stored assertions against the current policy. */
+export function useRunPolicyTests() {
+  return useMutation({
+    mutationFn: () =>
+      apiRequest<{ total: number; failures: AclPolicyTestFailure[] }>('/acl/tests/run', { method: 'POST' })
+  });
+}
+
+/** The failing assertions carried by a refused save, or null when the error is something else. */
+export function policyTestFailuresOf(err: unknown): AclPolicyTestFailure[] | null {
+  const details = (err as { details?: { error?: string; failures?: AclPolicyTestFailure[] } } | null)?.details;
+  return details?.error === 'policy_tests_failed' && Array.isArray(details.failures) ? details.failures : null;
 }

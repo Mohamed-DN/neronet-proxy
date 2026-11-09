@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const AclEngine = require('../services/AclEngine');
+const AclPolicyGuard = require('../services/AclPolicyGuard');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { resolveUserOrg } = require('../middleware/rbac');
 const { logAuditEvent } = require('../utils/audit');
@@ -83,12 +85,53 @@ async function withoutHiddenPeers(req, policy) {
   };
 }
 
-async function findManageableRule(req, id) {
-  const rules = await AclEngine.listRules();
-  const rule = rules.find((r) => r.id === id);
+// A save refused by the policy guard (ADR 0028): the failing assertions, and nothing written.
+function refusedByPolicyTests(res, err) {
+  if (!err || !err.failures) return false;
+  res.status(409).json({ error: 'policy_tests_failed', failures: err.failures });
+  return true;
+}
+
+function invalidCidr(rule) {
+  for (const key of ['source_cidr', 'destination_cidr']) {
+    if (rule[key] !== undefined && !AclEngine.parseCidr(rule[key])) return `invalid CIDR: ${rule[key]}`;
+  }
+  return null;
+}
+
+// The rule as the audit row keeps it: enough to rebuild the change, nothing else.
+function ruleState(rule) {
   if (!rule) return null;
-  if (isSuperAdmin(req)) return rule;
-  return rule.organization_id === orgOf(req) ? rule : null;
+  const {
+    id,
+    priority,
+    source_cidr,
+    destination_cidr,
+    protocol,
+    port_start,
+    port_end,
+    action,
+    description,
+    enabled,
+    organization_id
+  } = rule;
+  return {
+    id,
+    priority,
+    source_cidr,
+    destination_cidr,
+    protocol,
+    port_start,
+    port_end,
+    action,
+    description,
+    enabled,
+    organization_id
+  };
+}
+
+function canManage(req, rule) {
+  return isSuperAdmin(req) || rule.organization_id === orgOf(req);
 }
 
 /**
@@ -112,6 +155,7 @@ router.get('/rules', async (req, res, next) => {
       count: rules.length
     });
   } catch (err) {
+    if (refusedByPolicyTests(res, err)) return;
     next(err);
   }
 });
@@ -119,9 +163,22 @@ router.get('/rules', async (req, res, next) => {
 // 2. Create ACL rule
 router.post('/rules', requireAclAdmin, async (req, res, next) => {
   try {
-    const body = req.body || {};
+    const body = { ...(req.body || {}) };
     const organizationId = isSuperAdmin(req) ? body.organization_id || null : orgOf(req);
-    const creation = await AclEngine.createRule(body, { organizationId, returnAuditContext: true });
+    const bad = invalidCidr({
+      source_cidr: body.source_cidr || '0.0.0.0/0',
+      destination_cidr: body.destination_cidr || '0.0.0.0/0'
+    });
+    if (bad) return res.status(400).json({ error: bad });
+    body.id = body.id || `acl-${crypto.randomBytes(6).toString('hex')}`;
+
+    const creation = await AclPolicyGuard.withPolicyLock(async () => {
+      await AclPolicyGuard.assertChangeAllowed({
+        kind: 'create',
+        rule: AclPolicyGuard.normalizeRule(body, organizationId)
+      });
+      return AclEngine.createRule(body, { organizationId, returnAuditContext: true });
+    });
     const id = creation.id;
     const rules = await AclEngine.listRules();
     const created = rules.find((r) => r.id === id) || { id };
@@ -135,7 +192,8 @@ router.post('/rules', requireAclAdmin, async (req, res, next) => {
       targetId: id,
       targetType: 'acl_rule',
       message: `ACL rule ${id} created: ${created.source_cidr} -> ${created.destination_cidr} ${created.action}`,
-      ipAddress: req.ip
+      ipAddress: req.ip,
+      metadata: { before: null, after: ruleState(created) }
     });
 
     return res.status(201).json({
@@ -143,6 +201,7 @@ router.post('/rules', requireAclAdmin, async (req, res, next) => {
       epoch: await AclEngine.getEpoch('acl')
     });
   } catch (err) {
+    if (refusedByPolicyTests(res, err)) return;
     next(err);
   }
 });
@@ -150,10 +209,19 @@ router.post('/rules', requireAclAdmin, async (req, res, next) => {
 // 3. Update ACL rule
 router.put('/rules/:id', requireAclAdmin, async (req, res, next) => {
   try {
-    if (!(await findManageableRule(req, req.params.id))) {
-      return res.status(404).json({ error: `no ACL rule ${req.params.id}` });
-    }
-    const updated = await AclEngine.updateRule(req.params.id, req.body || {});
+    const updates = req.body || {};
+    const bad = invalidCidr(updates);
+    if (bad) return res.status(400).json({ error: bad });
+
+    let before = null;
+    const updated = await AclPolicyGuard.withPolicyLock(async () => {
+      // Read inside the lock: the state the guard judges is the state that is replaced.
+      const existing = await AclEngine.listRuleById(req.params.id);
+      if (!existing || !(await canManage(req, existing))) return null;
+      before = existing;
+      await AclPolicyGuard.assertChangeAllowed({ kind: 'update', rule: AclPolicyGuard.mergeUpdate(existing, updates) });
+      return AclEngine.updateRule(req.params.id, updates);
+    });
     if (!updated) {
       return res.status(404).json({ error: `no ACL rule ${req.params.id}` });
     }
@@ -167,7 +235,8 @@ router.put('/rules/:id', requireAclAdmin, async (req, res, next) => {
       targetId: req.params.id,
       targetType: 'acl_rule',
       message: `ACL rule ${req.params.id} updated: ${updated.source_cidr} -> ${updated.destination_cidr} ${updated.action}`,
-      ipAddress: req.ip
+      ipAddress: req.ip,
+      metadata: { before: ruleState(before), after: ruleState(updated) }
     });
 
     return res.status(200).json({
@@ -175,6 +244,7 @@ router.put('/rules/:id', requireAclAdmin, async (req, res, next) => {
       epoch: await AclEngine.getEpoch('acl')
     });
   } catch (err) {
+    if (refusedByPolicyTests(res, err)) return;
     next(err);
   }
 });
@@ -182,14 +252,18 @@ router.put('/rules/:id', requireAclAdmin, async (req, res, next) => {
 // 4. Delete ACL rule
 router.delete('/rules/:id', requireAclAdmin, async (req, res, next) => {
   try {
-    const existing = await findManageableRule(req, req.params.id);
-
-    if (!existing) {
-      return res.status(404).json({ error: `no ACL rule ${req.params.id}` });
-    }
-
-    const removal = await AclEngine.deleteRule(req.params.id, { returnAuditContext: true });
-    if (!removal.rule) return res.status(404).json({ error: `no ACL rule ${req.params.id}` });
+    let existing = null;
+    const removal = await AclPolicyGuard.withPolicyLock(async () => {
+      existing = await AclEngine.listRuleById(req.params.id);
+      if (!existing || !(await canManage(req, existing))) return null;
+      await AclPolicyGuard.assertChangeAllowed({
+        kind: 'delete',
+        id: existing.id,
+        organizationId: existing.organization_id
+      });
+      return AclEngine.deleteRule(req.params.id, { returnAuditContext: true });
+    });
+    if (!removal || !removal.rule) return res.status(404).json({ error: `no ACL rule ${req.params.id}` });
 
     await logAuditEvent({
       eventType: 'ACL_RULE_DELETED',
@@ -200,7 +274,8 @@ router.delete('/rules/:id', requireAclAdmin, async (req, res, next) => {
       targetId: req.params.id,
       targetType: 'acl_rule',
       message: `ACL rule ${req.params.id} deleted`,
-      ipAddress: req.ip
+      ipAddress: req.ip,
+      metadata: { before: ruleState(existing), after: null }
     });
 
     const remaining = await rulesVisibleTo(req);
@@ -210,6 +285,7 @@ router.delete('/rules/:id', requireAclAdmin, async (req, res, next) => {
       policy_is_open: await policyIsOpen(req, remaining)
     });
   } catch (err) {
+    if (refusedByPolicyTests(res, err)) return;
     next(err);
   }
 });
@@ -236,6 +312,7 @@ router.get('/default-policy', async (req, res, next) => {
       default_policy: defaultPolicy
     });
   } catch (err) {
+    if (refusedByPolicyTests(res, err)) return;
     next(err);
   }
 });
@@ -249,13 +326,23 @@ router.put('/default-policy', requireAclAdmin, async (req, res, next) => {
     }
 
     const orgId = req.user.organization_id || 'org-default';
+    let previous = null;
 
     if (isPostgres()) {
       const pool = getPgPool();
-      await pool.query('UPDATE organizations SET default_policy = $1, updated_at = NOW() WHERE id = $2', [
-        default_policy,
-        orgId
-      ]);
+      await AclPolicyGuard.withPolicyLock(async () => {
+        const cur = await pool.query('SELECT default_policy FROM organizations WHERE id = $1', [orgId]);
+        previous = cur.rows[0] ? cur.rows[0].default_policy : null;
+        await AclPolicyGuard.assertChangeAllowed({
+          kind: 'default-policy',
+          organizationId: orgId,
+          defaultPolicy: default_policy
+        });
+        await pool.query('UPDATE organizations SET default_policy = $1, updated_at = NOW() WHERE id = $2', [
+          default_policy,
+          orgId
+        ]);
+      });
     }
 
     await AclEngine.bumpEpoch('acl');
@@ -269,7 +356,8 @@ router.put('/default-policy', requireAclAdmin, async (req, res, next) => {
       targetId: orgId,
       targetType: 'organization',
       message: `Organization ${orgId} default policy changed to ${default_policy}`,
-      ipAddress: req.ip
+      ipAddress: req.ip,
+      metadata: { before: { default_policy: previous }, after: { default_policy } }
     });
 
     return res.status(200).json({
@@ -278,6 +366,7 @@ router.put('/default-policy', requireAclAdmin, async (req, res, next) => {
       epoch: await AclEngine.getEpoch('acl')
     });
   } catch (err) {
+    if (refusedByPolicyTests(res, err)) return;
     next(err);
   }
 });
@@ -312,6 +401,7 @@ router.post('/simulate', async (req, res, next) => {
 
     return res.status(200).json(result);
   } catch (err) {
+    if (refusedByPolicyTests(res, err)) return;
     next(err);
   }
 });
@@ -326,6 +416,7 @@ router.get('/compiled/:nodeId', async (req, res, next) => {
     if (!policy) return notFound();
     return res.status(200).json(await withoutHiddenPeers(req, policy));
   } catch (err) {
+    if (refusedByPolicyTests(res, err)) return;
     next(err);
   }
 });
@@ -347,6 +438,70 @@ router.post('/preview', requireAclAdmin, async (req, res, next) => {
     }
 
     return res.status(200).json(await withoutHiddenPeers(req, preview));
+  } catch (err) {
+    if (refusedByPolicyTests(res, err)) return;
+    next(err);
+  }
+});
+
+// 10. Policy tests (ADR 0028): assertions every ACL save is checked against.
+router.get('/tests', async (req, res, next) => {
+  try {
+    return res.status(200).json({ tests: await AclPolicyGuard.listTests(orgOf(req)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/tests', requireAclAdmin, async (req, res, next) => {
+  try {
+    const test = await AclPolicyGuard.createTest(orgOf(req), req.body, req.user.id);
+    await logAuditEvent({
+      eventType: 'ACL_POLICY_TEST_CREATED',
+      organizationId: orgOf(req),
+      severity: 'info',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: test.id,
+      targetType: 'acl_policy_test',
+      message: `Policy test ${test.id}: ${test.source_ip} -> ${test.destination_ip} ${test.protocol}/${test.port} expects ${test.expect}`,
+      ipAddress: req.ip,
+      metadata: { before: null, after: test }
+    });
+    return res.status(201).json({ test });
+  } catch (err) {
+    if (refusedByPolicyTests(res, err)) return;
+    next(err);
+  }
+});
+
+router.delete('/tests/:id', requireAclAdmin, async (req, res, next) => {
+  try {
+    const before = (await AclPolicyGuard.listTests(orgOf(req))).find((t) => t.id === req.params.id);
+    if (!before || !(await AclPolicyGuard.deleteTest(orgOf(req), req.params.id))) {
+      return res.status(404).json({ error: `no policy test ${req.params.id}` });
+    }
+    await logAuditEvent({
+      eventType: 'ACL_POLICY_TEST_DELETED',
+      organizationId: orgOf(req),
+      severity: 'warn',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: req.params.id,
+      targetType: 'acl_policy_test',
+      message: `Policy test ${req.params.id} deleted`,
+      ipAddress: req.ip,
+      metadata: { before, after: null }
+    });
+    return res.status(200).json({ deleted: req.params.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/tests/run', async (req, res, next) => {
+  try {
+    return res.status(200).json(await AclPolicyGuard.runTests(orgOf(req)));
   } catch (err) {
     next(err);
   }

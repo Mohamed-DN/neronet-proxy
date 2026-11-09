@@ -559,6 +559,20 @@
       "title": "No ACL rules configured",
       "desc": "The mesh is currently operating in permissive mode. Add your first rule to establish a Zero-Trust perimeter.",
       "noMatches": "No ACL rules match the selected filters."
+    },
+    "policyTests": {
+      "title": "Policy tests",
+      "description": "Promises about the network. Every rule save is checked against them and refused if one would break.",
+      "empty": "No policy tests yet. Run the packet simulator and save a result as a test.",
+      "run": "Run tests",
+      "runResult": "{{passed}}/{{total}} tests pass",
+      "expects": "expects {{verdict}}",
+      "delete": "Delete test",
+      "saveFromSimulator": "Save as policy test",
+      "savedFromSimulator": "Saved as a policy test",
+      "refusedTitle": "Not saved: this change would break these policy tests",
+      "failureLine": "{{src}} → {{dst}} {{proto}}/{{port}}: expected {{expect}}, would be {{got}}",
+      "organization": "organisation {{org}}"
     }
   },
   "audit": {

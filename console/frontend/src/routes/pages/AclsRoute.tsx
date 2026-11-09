@@ -3,19 +3,22 @@ import { Play, Plus, Search, ShieldAlert, ShieldCheck, Sliders, Trash2, Edit2 } 
 import { useTranslation } from 'react-i18next';
 
 import { GlossaryHint } from '../GlossaryHint';
+import { PolicyTestFailures, PolicyTestsCard } from './PolicyTestsCard';
 
 import {
   useAclDefaultPolicy,
   useAclRules,
   useCompiledPolicy,
   useCreateAclRule,
+  useCreatePolicyTest,
+  policyTestFailuresOf,
   useDeleteAclRule,
   useNodes,
   useSimulateAcl,
   useUpdateAclDefaultPolicy,
   useUpdateAclRule
 } from '../../services/queries';
-import type { AclRule, AclSimulationResult } from '../../services/types';
+import type { AclPolicyTestFailure, AclRule, AclSimulationResult } from '../../services/types';
 import {
   Badge,
   Button,
@@ -77,6 +80,7 @@ export default function AclsRoute() {
   const deleteRule = useDeleteAclRule();
   const updateDefaultPolicy = useUpdateAclDefaultPolicy();
   const simulateAcl = useSimulateAcl();
+  const createPolicyTest = useCreatePolicyTest();
 
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
@@ -88,6 +92,8 @@ export default function AclsRoute() {
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [formData, setFormData] = useState<RuleFormState>(DEFAULT_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  // A save refused by the policy guard (ADR 0028): the assertions it would break.
+  const [policyFailures, setPolicyFailures] = useState<AclPolicyTestFailure[] | null>(null);
 
   // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<AclRule | null>(null);
@@ -241,6 +247,7 @@ export default function AclsRoute() {
   const handleSubmitRule = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setPolicyFailures(null);
 
     try {
       if (editingRuleId) {
@@ -275,7 +282,9 @@ export default function AclsRoute() {
       }
       setRuleModalOpen(false);
     } catch (err: any) {
-      setFormError(err?.message || 'Failed to persist ACL rule');
+      const failures = policyTestFailuresOf(err);
+      if (failures) setPolicyFailures(failures);
+      else setFormError(err?.message || 'Failed to persist ACL rule');
     }
   };
 
@@ -310,6 +319,22 @@ export default function AclsRoute() {
       setSimResult(res);
     } catch (err: any) {
       alert(err?.message || 'Simulation failed');
+    }
+  };
+
+  // The packet just simulated becomes an assertion expecting the verdict seen.
+  const handleSaveSimulationAsTest = async () => {
+    if (!simResult) return;
+    try {
+      await createPolicyTest.mutateAsync({
+        source_ip: simResult.packet.source_ip,
+        destination_ip: simResult.packet.destination_ip,
+        protocol: simResult.packet.protocol as 'TCP' | 'UDP' | 'ICMP' | 'ALL',
+        port: simResult.packet.port,
+        expect: simResult.verdict
+      });
+    } catch (err: any) {
+      alert(err?.message || 'Failed to save the policy test');
     }
   };
 
@@ -492,6 +517,9 @@ export default function AclsRoute() {
         </div>
       )}
 
+      {/* Policy tests (ADR 0028): what every save is checked against. The server enforces who may change them. */}
+      <PolicyTestsCard canManage />
+
       {/* Organization Default Policy Card */}
       <Card>
         <CardHeader
@@ -609,6 +637,7 @@ export default function AclsRoute() {
           {formError && (
             <div className="p-3 rounded-lg bg-danger/10 border border-danger/30 text-xs text-danger">{formError}</div>
           )}
+          {policyFailures && <PolicyTestFailures failures={policyFailures} title={t('acl.policyTests.refusedTitle')} />}
 
           {!editingRuleId && (
             <FormField label={t('acl.form.presetLabel')}>
@@ -958,6 +987,21 @@ export default function AclsRoute() {
                         id: simResult.matched_rule.id
                       })}
                     </div>
+                  )}
+                  {createPolicyTest.isSuccess ? (
+                    <p className="font-sans text-success" role="status">
+                      {t('acl.policyTests.savedFromSimulator')}
+                    </p>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={createPolicyTest.isPending}
+                      onClick={handleSaveSimulationAsTest}
+                      data-testid="save-as-policy-test"
+                    >
+                      {t('acl.policyTests.saveFromSimulator')}
+                    </Button>
                   )}
                 </div>
               )}

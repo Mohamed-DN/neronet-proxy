@@ -559,6 +559,20 @@
       "title": "Nessuna regola ACL configurata",
       "desc": "La mesh sta attualmente operando in modalità permissiva. Aggiungi la tua prima regola per stabilire un perimetro Zero-Trust.",
       "noMatches": "Nessuna regola ACL corrisponde ai filtri selezionati."
+    },
+    "policyTests": {
+      "title": "Test di policy",
+      "description": "Promesse sulla rete. Ogni salvataggio di regola viene verificato e rifiutato se ne romperebbe una.",
+      "empty": "Nessun test di policy. Esegui il simulatore di pacchetti e salva un risultato come test.",
+      "run": "Esegui i test",
+      "runResult": "{{passed}}/{{total}} test superati",
+      "expects": "atteso {{verdict}}",
+      "delete": "Elimina test",
+      "saveFromSimulator": "Salva come test di policy",
+      "savedFromSimulator": "Salvato come test di policy",
+      "refusedTitle": "Non salvato: la modifica romperebbe questi test di policy",
+      "failureLine": "{{src}} → {{dst}} {{proto}}/{{port}}: atteso {{expect}}, sarebbe {{got}}",
+      "organization": "organizzazione {{org}}"
     }
   },
   "audit": {

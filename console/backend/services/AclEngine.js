@@ -148,6 +148,12 @@ async function listRules(organizationId) {
   );
 }
 
+/** One rule by id, enabled or not; null when there is none. */
+async function listRuleById(id) {
+  const rows = await query('SELECT * FROM acl_rules WHERE id = $1', [id], 'SELECT * FROM acl_rules WHERE id = ?', [id]);
+  return rows[0] || null;
+}
+
 /**
  * Create a rule. organizationId scopes it to one organisation's nodes; null makes it a
  * platform rule, which applies in every organisation.
@@ -483,9 +489,12 @@ async function simulatePacket({
   port = 0,
   defaultPolicy = 'deny',
   organizationId,
-  accessTier = 'standard'
+  accessTier = 'standard',
+  rules: candidateRules = null
 }) {
-  const rules = await listRules(organizationId);
+  // A candidate set (already in evaluation order) is evaluated as given: the policy
+  // guard asks what a save would do before anything is written (ADR 0028).
+  const rules = candidateRules || (await listRules(organizationId));
   const proto = String(protocol).toUpperCase();
   const portNum = Number(port) || 0;
 
@@ -606,6 +615,7 @@ module.exports = {
   bumpEpoch,
   bumpNetmap,
   listRules,
+  listRuleById,
   createRule,
   updateRule,
   deleteRule,
