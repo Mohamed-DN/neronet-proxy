@@ -708,10 +708,17 @@ case "$SCENARIO" in
 
     echo "dropping UDP in $A's network namespace, both directions (DNS excepted)"
     udp_block "$A"
+    rules=$(netfault "$A" 'iptables -S | grep -c neronet-t0 || true')
+    [ "$rules" = 2 ] || die "the UDP block is not in place at $A ($rules of 2 rules); nothing below would be measured without UDP"
     wait_for "$A reaching $B without UDP" reaches "$A" "$(vip_of "$B")" || rc=1
     measure_matrix "UDP dropped at $A, DERP allowed"
     expect_all ok || rc=1
-    echo "UDP packets dropped at $A so far: $(udp_counters "$A")"
+    dropped=$(udp_counters "$A")
+    echo "UDP packets dropped at $A so far: $dropped"
+    # A run on 9 November measured every cell "without UDP" with the rules reported
+    # in place and not one packet dropped: the block was not in effect, and the
+    # matrix said nothing about DERP. Such a run is void, not green or red.
+    [ "$dropped" -gt 0 ] || die "no UDP packet was dropped at $A: the block is not in effect, so this run cannot judge DERP; rerun it"
 
     echo "withdrawing DERP from $ORG"
     org_policy '["udp"]'
