@@ -5,11 +5,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
-	"net/http"
+	"net/netip"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
 	"time"
@@ -19,31 +21,28 @@ import (
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/ipc"
 	"golang.zx2c4.com/wireguard/tun"
+	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
+
+	"github.com/sovereign/proxy/v4/pkg/profile"
 )
 
-// NeroNetService implements svc.Handler and manages the WireGuard tunnel.
+const (
+	endpointAttempts = 4
+	endpointWait     = 5 * time.Second
+)
+
+// NeroNetService implements svc.Handler. It brings the tunnel up from the imported profile.
 type NeroNetService struct {
 	mu         sync.Mutex
 	dev        *device.Device
 	tunDev     tun.Device
 	uapiSocket net.Listener
-	cancel     context.CancelFunc
 	dataDir    string
-	controlURL string
 	logFile    *os.File
-	logger     *device.Logger
 }
 
 func newNeroNetService() *NeroNetService {
-	dataDir := filepath.Join(os.Getenv("ProgramData"), "NeroNet")
-	controlURL := os.Getenv("NERONET_CONTROL_URL")
-	if controlURL == "" {
-		controlURL = "http://127.0.0.1:8443"
-	}
-	return &NeroNetService{
-		dataDir:    dataDir,
-		controlURL: controlURL,
-	}
+	return &NeroNetService{dataDir: dataDirectory()}
 }
 
 // Execute implements svc.Handler for Windows SCM.
@@ -53,7 +52,7 @@ func (s *NeroNetService) Execute(args []string, r <-chan svc.ChangeRequest, chan
 	changes <- svc.Status{State: svc.StartPending}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s.cancel = cancel
+	defer cancel()
 
 	if err := s.startTunnel(ctx); err != nil {
 		log.Printf("[ERROR] failed to start tunnel: %v", err)
@@ -69,7 +68,6 @@ func (s *NeroNetService) Execute(args []string, r <-chan svc.ChangeRequest, chan
 		case svc.Stop, svc.Shutdown:
 			changes <- svc.Status{State: svc.StopPending}
 			s.stopTunnel()
-			cancel()
 			changes <- svc.Status{State: svc.Stopped}
 			return false, 0
 		case svc.Interrogate:
@@ -80,58 +78,98 @@ func (s *NeroNetService) Execute(args []string, r <-chan svc.ChangeRequest, chan
 	}
 }
 
-// Run runs the service directly (debug mode).
+// Run runs the tunnel in the foreground (debug mode, no SCM) until Ctrl+C.
 func (s *NeroNetService) Run() error {
-	ctx, cancel := context.WithCancel(context.Background())
-	s.cancel = cancel
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
 	if err := s.startTunnel(ctx); err != nil {
 		return fmt.Errorf("start tunnel: %w", err)
 	}
-
 	log.Printf("[INFO] NeroNet running. Press Ctrl+C to stop.")
 	<-ctx.Done()
 	s.stopTunnel()
 	return nil
 }
 
+// startTunnel loads the imported profile and applies it: the wireguard-go device gets the
+// profile's keys and peers, the Wintun adapter gets its addresses, routes and DNS.
+// On failure everything it created is closed again.
 func (s *NeroNetService) startTunnel(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	os.MkdirAll(s.dataDir, 0700)
-
-	// Setup logging to %ProgramData%\NeroNet\service.log
-	logPath := filepath.Join(s.dataDir, "service.log")
-	lf, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err := ensureDataDir(s.dataDir); err != nil {
+		return err
+	}
+	lf, err := os.OpenFile(filepath.Join(s.dataDir, "service.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("open log file: %w", err)
 	}
 	s.logFile = lf
 	log.SetOutput(lf)
 
-	// Create Wintun adapter
-	// NOTE: wintun.dll must be in the same dir as the executable
-	tunDev, err := tun.CreateTUN("NeroNet", device.DefaultMTU)
+	p, err := loadProfile(profilePath(s.dataDir))
 	if err != nil {
-		return fmt.Errorf("create wintun adapter: %w", err)
+		s.teardownLocked()
+		return fmt.Errorf("load profile (import one with: neronet-windows import <profile.conf>): %w", err)
+	}
+	plan, err := planNetwork(p)
+	if err != nil {
+		s.teardownLocked()
+		return err
+	}
+	log.Printf("[INFO] %s", p.String()) // p.String carries no key material
+
+	endpoints, err := resolveEndpointsWithRetry(ctx, p.Peers)
+	if err != nil {
+		s.teardownLocked()
+		return err
+	}
+
+	mtu := plan.MTU
+	if mtu <= 0 {
+		mtu = device.DefaultMTU
+	}
+	tunDev, err := tun.CreateTUN("NeroNet", mtu)
+	if err != nil {
+		s.teardownLocked()
+		return fmt.Errorf("create wintun adapter (is wintun.dll next to the executable?): %w", err)
 	}
 	s.tunDev = tunDev
 
-	// Create WireGuard device
-	logger := device.NewLogger(device.LogLevelVerbose, "[NeroNet] ")
-	s.logger = logger
+	// Only errors are logged: wireguard-go's verbose output is not needed for v0.
+	logger := &device.Logger{
+		Errorf: func(format string, args ...any) { log.Printf("[ERROR] wireguard: "+format, args...) },
+	}
 	dev := device.NewDevice(tunDev, conn.NewDefaultBind(), logger)
 	s.dev = dev
 
-	// Create UAPI socket for wireguard-go IPC
+	if err := dev.IpcSet(p.UAPI(endpoints...)); err != nil {
+		s.teardownLocked()
+		return fmt.Errorf("apply profile to the device: %w", err)
+	}
+	if err := dev.Up(); err != nil {
+		s.teardownLocked()
+		return fmt.Errorf("bring the device up: %w", err)
+	}
+
+	native, ok := tunDev.(*tun.NativeTun)
+	if !ok {
+		s.teardownLocked()
+		return errors.New("wintun device has an unexpected type; cannot configure the adapter")
+	}
+	if err := applyNetwork(winipcfg.LUID(native.LUID()), plan); err != nil {
+		s.teardownLocked()
+		return err
+	}
+
 	uapiListener, err := ipc.UAPIListen("NeroNet")
 	if err != nil {
+		s.teardownLocked()
 		return fmt.Errorf("UAPI listen: %w", err)
 	}
 	s.uapiSocket = uapiListener
-
 	go func() {
 		for {
 			conn, err := uapiListener.Accept()
@@ -142,17 +180,27 @@ func (s *NeroNetService) startTunnel(ctx context.Context) error {
 		}
 	}()
 
-	// Fetch config from control plane
-	go s.enrollLoop(ctx)
-
-	log.Printf("[INFO] WireGuard tunnel started (adapter: NeroNet)")
+	log.Printf("[INFO] tunnel up: adapter NeroNet, %d address(es), %d route(s), %d DNS server(s)",
+		len(plan.Addresses), len(plan.Routes), len(plan.DNS))
 	return nil
 }
 
 func (s *NeroNetService) stopTunnel() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.teardownLocked()
+	if s.logFile != nil {
+		log.Printf("[INFO] Tunnel stopped")
+		log.SetOutput(os.Stderr)
+		s.logFile.Close()
+		s.logFile = nil
+	}
+}
 
+// teardownLocked closes the UAPI socket, the device and the adapter. Closing the adapter
+// also removes its addresses, routes and DNS. The caller must hold s.mu. The log stays
+// open so that the reason for a failed start reaches service.log.
+func (s *NeroNetService) teardownLocked() {
 	if s.uapiSocket != nil {
 		s.uapiSocket.Close()
 		s.uapiSocket = nil
@@ -165,49 +213,32 @@ func (s *NeroNetService) stopTunnel() {
 		s.tunDev.Close()
 		s.tunDev = nil
 	}
-	if s.logFile != nil {
-		s.logFile.Close()
-		s.logFile = nil
-	}
-	log.Printf("[INFO] Tunnel stopped")
 }
 
-// enrollLoop polls the control plane for configuration updates.
-func (s *NeroNetService) enrollLoop(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	// Immediate first attempt
-	s.fetchAndApplyConfig()
-
-	for {
+// resolveEndpointsWithRetry retries name resolution: at boot the service can start before
+// DNS works.
+func resolveEndpointsWithRetry(ctx context.Context, peers []profile.Peer) ([]string, error) {
+	lookup := func(ctx context.Context, host string) ([]netip.Addr, error) {
+		return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	}
+	var lastErr error
+	for attempt := 1; attempt <= endpointAttempts; attempt++ {
+		endpoints, err := resolveEndpoints(ctx, lookup, peers)
+		if err == nil {
+			return endpoints, nil
+		}
+		lastErr = err
+		log.Printf("[WARN] endpoint resolution attempt %d of %d: %v", attempt, endpointAttempts, err)
+		if attempt == endpointAttempts {
+			break
+		}
 		select {
 		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			s.fetchAndApplyConfig()
+			return nil, ctx.Err()
+		case <-time.After(endpointWait):
 		}
 	}
-}
-
-func (s *NeroNetService) fetchAndApplyConfig() {
-	url := s.controlURL + "/api/v4/control/netmap"
-	client := &http.Client{Timeout: 10 * time.Second}
-
-	resp, err := client.Get(url)
-	if err != nil {
-		log.Printf("[WARN] control plane unreachable: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("[WARN] netmap returned %d", resp.StatusCode)
-		return
-	}
-
-	log.Printf("[INFO] netmap refreshed from %s", url)
-	// TODO: parse netmap JSON and apply via UAPI
+	return nil, lastErr
 }
 
 func runAsService() {
