@@ -147,22 +147,25 @@ export default function CryptoConfigModal({ isOpen, onClose, onNodeEnrolled }) {
               <div className="flex items-center space-x-3">
                 <button
                   type="button"
+                  role="switch"
+                  aria-checked={onionEnabled}
+                  aria-labelledby="crypto-onion-toggle-label"
                   onClick={() => setOnionEnabled(!onionEnabled)}
-                  className={`w-10 h-5 rounded-full transition-colors relative p-0.5 border ${
+                  className={`w-10 h-5 rounded-full transition-colors relative p-0.5 border focus-visible:outline-focus ${
                     onionEnabled ? 'bg-accent/20 border-accent' : 'bg-surface-raised border-border'
                   }`}
                 >
                   <div
                     className={`w-3.5 h-3.5 rounded-full transition-transform ${
                       onionEnabled
-                        ? 'translate-x-5 bg-accent shadow-[0_0_8px_#06b6d4]'
+                        ? 'translate-x-5 bg-accent shadow-[0_0_8px_rgb(var(--color-accent)/0.6)]'
                         : 'translate-x-0 bg-border-strong'
                     }`}
                   />
                 </button>
                 <div>
                   <div className="text-xs font-mono font-semibold text-content flex items-center space-x-2">
-                    <span>3-Hop Onion Obfuscation</span>
+                    <span id="crypto-onion-toggle-label">3-Hop Onion Obfuscation</span>
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
                         onionEnabled
