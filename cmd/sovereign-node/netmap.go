@@ -52,8 +52,11 @@ type persistedNetmap struct {
 
 // netmapManager owns the peer set and the policy the filter enforces.
 type netmapManager struct {
-	client    *control.Client
-	dev       *dataplane.Device
+	client *control.Client
+	dev    *dataplane.Device
+	// setPeers is dev.SetPeers. A field so a test can make the data plane refuse a
+	// change and check the manager neither believes it happened nor stops trying.
+	setPeers  func([]dataplane.Peer) error
 	netfilter *acl.NetstackFilter
 	path      string
 
@@ -71,6 +74,11 @@ type netmapManager struct {
 
 	// psk, when non-nil, rotates each peer's pre-shared key (classical; see pkg/crypto/pskepoch).
 	psk *pskepoch.Manager
+
+	// applyMu serialises every change to the data plane's peer set (a document, a
+	// revocation, fail-closed), so a removal and a fresh document never interleave
+	// and each one's view of the state it acts on is the state it leaves.
+	applyMu sync.Mutex
 
 	mu sync.Mutex
 	// version is the version of the document currently applied. Zero means none has
@@ -91,8 +99,13 @@ type netmapManager struct {
 	// the control plane set none and the node never fails closed on age.
 	maxStaleness int64
 	// failClosed records that staleness has already emptied the peer set, so the
-	// node says so once rather than on every tick.
+	// node says so once rather than on every tick. It is set only once the data
+	// plane has actually dropped the peers: a refused removal is retried next tick.
 	failClosed bool
+	// revocationPending records that a revocation reached the node but the data
+	// plane refused to drop the peer. Every heartbeat carries the revoked keys again,
+	// and while this is set they are re-applied even though none is new.
+	revocationPending bool
 	// revoked maps a revoked key to the netmap version the control plane held when
 	// the node learned of it. A document at that version or later that no longer
 	// lists the key has withdrawn the revocation, as lifting a quarantine does; an
@@ -191,12 +204,15 @@ func newNetmapManager(
 	onRelayPacket derp.PacketHandler,
 ) *netmapManager {
 	var mux *transport.Mux
+	var setPeers func([]dataplane.Peer) error
 	if dev != nil {
 		mux = dev.TransportMux()
+		setPeers = dev.SetPeers
 	}
 	return &netmapManager{
 		client:     client,
 		dev:        dev,
+		setPeers:   setPeers,
 		netfilter:  netfilter,
 		path:       netmapPathFor(identityPath),
 		listenPort: listenPort,
@@ -297,6 +313,8 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 	if netmap == nil {
 		return errors.New("netmap: nil document")
 	}
+	m.applyMu.Lock()
+	defer m.applyMu.Unlock()
 
 	listed := make(map[string]bool, len(netmap.RevokedKeys))
 	for _, key := range netmap.RevokedKeys {
@@ -337,7 +355,7 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 		}
 	}
 
-	if err := m.dev.SetPeers(peers); err != nil {
+	if err := m.setPeers(peers); err != nil {
 		return err
 	}
 
@@ -353,6 +371,8 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 	m.confirmedAt = latest(documentTime(netmap, fetchedAt), m.confirmedAt)
 	m.maxStaleness = netmap.MaxStalenessSeconds
 	m.failClosed = false
+	// The peer set just installed was built without every revoked key.
+	m.revocationPending = false
 	m.revoked = revoked
 	fallback := m.fallback
 	m.mu.Unlock()
@@ -398,6 +418,9 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 // of revoking a key is that the tunnel it holds open stops now. atVersion is the netmap
 // version the control plane reported alongside the revocation.
 func (m *netmapManager) ApplyRevocations(keys []string, atVersion uint64) {
+	m.applyMu.Lock()
+	defer m.applyMu.Unlock()
+
 	m.mu.Lock()
 	newly := 0
 	for _, key := range keys {
@@ -413,7 +436,7 @@ func (m *netmapManager) ApplyRevocations(keys []string, atVersion uint64) {
 			m.revoked[k] = atVersion
 		}
 	}
-	if newly == 0 {
+	if newly == 0 && !m.revocationPending {
 		m.mu.Unlock()
 		return
 	}
@@ -427,16 +450,25 @@ func (m *netmapManager) ApplyRevocations(keys []string, atVersion uint64) {
 
 	peers, dropped, err := netmapPeers(current, revoked, doc)
 	if err != nil {
-		log.Printf("[SOVEREIGN-NODE] Could not rebuild the peer set after a revocation: %v", err)
+		m.markRevocationPending(true)
+		log.Printf("[SOVEREIGN-NODE] Could not rebuild the peer set after a revocation, retrying at the next heartbeat: %v", err)
 		return
 	}
 	peers, dropped = m.enforceable(peers, dropped, doc)
-	if err := m.dev.SetPeers(peers); err != nil {
-		log.Printf("[SOVEREIGN-NODE] Could not apply %d revocation(s) to the data plane: %v", newly, err)
+	if err := m.setPeers(peers); err != nil {
+		m.markRevocationPending(true)
+		log.Printf("[SOVEREIGN-NODE] Could not apply %d revocation(s) to the data plane, retrying at the next heartbeat: %v", newly, err)
 		return
 	}
+	m.markRevocationPending(false)
 
 	log.Printf("[SOVEREIGN-NODE] %d peer key(s) revoked: %d peer(s) remain%s", newly, len(peers), droppedNote(dropped))
+}
+
+func (m *netmapManager) markRevocationPending(pending bool) {
+	m.mu.Lock()
+	m.revocationPending = pending
+	m.mu.Unlock()
 }
 
 // enforceable drops every peer when the document carries a transport policy and the
@@ -457,6 +489,9 @@ func (m *netmapManager) enforceable(peers []dataplane.Peer, dropped []string, do
 // EnforceStaleness removes every peer once the applied document is older than the
 // bound the control plane set. It reports whether it changed anything.
 func (m *netmapManager) EnforceStaleness(now time.Time) bool {
+	m.applyMu.Lock()
+	defer m.applyMu.Unlock()
+
 	m.mu.Lock()
 	netmapMaxAge := m.stalenessLocked()
 	if m.version == 0 || m.failClosed || m.confirmedAt.IsZero() || netmapMaxAge <= 0 {
@@ -468,16 +503,21 @@ func (m *netmapManager) EnforceStaleness(now time.Time) bool {
 		m.mu.Unlock()
 		return false
 	}
-	m.failClosed = true
 	m.mu.Unlock()
 
-	if err := m.dev.SetPeers(nil); err != nil {
-		log.Printf("[SOVEREIGN-NODE] Could not remove peers after the netmap went stale: %v", err)
+	if err := m.setPeers(nil); err != nil {
+		log.Printf("[SOVEREIGN-NODE] Could not remove peers after the netmap went stale, retrying at the next check: %v", err)
 		return false
 	}
 	if m.mux != nil {
-		_ = m.dev.ReconfigureTransports(nil, nil)
+		if err := m.dev.ReconfigureTransports(nil, nil); err != nil {
+			// No peer is left for a transport to carry; reported, not retried.
+			log.Printf("[SOVEREIGN-NODE] Could not withdraw the transports after failing closed: %v", err)
+		}
 	}
+	m.mu.Lock()
+	m.failClosed = true
+	m.mu.Unlock()
 
 	log.Printf("[SOVEREIGN-NODE] The control plane has been unreachable for %s, past the %s staleness bound: every peer removed (fail-closed)",
 		age.Round(time.Second), netmapMaxAge)
