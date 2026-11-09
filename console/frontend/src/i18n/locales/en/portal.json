@@ -1,1 +1,95 @@
-{}
+{
+  "layout": {
+    "signedInAs": "Signed in as {{name}}",
+    "signOut": "Sign out"
+  },
+  "me": {
+    "title": "My devices",
+    "description": "Your phones and computers on the network, and how to add a new one.",
+    "add": "Add a device",
+    "listLabel": "Your devices",
+    "loading": "Loading your devices…",
+    "unnamed": "Device without a name",
+    "empty": {
+      "title": "No devices yet",
+      "body": "Add this phone or computer to reach your team's resources."
+    },
+    "error": {
+      "title": "Your devices could not be loaded",
+      "body": "Check your connection and try again."
+    },
+    "blocked_one": "{{count}} of your devices is blocked. Ask an administrator why.",
+    "blocked_other": "{{count}} of your devices are blocked. Ask an administrator why.",
+    "row": {
+      "copyAddress": "Copy the address of {{name}}",
+      "copied": "Address copied."
+    },
+    "status": {
+      "blocked": "Blocked by an administrator",
+      "profile": "Uses the WireGuard app. Its connection is not reported to the console.",
+      "connected": "Connected",
+      "lastSeen": "Last seen {{when}}",
+      "never": "Never connected"
+    },
+    "removeHint": "To remove a device, ask an administrator.",
+    "sketch": {
+      "title": "Your devices in the network",
+      "description": "{{connected}} of {{total}} connected right now.",
+      "center": "Your organisation",
+      "hollow": "Hollow circle: not connected.",
+      "more": "+{{count}} more"
+    },
+    "consoleLink": "Open the admin console"
+  },
+  "downloads": {
+    "title": "Download apps",
+    "description": "Install an app on the device, then add it here.",
+    "loading": "Checking which apps are published…",
+    "platform": {
+      "android": "Android",
+      "windows": "Windows",
+      "macos": "macOS",
+      "linux": "Linux"
+    },
+    "ourApp": "NeroNet for {{platform}}, version {{version}}, {{size}}",
+    "download": "Download for {{platform}}",
+    "checksum": "Check code (SHA-256): {{sha}}",
+    "notPublished": "NeroNet for {{platform}} is not published yet. Use the WireGuard app for now.",
+    "ios": "On iPhone and iPad, install the official WireGuard app, then scan the code from Add a device.",
+    "wireguard": "The official WireGuard app works on every platform with the code from Add a device.",
+    "link": {
+      "ios": "WireGuard on the App Store",
+      "android": "WireGuard on Google Play",
+      "desktop": "WireGuard for Windows, macOS and Linux"
+    },
+    "newTab": "(opens in a new tab)"
+  },
+  "add": {
+    "title": "Add a device",
+    "description": "Create the access code for one phone or computer; it is made on this page and shown once.",
+    "step1": "Install the WireGuard app on the device.",
+    "step2": "Give the device a name and create its code.",
+    "step3": "Scan the code with the app, or import the file.",
+    "name": "Device name",
+    "nameHint": "For example: Work phone",
+    "nameRequired": "Enter a name of 1 to 64 characters.",
+    "submit": "Create the code",
+    "working": "Creating the code…",
+    "result": {
+      "title": "Scan this code with the WireGuard app",
+      "qrAlt": "Access code for {{name}}",
+      "warning": "This code holds the device's private key and is shown only once; anyone who scans it can use your access.",
+      "download": "Download the file",
+      "copy": "Copy the text",
+      "copied": "Copied.",
+      "back": "Back to my devices",
+      "added": "{{name}} added."
+    },
+    "error": {
+      "noGateway": "Your organisation cannot add devices this way yet. An administrator has to choose the gateway in Settings.",
+      "keyInUse": "The new key was already in use. Create the code again.",
+      "generic": "The device was not added. Try again.",
+      "noCrypto": "This browser cannot create the keys. Open this page in a current version of Chrome, Firefox, Safari or Edge."
+    }
+  }
+}

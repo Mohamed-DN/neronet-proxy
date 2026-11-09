@@ -1,1 +1,95 @@
-{}
+{
+  "layout": {
+    "signedInAs": "Accesso come {{name}}",
+    "signOut": "Esci"
+  },
+  "me": {
+    "title": "I miei dispositivi",
+    "description": "I tuoi telefoni e computer collegati alla rete, e come aggiungerne uno nuovo.",
+    "add": "Aggiungi un dispositivo",
+    "listLabel": "I tuoi dispositivi",
+    "loading": "Caricamento dei tuoi dispositivi…",
+    "unnamed": "Dispositivo senza nome",
+    "empty": {
+      "title": "Nessun dispositivo",
+      "body": "Aggiungi questo telefono o computer per raggiungere le risorse del tuo team."
+    },
+    "error": {
+      "title": "Impossibile caricare i tuoi dispositivi",
+      "body": "Controlla la connessione e riprova."
+    },
+    "blocked_one": "{{count}} dei tuoi dispositivi è bloccato. Chiedi il motivo a un amministratore.",
+    "blocked_other": "{{count}} dei tuoi dispositivi sono bloccati. Chiedi il motivo a un amministratore.",
+    "row": {
+      "copyAddress": "Copia l'indirizzo di {{name}}",
+      "copied": "Indirizzo copiato."
+    },
+    "status": {
+      "blocked": "Bloccato da un amministratore",
+      "profile": "Usa l'app WireGuard. Il suo collegamento non viene segnalato alla console.",
+      "connected": "Collegato",
+      "lastSeen": "Visto l'ultima volta {{when}}",
+      "never": "Mai collegato"
+    },
+    "removeHint": "Per rimuovere un dispositivo, chiedilo a un amministratore.",
+    "sketch": {
+      "title": "I tuoi dispositivi nella rete",
+      "description": "{{connected}} su {{total}} collegati in questo momento.",
+      "center": "La tua organizzazione",
+      "hollow": "Cerchio vuoto: non collegato.",
+      "more": "+{{count}} altri"
+    },
+    "consoleLink": "Apri la console di amministrazione"
+  },
+  "downloads": {
+    "title": "Scarica le app",
+    "description": "Installa un'app sul dispositivo, poi aggiungilo qui.",
+    "loading": "Verifica delle app pubblicate…",
+    "platform": {
+      "android": "Android",
+      "windows": "Windows",
+      "macos": "macOS",
+      "linux": "Linux"
+    },
+    "ourApp": "NeroNet per {{platform}}, versione {{version}}, {{size}}",
+    "download": "Scarica per {{platform}}",
+    "checksum": "Codice di controllo (SHA-256): {{sha}}",
+    "notPublished": "NeroNet per {{platform}} non è ancora pubblicata. Per ora usa l'app WireGuard.",
+    "ios": "Su iPhone e iPad installa l'app ufficiale WireGuard, poi inquadra il codice da Aggiungi un dispositivo.",
+    "wireguard": "L'app ufficiale WireGuard funziona su ogni piattaforma con il codice di Aggiungi un dispositivo.",
+    "link": {
+      "ios": "WireGuard sull'App Store",
+      "android": "WireGuard su Google Play",
+      "desktop": "WireGuard per Windows, macOS e Linux"
+    },
+    "newTab": "(si apre in una nuova scheda)"
+  },
+  "add": {
+    "title": "Aggiungi un dispositivo",
+    "description": "Crea il codice di accesso per un telefono o un computer; viene creato in questa pagina e mostrato una volta.",
+    "step1": "Installa l'app WireGuard sul dispositivo.",
+    "step2": "Dai un nome al dispositivo e crea il suo codice.",
+    "step3": "Inquadra il codice con l'app, oppure importa il file.",
+    "name": "Nome del dispositivo",
+    "nameHint": "Per esempio: Telefono di lavoro",
+    "nameRequired": "Scrivi un nome da 1 a 64 caratteri.",
+    "submit": "Crea il codice",
+    "working": "Creazione del codice…",
+    "result": {
+      "title": "Inquadra questo codice con l'app WireGuard",
+      "qrAlt": "Codice di accesso per {{name}}",
+      "warning": "Questo codice contiene la chiave privata del dispositivo ed è mostrato una sola volta; chi lo inquadra può usare il tuo accesso.",
+      "download": "Scarica il file",
+      "copy": "Copia il testo",
+      "copied": "Copiato.",
+      "back": "Torna ai miei dispositivi",
+      "added": "{{name}} aggiunto."
+    },
+    "error": {
+      "noGateway": "La tua organizzazione non può ancora aggiungere dispositivi in questo modo. Un amministratore deve scegliere il gateway nelle Impostazioni.",
+      "keyInUse": "La nuova chiave era già in uso. Crea di nuovo il codice.",
+      "generic": "Il dispositivo non è stato aggiunto. Riprova.",
+      "noCrypto": "Questo browser non può creare le chiavi. Apri la pagina con una versione recente di Chrome, Firefox, Safari o Edge."
+    }
+  }
+}
