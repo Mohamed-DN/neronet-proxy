@@ -386,12 +386,12 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
                   <AreaChart data={timeseries} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorRx" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+                        <stop offset="5%" stopColor="rgb(var(--color-accent))" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="rgb(var(--color-accent))" stopOpacity={0.0} />
                       </linearGradient>
                       <linearGradient id="colorTx" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
+                        <stop offset="5%" stopColor="rgb(var(--color-info))" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="rgb(var(--color-info))" stopOpacity={0.0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--color-border))" vertical={false} />
@@ -409,7 +409,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
                     <Area
                       type="monotone"
                       dataKey="rx"
-                      stroke="#06b6d4"
+                      stroke="rgb(var(--color-accent))"
                       strokeWidth={2}
                       fillOpacity={1}
                       fill="url(#colorRx)"
@@ -418,7 +418,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
                     <Area
                       type="monotone"
                       dataKey="tx"
-                      stroke="#6366f1"
+                      stroke="rgb(var(--color-info))"
                       strokeWidth={2}
                       fillOpacity={1}
                       fill="url(#colorTx)"
