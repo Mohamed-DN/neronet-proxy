@@ -1,1 +1,41 @@
-{}
+{
+  "title": "Three-stop routes",
+  "description": "Choose which devices should use three-stop routes; the choice is saved, but no traffic uses these routes yet.",
+  "banner": {
+    "title": "Setting saved, traffic not routed yet",
+    "body": "Turning a device on here saves the preference. Devices do not use three-stop routes yet, so their traffic still goes directly."
+  },
+  "stats": {
+    "set": "Devices set to three stops",
+    "ofTotal": "of {{n}} devices",
+    "exits": "Internet exits available",
+    "exitsHint": "A safe route needs exits run by different people."
+  },
+  "table": {
+    "caption": "Devices and their stops"
+  },
+  "columns": {
+    "device": "Device",
+    "address": "Network address",
+    "type": "Type",
+    "country": "Country",
+    "state": "State"
+  },
+  "value": {
+    "unknownCountry": "Unknown",
+    "set": "Set to three stops (saved)",
+    "direct": "Direct"
+  },
+  "action": {
+    "toggle": "Three stops for {{name}}"
+  },
+  "empty": {
+    "title": "No devices registered",
+    "body": "Register a device to set its stops."
+  },
+  "error": {
+    "load": "The devices could not be loaded. Try again.",
+    "save": "Setting not saved. Try again.",
+    "moduleOff": "Three-stop routes are switched off for this organisation. An administrator can switch them on in Settings."
+  }
+}

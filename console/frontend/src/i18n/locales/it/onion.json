@@ -1,1 +1,41 @@
-{}
+{
+  "title": "Percorsi a tre tappe",
+  "description": "Scegli quali dispositivi devono usare i percorsi a tre tappe; la scelta viene salvata, ma nessun traffico li usa ancora.",
+  "banner": {
+    "title": "Impostazione salvata, traffico non ancora instradato",
+    "body": "Attivare un dispositivo qui salva la preferenza. I dispositivi non usano ancora i percorsi a tre tappe, quindi il loro traffico passa ancora in modo diretto."
+  },
+  "stats": {
+    "set": "Dispositivi impostati per le tre tappe",
+    "ofTotal": "su {{n}} dispositivi",
+    "exits": "Uscite verso internet disponibili",
+    "exitsHint": "Un percorso sicuro richiede uscite gestite da persone diverse."
+  },
+  "table": {
+    "caption": "Dispositivi e tappe"
+  },
+  "columns": {
+    "device": "Dispositivo",
+    "address": "Indirizzo di rete",
+    "type": "Tipo",
+    "country": "Paese",
+    "state": "Stato"
+  },
+  "value": {
+    "unknownCountry": "Non noto",
+    "set": "Impostato su tre tappe (salvato)",
+    "direct": "Diretto"
+  },
+  "action": {
+    "toggle": "Tre tappe per {{name}}"
+  },
+  "empty": {
+    "title": "Nessun dispositivo registrato",
+    "body": "Registra un dispositivo per impostarne le tappe."
+  },
+  "error": {
+    "load": "Impossibile caricare i dispositivi. Riprova.",
+    "save": "Impostazione non salvata. Riprova.",
+    "moduleOff": "I percorsi a tre tappe sono spenti per questa organizzazione. Un amministratore può accenderli nelle Impostazioni."
+  }
+}
