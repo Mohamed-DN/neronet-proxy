@@ -50,6 +50,8 @@ async function formatNode(row, telemetry) {
       memory_usage_pct: null
     };
   const fresh = observation?.status === 'fresh';
+  // Telemetry columns are written only by heartbeats; a row without one holds column defaults.
+  const reported = row.last_heartbeat != null;
   const isQuarantined = Boolean(row.is_quarantined);
   const isExit = row.role === 'EXIT_BRIDGE';
   const onionEnabled = Boolean(row.onion_routing_enabled);
@@ -86,15 +88,18 @@ async function formatNode(row, telemetry) {
     is_exit_node: isExit,
     risk_score: Number(row.risk_score) || 0,
     status: isQuarantined ? 'quarantined' : row.is_healthy ? 'active' : 'degraded',
-    latency_ms: Number(row.latency_ms) || 15.0,
-    jitter_ms: 1.0,
+    // The columns default to 0 and 100, and the heartbeat writes 0 for a round trip the node
+    // did not measure (services/HeartbeatBuffer.js). Stats already treats 0 as "no value"
+    // (routes/stats.js), so 0 is "not measured" here; a row with no heartbeat has measured nothing.
+    latency_ms: Number(row.latency_ms) > 0 ? Number(row.latency_ms) : null,
+    jitter_ms: null,
     tx_bytes: fresh && observation.traffic_available ? observation.tx_bytes : null,
     rx_bytes: fresh && observation.traffic_available ? observation.rx_bytes : null,
-    cpu_usage_pct: Number(row.cpu_usage_pct) || 0.0,
+    cpu_usage_pct: reported && row.cpu_usage_pct != null ? Number(row.cpu_usage_pct) : null,
     memory_usage_pct: null,
     memory_runtime_sys_bytes: fresh ? observation.memory_runtime_sys_bytes : null,
     native_telemetry: observation,
-    battery_pct: row.battery_pct !== undefined ? Number(row.battery_pct) : 100.0,
+    battery_pct: reported && row.battery_pct != null ? Number(row.battery_pct) : null,
     posture,
     posture_checks: posture,
     posture_status: derivePostureStatus(posture),
@@ -105,7 +110,9 @@ async function formatNode(row, telemetry) {
     daita_mode: row.daita_mode || 'off',
     dns_name: row.dns_name || null,
     last_heartbeat: row.last_heartbeat,
-    last_seen_at: row.last_seen_at || row.last_heartbeat || row.created_at,
+    last_seen_at: row.last_seen_at || row.last_heartbeat || null,
+    device_kind: row.device_kind || 'mesh',
+    profile_gateway_endpoint: row.profile_gateway_endpoint || null,
     created_at: row.created_at,
     updated_at: row.updated_at
   };

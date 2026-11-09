@@ -475,12 +475,21 @@ router.get('/me', authenticateToken, async (req, res, next) => {
       }
     }
 
+    // The membership role in the user's organisation, or null when there is none. The server
+    // authorises with org_role || role (middleware/rbac.js), so the console reads the same value.
+    const membershipRes = await pool.query(
+      'SELECT role FROM memberships WHERE user_id = $1 AND organization_id = COALESCE($2, $3)',
+      [user.id, user.organization_id, 'org-default']
+    );
+    const orgRole = membershipRes.rows[0]?.role || null;
+
     return res.status(200).json({
       user: {
         id: user.id,
         username: user.username,
         email: user.email,
         role: user.role,
+        org_role: orgRole,
         status: user.status,
         totp_enabled: Boolean(user.totp_enabled),
         bypass_apps: bypassApps || [],
