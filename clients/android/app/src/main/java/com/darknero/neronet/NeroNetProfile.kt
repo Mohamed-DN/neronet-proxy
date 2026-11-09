@@ -27,6 +27,10 @@ enum class ProfileReason {
  */
 class ProfileException(val reason: ProfileReason, message: String) : Exception(message)
 
+/** The device's public key (base64), derived from its private key. Shown in details; used to find duplicates. */
+val NeroNetProfile.devicePublicKey: String
+    get() = config.`interface`.keyPair.publicKey.toBase64()
+
 /**
  * A NeroNet profile (ADR 0029): a standard wg-quick file with NeroNet metadata in comment lines.
  *
