@@ -53,7 +53,9 @@
     "body": "The request to the control plane failed.",
     "retry": "Try again",
     "detail": "Details",
-    "unreachable": "The control plane did not answer. It may be stopped, or this console cannot reach it."
+    "unreachable": "The control plane did not answer. It may be stopped, or this console cannot reach it.",
+    "forbiddenTitle": "Your role cannot open this",
+    "forbiddenBody": "Ask an administrator if you need access."
   },
   "notImplemented": {
     "title": "Not implemented",
@@ -979,5 +981,10 @@
     "sectionTransport": "Transport",
     "transportBody": "WireGuard (wireguard-go). The pre-shared key of each pair rotates every two minutes; it is classical cryptography, not post-quantum. Obfuscation (AmneziaWG) is not active on the nodes, and there is no OpenVPN or VLESS transport.",
     "loadError": "The organisation could not be loaded"
+  },
+  "filteredEmpty": {
+    "title": "Nothing matches these filters",
+    "body": "Change or clear the filters to see more.",
+    "reset": "Clear filters"
   }
 }

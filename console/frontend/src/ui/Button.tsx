@@ -4,7 +4,7 @@ import { Loader2, type LucideIcon } from 'lucide-react';
 import { cn } from './cn';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
-export type ButtonSize = 'sm' | 'md';
+export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -27,7 +27,9 @@ const VARIANTS: Record<ButtonVariant, string> = {
 
 const SIZES: Record<ButtonSize, string> = {
   sm: 'h-7 px-2.5 text-caption gap-1.5',
-  md: 'h-9 px-3.5 text-body gap-2'
+  md: 'h-9 px-3.5 text-body gap-2',
+  // 44 px: the touch target on /me and /me/add.
+  lg: 'h-11 px-4 text-body gap-2'
 };
 
 /**

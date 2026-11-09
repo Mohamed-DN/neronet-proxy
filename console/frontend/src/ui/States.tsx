@@ -1,8 +1,9 @@
-import { AlertCircle, CircleOff, Construction, Inbox, type LucideIcon } from 'lucide-react';
+import { AlertCircle, CircleOff, Construction, Inbox, SearchX, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { cn } from './cn';
 import { Button } from './Button';
+import { ApiError } from '../services/apiClient';
 
 /*
  * The four surfaces a page shows when it has no data to show. Their copy and
@@ -92,24 +93,52 @@ export interface ErrorStateProps {
   /** The failure itself. Shown verbatim: an operator needs the real message. */
   detail?: string | null;
   onRetry?: () => void;
+  /** The caught error. A 403 gets the forbidden copy and no retry. */
+  error?: unknown;
   className?: string;
 }
 
-export function ErrorState({ title, body, detail, onRetry, className }: ErrorStateProps) {
+export function ErrorState({ title, body, detail, onRetry, error, className }: ErrorStateProps) {
   const { t } = useTranslation('ui');
+  // The server is the authority: a refused request is not a failure to retry.
+  const forbidden = error instanceof ApiError && error.status === 403;
   return (
     <StateSurface
       icon={AlertCircle}
       tone="danger"
       role="alert"
-      title={title ?? t('error.title')}
+      title={title ?? (forbidden ? t('error.forbiddenTitle') : t('error.title'))}
       body={
         <>
-          <p>{body ?? t('error.body')}</p>
+          <p>{body ?? (forbidden ? t('error.forbiddenBody') : t('error.body'))}</p>
           {detail && <p className="mt-2 break-words font-mono text-micro text-muted">{detail}</p>}
         </>
       }
-      action={onRetry && <Button onClick={onRetry}>{t('error.retry')}</Button>}
+      action={!forbidden && onRetry && <Button onClick={onRetry}>{t('error.retry')}</Button>}
+      className={className}
+    />
+  );
+}
+
+export interface FilteredEmptyStateProps {
+  title?: string;
+  body?: React.ReactNode;
+  /** Clears the filters that hide the rows. */
+  onReset: () => void;
+  resetLabel?: string;
+  className?: string;
+}
+
+/** The query succeeded and the filters hide every row. Not the same as empty. */
+export function FilteredEmptyState({ title, body, onReset, resetLabel, className }: FilteredEmptyStateProps) {
+  const { t } = useTranslation('ui');
+  return (
+    <StateSurface
+      icon={SearchX}
+      tone="muted"
+      title={title ?? t('filteredEmpty.title')}
+      body={body ?? t('filteredEmpty.body')}
+      action={<Button onClick={onReset}>{resetLabel ?? t('filteredEmpty.reset')}</Button>}
       className={className}
     />
   );

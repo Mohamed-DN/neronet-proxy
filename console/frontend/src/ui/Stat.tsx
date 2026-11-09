@@ -51,7 +51,7 @@ export function Stat({ label, value, unit, delta, hint, className }: StatProps) 
 
   return (
     <div className={cn('flex flex-col gap-1', className)}>
-      <span className="text-caption font-medium uppercase tracking-wide text-muted">{label}</span>
+      <span className="text-caption text-muted">{label}</span>
 
       {missing ? (
         <span

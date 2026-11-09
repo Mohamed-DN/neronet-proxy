@@ -163,7 +163,7 @@ export function Table<Row>({
                   aria-sort={ariaSort}
                   style={column.width ? { width: column.width } : undefined}
                   className={cn(
-                    'border-b border-border text-caption font-semibold uppercase tracking-wide text-muted',
+                    'border-b border-border text-caption font-medium text-muted',
                     column.numeric ? 'text-right' : 'text-left',
                     DENSITY_PADDING[density]
                   )}
@@ -173,7 +173,7 @@ export function Table<Row>({
                       type="button"
                       onClick={() => requestSort(column.id)}
                       className={cn(
-                        'inline-flex items-center gap-1 rounded-sm font-semibold uppercase tracking-wide',
+                        'inline-flex items-center gap-1 rounded-sm font-medium',
                         'hover:text-content focus-visible:outline-focus',
                         column.numeric && 'flex-row-reverse'
                       )}

@@ -53,6 +53,11 @@ describe('Button', () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
+  it('size lg is the 44 px touch target', () => {
+    renderUI(<Button size="lg">Create the code</Button>);
+    expect(screen.getByRole('button', { name: 'Create the code' })).toHaveClass('h-11');
+  });
+
   it('defaults to type button so it cannot submit a form by accident', () => {
     renderUI(<Button>Close</Button>);
     expect(screen.getByRole('button', { name: 'Close' })).toHaveAttribute('type', 'button');

@@ -21,24 +21,24 @@
   color-scheme: light;
 
   /* Surfaces. Page, cards, wells; no gradients, no glow. */
-  --color-surface: 248 250 252;
+  --color-surface: 247 247 245;
   --color-surface-raised: 255 255 255;
-  --color-surface-sunken: 241 245 249;
-  --color-surface-hover: 241 245 249;
-  --color-surface-inverse: 15 23 42;
-  --color-scrim: 15 23 42;
+  --color-surface-sunken: 240 240 237;
+  --color-surface-hover: 237 237 234;
+  --color-surface-inverse: 26 26 24;
+  --color-scrim: 26 26 24;
 
   /* Lines. `border` and `border-subtle` are decorative separators;
      `border-strong` bounds interactive controls and holds 3:1. */
-  --color-border: 203 213 225;
-  --color-border-subtle: 226 232 240;
-  --color-border-strong: 100 116 139;
+  --color-border: 221 221 216;
+  --color-border-subtle: 232 232 228;
+  --color-border-strong: 117 117 110;
 
   /* Text. */
-  --color-content: 15 23 42;
-  --color-content-muted: 71 85 105;
-  --color-content-subtle: 91 106 128;
-  --color-content-inverse: 248 250 252;
+  --color-content: 26 26 24;
+  --color-content-muted: 85 85 79;
+  --color-content-subtle: 107 107 100;
+  --color-content-inverse: 247 247 245;
 
   /* Accent: the one non-status colour. Restrained blue. */
   --color-accent: 29 78 216;
@@ -93,21 +93,21 @@
 [data-theme='dark'] {
   color-scheme: dark;
 
-  --color-surface: 15 23 42;
-  --color-surface-raised: 30 41 59;
-  --color-surface-sunken: 11 18 32;
-  --color-surface-hover: 39 53 74;
-  --color-surface-inverse: 241 245 249;
-  --color-scrim: 2 6 23;
+  --color-surface: 26 26 24;
+  --color-surface-raised: 34 34 31;
+  --color-surface-sunken: 21 21 19;
+  --color-surface-hover: 44 44 40;
+  --color-surface-inverse: 236 236 232;
+  --color-scrim: 10 10 9;
 
-  --color-border: 51 65 85;
-  --color-border-subtle: 30 41 59;
-  --color-border-strong: 100 116 139;
+  --color-border: 60 60 55;
+  --color-border-subtle: 42 42 38;
+  --color-border-strong: 122 122 113;
 
-  --color-content: 241 245 249;
-  --color-content-muted: 148 163 184;
-  --color-content-subtle: 132 148 171;
-  --color-content-inverse: 15 23 42;
+  --color-content: 236 236 232;
+  --color-content-muted: 168 168 160;
+  --color-content-subtle: 146 146 138;
+  --color-content-inverse: 26 26 24;
 
   --color-accent: 96 165 250;
   --color-accent-subtle: 23 37 84;

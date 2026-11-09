@@ -5,8 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { Card, CardHeader } from './Card';
 import { CodeText } from './CodeText';
 import { PageHeader } from './PageHeader';
-import { EmptyState, ErrorState, NotImplementedState, NotMeasured, Skeleton } from './States';
+import { EmptyState, ErrorState, FilteredEmptyState, NotImplementedState, NotMeasured, Skeleton } from './States';
 import { expectAccessibleInBothThemes, renderUI } from '../test/harness';
+import { ApiError } from '../services/apiClient';
 
 describe('state surfaces', () => {
   it('keeps empty, error, not measured and not implemented apart', () => {
@@ -62,6 +63,26 @@ describe('state surfaces', () => {
         <NotMeasured inline={false} />
       </div>
     );
+  });
+});
+
+describe('FilteredEmptyState and forbidden ErrorState', () => {
+  it('FilteredEmptyState calls onReset from "Clear filters"', async () => {
+    const user = userEvent.setup();
+    const onReset = vi.fn();
+    renderUI(<FilteredEmptyState onReset={onReset} />);
+
+    expect(screen.getByText('Nothing matches these filters')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(onReset).toHaveBeenCalledOnce();
+  });
+
+  it('ErrorState shows forbidden copy for a 403 and no retry', () => {
+    renderUI(<ErrorState error={new ApiError('forbidden', 403)} onRetry={() => {}} />);
+
+    expect(screen.getByText('Your role cannot open this')).toBeInTheDocument();
+    expect(screen.getByText('Ask an administrator if you need access.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
   });
 });
 
