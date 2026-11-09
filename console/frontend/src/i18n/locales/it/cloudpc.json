@@ -1,1 +1,99 @@
-{}
+{
+  "title": "Computer virtuali in cloud",
+  "description": "Gestisci i computer virtuali e i domini aziendali che li indirizzano; la trasmissione a distanza non è ancora attiva, quindi i link di accesso non si collegano.",
+  "tabs": {
+    "label": "Computer virtuali e domini",
+    "computers": "Computer virtuali ({{count}})",
+    "domains": "Domini ({{count}})",
+    "computersPlain": "Computer virtuali",
+    "domainsPlain": "Domini"
+  },
+  "primary": {
+    "linkDomain": "Collega un dominio"
+  },
+  "resources": {
+    "cpu": "Processori (vCPU)",
+    "ram": "Memoria (RAM)",
+    "disk": "Disco veloce (NVMe)",
+    "gpu": "Scheda grafica",
+    "gpuAvailable": "Disponibile",
+    "gb": "{{value}} GB"
+  },
+  "status": {
+    "running": "In esecuzione",
+    "stopped": "Fermo",
+    "unknown": "Non noto"
+  },
+  "computers": {
+    "createLink": "Crea un link di accesso"
+  },
+  "link": {
+    "title": "Link di accesso per {{name}}",
+    "preparing": "Preparazione del link di accesso in corso...",
+    "created": "Link di accesso creato.",
+    "notConnecting": "Il link non si collega ancora: il servizio di trasmissione non è attivo.",
+    "viewerLabel": "Link di accesso",
+    "copy": "Copia link",
+    "copied": "Link copiato.",
+    "qrLabel": "Codice QR del link di accesso",
+    "addresses": "Indirizzi di connessione",
+    "server": "Server di connessione",
+    "code": "Codice di accesso",
+    "format": "Formato video richiesto",
+    "close": "Chiudi",
+    "error": "Il link di accesso non è stato creato. Riprova.",
+    "description": "Condividi questo link solo con chi deve raggiungere questo computer."
+  },
+  "domains": {
+    "columns": {
+      "domain": "Dominio",
+      "computer": "Computer virtuale",
+      "status": "Stato del dominio e del certificato",
+      "access": "Protezione d'accesso",
+      "actions": "Azioni"
+    },
+    "pointsTo": "Punta a {{target}}",
+    "dns": "DNS: {{status}}",
+    "tls": "Certificato (TLS): {{status}}",
+    "sso": "Login aziendale (SSO) richiesto",
+    "noSso": "Login aziendale non richiesto",
+    "mfa": "+ Codice di verifica obbligatorio",
+    "verify": "Controlla il link",
+    "verifyFor": "Controlla il link per {{domain}}",
+    "remove": "Rimuovi collegamento",
+    "removeFor": "Rimuovi il collegamento per {{domain}}",
+    "removeTitle": "Rimuovere il collegamento per {{domain}}?",
+    "removeBody": "Il dominio smette di portare a quel computer.",
+    "removeConfirm": "Rimuovi collegamento",
+    "removed": "Il collegamento per {{domain}} è stato rimosso.",
+    "verified": "{{domain}} è collegato correttamente.",
+    "notVerified": "{{domain}} non ha superato il controllo: {{reason}}",
+    "checkFailed": "il controllo non è stato superato",
+    "empty": {
+      "title": "Nessun dominio collegato",
+      "body": "Collega un dominio aziendale a un computer virtuale per raggiungerlo con il suo nome."
+    },
+    "linked": "{{domain}} è collegato."
+  },
+  "addDomain": {
+    "title": "Collega un dominio aziendale",
+    "domainLabel": "Dominio",
+    "placeholder": "desktop.azienda.it",
+    "computerLabel": "Computer virtuale",
+    "noComputers": "Non ci sono ancora computer virtuali a cui collegarlo.",
+    "sso": "Richiedi il login aziendale (SSO)",
+    "mfa": "Richiedi un codice dal telefono (MFA)",
+    "submit": "Collega dominio",
+    "cancel": "Annulla",
+    "error": "Il dominio non è stato collegato. Riprova.",
+    "description": "Il dominio punterà al computer virtuale che scegli."
+  },
+  "empty": {
+    "title": "Nessun computer virtuale",
+    "body": "I computer virtuali compaiono qui quando un amministratore ne crea uno."
+  },
+  "error": {
+    "load": "Impossibile caricare i computer virtuali. Riprova.",
+    "action": "L'operazione non è riuscita. Riprova."
+  }
+}

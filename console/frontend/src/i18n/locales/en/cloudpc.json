@@ -1,1 +1,99 @@
-{}
+{
+  "title": "Cloud virtual computers",
+  "description": "Manage your virtual computers and the company domains that point to them; remote streaming is not running yet, so access links will not connect.",
+  "tabs": {
+    "label": "Virtual computers and domains",
+    "computers": "Virtual computers ({{count}})",
+    "domains": "Domains ({{count}})",
+    "computersPlain": "Virtual computers",
+    "domainsPlain": "Domains"
+  },
+  "primary": {
+    "linkDomain": "Link a domain"
+  },
+  "resources": {
+    "cpu": "Processors (vCPU)",
+    "ram": "Memory (RAM)",
+    "disk": "Fast disk (NVMe)",
+    "gpu": "Graphics card",
+    "gpuAvailable": "Available",
+    "gb": "{{value}} GB"
+  },
+  "status": {
+    "running": "Running",
+    "stopped": "Stopped",
+    "unknown": "Unknown"
+  },
+  "computers": {
+    "createLink": "Create an access link"
+  },
+  "link": {
+    "title": "Access link for {{name}}",
+    "preparing": "Preparing the access link...",
+    "created": "Access link created.",
+    "notConnecting": "The link will not connect yet: the streaming service is not running.",
+    "viewerLabel": "Access link",
+    "copy": "Copy link",
+    "copied": "Link copied.",
+    "qrLabel": "QR code for the access link",
+    "addresses": "Connection addresses",
+    "server": "Connection server",
+    "code": "Access code",
+    "format": "Requested video format",
+    "close": "Close",
+    "error": "The access link could not be created. Try again.",
+    "description": "Share this link only with people who should reach this computer."
+  },
+  "domains": {
+    "columns": {
+      "domain": "Domain",
+      "computer": "Virtual computer",
+      "status": "Domain and certificate status",
+      "access": "Access protection",
+      "actions": "Actions"
+    },
+    "pointsTo": "Points to {{target}}",
+    "dns": "DNS: {{status}}",
+    "tls": "Certificate (TLS): {{status}}",
+    "sso": "Company login (SSO) required",
+    "noSso": "No company login required",
+    "mfa": "+ Second login code required",
+    "verify": "Check link",
+    "verifyFor": "Check the link for {{domain}}",
+    "remove": "Remove link",
+    "removeFor": "Remove the link for {{domain}}",
+    "removeTitle": "Remove the link for {{domain}}?",
+    "removeBody": "The domain stops pointing to that computer.",
+    "removeConfirm": "Remove link",
+    "removed": "The link for {{domain}} was removed.",
+    "verified": "{{domain}} is linked correctly.",
+    "notVerified": "{{domain}} did not pass the check: {{reason}}",
+    "checkFailed": "the check did not pass",
+    "empty": {
+      "title": "No domains linked",
+      "body": "Link a company domain to a virtual computer to reach it by name."
+    },
+    "linked": "{{domain}} is linked."
+  },
+  "addDomain": {
+    "title": "Link a company domain",
+    "domainLabel": "Domain",
+    "placeholder": "desktop.company.com",
+    "computerLabel": "Virtual computer",
+    "noComputers": "There are no virtual computers to link to yet.",
+    "sso": "Require company login (SSO)",
+    "mfa": "Require a code from the phone (MFA)",
+    "submit": "Link domain",
+    "cancel": "Cancel",
+    "error": "The domain was not linked. Try again.",
+    "description": "The domain will point to the virtual computer you choose."
+  },
+  "empty": {
+    "title": "No virtual computers",
+    "body": "Virtual computers appear here when an administrator creates one."
+  },
+  "error": {
+    "load": "The virtual computers could not be loaded. Try again.",
+    "action": "That did not work. Try again."
+  }
+}
