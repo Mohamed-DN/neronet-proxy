@@ -617,8 +617,11 @@ router.post('/:id/action', async (req, res, next) => {
     }
 
     if (action === 'ping') {
-      const rtt_ms = Number(node.latency_ms) > 0 ? Number(node.latency_ms) : 14.2;
-      const jitter_ms = 1.1;
+      // This sends nothing to the node: it reports the last latency the node measured.
+      // With none recorded (0 is the column default) there is no round trip to show.
+      const measured = Number(node.latency_ms) > 0;
+      const rtt_ms = measured ? Number(node.latency_ms) : null;
+      const jitter_ms = null;
       logAuditEvent({
         eventType: 'NODE_PING',
         organizationId: node.organization_id || 'org-default',
@@ -629,13 +632,14 @@ router.post('/:id/action', async (req, res, next) => {
         targetType: 'node',
         message: `Node ${node.id} pinged`,
         ipAddress: req.ip,
-        metadata: { rtt_ms, jitter_ms }
+        metadata: { rtt_ms, measured }
       });
       return res.status(200).json({
         success: true,
         result: {
           rtt_ms,
           jitter_ms,
+          measured,
           status: node.is_quarantined ? 'quarantined' : 'active'
         }
       });

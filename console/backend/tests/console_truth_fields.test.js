@@ -105,6 +105,19 @@ describe('console v2 T4: honest node fields and organisation role', () => {
     await pool.query("DELETE FROM nodes WHERE id = 'node-truth-live'");
   });
 
+  it('a ping on a node that never measured latency answers null, not a made-up round trip', async () => {
+    // The action returned 14.2 ms whenever the stored latency was 0. It sends nothing
+    // to the node: it reports the last measured value, so with none there is nothing.
+    const res = await request(app)
+      .post('/api/nodes/node-truth-silent/action')
+      .set(auth(adminToken))
+      .send({ action: 'ping' });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.result.rtt_ms, null);
+    assert.strictEqual(res.body.result.jitter_ms, null);
+    assert.strictEqual(res.body.result.measured, false);
+  });
+
   it('a profile device is listed with device_kind profile', async () => {
     await request(app)
       .put('/api/devices/gateway')

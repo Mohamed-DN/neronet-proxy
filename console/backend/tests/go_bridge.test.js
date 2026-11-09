@@ -182,6 +182,14 @@ describe('Go data-plane bridge', () => {
       assert.strictEqual(Number(row.latency_ms), 0, 'a latency value was invented by the control plane');
     });
 
+    it('does not invent a battery level when the node reports none', async () => {
+      // A server or a phone without a battery sensor sends no figure; the old handler
+      // stored 100 % for it, and the console showed every such node fully charged.
+      await request(app).post('/v4/control/heartbeat').send({ node_id: nodeId, cpu_usage_pct: 12 });
+      const qRes = await dbHelper.pool.query('SELECT battery_pct FROM nodes WHERE id = $1', [nodeId]);
+      assert.strictEqual(qRes.rows[0].battery_pct, null, 'a battery level was invented by the control plane');
+    });
+
     it('rejects a heartbeat with no node id instead of silently dropping it', async () => {
       const res = await request(app).post('/v4/control/heartbeat').send({ cpu_usage_pct: 10 });
 

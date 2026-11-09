@@ -488,7 +488,8 @@ router.post('/heartbeat', normalizeRegisterBody, validateRequest('HeartbeatReque
 
     const cpuPct = clampNumber(req.body.cpu_usage_pct, 0, 100, 0);
     const memMb = clampNumber(req.body.memory_usage_mb, 0, Number.MAX_SAFE_INTEGER, 0);
-    const batteryPct = clampNumber(req.body.battery_level_pct, 0, 100, 100);
+    // A node without a battery sensor sends no figure: store none rather than 100 %.
+    const batteryPct = clampNumber(req.body.battery_level_pct, 0, 100, null);
     const txBytes = clampNumber(req.body.tx_bytes_sec, 0, Number.MAX_SAFE_INTEGER, 0);
     const rxBytes = clampNumber(req.body.rx_bytes_sec, 0, Number.MAX_SAFE_INTEGER, 0);
     // Capped at a minute: a larger value is a broken clock or a forged body, not a
