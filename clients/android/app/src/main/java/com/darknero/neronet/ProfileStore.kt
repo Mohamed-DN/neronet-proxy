@@ -24,6 +24,10 @@ class ProfileStore(private val dir: File) {
         }
     }
 
+    /** The saved profile whose device key is [publicKeyBase64], or null. Used to refuse a second copy. */
+    fun findByPublicKey(publicKeyBase64: String): Entry? =
+        entries().firstOrNull { it.profile.devicePublicKey == publicKeyBase64 }
+
     /** Saves a profile that has already been validated and returns its id. */
     @Throws(IOException::class)
     fun add(text: String): String {
