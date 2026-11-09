@@ -38,6 +38,8 @@ kotlin {
 
 dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
+    // Material 3 components and theme. 1.14.0 was published 2026-05-13 (maven-metadata lists it as latest).
+    implementation("com.google.android.material:material:1.14.0")
     // Official WireGuard tunnel library (GoBackend, Config.parse). Newest release, published 2026-01-02.
     implementation("com.wireguard.android:tunnel:1.0.20260102")
 

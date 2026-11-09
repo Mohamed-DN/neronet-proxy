@@ -9,17 +9,21 @@ import android.os.Bundle
 import android.text.InputType
 import android.text.format.DateFormat as AndroidDateFormat
 import android.text.format.Formatter
+import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.widget.ArrayAdapter
-import android.widget.Button
 import android.widget.EditText
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SwitchCompat
+import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.materialswitch.MaterialSwitch
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -29,6 +33,7 @@ import java.util.concurrent.Executors
 class MainActivity : AppCompatActivity() {
 
     companion object {
+        private const val TAG = "NeroNet"
         private const val MAX_PROFILE_BYTES = 64 * 1024
     }
 
@@ -37,13 +42,21 @@ class MainActivity : AppCompatActivity() {
     private lateinit var controller: TunnelController
     private lateinit var list: ListView
     private lateinit var status: TextView
-    private lateinit var toggle: SwitchCompat
-    private lateinit var consoleButton: Button
-    private lateinit var deleteButton: Button
+    private lateinit var errorRow: View
+    private lateinit var errorText: TextView
+    private lateinit var toggle: MaterialSwitch
+    private lateinit var consoleButton: MaterialButton
+    private lateinit var deleteButton: MaterialButton
 
     private var entries: List<ProfileStore.Entry> = emptyList()
     private var selectedId: String? = null
     private var awaitingVpnPermission: String? = null
+
+    /** True while a tunnel operation runs: the switch is disabled until its result arrives. */
+    private var busy = false
+
+    /** The state a running operation is moving to: true for connecting, false for disconnecting. */
+    private var pendingUp: Boolean? = null
 
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) readAndImport(uri)
@@ -55,7 +68,7 @@ class MainActivity : AppCompatActivity() {
         if (id != null && result.resultCode == RESULT_OK) {
             connect(id)
         } else {
-            toast(R.string.vpn_denied)
+            showError(R.string.vpn_denied)
             refresh()
         }
     }
@@ -68,6 +81,8 @@ class MainActivity : AppCompatActivity() {
         controller = TunnelController(this)
         list = findViewById(R.id.profiles)
         status = findViewById(R.id.status)
+        errorRow = findViewById(R.id.error_row)
+        errorText = findViewById(R.id.error_text)
         toggle = findViewById(R.id.connect_toggle)
         consoleButton = findViewById(R.id.open_console)
         deleteButton = findViewById(R.id.delete_profile)
@@ -77,9 +92,11 @@ class MainActivity : AppCompatActivity() {
             selectedId = entries[position].id
             refresh()
         }
-        findViewById<Button>(R.id.import_file).setOnClickListener { pickFile.launch(arrayOf("*/*")) }
-        findViewById<Button>(R.id.paste_text).setOnClickListener { showPasteDialog() }
-        // A click flips the switch first; onToggleClicked reads the new position.
+        findViewById<MaterialButton>(R.id.import_file).setOnClickListener { pickFile.launch(arrayOf("*/*")) }
+        findViewById<MaterialButton>(R.id.paste_text).setOnClickListener { showPasteDialog() }
+        findViewById<MaterialButton>(R.id.dismiss_error).setOnClickListener {
+            errorRow.visibility = View.GONE
+        }
         toggle.setOnClickListener { onToggleClicked() }
         consoleButton.setOnClickListener { openConsole() }
         deleteButton.setOnClickListener { confirmDelete() }
@@ -95,14 +112,19 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    /**
+     * The switch flips before this runs. Put it back to its old position and let the tunnel
+     * result decide what it shows, so it never claims a connection that is not up.
+     */
     private fun onToggleClicked() {
+        val wantUp = toggle.isChecked
+        toggle.isChecked = !wantUp
         val id = selectedId
         if (id == null) {
-            toggle.isChecked = false
-            toast(R.string.select_first)
+            showError(R.string.select_first)
             return
         }
-        if (toggle.isChecked) requestConnect(id) else disconnect(id)
+        if (wantUp) requestConnect(id) else disconnect(id)
     }
 
     /** VpnService.prepare returns an intent the first time (or after another app took the VPN). */
@@ -119,25 +141,36 @@ class MainActivity : AppCompatActivity() {
     private fun connect(id: String) {
         val entry = entries.find { it.id == id } ?: return
         val allIds = entries.map { it.id }
-        status.text = getString(R.string.state_connecting)
-        background { controller.up(id, entry.profile, allIds) }
+        background(pending = true) { controller.up(id, entry.profile, allIds) }
     }
 
     private fun disconnect(id: String) {
-        background { controller.down(id) }
+        background(pending = false) { controller.down(id) }
     }
 
-    /** Runs a tunnel operation off the UI thread, then shows its failure and refreshes. */
-    private fun background(work: () -> Unit) {
+    /**
+     * Runs a tunnel operation off the UI thread. The switch stays disabled until it ends; a failure
+     * becomes an inline error that stays until the user dismisses it.
+     */
+    private fun background(pending: Boolean?, work: () -> Unit) {
+        busy = true
+        pendingUp = pending
+        refresh()
         worker.execute {
-            val failure = try {
+            val failure: Exception? = try {
                 work()
                 null
             } catch (e: Exception) {
-                e.message ?: e.javaClass.simpleName
+                e
             }
             runOnUiThread {
-                if (failure != null) toast(R.string.tunnel_error, failure)
+                busy = false
+                pendingUp = null
+                if (failure != null) {
+                    // Log the exception type only: its message is English and may describe device state.
+                    Log.w(TAG, "tunnel operation failed: ${failure.javaClass.simpleName}")
+                    showError(getString(R.string.tunnel_error, getString(R.string.tunnel_reason_generic)))
+                }
                 refresh()
             }
         }
@@ -153,17 +186,35 @@ class MainActivity : AppCompatActivity() {
 
         val entry = entries.getOrNull(index)
         val up = entry != null && controller.isUp(entry.id)
-        toggle.isEnabled = entry != null
+        val pending = pendingUp
+
+        toggle.isEnabled = entry != null && !busy
         toggle.isChecked = up
+        ViewCompat.setStateDescription(
+            toggle,
+            getString(
+                when {
+                    pending == true -> R.string.state_connecting
+                    pending == false -> R.string.state_disconnecting
+                    up -> R.string.state_connected
+                    else -> R.string.state_disconnected
+                },
+            ),
+        )
         consoleButton.isEnabled = entry?.profile?.consoleUrl != null
-        deleteButton.isEnabled = entry != null
+        deleteButton.isEnabled = entry != null && !busy
 
         status.text = when {
             entries.isEmpty() -> getString(R.string.no_profiles)
             entry == null -> getString(R.string.select_first)
+            pending == true -> getString(R.string.state_connecting)
+            pending == false -> getString(R.string.state_disconnecting)
             up -> getString(R.string.state_connected) + "\n" + trafficText(entry.id)
             else -> getString(R.string.state_disconnected)
         }
+        status.setTextColor(
+            ContextCompat.getColor(this, if (up && pending == null) R.color.nn_connected else R.color.nn_on_surface),
+        )
     }
 
     private fun trafficText(id: String): String {
@@ -184,24 +235,24 @@ class MainActivity : AppCompatActivity() {
     private fun openConsole() {
         val url = entries.find { it.id == selectedId }?.profile?.consoleUrl ?: return
         if (!url.startsWith("https://", ignoreCase = true)) {
-            toast(R.string.console_not_https)
+            showError(R.string.console_not_https)
             return
         }
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         } catch (e: ActivityNotFoundException) {
-            toast(R.string.no_browser)
+            showError(R.string.no_browser)
         }
     }
 
     private fun confirmDelete() {
         val entry = entries.find { it.id == selectedId } ?: return
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle(getString(R.string.delete_title, entry.name))
             .setMessage(R.string.delete_message)
             .setPositiveButton(R.string.delete) { _, _ ->
                 selectedId = null
-                background {
+                background(pending = false) {
                     if (controller.isUp(entry.id)) controller.down(entry.id)
                     store.delete(entry.id)
                 }
@@ -220,7 +271,7 @@ class MainActivity : AppCompatActivity() {
                 InputType.TYPE_TEXT_FLAG_MULTI_LINE or
                 InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle(R.string.paste_title)
             .setView(input)
             .setPositiveButton(R.string.import_action) { _, _ -> importText(input.text.toString()) }
@@ -236,7 +287,7 @@ class MainActivity : AppCompatActivity() {
                 null
             }
             runOnUiThread {
-                if (text == null) toast(R.string.read_failed) else importText(text)
+                if (text == null) showError(R.string.read_failed) else importText(text)
             }
         }
     }
@@ -259,28 +310,35 @@ class MainActivity : AppCompatActivity() {
 
     private fun importText(text: String) {
         if (text.length > MAX_PROFILE_BYTES) {
-            toast(R.string.read_failed)
+            showError(R.string.read_failed)
             return
         }
         try {
             NeroNetProfile.parse(text)
-        } catch (e: ProfileException) {
-            AlertDialog.Builder(this)
-                .setMessage(getString(R.string.import_failed, e.message ?: ""))
+        } catch (e: Exception) {
+            // The reason text is localized; the exception's English message stays out of the UI.
+            MaterialAlertDialogBuilder(this)
+                .setMessage(getString(R.string.import_failed, getString(ProfileErrorStrings.forThrowable(e))))
                 .setPositiveButton(android.R.string.ok, null)
                 .show()
             return
         }
         try {
             selectedId = store.add(text)
-            toast(R.string.imported)
+            Toast.makeText(this, R.string.imported, Toast.LENGTH_LONG).show()
             refresh()
         } catch (e: IOException) {
-            toast(R.string.read_failed)
+            showError(R.string.read_failed)
         }
     }
 
-    private fun toast(resId: Int, vararg args: Any) {
-        Toast.makeText(this, getString(resId, *args), Toast.LENGTH_LONG).show()
+    /** Shows an error inline. It stays until the user dismisses it. */
+    private fun showError(resId: Int) {
+        showError(getString(resId))
+    }
+
+    private fun showError(message: String) {
+        errorText.text = message
+        errorRow.visibility = View.VISIBLE
     }
 }

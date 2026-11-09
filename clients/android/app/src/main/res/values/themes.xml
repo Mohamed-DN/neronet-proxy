@@ -1,4 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.NeroNet" parent="Theme.AppCompat.DayNight.DarkActionBar" />
+    <!-- Colours come from colors.xml: the values-night folder supplies the dark palette. -->
+    <style name="Theme.NeroNet" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/nn_primary</item>
+        <item name="colorOnPrimary">@color/nn_on_primary</item>
+        <item name="colorPrimaryContainer">@color/nn_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/nn_on_primary_container</item>
+        <item name="colorSecondary">@color/nn_secondary</item>
+        <item name="colorOnSecondary">@color/nn_on_secondary</item>
+        <item name="colorError">@color/nn_error</item>
+        <item name="colorOnError">@color/nn_on_error</item>
+        <item name="android:colorBackground">@color/nn_background</item>
+        <item name="colorSurface">@color/nn_surface</item>
+        <item name="colorSurfaceContainer">@color/nn_surface_container</item>
+        <item name="colorOnSurface">@color/nn_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/nn_on_surface_variant</item>
+        <item name="colorOutline">@color/nn_outline</item>
+        <item name="colorOutlineVariant">@color/nn_outline_variant</item>
+        <item name="materialButtonStyle">@style/Widget.NeroNet.Button</item>
+        <item name="materialButtonOutlinedStyle">@style/Widget.NeroNet.Button.Outlined</item>
+    </style>
+
+    <!-- Shapes: 6dp for controls, 8dp for cards. -->
+    <style name="NeroNetShapeControl">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">6dp</item>
+    </style>
+
+    <style name="NeroNetShapeCard">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">8dp</item>
+    </style>
+
+    <style name="Widget.NeroNet.Button" parent="Widget.Material3.Button">
+        <item name="android:minHeight">48dp</item>
+        <item name="shapeAppearanceOverlay">@style/NeroNetShapeControl</item>
+    </style>
+
+    <style name="Widget.NeroNet.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minHeight">48dp</item>
+        <item name="shapeAppearanceOverlay">@style/NeroNetShapeControl</item>
+    </style>
 </resources>
