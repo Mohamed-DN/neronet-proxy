@@ -280,26 +280,14 @@ router.get('/:id/onboard-qr', requireSelfOrAdmin, async (req, res, next) => {
     if (userRes.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-    const user = userRes.rows[0];
-    const dummyClientIp = '10.42.100.25';
-    const configText = `[Interface]
-# NeroNet Sovereign Mesh Onboarding Profile for ${user.username}
-PrivateKey = <generated-on-client>
-Address = ${dummyClientIp}/32
-DNS = 100.100.100.100
-
-[Peer]
-PublicKey = 4gC5z7y2M3oN9rPt8xV1wK0jL5qS6uI3dF2hB1eA4gA=
-Endpoint = vpn.sovereign.mesh:51820
-AllowedIPs = 10.42.0.0/16, 100.64.0.0/10
-PersistentKeepalive = 25
-`;
-    return res.status(200).json({
-      config_text: configText,
-      qr_code_data_url:
-        'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect width="100%" height="100%" fill="white"/><text x="10" y="80" fill="black" font-size="12">NeroNet QR Profile</text></svg>',
-      endpoint: 'vpn.sovereign.mesh:51820',
-      expires_at: new Date(Date.now() + 86400000).toISOString()
+    // There is no per-user WireGuard profile: a device enrols itself with a pre-auth
+    // key and proves possession of its own key. This used to answer 200 with a
+    // profile it made up (a fixed address, a public key and an endpoint that exist
+    // nowhere) and an SVG placeholder labelled as a QR code.
+    return res.status(501).json({
+      error: 'not_implemented',
+      message:
+        'Per-user onboarding profiles are not available. Enrol a device with a pre-auth key from Nodes → Enroll Node.'
     });
   } catch (err) {
     next(err);

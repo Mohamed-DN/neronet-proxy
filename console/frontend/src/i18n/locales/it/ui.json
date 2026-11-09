@@ -855,7 +855,9 @@
       "downloadConf": "Scarica .conf",
       "copyConfig": "Copia Configurazione",
       "copied": "Copiato negli Appunti",
-      "close": "Chiudi"
+      "close": "Chiudi",
+      "unavailable": "I profili di onboarding per utente non sono disponibili. Registra un dispositivo con una chiave pre-auth da Nodi → Registra nodo.",
+      "failed": "Impossibile caricare il profilo di onboarding"
     },
     "splitDialog": {
       "title": "Bypass App Split Tunneling",

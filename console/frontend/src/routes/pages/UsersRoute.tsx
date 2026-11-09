@@ -92,6 +92,7 @@ export default function UsersRoute() {
   // QR Modal
   const [selectedUserForQr, setSelectedUserForQr] = useState<UserAccount | null>(null);
   const [qrData, setQrData] = useState<QrOnboardingData | null>(null);
+  const [qrError, setQrError] = useState<string | null>(null);
   const [copiedConfig, setCopiedConfig] = useState(false);
 
   // Split Tunneling Modal
@@ -164,16 +165,22 @@ export default function UsersRoute() {
   const handleOpenQr = async (user: UserAccount) => {
     setSelectedUserForQr(user);
     setCopiedConfig(false);
+    setQrError(null);
+    setQrData(null);
     try {
       const result = await generateQrMutation.mutateAsync(user.id);
       setQrData(result);
-    } catch {
-      setQrData({
-        config_text: `[Interface]\n# NeroNet Profile for ${user.username}\nPrivateKey = <client-private-key>\nAddress = 10.42.100.50/32\nDNS = 100.100.100.100\n\n[Peer]\nPublicKey = 4gC5z7y2M3oN9rPt8xV1wK0jL5qS6uI3dF2hB1eA4gA=\nEndpoint = vpn.sovereign.mesh:51820\nAllowedIPs = 10.42.0.0/16, 100.64.0.0/10\nPersistentKeepalive = 25\n`,
-        qr_code_data_url:
-          'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect width="100%" height="100%" fill="white"/><text x="10" y="80" fill="black" font-size="12">NeroNet QR Profile</text></svg>',
-        endpoint: 'vpn.sovereign.mesh:51820'
-      });
+    } catch (err) {
+      // No fallback profile: one made up here would configure a device against nothing.
+      const status = err && typeof err === 'object' && 'status' in err ? (err as { status: number }).status : 0;
+      setQrError(
+        status === 501
+          ? t(
+              'users.qrDialog.unavailable',
+              'Per-user onboarding profiles are not available. Enrol a device with a pre-auth key from Nodes → Enroll Node.'
+            )
+          : `${t('users.qrDialog.failed', 'The onboarding profile could not be loaded')}: ${err instanceof Error ? err.message : ''}`
+      );
     }
   };
 
@@ -681,7 +688,11 @@ export default function UsersRoute() {
       >
         <div className="space-y-4 pt-2">
           <div className="flex justify-center p-4 rounded-xl bg-surface border border-border">
-            {qrData?.qr_code_data_url ? (
+            {qrError ? (
+              <p role="alert" className="text-sm text-content text-center">
+                {qrError}
+              </p>
+            ) : qrData?.qr_code_data_url ? (
               <img
                 src={qrData.qr_code_data_url}
                 alt="WireGuard Onboarding QR Code"
@@ -697,7 +708,7 @@ export default function UsersRoute() {
           <div className="space-y-2">
             <div className="text-xs font-bold text-muted uppercase tracking-wider">WireGuard Configuration Preview</div>
             <pre className="p-3 rounded-lg bg-surface font-mono text-xs text-content max-h-40 overflow-y-auto border border-border">
-              {qrData?.config_text || 'Loading profile...'}
+              {qrData?.config_text || (qrError ? '—' : 'Loading profile...')}
             </pre>
           </div>
 

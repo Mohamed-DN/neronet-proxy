@@ -5,7 +5,7 @@
  * Features:
  * - Bilateral peering agreement engine with Ed25519 token signing & verification.
  * - Subnet & Device scoping (ALL, SPECIFIC_DEVICES, SPECIFIC_SUBNETS) with CIDR validation.
- * - Imports peered nodes tagged with purple rendering metadata (#8b5cf6 / is_peered: true).
+ * - Imports no peer nodes yet: accepting a token exchanges no node inventory.
  * - Multi-tenant persistence with PostgreSQL 16 & SQLite fallback.
  */
 
@@ -393,29 +393,10 @@ async function acceptPeeringAgreement(peeringToken, actor, expectedFingerprint =
   const endpoint = initiator_endpoint;
   const pubKey = initiator_public_key;
 
-  // Generate imported peered nodes tagged with purple rendering metadata
-  const importedNodes = [
-    {
-      id: `peered-node-${pid}-1`,
-      name: `External-Peer-${pid}-Relay`,
-      peering_id: pid,
-      color: '#8b5cf6',
-      is_peered: true,
-      role: 'RELAY',
-      overlay_ipv4: '100.64.200.1',
-      status: 'active'
-    },
-    {
-      id: `peered-node-${pid}-2`,
-      name: `External-Peer-${pid}-Bridge`,
-      peering_id: pid,
-      color: '#8b5cf6',
-      is_peered: true,
-      role: 'EXIT_BRIDGE',
-      overlay_ipv4: '100.64.200.2',
-      status: 'active'
-    }
-  ];
+  // Accepting a token exchanges no node inventory with the other mesh, so nothing is
+  // imported. This used to invent a relay and a bridge at 100.64.200.1/.2 for every
+  // agreement; the topology and the peered-nodes list showed peers that did not exist.
+  const importedNodes = [];
 
   const updatedToken = {
     ...peeringToken,
@@ -549,7 +530,8 @@ async function listPeeringAgreements() {
       imported_nodes: parseJson(r.imported_nodes, []),
       status: r.status,
       expires_at: r.expires_at,
-      signature: tokenObj.signature || 'valid_sig',
+      // No placeholder: an agreement whose stored token carries no signature says so.
+      signature: tokenObj.signature || null,
       created_at: r.created_at,
       updated_at: r.updated_at
     };

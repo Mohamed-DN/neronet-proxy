@@ -527,8 +527,37 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       const nodesRes = await request(app).get('/api/peering/nodes').set('Authorization', `Bearer ${adminToken}`);
       assert.strictEqual(nodesRes.status, 200);
       assert.ok(Array.isArray(nodesRes.body.peered_nodes));
-      // Only nodes an agreement actually imported; none are invented.
-      assert.ok(nodesRes.body.peered_nodes.every((n) => !String(n.name || '').startsWith('External-Peer-Node')));
+      // Only nodes an agreement actually imported; none are invented. Accepting a token
+      // exchanges no node inventory with the other mesh, so it imports nothing. (The
+      // previous check looked for an "External-Peer-Node" prefix the code never used,
+      // while it invented "External-Peer-<id>-Relay/-Bridge" at 100.64.200.1/.2.)
+      const pid = acceptRes.body.peering_agreement.peering_id;
+      assert.deepStrictEqual(acceptRes.body.peering_agreement.imported_nodes, []);
+      assert.deepStrictEqual(
+        nodesRes.body.peered_nodes.filter((n) => n.peering_id === pid),
+        [],
+        'nodes attributed to an agreement that exchanged no inventory'
+      );
+      assert.ok(!nodesRes.body.peered_nodes.some((n) => /^100\.64\.200\.[12]$/.test(String(n.overlay_ipv4 || ''))));
+    });
+
+    // A stored token without a signature (written by an older build, or damaged) used
+    // to be listed with the placeholder signature "valid_sig".
+    it('never reports a signature an agreement does not carry', async () => {
+      const { getPgPool } = require('../db/index');
+      const pid = `peer-unsigned-${crypto.randomBytes(4).toString('hex')}`;
+      const nowIso = new Date().toISOString();
+      await getPgPool().query(
+        `INSERT INTO peering_agreements
+         (id, initiator_user_id, peer_name, peer_endpoint, peer_token_ed25519, peer_public_key_ed25519, scope_mode, shared_device_ids, shared_subnets, imported_nodes, status, expires_at, created_at, updated_at)
+         VALUES ($1, (SELECT id FROM users ORDER BY created_at LIMIT 1), 'unsigned', 'https://unsigned.example.test', $2, 'none', 'ALL', '[]', '[]', '[]', 'pending', $3, $4, $4)`,
+        [pid, JSON.stringify({ peering_id: pid }), new Date(Date.now() + 3600000).toISOString(), nowIso]
+      );
+      const listRes = await request(app).get('/api/peering/agreements').set('Authorization', `Bearer ${adminToken}`);
+      assert.strictEqual(listRes.status, 200, JSON.stringify(listRes.body));
+      const unsigned = listRes.body.peering_agreements.find((a) => a.peering_id === pid);
+      assert.ok(unsigned, 'the unsigned agreement is listed');
+      assert.strictEqual(unsigned.signature, null, 'a placeholder signature was reported');
     });
 
     it('should retrieve peering agreement by ID via /api/peering/:id and /api/peering/agreements/:id', async () => {

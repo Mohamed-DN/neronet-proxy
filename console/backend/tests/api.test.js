@@ -197,6 +197,22 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     assert(typeof res.body.used_nodes === 'number');
   });
 
+  // It used to answer 200 with a WireGuard profile it made up: a fixed address
+  // (10.42.100.25), a public key and an endpoint (vpn.sovereign.mesh:51820) that exist
+  // nowhere, and an SVG placeholder labelled as a QR code.
+  test('GET /api/users/:id/onboard-qr says per-user profiles do not exist, and invents none', async () => {
+    const res = await request(app)
+      .get(`/api/users/${regularUserId}/onboard-qr`)
+      .set('Authorization', `Bearer ${regularUserToken}`);
+    assert.strictEqual(res.status, 501, JSON.stringify(res.body));
+    assert.strictEqual(res.body.error, 'not_implemented');
+    assert.match(res.body.message, /pre-auth key/i);
+    const body = JSON.stringify(res.body);
+    for (const fabricated of ['config_text', 'qr_code_data_url', '10.42.100.25', 'vpn.sovereign.mesh', '4gC5z7y2M3oN9rPt8xV1wK0jL5qS6uI3dF2hB1eA4gA=']) {
+      assert.ok(!body.includes(fabricated), `response still carries ${fabricated}`);
+    }
+  });
+
   // 4. Node Management & Quick Actions
   test('POST /api/nodes should register a new node with VIP allocation', async () => {
     const res = await request(app).post('/api/nodes').set('Authorization', `Bearer ${regularUserToken}`).send({

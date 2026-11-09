@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations, renderUI } from '../../test/harness';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import UsersRoute from './UsersRoute';
 import { ShellProvider } from '../shell';
 import { createQueryClient } from '../../services/queries/client';
-import type { Organization, QrOnboardingData, UserAccount } from '../../services/types';
+import type { Organization, UserAccount } from '../../services/types';
 import '../../i18n';
 
 const initialMockUsers: UserAccount[] = [
@@ -154,16 +154,16 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
           return jsonResponse({ ok: true, revoked_count: 3 });
         }
 
-        // 5. GET /api/users/:id/onboard-qr
+        // 5. GET /api/users/:id/onboard-qr: the control plane has no per-user profile.
         if (url.includes('/onboard-qr') && method === 'GET') {
-          const qrResponse: QrOnboardingData = {
-            config_text:
-              '[Interface]\nPrivateKey = test-key\nAddress = 10.42.100.50/32\nDNS = 100.100.100.100\n\n[Peer]\nPublicKey = 4gC5z7y2M3oN9rPt8xV1wK0jL5qS6uI3dF2hB1eA4gA=\nEndpoint = vpn.sovereign.mesh:51820\nAllowedIPs = 10.42.0.0/16\n',
-            qr_code_data_url: 'data:image/svg+xml;utf8,<svg><rect width="100" height="100"/></svg>',
-            endpoint: 'vpn.sovereign.mesh:51820',
-            expires_at: new Date(Date.now() + 86400000).toISOString()
-          };
-          return jsonResponse(qrResponse);
+          return jsonResponse(
+            {
+              error: 'not_implemented',
+              message:
+                'Per-user onboarding profiles are not available. Enrol a device with a pre-auth key from Nodes → Enroll Node.'
+            },
+            501
+          );
         }
 
         // 6. PUT /api/users/:id/split-tunneling
@@ -259,7 +259,10 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
     });
   });
 
-  it('3. Generates QR onboarding profile and copies WireGuard config', async () => {
+  // The page used to fall back, on any error, to a WireGuard profile it made up (a
+  // fixed address, a public key and an endpoint that exist nowhere) and offered it to
+  // copy and download. A device configured from it reaches nothing.
+  it('3. Says per-user onboarding profiles are unavailable and invents none', async () => {
     const user = userEvent.setup();
     renderUsers();
 
@@ -267,19 +270,17 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
       expect(screen.getByText('secops_admin')).toBeInTheDocument();
     });
 
-    // Find and click the QR onboarding button for secops_admin
     const qrButtons = screen.getAllByRole('button', { name: /onboarding qr|qr onboarding/i });
     await user.click(nth(qrButtons, 0));
 
-    // Dialog should open with WireGuard profile
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(await screen.findByText(/WireGuard Configuration Preview/i)).toBeInTheDocument();
-
-    // Copy config button
-    const copyBtn = screen.getByRole('button', { name: /copy config|copia configurazione/i });
-    await user.click(copyBtn);
-
-    expect(await screen.findByText(/copied/i)).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/pre-auth key/i);
+    expect(dialog).not.toHaveTextContent(
+      /vpn\.sovereign\.mesh|4gC5z7y2M3oN9rPt8xV1wK0jL5qS6uI3dF2hB1eA4gA=|10\.42\.100\./
+    );
+    expect(within(dialog).queryByRole('img', { name: /qr code/i })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /copy config|copia configurazione/i })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: /download \.conf|scarica \.conf/i })).toBeDisabled();
   });
 
   it('4. Updates split tunneling app bypass rules for a user', async () => {

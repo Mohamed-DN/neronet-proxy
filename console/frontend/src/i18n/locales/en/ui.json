@@ -855,7 +855,9 @@
       "downloadConf": "Download .conf",
       "copyConfig": "Copy Configuration",
       "copied": "Copied to Clipboard",
-      "close": "Close"
+      "close": "Close",
+      "unavailable": "Per-user onboarding profiles are not available. Enrol a device with a pre-auth key from Nodes → Enroll Node.",
+      "failed": "The onboarding profile could not be loaded"
     },
     "splitDialog": {
       "title": "Split Tunneling App Bypass",
