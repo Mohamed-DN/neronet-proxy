@@ -563,16 +563,25 @@
     "policyTests": {
       "title": "Policy tests",
       "description": "Promises about the network. Every rule save is checked against them and refused if one would break.",
-      "empty": "No policy tests yet. Run the packet simulator and save a result as a test.",
+      "empty": "No policy tests yet.",
+      "emptyBody": "Run the packet simulator and save a result as a test.",
       "run": "Run tests",
-      "runResult": "{{passed}}/{{total}} tests pass",
-      "expects": "expects {{verdict}}",
+      "running": "Running tests",
+      "runResult": "{{passed}} of {{total}} tests passed",
+      "packet": "{{src}} to {{dst}}, {{proto}} port {{port}}",
+      "expects": "expected: {{verdict}}",
+      "accepted": "allowed",
+      "dropped": "blocked",
+      "deleteNamed": "Delete test {{packet}}",
+      "deleteTitle": "Delete this policy test?",
+      "deleteConfirm": "Delete test",
       "delete": "Delete test",
       "saveFromSimulator": "Save as policy test",
-      "savedFromSimulator": "Saved as a policy test",
-      "refusedTitle": "Not saved: this change would break these policy tests",
-      "failureLine": "{{src}} → {{dst}} {{proto}}/{{port}}: expected {{expect}}, would be {{got}}",
-      "organization": "organisation {{org}}"
+      "savedFromSimulator": "Saved as a policy test. Every future rule save must keep this result.",
+      "refusedTitle": "Not saved: this change would break these policy tests. Change the rule or delete a test.",
+      "failuresTitle": "Tests that fail now",
+      "failureLine": "{{packet}}: expected {{expect}}, would be {{got}}",
+      "organization": "Organisation {{org}}"
     }
   },
   "audit": {

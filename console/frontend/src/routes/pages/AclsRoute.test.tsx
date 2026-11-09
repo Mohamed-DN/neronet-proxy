@@ -427,7 +427,7 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
     expect(card).toHaveTextContent('ops SSH');
 
     await user.click(screen.getByTestId('run-policy-tests'));
-    expect(await screen.findByTestId('policy-tests-run-result')).toHaveTextContent('1/1');
+    expect(await screen.findByTestId('policy-tests-run-result')).toHaveTextContent('1 of 1 tests passed');
     await expectNoAxeViolations(container);
   });
 
@@ -444,7 +444,8 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
     const list = await screen.findByTestId('policy-test-failures');
     expect(list).toHaveTextContent('100.64.10.1');
     expect(list).toHaveTextContent('100.64.10.2');
-    expect(list).toHaveTextContent('DROP');
+    // The verdicts read as words, not raw ACCEPT/DROP tokens.
+    expect(list).toHaveTextContent('expected allowed, would be blocked');
     expect(screen.getByTestId('save-rule-button')).toBeInTheDocument();
   });
 

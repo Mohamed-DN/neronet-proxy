@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { Play, Plus, Search, ShieldAlert, ShieldCheck, Sliders, Trash2, Edit2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { GlossaryHint } from '../GlossaryHint';
+import AuthContext from '../../context/AuthContext';
 import { PolicyTestFailures, PolicyTestsCard } from './PolicyTestsCard';
 
 import {
@@ -68,6 +69,9 @@ const DEFAULT_FORM: RuleFormState = {
 
 export default function AclsRoute() {
   const { t } = useTranslation('ui');
+  // The same roles the server lets write ACLs and policy tests (requireAclAdmin).
+  const auth = useContext(AuthContext);
+  const canManageAcls = ['super-admin', 'admin'].includes(String(auth?.user?.role || ''));
 
   // Queries
   const { data: aclData, isLoading, error, refetch } = useAclRules();
@@ -517,9 +521,6 @@ export default function AclsRoute() {
         </div>
       )}
 
-      {/* Policy tests (ADR 0028): what every save is checked against. The server enforces who may change them. */}
-      <PolicyTestsCard canManage />
-
       {/* Organization Default Policy Card */}
       <Card>
         <CardHeader
@@ -609,6 +610,9 @@ export default function AclsRoute() {
           />
         }
       />
+
+      {/* Policy tests (ADR 0028): the promises every rule save above must keep. */}
+      <PolicyTestsCard canManage={canManageAcls} />
 
       {/* Rule Builder / Editor Dialog */}
       <Dialog
