@@ -346,6 +346,9 @@ jobs:
       - name: E2E project protection
         run: python3 scripts/dev/test-e2e-project.py
 
+      - name: Release workflow reports every failed build and signature
+        run: sh scripts/dev/test-release-workflow.sh
+
       - name: YAML syntax
         run: |
           python3 -m pip install --quiet pyyaml

@@ -16,10 +16,11 @@ jobs:
     strategy:
       matrix:
         component:
+          # Every component listed here must build: there is no silent skip. The
+          # sovereign-honeypot image the Helm chart names has no maintained Dockerfile
+          # (docker/Dockerfile.honeypot never existed), so it is not published.
           - name: sovereign-node
             dockerfile: docker/Dockerfile.node
-          - name: sovereign-honeypot
-            dockerfile: docker/Dockerfile.honeypot
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -50,7 +51,6 @@ jobs:
             type=raw,value=latest
 
       - name: Build and Push Multi-Arch Container
-        if: hashFiles(matrix.component.dockerfile) != ''
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -64,14 +64,20 @@ jobs:
         uses: sigstore/cosign-installer@v3.5.0
 
       - name: Sign Container Images with Cosign
-        if: hashFiles(matrix.component.dockerfile) != ''
         env:
           COSIGN_EXPERIMENTAL: "true"
           COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
         run: |
           IMAGE_URI="ghcr.io/${{ github.repository_owner }}/${{ matrix.component.name }}:${{ github.ref_name }}"
           echo "Signing image: $IMAGE_URI"
-          cosign sign --key env://COSIGN_KEY "$IMAGE_URI" || cosign sign --yes "$IMAGE_URI" || echo "Cosign signature recorded."
+          # One way to sign, chosen up front, and the step fails if it does not sign.
+          # The old chain ended in `echo "Cosign signature recorded."`, which reported
+          # a signature that had not been made.
+          if [ -n "${COSIGN_KEY:-}" ]; then
+            cosign sign --yes --key env://COSIGN_KEY "$IMAGE_URI"
+          else
+            cosign sign --yes "$IMAGE_URI"
+          fi
 
   package-helm-and-binaries:
     name: Package Multi-Arch Binaries & Helm Charts
@@ -111,9 +117,12 @@ jobs:
             "sovereign-derp-relay"
           )
           
+          # A listed binary that is missing or does not build fails the release; a
+          # release with a hole in it is not published.
           if [ -f go.mod ]; then
             for bin in "${BINARIES[@]}"; do
-              if [ -d "cmd/${bin}" ]; then
+              [ -d "cmd/${bin}" ] || { echo "::error::cmd/${bin} does not exist"; exit 1; }
+              {
                 for platform in "${PLATFORMS[@]}"; do
                   platform_split=(${platform//\// })
                   GOOS=${platform_split[0]}
@@ -124,9 +133,9 @@ jobs:
                   fi
                   OUTPUT_NAME="${bin}-${VERSION}-${GOOS}-${GOARCH}${EXT}"
                   echo "Compiling $OUTPUT_NAME..."
-                  GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X main.Version=${VERSION}" -o "dist/${OUTPUT_NAME}" "./cmd/${bin}" || true
+                  GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X main.Version=${VERSION}" -o "dist/${OUTPUT_NAME}" "./cmd/${bin}"
                 done
-              fi
+              }
             done
           fi
 
