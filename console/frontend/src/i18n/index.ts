@@ -1,28 +1,46 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
-import enUi from './locales/en/ui.json';
-import enChrome from './locales/en/chrome.json';
-import itUi from './locales/it/ui.json';
-import itChrome from './locales/it/chrome.json';
-
 import { LANGUAGE_STORAGE_KEY } from '../ui/tokens';
 
 export const LANGUAGES = ['en', 'it'] as const;
 export type Language = (typeof LANGUAGES)[number];
 export const DEFAULT_LANGUAGE: Language = 'en';
 
+type LocaleFile = Record<string, unknown>;
+
 /*
  * Namespaces follow the areas of the console. `ui` belongs to the primitives
- * and is loaded everywhere; `chrome` is the shell around the pages. Each page
- * area gets its own namespace when its own work package translates it, so a
- * translator never has to open one file that holds the whole product.
+ * and is loaded everywhere; `chrome` is the shell around the pages. Every file
+ * in locales/<lang>/ is a namespace named after the file, so a page area adds
+ * its keys by adding a file and never edits this module. A key a page namespace
+ * lacks falls back to `ui`.
  */
-export const NAMESPACES = ['ui', 'chrome'] as const;
+const enFiles = import.meta.glob('./locales/en/*.json', { eager: true, import: 'default' }) as Record<
+  string,
+  LocaleFile
+>;
+const itFiles = import.meta.glob('./locales/it/*.json', { eager: true, import: 'default' }) as Record<
+  string,
+  LocaleFile
+>;
+
+function namespaceOf(path: string): string {
+  return path
+    .split('/')
+    .pop()!
+    .replace(/\.json$/, '');
+}
+
+function toResources(files: Record<string, LocaleFile>): Record<string, LocaleFile> {
+  return Object.fromEntries(Object.entries(files).map(([path, json]) => [namespaceOf(path), json]));
+}
+
+export const NAMESPACES: string[] = Object.keys(enFiles).map(namespaceOf).sort();
 
 const resources = {
-  en: { ui: enUi, chrome: enChrome },
-  it: { ui: itUi, chrome: itChrome }
+  en: toResources(enFiles),
+  it: toResources(itFiles)
 };
 
 export function isLanguage(value: unknown): value is Language {
@@ -64,6 +82,7 @@ export function initI18n(language: Language = detectLanguage()) {
       fallbackLng: DEFAULT_LANGUAGE,
       ns: NAMESPACES,
       defaultNS: 'ui',
+      fallbackNS: 'ui',
       interpolation: { escapeValue: false },
       returnNull: false
     });
