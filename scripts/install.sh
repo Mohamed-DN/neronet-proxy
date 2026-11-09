@@ -14,6 +14,8 @@ DATA_DIR="${NERONET_DATA_DIR:-/var/lib/neronet}"
 PROFILE="${NERONET_PROFILE:-standard}"
 SYSTEMD_UNIT="neronet.service"
 HEALTH_TIMEOUT="${NERONET_INSTALL_HEALTH_TIMEOUT:-120}"
+# postgres, valkey, backend and the console: the services with a health check.
+HEALTHY_SERVICES="${NERONET_INSTALL_HEALTHY_SERVICES:-4}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[NeroNet]${NC} $*"; }
@@ -106,8 +108,9 @@ wait_healthy() {
   info "Waiting for services (up to ${HEALTH_TIMEOUT}s)..."
   local end=$((SECONDS + HEALTH_TIMEOUT))
   while [[ $SECONDS -lt $end ]]; do
-    local h; h=$(${COMPOSE_CMD} -f "${INSTALL_DIR}/docker-compose.yml" ps 2>/dev/null | grep -c "healthy" || true)
-    [[ "$h" -ge 2 ]] && { success "Services healthy!"; return 0; }
+    # "(healthy)" only: a bare "healthy" also matches "(unhealthy)".
+    local h; h=$(${COMPOSE_CMD} -f "${INSTALL_DIR}/docker-compose.yml" ps 2>/dev/null | grep -c "(healthy)" || true)
+    [[ "$h" -ge "$HEALTHY_SERVICES" ]] && { success "Services healthy!"; return 0; }
     echo -n "."; sleep 5
   done
   warn "Not healthy after ${HEALTH_TIMEOUT}s - check: ${COMPOSE_CMD} ps"

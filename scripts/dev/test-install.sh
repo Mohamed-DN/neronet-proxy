@@ -26,6 +26,7 @@ cat > /fake/bin/podman <<"EOF"
 echo "$*" >> /work/engine.log
 if [[ "$*" == *" ps"* ]]; then
   for _ in $(seq 1 "${FAKE_HEALTHY:-0}"); do echo "svc  Up (healthy)"; done
+  for _ in $(seq 1 "${FAKE_UNHEALTHY:-0}"); do echo "svc  Up (unhealthy)"; done
 fi
 exit 0
 EOF
@@ -36,7 +37,7 @@ layout() { rm -rf /inst /data /pkg; mkdir -p /pkg/scripts; cp /src/scripts/insta
 run() { NERONET_INSTALL_DIR=/inst NERONET_DATA_DIR=/data NERONET_INSTALL_HEALTH_TIMEOUT=3 bash /pkg/scripts/install.sh "$@" > /work/out 2>&1; echo $? > /work/rc; }
 
 layout
-FAKE_HEALTHY=2 run
+FAKE_HEALTHY=4 run
 check "a healthy install succeeds" "[ \"\$(cat /work/rc)\" = 0 ]"
 check ".env is written with mode 600" "[ \"\$(stat -c %a /inst/.env 2>/dev/null)\" = 600 ]"
 pass=$(sed -n "s/^SOVEREIGN_ADMIN_PASS=//p" /inst/.env 2>/dev/null)
@@ -45,7 +46,7 @@ check "no generated secret is printed" "! grep -qE \"^(POSTGRES_PASSWORD|SOVEREI
 check "the console is announced on https" "grep -q \"https://127.0.0.1:8443\" /work/out && ! grep -q \"http://127.0.0.1:8443\" /work/out"
 
 before=$(sha256sum /inst/.env | cut -d" " -f1)
-FAKE_HEALTHY=2 run
+FAKE_HEALTHY=4 run
 check "a rerun succeeds" "[ \"\$(cat /work/rc)\" = 0 ]"
 check "a rerun keeps the existing .env byte for byte" "[ \"\$(sha256sum /inst/.env | cut -d\" \" -f1)\" = \"\$before\" ]"
 
@@ -54,12 +55,20 @@ FAKE_HEALTHY=0 run
 check "a stack that never becomes healthy is a failed install" "[ \"\$(cat /work/rc)\" != 0 ] && ! grep -q \"installed!\" /work/out"
 
 layout
-FAKE_HEALTHY=2 run --control-url https://example.test
+FAKE_HEALTHY=1 FAKE_UNHEALTHY=3 run
+check "unhealthy services are not counted as healthy" "[ \"$(cat /work/rc)\" != 0 ] && ! grep -q \"installed!\" /work/out"
+
+layout
+FAKE_HEALTHY=2 run
+check "two healthy services out of four core ones is not an install" "[ \"$(cat /work/rc)\" != 0 ]"
+
+layout
+FAKE_HEALTHY=4 run --control-url https://example.test
 check "an unsupported --control-url is refused, not ignored" "[ \"\$(cat /work/rc)\" != 0 ] && [ ! -e /inst/.env ]"
 
 layout
 rm /pkg/docker-compose.yml
-FAKE_HEALTHY=2 run
+FAKE_HEALTHY=4 run
 check "no compose file next to the installer is a failed install" "[ \"\$(cat /work/rc)\" != 0 ]"
 
 exit $fail
