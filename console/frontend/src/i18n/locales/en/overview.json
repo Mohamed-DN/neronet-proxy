@@ -1,1 +1,55 @@
-{}
+{
+  "title": "Network overview",
+  "description": "The network at a glance: how many devices are online, how much data is moving, and where the devices are.",
+  "unreachable": "Cannot reach the network server. Try again shortly.",
+  "staleWarning": "The numbers below may be out of date.",
+  "openMap": "Open the network map",
+  "addDevice": "Add device",
+  "answering": "Devices answering",
+  "blocked": "Blocked",
+  "usersConnected": "Users connected",
+  "trafficNow": "Traffic right now",
+  "rateHint": "A second reading is needed to calculate speed",
+  "status": {
+    "none": "No devices registered yet.",
+    "all_one": "The device is answering.",
+    "all_other": "All {{count}} devices are answering.",
+    "some_one": "{{down}} of {{total}} devices is not answering.",
+    "some_other": "{{down}} of {{total}} devices are not answering.",
+    "noneAnswering": "No device is answering.",
+    "unknown": "The control server did not answer, so device status is unknown."
+  },
+  "sketch": {
+    "title": "Where your devices are",
+    "description_one": "{{live}} of {{total}} devices answered in the last {{seconds}} seconds, in {{count}} country.",
+    "description_other": "{{live}} of {{total}} devices answered in the last {{seconds}} seconds, in {{count}} countries.",
+    "center": "This network",
+    "hollow": "Hollow circle: no device there answered.",
+    "caption": "Lines show where devices are registered. They do not show traffic.",
+    "more": "+{{count}} more"
+  },
+  "checks": {
+    "title": "Security checks",
+    "verified": "Security checks confirmed",
+    "unverified": "Checks not confirmed yet",
+    "nonCompliant": "Fail security checks"
+  },
+  "emptyFleet": {
+    "title": "No devices yet",
+    "body": "Add the first device to see the network here."
+  },
+  "timeseriesTitle": "Network traffic over time",
+  "timeseriesDesc": "Data moving in and out of the network, measured every minute.",
+  "trafficSource": "Data source: device counters",
+  "traffic_measured": "Complete data",
+  "traffic_partial": "Partial data",
+  "traffic_stale": "Old data",
+  "traffic_unknown": "Not available yet",
+  "trafficCoverage": "Data from {{measured}} of {{total}} devices in the last {{seconds}} seconds",
+  "noSamples": "No data for this period",
+  "noSamplesDesc": "Traffic is measured every minute. Two measurements are needed to calculate speed.",
+  "inbound": "Received",
+  "outbound": "Sent",
+  "trafficUnit": "MiB/s",
+  "lifetimeTransfer": "Total transferred since measuring began:"
+}

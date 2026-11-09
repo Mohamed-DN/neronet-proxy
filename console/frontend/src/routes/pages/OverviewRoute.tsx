@@ -1,39 +1,23 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  Activity,
-  AlertTriangle,
-  ArrowDownLeft,
-  ArrowUpRight,
-  Clock,
-  Globe2,
-  Server,
-  ShieldCheck,
-  TrendingUp,
-  Users
-} from 'lucide-react';
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip as RechartsTooltip,
-  XAxis,
-  YAxis
-} from 'recharts';
+import { Globe2, Plus } from 'lucide-react';
 
 import { PageFrame } from '../PageFrame';
+import { GlossaryHint } from '../GlossaryHint';
 import { ROUTES, type RouteId } from '../paths';
+import { useShell } from '../shell';
 import { useStatsGeoMatrix, useStatsOverview, useStatsTimeseries } from '../../services/queries/stats';
+import { LineChart } from '../../charts/LineChart';
+import { NetworkSketch } from '../../charts/NetworkSketch';
 import { Button } from '../../ui/Button';
-import { Card, CardHeader } from '../../ui/Card';
-import { EmptyState, Skeleton } from '../../ui/States';
-import { Stat } from '../../ui/Stat';
-import { StatusBadge } from '../../ui/StatusBadge';
+import { PageHeader } from '../../ui/PageHeader';
+import { EmptyState, ErrorState, NotMeasured, Skeleton } from '../../ui/States';
+
+const RANGES = ['1h', '6h', '24h', '7d'] as const;
 
 /**
- * Formats byte count with binary prefixes, or an em-dash when unmeasured.
+ * Formats byte count with binary prefixes (base 1024, so KiB and MiB).
  */
 export function formatBytes(bytes: number | string | null | undefined): string {
   if (bytes === null || bytes === undefined) return '—';
@@ -50,9 +34,19 @@ export interface OverviewRouteProps {
   onNavigateTab?: (tab: RouteId) => void;
 }
 
+function Figure({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-2.5">
+      <dt className="text-body text-muted">{label}</dt>
+      <dd className="text-body font-medium tabular-nums text-content">{children}</dd>
+    </div>
+  );
+}
+
 export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
-  const { t } = useTranslation('ui');
+  const { t } = useTranslation('overview');
   const navigate = useNavigate();
+  const shell = useShell();
   const [timeRange, setTimeRange] = useState<string>('24h');
 
   const overviewQuery = useStatsOverview();
@@ -65,45 +59,36 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
   const geoMatrix = geoQuery.data ?? [];
 
   const loadError = overviewQuery.error?.message || timeseriesQuery.error?.message || geoQuery.error?.message || null;
+  const unreachable = overviewQuery.isError && !stats;
 
+  // Counts come from the server; a value it did not send is shown as not measured, never as zero.
   const totalNodes = stats?.total_nodes ?? stats?.active_nodes ?? 0;
-  const activeNodes = stats?.active_nodes ?? 0;
+  const liveNodes = Math.min(stats?.active_nodes ?? 0, totalNodes);
+  const downNodes = Math.max(0, totalNodes - liveNodes);
   const quarantinedNodes = stats?.quarantined_nodes ?? 0;
   const activeUsers = stats?.active_users ?? stats?.connected_users ?? 0;
+  const verifiedCompliant = stats?.posture_verified_compliant_nodes ?? null;
+  const unverifiedNodes = stats?.posture_unverified_nodes ?? null;
+  const nonCompliantNodes = stats?.posture_non_compliant_nodes ?? null;
+  const livenessSeconds = stats?.liveness_window_seconds ?? 60;
 
-  // Posture counts: with zero total nodes, posture is unmeasured, never 0 or fake.
-  const verifiedCompliant = totalNodes === 0 ? null : (stats?.posture_verified_compliant_nodes ?? null);
-  const unverifiedNodes = totalNodes === 0 ? null : (stats?.posture_unverified_nodes ?? null);
-  const nonCompliantNodes = totalNodes === 0 ? null : (stats?.posture_non_compliant_nodes ?? null);
-
-  // Bandwidth rate: needs two samples to derive rate, null otherwise.
   const rxBandwidth = stats?.total_bandwidth_rx_mb_s ?? null;
   const txBandwidth = stats?.total_bandwidth_tx_mb_s ?? null;
   const haveRates = rxBandwidth !== null && txBandwidth !== null;
   const totalBandwidth = haveRates ? +(Number(rxBandwidth) + Number(txBandwidth)).toFixed(2) : null;
 
-  // Mesh Posture Score Truthfulness:
-  // An empty fleet (0 nodes) has never had posture measured.
-  // It MUST be null so it renders as "Not measured" / data-state="not-measured".
-  const healthScore = totalNodes === 0 ? null : (stats?.network_health_score ?? null);
+  const statusSentence = (() => {
+    if (unreachable) return t('status.unknown');
+    if (totalNodes === 0) return t('status.none');
+    if (liveNodes === 0) return t('status.noneAnswering');
+    if (downNodes === 0) return t('status.all', { count: totalNodes });
+    return t('status.some', { count: downNodes, down: downNodes, total: totalNodes });
+  })();
+  const answeringPercent = totalNodes === 0 ? 0 : Math.round((liveNodes / totalNodes) * 100);
 
-  const postureStatus =
-    healthScore === null ? 'not-measured' : healthScore === 100 ? 'ok' : healthScore >= 80 ? 'warning' : 'critical';
+  const sites = geoMatrix.map((g) => ({ id: g.code, label: g.code, total: g.nodes, live: g.live }));
 
-  const postureLabel =
-    healthScore === null
-      ? t('state.notMeasured')
-      : healthScore === 100
-        ? t('overview.allReachable')
-        : healthScore >= 80
-          ? t('overview.degraded')
-          : healthScore > 0
-            ? t('overview.impaired')
-            : t('overview.fleetOffline');
-
-  const dash = (v: number | string | null | undefined) => (v === null || v === undefined ? '—' : v);
-
-  const handleNavigateTopology = () => {
+  const handleOpenMap = () => {
     if (onNavigateTab) {
       onNavigateTab('topology');
     } else {
@@ -111,418 +96,184 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
     }
   };
 
-  const CustomTooltip = ({
-    active,
-    payload,
-    label
-  }: {
-    active?: boolean;
-    payload?: Array<{ value: number; payload: { latency?: number } }>;
-    label?: string;
-  }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="rounded-control border border-border bg-surface-raised/95 p-3 font-mono text-micro shadow-elevated backdrop-blur-md">
-          <div className="mb-1 flex items-center gap-1.5 text-muted">
-            <Clock className="h-3 w-3 text-subtle" />
-            <span>Time: {label}</span>
-          </div>
-          <div className="flex items-center justify-between gap-4 text-accent">
-            <span>{t('overview.inbound')}:</span>
-            <span className="font-semibold tabular-nums">{payload[0]?.value} MiB/s</span>
-          </div>
-          <div className="flex items-center justify-between gap-4 text-info">
-            <span>{t('overview.outbound')}:</span>
-            <span className="font-semibold tabular-nums">{payload[1]?.value} MiB/s</span>
-          </div>
-          {payload[0]?.payload?.latency !== undefined && payload[0]?.payload?.latency !== null && (
-            <div className="mt-1 flex items-center justify-between gap-4 border-t border-border pt-1 text-success">
-              <span>Avg Latency:</span>
-              <span className="font-semibold tabular-nums">{payload[0].payload.latency} ms</span>
-            </div>
-          )}
-        </div>
-      );
+  const chartSeries = [
+    {
+      id: 'rx',
+      label: t('inbound'),
+      tone: 'chart-1' as const,
+      values: timeseries.map((p) => (typeof p.rx === 'number' ? p.rx : null))
+    },
+    {
+      id: 'tx',
+      label: t('outbound'),
+      tone: 'chart-2' as const,
+      values: timeseries.map((p) => (typeof p.tx === 'number' ? p.tx : null))
     }
-    return null;
-  };
+  ];
+
+  const primaryAction =
+    !overviewQuery.isLoading && !unreachable && totalNodes === 0 ? (
+      <Button variant="primary" icon={Plus} onClick={shell.openEnroll}>
+        {t('addDevice')}
+      </Button>
+    ) : undefined;
 
   return (
     <PageFrame>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <h1 className="text-title font-semibold text-content">{t('overview.title')}</h1>
-              <StatusBadge
-                status={loadError ? 'critical' : 'ok'}
-                label={loadError ? t('overview.unreachable') : t('overview.live')}
-              />
-            </div>
-            <p className="mt-1 text-caption text-subtle">{t('overview.description')}</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" icon={Globe2} onClick={handleNavigateTopology}>
-              {t('overview.viewTopology')}
+      <div className="space-y-8">
+        <PageHeader
+          title={t('title')}
+          description={t('description')}
+          actions={
+            <Button variant="secondary" icon={Globe2} onClick={handleOpenMap}>
+              {t('openMap')}
             </Button>
-          </div>
-        </div>
+          }
+          primaryAction={primaryAction}
+        />
 
-        {/* Stale Warning Alert */}
-        {loadError && (
-          <div
-            role="alert"
-            className="flex items-start gap-3 rounded-card border border-danger/30 bg-danger/10 p-3 text-caption text-content"
-          >
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
-            <div>
-              <p className="font-semibold text-danger">{t('overview.staleWarning')}</p>
-              <p className="mt-0.5 text-micro text-muted">{loadError}</p>
-            </div>
+        {loadError && !unreachable && (
+          <div role="alert" className="flex flex-col gap-1 border-l-2 border-danger pl-3 text-body text-content">
+            <p className="font-medium">{t('staleWarning')}</p>
+            <p className="text-caption text-muted">{loadError}</p>
           </div>
         )}
 
-        {/* 4 KPI Metric Cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {/* Card 1: Active Sovereign Nodes */}
-          <Card className="flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between text-caption text-muted">
-                <span>{t('overview.activeNodes')}</span>
-                <Server className="h-4 w-4 text-accent" />
+        {overviewQuery.isLoading ? (
+          <Skeleton lines={3} />
+        ) : unreachable ? (
+          <ErrorState title={t('unreachable')} detail={loadError} onRetry={() => void overviewQuery.refetch()} />
+        ) : totalNodes === 0 ? (
+          <EmptyState title={t('emptyFleet.title')} body={t('emptyFleet.body')} />
+        ) : (
+          <>
+            <section>
+              <p className="text-heading font-medium text-content">{statusSentence}</p>
+              <div
+                role="img"
+                aria-label={statusSentence}
+                data-testid="answering-bar"
+                className="mt-3 h-2 w-full overflow-hidden rounded-full bg-surface-sunken"
+              >
+                <div className="h-full bg-content" style={{ width: `${answeringPercent}%` }} />
               </div>
-              <div className="mt-2">
-                {overviewQuery.isLoading ? (
-                  <Skeleton lines={2} />
-                ) : (
-                  <Stat label="" value={activeNodes} unit={`/ ${totalNodes} ${t('overview.enrolled')}`} />
-                )}
-              </div>
-            </div>
+            </section>
 
-            <div className="mt-4 border-t border-border pt-3 font-mono text-[11px] text-muted space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-success">
-                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                  <span>
-                    {dash(verifiedCompliant)} {t('overview.postureVerified')}
-                  </span>
-                </span>
-                <span className="flex items-center gap-1.5 text-subtle">
-                  <span className="h-1.5 w-1.5 rounded-full bg-border-strong" />
-                  <span>
-                    {dash(unverifiedNodes)} {t('overview.unverified')}
-                  </span>
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-warning">
-                  <span className="h-1.5 w-1.5 rounded-full bg-warning" />
-                  <span>
-                    {dash(nonCompliantNodes)} {t('overview.nonCompliant')}
-                  </span>
-                </span>
-                <span className="flex items-center gap-1.5 text-danger">
-                  <span className="h-1.5 w-1.5 rounded-full bg-danger" />
-                  <span>
-                    {quarantinedNodes} {t('overview.quarantined')}
-                  </span>
-                </span>
-              </div>
-            </div>
-          </Card>
+            <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
+              <NetworkSketch
+                title={t('sketch.title')}
+                description={t('sketch.description', {
+                  count: geoMatrix.length,
+                  live: liveNodes,
+                  total: totalNodes,
+                  seconds: livenessSeconds
+                })}
+                centerLabel={t('sketch.center')}
+                sites={sites}
+                moreLabel={(hidden) => t('sketch.more', { count: hidden })}
+                hollowLegend={`${t('sketch.hollow')} ${t('sketch.caption')}`}
+              />
 
-          {/* Card 2: Users */}
-          <Card className="flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between text-caption text-muted">
-                <span>{t('overview.totalUsers')}</span>
-                <Users className="h-4 w-4 text-info" />
-              </div>
-              <div className="mt-2">
-                {overviewQuery.isLoading ? (
-                  <Skeleton lines={2} />
-                ) : (
-                  <Stat label="" value={activeUsers} unit={t('overview.activeTenants')} />
-                )}
-              </div>
-            </div>
+              <div>
+                <dl className="divide-y divide-border-subtle border-y border-border-subtle">
+                  <Figure label={t('answering')}>{`${liveNodes} of ${totalNodes}`}</Figure>
+                  <Figure label={t('blocked')}>{quarantinedNodes}</Figure>
+                  <Figure label={t('usersConnected')}>{activeUsers}</Figure>
+                  <Figure label={t('trafficNow')}>
+                    {totalBandwidth === null ? (
+                      <span className="flex flex-col items-end">
+                        <NotMeasured />
+                        <span className="text-caption font-normal text-subtle">{t('rateHint')}</span>
+                      </span>
+                    ) : (
+                      `${totalBandwidth} ${t('trafficUnit')}`
+                    )}
+                  </Figure>
+                </dl>
 
-            <div className="mt-4 border-t border-border pt-3 text-[11px] text-subtle">
-              {t('overview.sameAccessHint')}
-            </div>
-          </Card>
-
-          {/* Card 3: Throughput */}
-          <Card className="flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between text-caption text-muted">
-                <span>{t('overview.throughput')}</span>
-                <Activity className="h-4 w-4 text-success" />
-              </div>
-              <div className="mt-2">
-                {overviewQuery.isLoading ? (
-                  <Skeleton lines={2} />
-                ) : haveRates ? (
-                  <Stat label="" value={totalBandwidth} unit="MiB/s" />
-                ) : (
-                  <Stat label="" value={null} hint={t('overview.rateHint')} />
-                )}
-              </div>
-            </div>
-
-            <div className="mt-4 border-t border-border pt-3 font-mono text-[11px] text-muted">
-              {haveRates ? (
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1 text-accent">
-                    <ArrowDownLeft className="h-3 w-3" />
-                    <span className="tabular-nums">RX: {rxBandwidth} MiB/s</span>
-                  </span>
-                  <span className="flex items-center gap-1 text-info">
-                    <ArrowUpRight className="h-3 w-3" />
-                    <span className="tabular-nums">TX: {txBandwidth} MiB/s</span>
-                  </span>
+                <div className="mt-6 flex items-center gap-2 text-caption text-muted">
+                  <span>{t('checks.title')}</span>
+                  <GlossaryHint term="posture" />
                 </div>
-              ) : (
-                <span className="text-subtle">{t('overview.rateHint')}</span>
-              )}
-            </div>
-          </Card>
-
-          {/* Card 4: Mesh Posture Score (Truthful rendering: null if totalNodes === 0) */}
-          <Card className="flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between text-caption text-muted">
-                <span>{t('overview.postureScore')}</span>
-                <ShieldCheck className="h-4 w-4 text-success" />
-              </div>
-              <div className="mt-2">
-                {overviewQuery.isLoading ? (
-                  <Skeleton lines={2} />
-                ) : (
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <Stat label="" value={healthScore} unit={healthScore === null ? undefined : '%'} />
-                    <StatusBadge status={postureStatus} label={postureLabel} />
-                  </div>
-                )}
+                <dl className="mt-2 divide-y divide-border-subtle border-y border-border-subtle">
+                  <Figure label={t('checks.verified')}>{verifiedCompliant ?? <NotMeasured />}</Figure>
+                  <Figure label={t('checks.unverified')}>{unverifiedNodes ?? <NotMeasured />}</Figure>
+                  <Figure label={t('checks.nonCompliant')}>{nonCompliantNodes ?? <NotMeasured />}</Figure>
+                </dl>
               </div>
             </div>
 
-            <div className="mt-4 border-t border-border pt-3 font-mono text-[11px] text-subtle tabular-nums">
-              {totalNodes === 0 ? (
-                <span>{t('overview.noNodesHint')}</span>
-              ) : (
-                <span>
-                  {t('overview.reachableHint', {
-                    active: activeNodes,
-                    total: totalNodes,
-                    seconds: stats?.liveness_window_seconds ?? 60
-                  })}
-                </span>
-              )}
-            </div>
-          </Card>
-        </div>
-
-        {/* Charts & Geographic Presence Grid */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Timeseries Throughput Chart (2 Cols) */}
-          <Card className="lg:col-span-2">
-            <CardHeader
-              as="h2"
-              title={
-                <span className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-accent" />
-                  <span>{t('overview.timeseriesTitle')}</span>
-                </span>
-              }
-              description={t('overview.timeseriesDesc')}
-              actions={
-                <div className="flex items-center gap-1 rounded-control border border-border bg-surface p-0.5 text-caption font-mono">
-                  {(['1h', '6h', '24h', '7d'] as const).map((r) => (
+            <section aria-labelledby="overview-traffic-title" className="border-t border-border-subtle pt-6">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 id="overview-traffic-title" className="text-heading font-medium text-content">
+                    {t('timeseriesTitle')}
+                  </h2>
+                  <p className="mt-1 max-w-[65ch] text-caption text-muted">{t('timeseriesDesc')}</p>
+                </div>
+                <div role="group" aria-label={t('timeseriesTitle')} className="flex items-center gap-1">
+                  {RANGES.map((r) => (
                     <button
                       key={r}
                       type="button"
                       onClick={() => setTimeRange(r)}
                       aria-pressed={timeRange === r}
-                      className={`rounded-sm px-2.5 py-1 text-micro transition-colors ${
-                        timeRange === r ? 'bg-accent/20 font-semibold text-accent' : 'text-subtle hover:text-content'
+                      className={`rounded-sm px-2.5 py-1 text-caption tabular-nums focus-visible:outline-focus ${
+                        timeRange === r ? 'bg-surface-hover font-medium text-content' : 'text-muted hover:text-content'
                       }`}
                     >
                       {r}
                     </button>
                   ))}
                 </div>
-              }
-            />
-
-            <div
-              data-testid="native-traffic-coverage"
-              className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted"
-            >
-              <span>{t('overview.trafficSource')}</span>
-              <span>{t(`overview.traffic_${coverage?.status || 'unknown'}`)}</span>
-              {coverage && (
-                <span>
-                  {t('overview.trafficCoverage', {
-                    measured: coverage.measured_nodes,
-                    total: coverage.total_nodes,
-                    seconds: coverage.freshness_seconds
-                  })}
-                </span>
-              )}
-            </div>
-            <div className="h-72 w-full pt-4">
-              {timeseriesQuery.isLoading ? (
-                <div className="flex h-full w-full items-center justify-center">
-                  <Skeleton lines={6} className="w-full" />
-                </div>
-              ) : timeseries.length === 0 ? (
-                <EmptyState title={t('overview.noSamples')} body={t('overview.noSamplesDesc')} className="h-full" />
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={timeseries} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorRx" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="rgb(var(--color-accent))" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="rgb(var(--color-accent))" stopOpacity={0.0} />
-                      </linearGradient>
-                      <linearGradient id="colorTx" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="rgb(var(--color-info))" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="rgb(var(--color-info))" stopOpacity={0.0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--color-border))" vertical={false} />
-                    <XAxis
-                      dataKey="time"
-                      stroke="rgb(var(--color-content-muted))"
-                      tick={{ fill: 'rgb(var(--color-content-muted))', fontSize: 11, fontFamily: 'monospace' }}
-                    />
-                    <YAxis
-                      stroke="rgb(var(--color-content-muted))"
-                      tick={{ fill: 'rgb(var(--color-content-muted))', fontSize: 11, fontFamily: 'monospace' }}
-                      unit=" MiB/s"
-                    />
-                    <RechartsTooltip content={<CustomTooltip />} />
-                    <Area
-                      type="monotone"
-                      dataKey="rx"
-                      stroke="rgb(var(--color-accent))"
-                      strokeWidth={2}
-                      fillOpacity={1}
-                      fill="url(#colorRx)"
-                      name={t('overview.inbound')}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="tx"
-                      stroke="rgb(var(--color-info))"
-                      strokeWidth={2}
-                      fillOpacity={1}
-                      fill="url(#colorTx)"
-                      name={t('overview.outbound')}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center justify-between border-t border-border pt-3 font-mono text-micro text-muted">
-              <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1.5 text-accent">
-                  <span className="h-2 w-2 rounded-full bg-accent" />
-                  <span>{t('overview.inbound')}</span>
-                </span>
-                <span className="flex items-center gap-1.5 text-info">
-                  <span className="h-2 w-2 rounded-full bg-info" />
-                  <span>{t('overview.outbound')}</span>
-                </span>
               </div>
-              <span>
-                {t('overview.lifetimeTransfer')}{' '}
-                <strong className="text-content tabular-nums" title={stats?.total_bandwidth_bytes ?? undefined}>
-                  {formatBytes(stats?.total_bandwidth_bytes)}
-                </strong>
-              </span>
-            </div>
-          </Card>
 
-          {/* Geographic Distribution Matrix (1 Col) */}
-          <Card className="flex flex-col justify-between">
-            <div>
-              <CardHeader
-                as="h2"
-                title={
-                  <span className="flex items-center gap-2">
-                    <Globe2 className="h-4 w-4 text-info" />
-                    <span>{t('overview.geoTitle')}</span>
+              <div data-testid="native-traffic-coverage" className="mt-3 flex flex-col gap-0.5 text-caption text-muted">
+                <span>{t('trafficSource')}</span>
+                <span>{t(`traffic_${coverage?.status || 'unknown'}`)}</span>
+                {coverage && (
+                  <span>
+                    {t('trafficCoverage', {
+                      measured: coverage.measured_nodes,
+                      total: coverage.total_nodes,
+                      seconds: coverage.freshness_seconds
+                    })}
                   </span>
-                }
-                description={t('overview.geoDesc')}
-                actions={
-                  <span className="font-mono text-micro text-subtle tabular-nums">
-                    {t('overview.countriesCount', { count: geoMatrix.length })}
-                  </span>
-                }
-              />
-
-              <div className="mt-2 max-h-72 space-y-2.5 overflow-y-auto pr-1">
-                {geoQuery.isLoading ? (
-                  <Skeleton lines={4} />
-                ) : geoMatrix.length === 0 ? (
-                  <EmptyState title={t('overview.noNodesGeo')} body={t('overview.noNodesGeoDesc')} className="p-4" />
-                ) : (
-                  geoMatrix.map((g) => (
-                    <div
-                      key={g.code}
-                      className="flex items-center justify-between rounded-control border border-border bg-surface p-2.5 font-mono text-micro transition-colors hover:border-border-strong"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-baseline gap-1.5 font-semibold text-content">
-                          <span className="truncate">{g.country}</span>
-                          <span className="text-[10px] font-normal text-subtle">{g.code}</span>
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-muted tabular-nums">
-                          {g.live}/{g.nodes} {t('overview.up')}
-                          {g.relays > 0 && (
-                            <>
-                              {' '}
-                              • {g.relays} {t('overview.relay')}
-                            </>
-                          )}
-                          {g.exits > 0 && (
-                            <>
-                              {' '}
-                              • {g.exits} {t('overview.exit')}
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="ml-3 shrink-0 text-right">
-                        <div className="font-semibold text-accent tabular-nums">
-                          {g.avg_latency === null || g.avg_latency === undefined ? (
-                            <span className="font-normal text-subtle text-[10px]">{t('overview.noRtt')}</span>
-                          ) : (
-                            `${g.avg_latency}ms`
-                          )}
-                        </div>
-                        <StatusBadge
-                          compact
-                          status={g.status === 'Online' ? 'ok' : g.status === 'Degraded' ? 'warning' : 'critical'}
-                          label={g.status}
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-                  ))
                 )}
               </div>
-            </div>
-          </Card>
-        </div>
+
+              <div className="mt-4">
+                {timeseriesQuery.isLoading ? (
+                  <Skeleton lines={5} />
+                ) : timeseries.length === 0 ? (
+                  <EmptyState title={t('noSamples')} body={t('noSamplesDesc')} />
+                ) : (
+                  <LineChart
+                    title={t('timeseriesTitle')}
+                    labels={timeseries.map((p) => p.time)}
+                    series={chartSeries}
+                    unit={t('trafficUnit')}
+                    height={208}
+                  />
+                )}
+              </div>
+
+              <p className="mt-4 flex flex-wrap items-baseline justify-between gap-2 text-caption text-muted">
+                <span>{t('lifetimeTransfer')}</span>
+                <strong
+                  className="font-medium tabular-nums text-content"
+                  title={stats?.total_bandwidth_bytes ?? undefined}
+                >
+                  {stats?.total_bandwidth_bytes === null || stats?.total_bandwidth_bytes === undefined ? (
+                    <NotMeasured />
+                  ) : (
+                    formatBytes(stats.total_bandwidth_bytes)
+                  )}
+                </strong>
+              </p>
+            </section>
+          </>
+        )}
       </div>
     </PageFrame>
   );

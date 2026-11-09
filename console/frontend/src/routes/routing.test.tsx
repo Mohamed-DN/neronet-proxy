@@ -16,6 +16,10 @@ import { RouteError } from './RouteError';
 import { LOGIN_PATH, ROUTES, nodePath, safeNextPath } from './paths';
 import { routes } from './router';
 import { ShellProvider } from './shell';
+import i18n from '../i18n';
+
+/* Labels come from the same translations the page renders, so a copy change does not break these tests. */
+const label = (key: string) => i18n.t(key, { ns: 'chrome' });
 
 /**
  * The shell, driven through the router.
@@ -75,7 +79,8 @@ function stubEnvironment() {
   );
 }
 
-function Page({ title }: { title: string }) {
+function Page({ titleKey }: { titleKey: string }) {
+  const title = label(titleKey);
   return (
     <PageFrame>
       <h1>{title}</h1>
@@ -102,17 +107,17 @@ const testRoutes: RouteObject[] = [
         children: [
           {
             path: ROUTES.overview,
-            element: <Page title="Global overview" />,
+            element: <Page titleKey="nav.items.overview" />,
             handle: { titleKey: 'nav.items.overview' }
           },
           {
             path: ROUTES.nodes,
-            element: <Page title="Node matrix" />,
+            element: <Page titleKey="nav.items.nodes" />,
             handle: { titleKey: 'nav.items.nodes' }
           },
           {
             path: `${ROUTES.nodes}/:id`,
-            element: <Page title="Node matrix" />,
+            element: <Page titleKey="nav.items.nodes" />,
             handle: { titleKey: 'nav.items.nodes' }
           },
           {
@@ -211,41 +216,44 @@ describe('the shell', () => {
     storeSession({ token: 'tok' });
     renderAt([ROUTES.nodes]);
 
-    expect(await screen.findByRole('heading', { name: 'Node matrix' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: label('nav.items.nodes') })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Global overview/ })).toHaveAttribute('href', ROUTES.overview);
+    expect(screen.getByRole('link', { name: new RegExp(label('nav.items.overview')) })).toHaveAttribute(
+      'href',
+      ROUTES.overview
+    );
   });
 
   it('sets the document title from the route', async () => {
     storeSession({ token: 'tok' });
     renderAt([ROUTES.overview]);
 
-    await screen.findByRole('heading', { name: 'Global overview' });
-    await waitFor(() => expect(document.title).toBe('Global overview - NeroNet console'));
+    await screen.findByRole('heading', { name: label('nav.items.overview') });
+    await waitFor(() => expect(document.title).toBe(`${label('nav.items.overview')} - NeroNet console`));
   });
 
   it('leaves focus at the top of the document on the first page, where the skip link is', async () => {
     storeSession({ token: 'tok' });
     renderAt([ROUTES.overview]);
-    const heading = await screen.findByRole('heading', { name: 'Global overview' });
+    const heading = await screen.findByRole('heading', { name: label('nav.items.overview') });
 
     // Moving focus into the content on load would put the whole sidebar behind
     // the operator, with no skip link ahead of them to get back to it.
-    await waitFor(() => expect(document.title).toBe('Global overview - NeroNet console'));
+    await waitFor(() => expect(document.title).toBe(`${label('nav.items.overview')} - NeroNet console`));
     expect(heading).not.toHaveFocus();
   });
 
   it('is navigable from the keyboard and moves focus to the heading of the page it lands on', async () => {
     storeSession({ token: 'tok' });
     const { router } = renderAt([ROUTES.overview]);
-    await screen.findByRole('heading', { name: 'Global overview' });
+    await screen.findByRole('heading', { name: label('nav.items.overview') });
 
-    const link = screen.getByRole('link', { name: /Node matrix/ });
+    const link = screen.getByRole('link', { name: new RegExp(label('nav.items.nodes')) });
     link.focus();
     expect(link).toHaveFocus();
     await userEvent.keyboard('{Enter}');
 
-    const heading = await screen.findByRole('heading', { name: 'Node matrix' });
+    const heading = await screen.findByRole('heading', { name: label('nav.items.nodes') });
     await waitFor(() => expect(heading).toHaveFocus());
     expect(router.state.location.pathname).toBe(ROUTES.nodes);
   });
@@ -253,14 +261,14 @@ describe('the shell', () => {
   it('follows the browser back button rather than leaving the console', async () => {
     storeSession({ token: 'tok' });
     const { router } = renderAt([ROUTES.overview]);
-    await screen.findByRole('heading', { name: 'Global overview' });
+    await screen.findByRole('heading', { name: label('nav.items.overview') });
 
-    await userEvent.click(screen.getByRole('link', { name: /Node matrix/ }));
-    await screen.findByRole('heading', { name: 'Node matrix' });
+    await userEvent.click(screen.getByRole('link', { name: new RegExp(label('nav.items.nodes')) }));
+    await screen.findByRole('heading', { name: label('nav.items.nodes') });
 
     router.navigate(-1);
 
-    expect(await screen.findByRole('heading', { name: 'Global overview' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: label('nav.items.overview') })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(ROUTES.overview);
   });
 
@@ -279,10 +287,10 @@ describe('the shell', () => {
     expect(logged).toHaveBeenCalled();
 
     // The sidebar survived, and still navigates.
-    const link = screen.getByRole('link', { name: /Global overview/ });
+    const link = screen.getByRole('link', { name: new RegExp(label('nav.items.overview')) });
     await userEvent.click(link);
 
-    expect(await screen.findByRole('heading', { name: 'Global overview' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: label('nav.items.overview') })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(ROUTES.overview);
     logged.mockRestore();
   });
@@ -290,7 +298,7 @@ describe('the shell', () => {
   it('keeps the sidebar collapse across mounts', async () => {
     storeSession({ token: 'tok' });
     const first = renderAt([ROUTES.overview]);
-    await screen.findByRole('heading', { name: 'Global overview' });
+    await screen.findByRole('heading', { name: label('nav.items.overview') });
 
     await userEvent.click(screen.getByRole('button', { name: 'Collapse the navigation' }));
     expect(screen.getByRole('button', { name: 'Expand the navigation' })).toBeInTheDocument();

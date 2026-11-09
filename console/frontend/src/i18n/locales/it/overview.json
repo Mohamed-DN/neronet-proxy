@@ -1,1 +1,55 @@
-{}
+{
+  "title": "Panoramica della rete",
+  "description": "Lo stato della rete in un colpo d'occhio: quanti dispositivi sono online, quanti dati passano e dove si trovano.",
+  "unreachable": "Impossibile contattare il server della rete. Riprova tra poco.",
+  "staleWarning": "I numeri qui sotto potrebbero non essere aggiornati.",
+  "openMap": "Apri la mappa della rete",
+  "addDevice": "Aggiungi dispositivo",
+  "answering": "Dispositivi che rispondono",
+  "blocked": "Bloccati",
+  "usersConnected": "Utenti connessi",
+  "trafficNow": "Traffico in questo momento",
+  "rateHint": "Serve un secondo dato per calcolare la velocità",
+  "status": {
+    "none": "Nessun dispositivo registrato.",
+    "all_one": "Il dispositivo risponde.",
+    "all_other": "Tutti i {{count}} dispositivi rispondono.",
+    "some_one": "{{down}} dispositivo su {{total}} non risponde.",
+    "some_other": "{{down}} dispositivi su {{total}} non rispondono.",
+    "noneAnswering": "Nessun dispositivo risponde.",
+    "unknown": "Il server di controllo non ha risposto: lo stato dei dispositivi non è noto."
+  },
+  "sketch": {
+    "title": "Dove sono i tuoi dispositivi",
+    "description_one": "Hanno risposto {{live}} su {{total}} dispositivi negli ultimi {{seconds}} secondi, in {{count}} paese.",
+    "description_other": "Hanno risposto {{live}} su {{total}} dispositivi negli ultimi {{seconds}} secondi, in {{count}} paesi.",
+    "center": "Questa rete",
+    "hollow": "Cerchio vuoto: nessun dispositivo lì ha risposto.",
+    "caption": "Le linee mostrano dove sono registrati i dispositivi. Non mostrano il traffico.",
+    "more": "+{{count}} altri"
+  },
+  "checks": {
+    "title": "Controlli di sicurezza",
+    "verified": "Controlli di sicurezza confermati",
+    "unverified": "Controlli non ancora confermati",
+    "nonCompliant": "Non superano i controlli di sicurezza"
+  },
+  "emptyFleet": {
+    "title": "Ancora nessun dispositivo",
+    "body": "Aggiungi il primo dispositivo per vedere qui la rete."
+  },
+  "timeseriesTitle": "Traffico della rete nel tempo",
+  "timeseriesDesc": "Quantità di dati che entrano e escono dalla rete, misurata ogni minuto.",
+  "trafficSource": "Origine dei dati: contatori dei dispositivi",
+  "traffic_measured": "Dati completi",
+  "traffic_partial": "Dati parziali",
+  "traffic_stale": "Dati vecchi",
+  "traffic_unknown": "Non ancora disponibili",
+  "trafficCoverage": "Dati da {{measured}} dispositivi su {{total}} negli ultimi {{seconds}} secondi",
+  "noSamples": "Nessun dato per questo periodo",
+  "noSamplesDesc": "Il traffico viene misurato ogni minuto. Servono due misure per calcolare la velocità.",
+  "inbound": "Ricevuto",
+  "outbound": "Inviato",
+  "trafficUnit": "MiB/s",
+  "lifetimeTransfer": "Totale trasferito da quando si misura:"
+}
