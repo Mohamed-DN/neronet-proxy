@@ -323,6 +323,9 @@ jobs:
       - name: Legacy revocation script and security daemon
         run: bash tests/legacy_compat/run_all_legacy_tests.sh
 
+      - name: Installer contract (rerun keeps .env, unhealthy fails, no secret printed)
+        run: sh scripts/dev/test-install.sh
+
   lint:
     name: lint
     runs-on: ubuntu-latest

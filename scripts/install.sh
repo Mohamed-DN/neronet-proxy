@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # NeroNet v4 - One-Command Installer (WP-601)
 # Usage: curl -fsSL https://get.neronet.io | bash
-#        bash install.sh [--profile standard|regulated] [--control-url URL]
+#        bash install.sh [--profile standard|regulated]
+#
+# Rerunning it is safe: an existing .env (secrets, and the database password the data
+# volume was created with) is kept as it is. The install fails, with a non-zero exit,
+# when the stack does not become healthy. No secret is ever printed.
 set -euo pipefail
 
 NERONET_VERSION="4.0.0-rc1"
@@ -9,6 +13,7 @@ INSTALL_DIR="${NERONET_INSTALL_DIR:-/opt/neronet}"
 DATA_DIR="${NERONET_DATA_DIR:-/var/lib/neronet}"
 PROFILE="${NERONET_PROFILE:-standard}"
 SYSTEMD_UNIT="neronet.service"
+HEALTH_TIMEOUT="${NERONET_INSTALL_HEALTH_TIMEOUT:-120}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[NeroNet]${NC} $*"; }
@@ -19,7 +24,9 @@ err()     { echo -e "${RED}[ERR]${NC} $*"; exit 1; }
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile)     PROFILE="$2";     shift 2 ;;
-    --control-url) CONTROL_URL="$2"; shift 2 ;;
+    # Accepted before and then ignored. It configures nothing this installer sets up, so
+    # it is refused rather than letting an operator believe it took effect.
+    --control-url) err "--control-url is not supported by this installer" ;;
     --help|-h) echo "Usage: $0 [--profile standard|regulated]"; exit 0 ;;
     *) err "Unknown: $1" ;;
   esac
@@ -35,6 +42,12 @@ detect_runtime() {
 }
 
 generate_env() {
+  # A new .env on a rerun would hand the stack fresh secrets and a database password
+  # the existing data volume was not created with: keep what is there.
+  if [[ -e "${INSTALL_DIR}/.env" ]]; then
+    info "Keeping the existing ${INSTALL_DIR}/.env"
+    return 0
+  fi
   local jwt refresh audit_hmac shred_kek admin_pass reg_token pg_pass
   jwt=$(openssl rand -base64 48)
   refresh=$(openssl rand -base64 48)
@@ -44,7 +57,7 @@ generate_env() {
   reg_token=$(openssl rand -hex 32)
   pg_pass=$(openssl rand -base64 18 | tr -d '+/=' | head -c 20)
 
-  cat > "${INSTALL_DIR}/.env" <<ENVEOF
+  ( umask 077; cat > "${INSTALL_DIR}/.env" ) <<ENVEOF
 POSTGRES_PASSWORD=${pg_pass}
 SOVEREIGN_JWT_SECRET=${jwt}
 SOVEREIGN_REFRESH_SECRET=${refresh}
@@ -59,16 +72,8 @@ NERONET_MAX_NETMAP_STALENESS_SECONDS=86400
 ENVEOF
   chmod 600 "${INSTALL_DIR}/.env"
 
-  echo ""
-  echo "=================================================="
-  echo "  NeroNet v4 - SAVE THESE CREDENTIALS"
-  echo "=================================================="
-  printf "  Admin User    : admin\n"
-  printf "  Admin Pass    : %s\n" "${admin_pass}"
-  printf "  Console       : http://127.0.0.1:8443\n"
-  printf "  API           : http://127.0.0.1:8081\n"
-  echo "=================================================="
-  warn "These credentials will NOT be shown again!"
+  success "Wrote ${INSTALL_DIR}/.env (mode 600, readable by root only)"
+  info "Admin user: admin. Its password is SOVEREIGN_ADMIN_PASS in that file; it is not printed."
 }
 
 install_systemd() {
@@ -98,14 +103,15 @@ SVCEOF
 }
 
 wait_healthy() {
-  info "Waiting for services (up to 120s)..."
-  local end=$((SECONDS + 120))
+  info "Waiting for services (up to ${HEALTH_TIMEOUT}s)..."
+  local end=$((SECONDS + HEALTH_TIMEOUT))
   while [[ $SECONDS -lt $end ]]; do
     local h; h=$(${COMPOSE_CMD} -f "${INSTALL_DIR}/docker-compose.yml" ps 2>/dev/null | grep -c "healthy" || true)
     [[ "$h" -ge 2 ]] && { success "Services healthy!"; return 0; }
     echo -n "."; sleep 5
   done
-  warn "Timeout - check: ${COMPOSE_CMD} ps"
+  warn "Not healthy after ${HEALTH_TIMEOUT}s - check: ${COMPOSE_CMD} ps"
+  return 1
 }
 
 main() {
@@ -113,10 +119,12 @@ main() {
   detect_runtime
   mkdir -p "${INSTALL_DIR}" "${DATA_DIR}"
   
-  # Copy compose from script dir or download
-  if [[ -f "$(dirname "$0")/../docker-compose.yml" ]]; then
-    cp "$(dirname "$0")/../docker-compose.yml" "${INSTALL_DIR}/docker-compose.yml"
-  fi
+  # The compose file ships next to the installer. Without it there is nothing to
+  # start, and carrying on would end in a "healthy" check of an empty directory.
+  local compose
+  compose="$(dirname "$0")/../docker-compose.yml"
+  [[ -f "$compose" ]] || err "No docker-compose.yml next to the installer ($compose)"
+  cp "$compose" "${INSTALL_DIR}/docker-compose.yml"
   
   generate_env
 
@@ -126,9 +134,9 @@ main() {
     cd "${INSTALL_DIR}" && ${COMPOSE_CMD} up -d
   fi
 
-  wait_healthy
+  wait_healthy || err "Installation failed: the stack did not become healthy"
   success "NeroNet v4 installed!"
-  echo "  Console -> http://127.0.0.1:8443"
+  echo "  Console -> https://127.0.0.1:8443"
   echo "  API     -> http://127.0.0.1:8081/api/health"
 }
 
