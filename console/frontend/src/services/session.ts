@@ -34,6 +34,8 @@ export interface ConsoleUser {
   id: string;
   username: string;
   role?: string;
+  /** The user's role in their organisation, or null. The server authorises with this first. */
+  org_role?: string | null;
   [key: string]: unknown;
 }
 
