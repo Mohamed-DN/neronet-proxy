@@ -179,3 +179,104 @@ describe('ADR 0029 A1: profile devices through a gateway', () => {
     assert.ok(after > before);
   });
 });
+
+describe('ADR 0029 A2: the gateway netmap carries profile devices', () => {
+  const NetmapService = require('../services/NetmapService');
+  let dbHelper;
+  let pool;
+  let app;
+  let adminToken;
+  const org = 'org-prof-nm';
+  const gwKey = key();
+  const peerKey = key();
+  const hexOf = (b64) => Buffer.from(b64, 'base64').toString('hex');
+
+  before(async () => {
+    dbHelper = await setupTestDatabase();
+    pool = dbHelper.pool;
+    app = createApp();
+    await pool.query(
+      `INSERT INTO organizations (id, name, slug, default_policy) VALUES ($1, 'NM', 'prof-nm', 'deny')`,
+      [org]
+    );
+    await pool.query(
+      `INSERT INTO users (id, username, email, password_hash, role, organization_id)
+       VALUES ('usr-nm-admin', 'nmadmin', 'nm@prof.local', 'x', 'admin', $1)`,
+      [org]
+    );
+    await pool.query(
+      `INSERT INTO nodes (id, organization_id, user_id, name, overlay_ipv4, overlay_ipv6, public_key, role, is_healthy, is_quarantined)
+       VALUES ('node-nm-gw', $1, 'usr-nm-admin', 'gw', '100.64.40.1', 'fd00:40::1', $2, 'RELAY', TRUE, FALSE),
+              ('node-nm-peer', $1, 'usr-nm-admin', 'peer', '100.64.40.2', 'fd00:40::2', $3, 'CLIENT_ORIGIN', TRUE, FALSE)`,
+      [org, gwKey, peerKey]
+    );
+    await pool.query(
+      `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, organization_id)
+       VALUES ('acl-nm-all', 10, '100.64.0.0/10', '100.64.0.0/10', 'ALL', 0, 65535, 'ACCEPT', $1)`,
+      [org]
+    );
+    adminToken = await issueConsoleTestToken({
+      sub: 'usr-nm-admin',
+      id: 'usr-nm-admin',
+      username: 'nmadmin',
+      role: 'admin',
+      organization_id: org
+    });
+  });
+
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
+  });
+
+  it('lists the device with its static PSK on the gateway only, and routes it through the gateway elsewhere', async () => {
+    const auth = { Authorization: `Bearer ${adminToken}` };
+    assert.strictEqual(
+      (
+        await request(app)
+          .put('/api/devices/gateway')
+          .set(auth)
+          .send({ node_id: 'node-nm-gw', endpoint: 'gw.example:51820' })
+      ).status,
+      200
+    );
+    const psk = key();
+    const dev = await request(app)
+      .post('/api/devices/profile')
+      .set(auth)
+      .send({ name: 'phone', public_key: key(), preshared_key: psk });
+    assert.strictEqual(dev.status, 201);
+    const vip = dev.body.overlay_ipv4;
+
+    const gw = await NetmapService.buildNetmap('node-nm-gw');
+    const entry = gw.peers.find((p) => p.node_id === dev.body.device_id);
+    assert.ok(entry, 'the gateway lists the device');
+    assert.strictEqual(entry.profile, true);
+    assert.strictEqual(entry.preshared_key_hex, hexOf(psk));
+    assert.deepStrictEqual(entry.endpoints, []);
+    assert.ok(entry.allowed_ips.includes(`${vip}/32`));
+    assert.ok(!gw.peers.find((p) => p.node_id === 'node-nm-peer').preshared_key_hex, 'mesh peers carry no static PSK');
+
+    const other = await NetmapService.buildNetmap('node-nm-peer');
+    assert.ok(
+      !other.peers.some((p) => p.node_id === dev.body.device_id),
+      'a non-gateway node never peers with a device'
+    );
+    const viaGateway = other.peers.find((p) => p.node_id === 'node-nm-gw');
+    assert.ok(viaGateway.allowed_ips.includes(`${vip}/32`), "the device's address is routed to the gateway");
+    assert.ok(!JSON.stringify(other).includes(hexOf(psk)), 'the PSK reaches the gateway only');
+  });
+
+  it('drops a quarantined device from the gateway and from the route through it', async () => {
+    const auth = { Authorization: `Bearer ${adminToken}` };
+    const dev = await request(app)
+      .post('/api/devices/profile')
+      .set(auth)
+      .send({ name: 'lost', public_key: key(), preshared_key: key() });
+    assert.strictEqual(dev.status, 201);
+    await pool.query('UPDATE nodes SET is_quarantined = TRUE WHERE id = $1', [dev.body.device_id]);
+    const gw = await NetmapService.buildNetmap('node-nm-gw');
+    assert.ok(!gw.peers.some((p) => p.node_id === dev.body.device_id));
+    const other = await NetmapService.buildNetmap('node-nm-peer');
+    assert.ok(!other.peers.find((p) => p.node_id === 'node-nm-gw').allowed_ips.includes(`${dev.body.overlay_ipv4}/32`));
+  });
+});

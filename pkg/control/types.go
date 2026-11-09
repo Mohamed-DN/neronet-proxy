@@ -415,6 +415,15 @@ type NetmapPeer struct {
 	Name              string      `json:"name,omitempty"`
 	AllowedTransports []string    `json:"allowed_transports,omitempty"`
 	RelayHomes        []RelayHome `json:"relay_homes,omitempty"`
+
+	// Profile marks a profile device (ADR 0029): a standard WireGuard peer with a
+	// static PSK, listed only in its organisation gateway's netmap. The gateway keeps
+	// it out of the epoch PSK rotation and accepts it from any authenticated source.
+	Profile bool `json:"profile,omitempty"`
+
+	// PresharedKeyHex is a profile device's static PSK, 64 lowercase hex characters.
+	// Only the gateway receives it.
+	PresharedKeyHex string `json:"preshared_key_hex,omitempty" jsonschema:"pattern=^[0-9a-f]{64}$"`
 }
 
 // NetmapResponse is the document. When Unchanged is true the node already holds this

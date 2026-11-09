@@ -498,12 +498,12 @@ function computeDNSName(name, explicitDnsName, domain) {
  */
 async function buildNetmap(nodeId) {
   const selfRows = await query(
-    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, o.search_domain, o.slug as org_slug
+    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, n.device_kind, n.profile_gateway_endpoint, o.search_domain, o.slug as org_slug
        FROM nodes n
        LEFT JOIN organizations o ON n.organization_id = o.id
       WHERE n.id = $1`,
     [nodeId],
-    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, o.search_domain, o.slug as org_slug
+    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, 'mesh' AS device_kind, NULL AS profile_gateway_endpoint, o.search_domain, o.slug as org_slug
        FROM nodes n
        LEFT JOIN organizations o ON n.organization_id = o.id
       WHERE n.id = ?`,
@@ -547,13 +547,15 @@ async function buildNetmap(nodeId) {
         // keeps another tenant's keys and endpoints out of the document even if the
         // policy were ever to name one.
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
-                transports_built, node_capabilities, relay_homes, relay_homes_reported_at
+                transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
+                device_kind, preshared_key, profile_gateway_endpoint
            FROM nodes
           WHERE id <> $1 AND is_quarantined = FALSE AND is_healthy = TRUE
             AND COALESCE(organization_id, 'org-default') = $2`,
         [nodeId, self.organization_id || 'org-default'],
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
-                transports_built, node_capabilities, relay_homes, relay_homes_reported_at
+                transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
+                'mesh' AS device_kind, NULL AS preshared_key, NULL AS profile_gateway_endpoint
            FROM nodes
           WHERE id <> ? AND is_quarantined = 0 AND is_healthy = 1
             AND COALESCE(organization_id, 'org-default') = ?`,
@@ -566,8 +568,43 @@ async function buildNetmap(nodeId) {
   // coin flip; the route's own priority order decides instead.
   const claimedSubnets = new Set();
 
+  // ADR 0029: profile devices are peers of their organisation's gateway only. Every
+  // other node reaches them through the gateway, so their addresses join the gateway's
+  // allowed IPs below.
+  const selfIsGateway = Boolean(self.profile_gateway_endpoint) && self.device_kind !== 'profile';
+  const routedThroughGateway = [];
+
   for (const row of candidates.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)))) {
     if (!permitted.has(String(row.overlay_ipv4))) continue;
+
+    if (row.device_kind === 'profile') {
+      const deviceKey = normalisePublicKeyHex(row.public_key);
+      const psk = Buffer.from(String(row.preshared_key || ''), 'base64');
+      if (!deviceKey || revoked.has(deviceKey.toLowerCase()) || psk.length !== 32) continue;
+      const deviceIPs = [];
+      if (row.overlay_ipv4) deviceIPs.push(`${row.overlay_ipv4}/32`);
+      if (row.overlay_ipv6) deviceIPs.push(`${row.overlay_ipv6}/128`);
+      if (!selfIsGateway) {
+        routedThroughGateway.push(...deviceIPs);
+        continue;
+      }
+      const deviceEntry = {
+        node_id: row.id,
+        public_key_hex: deviceKey.toLowerCase(),
+        allowed_ips: sortAllowedIPs(deviceIPs),
+        // A profile device speaks first; the gateway learns its address from
+        // authenticated packets.
+        endpoints: [],
+        derp_region: null,
+        keepalive_seconds: KEEPALIVE_SECONDS,
+        allowed_transports: ['udp'],
+        profile: true,
+        preshared_key_hex: psk.toString('hex')
+      };
+      if (row.name) deviceEntry.name = row.name;
+      peers.push(deviceEntry);
+      continue;
+    }
 
     const keyHex = normalisePublicKeyHex(row.public_key);
     // A node whose stored key cannot be decoded cannot be a WireGuard peer. Sending
@@ -638,6 +675,14 @@ async function buildNetmap(nodeId) {
     }
 
     peers.push(peerEntry);
+  }
+
+  if (routedThroughGateway.length > 0) {
+    const gatewayRow = candidates.find((r) => r.profile_gateway_endpoint && r.device_kind !== 'profile');
+    const gatewayEntry = gatewayRow && peers.find((p) => p.node_id === gatewayRow.id);
+    if (gatewayEntry) {
+      gatewayEntry.allowed_ips = sortAllowedIPs([...gatewayEntry.allowed_ips, ...routedThroughGateway]);
+    }
   }
 
   const selfObj = {

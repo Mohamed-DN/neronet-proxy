@@ -172,6 +172,13 @@
             "$ref": "#/$defs/RelayHome"
           },
           "type": "array"
+        },
+        "profile": {
+          "type": "boolean"
+        },
+        "preshared_key_hex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       },
       "additionalProperties": false,
