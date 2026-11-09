@@ -711,6 +711,9 @@ case "$SCENARIO" in
     rules=$(netfault "$A" 'iptables -S | grep -c neronet-t0 || true')
     [ "$rules" = 2 ] || die "the UDP block is not in place at $A ($rules of 2 rules); nothing below would be measured without UDP"
     wait_for "$A reaching $B without UDP" reaches "$A" "$(vip_of "$B")" || rc=1
+    # Reaching one peer over DERP says nothing about the others: each must first fetch
+    # a netmap naming every peer's relay home (see the "relays back" phase below).
+    converge
     measure_matrix "UDP dropped at $A, DERP allowed"
     expect_all ok || rc=1
     dropped=$(udp_counters "$A")
@@ -730,6 +733,10 @@ case "$SCENARIO" in
     echo "allowing DERP again"
     org_policy '["udp","derp"]'
     wait_for "$A reaching $B again over DERP" reaches "$A" "$(vip_of "$B")" || rc=1
+    # On the 5d65ec6 stack, run 2: DERP was allowed at 16:13:32 UTC, relay-de reached
+    # relay-fr 15 s later and was measured against relay-us, whose home reached
+    # relay-de's netmap (version 169) at 16:14:02; the handshake completed at 16:14:03.
+    converge
     measure_matrix "UDP dropped at $A, DERP allowed again"
     expect_all ok || rc=1
 
