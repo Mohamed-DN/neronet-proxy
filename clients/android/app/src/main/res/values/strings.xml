@@ -1,34 +1,162 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">NeroNet</string>
-    <string name="no_profiles">No profiles yet. Import a profile to connect.</string>
-    <string name="select_first">Select a profile to connect.</string>
-    <string name="import_file">Import file</string>
-    <string name="paste_text">Paste text</string>
+
+    <!-- Actions -->
+    <string name="action_settings">Settings</string>
+    <string name="action_back">Back</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_retry">Try again</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_import">Import</string>
+    <string name="action_disconnect">Disconnect</string>
+    <string name="action_open_vpn_settings">Open VPN settings</string>
+    <string name="action_choose_profile">Choose a profile</string>
+    <string name="action_open_console">Open the console</string>
+    <string name="profile_chip_label">Profile: %1$s. Change profile</string>
+
+    <!-- Status sentence -->
+    <string name="status_no_profile_title">Add this device</string>
+    <string name="status_no_profile_line">You need a NeroNet profile. Your administrator can give you one, or you can create it in your organisation\'s console with Add a device.</string>
+    <string name="status_idle_title">Not connected</string>
+    <string name="status_idle_line">Tap your device on the map to connect to %1$s.</string>
+    <string name="status_connecting_title">Connecting</string>
+    <string name="status_connecting_line">Starting the tunnel to %1$s.</string>
+    <string name="status_waiting_title">Waiting for the gateway</string>
+    <string name="status_waiting_line">The tunnel is on. Waiting for the first reply from %1$s.</string>
+    <string name="status_protected_title">Protected</string>
+    <string name="status_protected_line">Connected to %1$s</string>
+    <string name="status_stale_title">Gateway not responding</string>
+    <string name="status_stale_line">The tunnel is on, but %1$s has not replied for %2$s. WireGuard keeps trying every 5 seconds.</string>
+    <string name="status_stale_never_line">The tunnel is on, but %1$s has not replied yet. Check your internet connection; WireGuard keeps trying every 5 seconds.</string>
+    <string name="status_disconnecting_title">Disconnecting</string>
+    <string name="status_error_title">Could not connect</string>
+    <string name="elapsed_less_than_minute">for less than a minute</string>
+    <string name="duration_less_than_minute">less than a minute</string>
+
+    <!-- Network map -->
+    <string name="map_switch_label">Connection to %1$s</string>
+    <string name="map_switch_label_no_profile">Connection, no profile yet</string>
+    <string name="map_desc_gateway">Network map: this device, the gateway %1$s and your organisation\'s network %2$s.</string>
+    <string name="map_desc_gateway_full_tunnel">Network map: this device and the gateway %1$s, which carries all your traffic.</string>
+    <string name="map_desc_device_only">Network map: only this device. No profile yet.</string>
+    <string name="map_label_this_device">This device</string>
+    <string name="map_label_gateway_fallback">the gateway</string>
+    <string name="map_label_gateway_title">Gateway</string>
+    <string name="map_label_org">Your organisation</string>
+    <string name="map_label_org_full_tunnel">All traffic</string>
+    <string name="map_overflow" translatable="false">+%1$d</string>
+
+    <!-- Details panel -->
+    <string name="details_show">Show details</string>
+    <string name="details_hide">Hide details</string>
+    <string name="details_address">This device\'s address</string>
+    <string name="details_gateway">Gateway</string>
+    <string name="details_network">Reachable network</string>
+    <string name="details_dns">DNS server</string>
+    <string name="details_handshake">Last reply from the gateway</string>
+    <string name="details_handshake_never">none yet</string>
+    <string name="details_received">Received</string>
+    <string name="details_sent">Sent</string>
+    <string name="details_device_id">Device ID</string>
+    <string name="details_copy_address">Copy address</string>
+    <string name="details_address_copied">Address copied</string>
+
+    <!-- Profiles -->
+    <string name="profiles_title">Profiles</string>
+    <string name="profiles_in_use">In use</string>
+    <string name="profiles_add">Add a profile</string>
+    <string name="profiles_row_menu">More options for %1$s</string>
+    <string name="delete_title">Delete %1$s?</string>
+    <string name="delete_message">This removes the profile and its private key from this device. To connect again you will need to import it again from the console.</string>
+    <string name="delete_message_connected">The connection closes first. This removes the profile and its private key from this device; to connect again you will need to import it again from the console.</string>
+    <string name="profile_deleted">Profile deleted</string>
+
+    <!-- Add a profile -->
+    <string name="add_title">Add this device</string>
+    <string name="add_intro">Scan the QR code shown in your organisation\'s console, or import the profile file you received.</string>
+    <string name="add_scan_qr">Scan the QR code</string>
+    <string name="add_import_file">Import a file</string>
+    <string name="add_paste_text">Paste the text</string>
+    <string name="qr_prompt">Point the camera at the NeroNet QR code</string>
+    <string name="qr_not_profile">This QR code does not contain a NeroNet profile. Scan the code shown in the console under Add a device.</string>
+    <string name="qr_camera_denied">NeroNet cannot use the camera. Allow camera access in the app settings, or import the profile file instead.</string>
     <string name="paste_title">Paste a NeroNet profile</string>
     <string name="paste_hint">Paste the profile text here</string>
-    <string name="import_action">Import</string>
-    <string name="cancel">Cancel</string>
-    <string name="dismiss">Dismiss</string>
-    <string name="delete">Delete</string>
-    <string name="delete_title">Delete %1$s?</string>
-    <string name="delete_message">The VPN will disconnect and the profile will be removed from this device.</string>
-    <string name="connect_vpn">Connect VPN</string>
-    <string name="state_connected">Connected</string>
-    <string name="state_disconnected">Disconnected</string>
-    <string name="state_connecting">Connecting…</string>
-    <string name="state_disconnecting">Disconnecting…</string>
-    <string name="traffic_line">Downloaded %1$s, uploaded %2$s. Last handshake: %3$s</string>
-    <string name="handshake_none">never</string>
-    <string name="open_console">Open console</string>
-    <string name="console_not_https">The console address is not secure (https), so it was not opened.</string>
-    <string name="no_browser">No app can open this link.</string>
-    <string name="vpn_denied">VPN permission was not granted. Try again to allow it.</string>
-    <string name="tunnel_error">Could not connect: %1$s</string>
-    <string name="tunnel_reason_generic">the VPN service did not start</string>
+    <string name="paste_field_label">Profile text</string>
     <string name="imported">Profile imported.</string>
+    <string name="import_duplicate">This profile is already on this device as %1$s.</string>
     <string name="read_failed">Could not read this file. Choose a text profile under 64 KB.</string>
     <string name="import_failed">This profile cannot be used: %1$s</string>
+    <string name="console_not_https">The console address is not secure (https), so it was not opened.</string>
+    <string name="no_browser">No app can open this link.</string>
+
+    <!-- Tunnel errors -->
+    <string name="error_permission_denied">Android did not grant VPN permission. Tap your device again and choose OK.</string>
+    <string name="error_revoked">Another VPN app took over the connection. Tap your device to switch back to NeroNet.</string>
+    <string name="error_timeout">The tunnel did not start within 7 seconds. Check your internet connection and try again.</string>
+    <string name="error_unable_to_start">Android did not start the VPN. If another app is set as always-on VPN, turn it off in the VPN settings.</string>
+    <string name="error_dns">Cannot find the gateway address %1$s. Check your internet connection and try again.</string>
+    <string name="error_tun">Android could not create the VPN interface. Restart the device and try again.</string>
+    <string name="error_go">WireGuard did not start with this profile. Import the profile again from the console.</string>
+    <string name="error_profile_missing">This profile is no longer on the device. Choose another profile or add one.</string>
+    <string name="error_disconnect_timeout">The VPN did not close within 7 seconds. Close it from Android\'s VPN settings.</string>
+    <string name="error_unknown">The connection failed. Try again; if it happens again, import the profile again from the console.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_always_on_title">Always-on VPN</string>
+    <string name="settings_always_on_body">To stay protected after a restart, choose NeroNet as always-on VPN in Android\'s settings. You can also block connections without VPN there.</string>
+    <string name="vpn_settings_unavailable">This device has no VPN settings screen. Look for VPN in the Android settings.</string>
+    <string name="settings_theme_title">Theme</string>
+    <string name="theme_system">Same as the system</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="settings_about_title">About</string>
+    <string name="settings_version">Version %1$s (%2$d)</string>
+    <string name="settings_privacy">NeroNet collects no usage data. It talks only to the gateway in your profile; the console opens in your browser.</string>
+    <string name="settings_licenses">Open source licences</string>
+
+    <!-- Notification and Quick Settings tile -->
+    <string name="notif_channel_name">Connection status</string>
+    <string name="notif_channel_desc">Shows while NeroNet is connected, with a button to disconnect.</string>
+    <string name="tile_connected">Connected</string>
+    <string name="tile_no_profile">No profile</string>
+
+    <!-- Plurals -->
+    <plurals name="elapsed_minutes">
+        <item quantity="one">for %d minute</item>
+        <item quantity="other">for %d minutes</item>
+    </plurals>
+    <plurals name="elapsed_hours">
+        <item quantity="one">for %d hour</item>
+        <item quantity="other">for %d hours</item>
+    </plurals>
+    <plurals name="elapsed_days">
+        <item quantity="one">for %d day</item>
+        <item quantity="other">for %d days</item>
+    </plurals>
+    <plurals name="duration_minutes">
+        <item quantity="one">%d minute</item>
+        <item quantity="other">%d minutes</item>
+    </plurals>
+    <plurals name="duration_hours">
+        <item quantity="one">%d hour</item>
+        <item quantity="other">%d hours</item>
+    </plurals>
+    <plurals name="details_seconds_ago">
+        <item quantity="one">%d second ago</item>
+        <item quantity="other">%d seconds ago</item>
+    </plurals>
+    <plurals name="details_minutes_ago">
+        <item quantity="one">%d minute ago</item>
+        <item quantity="other">%d minutes ago</item>
+    </plurals>
+    <plurals name="map_desc_servers">
+        <item quantity="one">Network map: this device and %d server.</item>
+        <item quantity="other">Network map: this device and %d servers.</item>
+    </plurals>
 
     <!-- Reasons a profile is rejected; shown in import_failed. -->
     <string name="reason_version">It needs a newer version of the NeroNet app.</string>
