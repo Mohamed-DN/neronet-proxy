@@ -1,1 +1,359 @@
-{}
+{
+  "ariaLabel": "Altre informazioni su {{term}}",
+  "terms": {
+    "device": {
+      "term": "Dispositivo",
+      "body": "Un computer, un server o un telefono registrato nella rete."
+    },
+    "network": {
+      "term": "Rete",
+      "body": "L'insieme dei dispositivi registrati che possono comunicare tra loro secondo le regole."
+    },
+    "registration": {
+      "term": "Registrazione",
+      "body": "L'operazione con cui un dispositivo viene autorizzato a entrare nella rete."
+    },
+    "overlayAddress": {
+      "term": "Indirizzo di rete",
+      "body": "L'indirizzo privato che il dispositivo usa dentro la rete: non funziona su Internet pubblica."
+    },
+    "publicKey": {
+      "term": "Chiave pubblica",
+      "body": "Un codice che identifica il dispositivo e permette agli altri di verificare che sia davvero lui."
+    },
+    "posture": {
+      "term": "Controlli di sicurezza",
+      "body": "Le verifiche sullo stato del dispositivo, come disco cifrato, firewall e versione del sistema."
+    },
+    "notReported": {
+      "term": "Non ancora segnalato",
+      "body": "Il dispositivo non ha ancora inviato questa informazione: non significa che abbia fallito il controllo."
+    },
+    "attestation": {
+      "term": "Controlli del dispositivo",
+      "body": "Una prova firmata dal dispositivo stesso che conferma le sue caratteristiche di sicurezza."
+    },
+    "quarantine": {
+      "term": "Blocco",
+      "body": "Il dispositivo resta registrato ma non può comunicare con gli altri finché il blocco non viene rimosso."
+    },
+    "revoke": {
+      "term": "Revoca",
+      "body": "Il dispositivo viene disconnesso e la sua chiave non viene più accettata: l'operazione non si può annullare."
+    },
+    "subnetwork": {
+      "term": "Sotto-rete",
+      "body": "Un gruppo separato di dispositivi: quelli nella stessa sotto-rete si vedono, gli altri no finché non vengono collegati."
+    },
+    "accessRules": {
+      "term": "Regole di accesso",
+      "body": "L'elenco che decide quali dispositivi possono comunicare, per indirizzo e porta. Se nessuna regola lo permette, la comunicazione è vietata."
+    },
+    "blockingRule": {
+      "term": "Regola di blocco",
+      "body": "Una regola che scarta il traffico tra due indirizzi indicati, senza avvisare nessuno."
+    },
+    "rules": {
+      "term": "Regole",
+      "body": "Le impostazioni che stabiliscono quali collegamenti sono permessi. Non provano che i dati stiano passando."
+    },
+    "path": {
+      "term": "Percorso",
+      "body": "Il cammino che i dati seguono da un dispositivo a un altro, attraverso la rete o un relay."
+    },
+    "measuredPath": {
+      "term": "Percorso misurato",
+      "body": "Un collegamento confermato da misure reali tra due dispositivi."
+    },
+    "networkLink": {
+      "term": "Collegamento tra reti",
+      "body": "Un accordo tra due reti indipendenti che permette a parte dei loro dispositivi di comunicare."
+    },
+    "signedCode": {
+      "term": "Codice firmato",
+      "body": "Un codice con firma digitale: chi lo riceve può verificare che arrivi davvero dall'altra parte e non sia stato modificato."
+    },
+    "peer": {
+      "term": "Dispositivo collegato",
+      "body": "Un altro dispositivo con cui questo può comunicare."
+    },
+    "traffic": {
+      "term": "Traffico",
+      "body": "La quantità di dati che passa nella rete in un dato momento."
+    },
+    "received": {
+      "term": "Ricevuto",
+      "body": "I dati che arrivano al dispositivo."
+    },
+    "sent": {
+      "term": "Inviato",
+      "body": "I dati che il dispositivo invia."
+    },
+    "responseTime": {
+      "term": "Tempo di risposta",
+      "body": "Il tempo che un messaggio impiega per andare e tornare tra due dispositivi, in millisecondi."
+    },
+    "responseVariation": {
+      "term": "Variazione del tempo di risposta",
+      "body": "Quanto il tempo di risposta cambia da un messaggio all'altro: meno variazione significa un collegamento più stabile."
+    },
+    "relay": {
+      "term": "Relay",
+      "body": "Un dispositivo che inoltra il traffico di altri quando non riescono a raggiungersi direttamente."
+    },
+    "derp": {
+      "term": "Relay di passaggio",
+      "body": "Un server che inoltra dati cifrati tra due dispositivi che non riescono a collegarsi direttamente, per esempio dietro firewall restrittivi."
+    },
+    "internetExit": {
+      "term": "Uscita verso internet",
+      "body": "Un dispositivo che manda il traffico della rete verso Internet pubblico."
+    },
+    "userDevice": {
+      "term": "Dispositivo utente",
+      "body": "Un dispositivo usato da una persona per collegarsi, che non inoltra traffico per altri."
+    },
+    "onion": {
+      "term": "Percorso a tre tappe",
+      "body": "Il traffico passa per tre tappe, ognuna con il proprio strato di cifratura: nessuna tappa conosce insieme mittente e destinazione. In NeroNet non è ancora attivo."
+    },
+    "keyExchange": {
+      "term": "Scambio di chiavi",
+      "body": "Il primo scambio di messaggi con cui due dispositivi si identificano e concordano una chiave comune."
+    },
+    "contactAddress": {
+      "term": "Indirizzo di contatto",
+      "body": "L'indirizzo con cui un'altra rete può raggiungere la nostra."
+    },
+    "addressRange": {
+      "term": "Intervallo di indirizzi",
+      "body": "Un modo di scrivere un gruppo di indirizzi: per esempio 100.64.0.0/16 indica tutti gli indirizzi da 100.64.0.0 a 100.64.255.255."
+    },
+    "hiddenGroup": {
+      "term": "Gruppo nascosto",
+      "body": "Un gruppo di dispositivi che resta invisibile finché non si inserisce la password di sblocco."
+    },
+    "group": {
+      "term": "Gruppo",
+      "body": "Dispositivi raccolti insieme, così si possono mostrare o nascondere come un'unica voce."
+    },
+    "responseWindow": {
+      "term": "Finestra di risposta",
+      "body": "Il tempo entro cui un dispositivo deve rispondere per essere considerato raggiungibile."
+    },
+    "controlServer": {
+      "term": "Server di controllo",
+      "body": "Il server che gestisce la rete: registra i dispositivi e distribuisce le regole."
+    },
+    "riskScore": {
+      "term": "Punteggio di rischio",
+      "body": "Un numero che stima quanto il comportamento di un dispositivo sembra rischioso. Sopra 75 viene segnalato come rischio alto."
+    },
+    "padding": {
+      "term": "Riempimento dei pacchetti",
+      "body": "Dati di riempimento che rendono ogni messaggio della stessa lunghezza, così da non rivelarne il contenuto. In NeroNet non è ancora attivo."
+    },
+    "connectionTest": {
+      "term": "Verifica del collegamento",
+      "body": "Un invio di prova che misura quanto tempo il dispositivo impiega a rispondere."
+    },
+    "withoutAdminRights": {
+      "term": "Senza privilegi di amministratore",
+      "body": "Il dispositivo esegue il software senza i permessi più alti del sistema, il che riduce i danni in caso di intrusione."
+    },
+    "noiseScheme": {
+      "term": "Schema di cifratura Noise",
+      "body": "Lo schema specifico di scambio di chiavi usato dai collegamenti cifrati tra dispositivi."
+    },
+    "xchacha": {
+      "term": "Algoritmo di cifratura XChaCha20-Poly1305",
+      "body": "Il metodo matematico che protegge i dati dalla lettura da parte di terzi."
+    },
+    "acl": {
+      "term": "ACL (zero-trust)",
+      "body": "Un elenco di regole che decide quali dispositivi possono parlarsi e su quali porte. Nulla è permesso se una regola non lo consente."
+    },
+    "defaultDeny": {
+      "term": "Default deny",
+      "body": "Se nessuna regola copre il traffico, quel traffico viene bloccato."
+    },
+    "defaultOpen": {
+      "term": "Default open",
+      "body": "Se nessuna regola copre il traffico, quel traffico viene permesso."
+    },
+    "zeroTrust": {
+      "term": "Zero-trust",
+      "body": "Modello in cui nessun dispositivo è considerato sicuro solo perché è già nella rete: ogni collegamento va verificato."
+    },
+    "packetTest": {
+      "term": "Simulazione di un pacchetto",
+      "body": "Una prova che dice se un singolo pacchetto di dati passerebbe, senza inviarlo davvero."
+    },
+    "compiledPolicy": {
+      "term": "Policy compilata",
+      "body": "Le regole già tradotte nel formato che ogni dispositivo applica."
+    },
+    "policyVersion": {
+      "term": "Epoch (versione della policy)",
+      "body": "Un numero che sale a ogni modifica delle regole. Dice a quale versione è arrivato ogni dispositivo."
+    },
+    "auditChain": {
+      "term": "Catena di audit",
+      "body": "Ogni voce del registro contiene l'impronta di quella precedente, così una modifica si nota."
+    },
+    "hmac": {
+      "term": "HMAC",
+      "body": "Un'impronta crittografica che prova che un dato non è stato alterato senza la chiave segreta."
+    },
+    "checkpoint": {
+      "term": "Checkpoint (snapshot firmato)",
+      "body": "Una fotografia firmata dello stato del registro, da confrontare più avanti."
+    },
+    "ed25519": {
+      "term": "Ed25519",
+      "body": "Il tipo di firma usato dal sistema per firmare gli snapshot e il segnale di trasparenza."
+    },
+    "siem": {
+      "term": "SIEM",
+      "body": "Un sistema esterno di monitoraggio della sicurezza che riceve e analizza gli eventi."
+    },
+    "mfa": {
+      "term": "MFA / TOTP",
+      "body": "Un secondo controllo per il login: un codice di 6 cifre che cambia ogni 30 secondi e arriva dall'app sul telefono."
+    },
+    "recoveryCode": {
+      "term": "Codice di recupero",
+      "body": "Un codice di emergenza per accedere se perdi il telefono. Funziona una sola volta."
+    },
+    "rbac": {
+      "term": "RBAC (ruoli)",
+      "body": "Controllo degli accessi basato sui ruoli: ogni ruolo concede un insieme preciso di permessi."
+    },
+    "cryptoShredding": {
+      "term": "Cancellazione crittografica (crypto-shredding)",
+      "body": "Si cancellano per sempre le chiavi che proteggono i dati: senza chiavi, i dati diventano illeggibili."
+    },
+    "dualAuthorization": {
+      "term": "Doppia autorizzazione (4 occhi)",
+      "body": "Un'azione sensibile richiede l'approvazione di due persone diverse."
+    },
+    "legalHold": {
+      "term": "Legal hold (blocco legale)",
+      "body": "Un vincolo legale che impedisce di cancellare i dati di un'organizzazione finché non viene rimosso."
+    },
+    "deadMansSwitch": {
+      "term": "Dead Man's Switch",
+      "body": "Un controllo che esegue un'azione (qui: la cancellazione) se il proprietario non conferma di essere presente entro un tempo stabilito."
+    },
+    "warrantCanary": {
+      "term": "Warrant canary",
+      "body": "Un segnale firmato e aggiornato periodicamente: se smette di essere aggiornato, può voler dire che qualcosa è successo."
+    },
+    "splitTunneling": {
+      "term": "Split tunneling",
+      "body": "Alcune app escluse dal tunnel protetto e collegate direttamente a Internet."
+    },
+    "netmap": {
+      "term": "Netmap / limite di validità",
+      "body": "La lista dei dispositivi e delle regole che un dispositivo conserva. Il limite dice per quanto tempo la usa senza contattare la rete."
+    },
+    "heartbeat": {
+      "term": "Heartbeat (controllo periodico)",
+      "body": "Il controllo regolare con cui ogni dispositivo conferma alla rete di essere attivo."
+    },
+    "tenant": {
+      "term": "Tenant",
+      "body": "Un'organizzazione isolata all'interno della rete, con i propri dispositivi e utenti."
+    },
+    "sso": {
+      "term": "SSO / OIDC",
+      "body": "Il login unico aziendale: l'utente accede con l'account di lavoro, senza una password separata per la console."
+    },
+    "pkce": {
+      "term": "PKCE",
+      "body": "Una protezione del login con il login unico che impedisce di rubare il codice di accesso."
+    },
+    "dns": {
+      "term": "DNS / CNAME / TLS / FQDN",
+      "body": "DNS collega il nome di un sito all'indirizzo; CNAME è un alias tra due nomi; TLS è la cifratura del sito (il lucchetto); FQDN è il nome completo di un dominio."
+    },
+    "webrtc": {
+      "term": "WebRTC",
+      "body": "La tecnologia che permette di trasmettere video e comandi direttamente tra due dispositivi nel browser."
+    },
+    "ice": {
+      "term": "ICE / STUN / TURN",
+      "body": "Le procedure con cui due dispositivi trovano il percorso più diretto per parlarsi, anche dietro un router."
+    },
+    "vcpu": {
+      "term": "vCPU / NVMe / GPU",
+      "body": "Processori virtuali, un tipo di disco veloce, la scheda grafica di un computer virtuale."
+    },
+    "codec": {
+      "term": "Codec",
+      "body": "Il formato con cui il video viene compresso per la trasmissione."
+    },
+    "preAuthKey": {
+      "term": "Chiave pre-auth",
+      "body": "Una chiave monouso che autorizza un dispositivo a registrarsi nella rete."
+    },
+    "wireguardConfig": {
+      "term": "Configurazione WireGuard",
+      "body": "Il file (o codice QR) con cui un dispositivo si collega al tunnel WireGuard."
+    },
+    "wireguard": {
+      "term": "WireGuard",
+      "body": "Il protocollo di tunnel cifrato usato per collegare i dispositivi."
+    },
+    "node": {
+      "term": "Nodo",
+      "body": "Un dispositivo registrato nella rete. Nei testi si usa 'dispositivo'."
+    },
+    "mebibyte": {
+      "term": "MiB (mebibyte)",
+      "body": "Un'unità di dati pari a 1.048.576 byte, poco più di un megabyte."
+    }
+  },
+  "roles": {
+    "super-admin": {
+      "term": "Amministratore della piattaforma",
+      "body": "Gestisce tutte le organizzazioni su questo server."
+    },
+    "owner": {
+      "term": "Proprietario",
+      "body": "Ha il pieno controllo dell'organizzazione, compresa la cancellazione dei dati."
+    },
+    "admin": {
+      "term": "Amministratore",
+      "body": "Gestisce utenti, dispositivi e regole dell'organizzazione."
+    },
+    "network_admin": {
+      "term": "Amministratore di rete",
+      "body": "Gestisce dispositivi, regole di accesso e chiavi di registrazione, ma non gli utenti."
+    },
+    "auditor": {
+      "term": "Revisore",
+      "body": "Legge dispositivi, regole e registro attività, e non può modificare nulla."
+    },
+    "member": {
+      "term": "Membro",
+      "body": "Usa la rete e vede i propri dispositivi."
+    },
+    "user": {
+      "term": "Utente",
+      "body": "Usa la rete e vede i propri dispositivi."
+    }
+  },
+  "deviceType": {
+    "EXIT_BRIDGE": "Uscita verso internet",
+    "CLIENT_ORIGIN": "Dispositivo utente",
+    "RELAY": "Inoltra traffico",
+    "HYBRID": "Misto",
+    "unknown": "Tipo non noto"
+  },
+  "page": {
+    "title": "Glossario",
+    "description": "Spiegazioni semplici delle parole tecniche usate in questa console.",
+    "search": "Cerca nel glossario"
+  }
+}

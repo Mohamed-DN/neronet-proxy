@@ -1,1 +1,359 @@
-{}
+{
+  "ariaLabel": "More about {{term}}",
+  "terms": {
+    "device": {
+      "term": "Device",
+      "body": "A computer, server or phone that has been registered on the network."
+    },
+    "network": {
+      "term": "Network",
+      "body": "The set of registered devices that can communicate with each other under the rules."
+    },
+    "registration": {
+      "term": "Registration",
+      "body": "The step that authorises a device to join the network."
+    },
+    "overlayAddress": {
+      "term": "Network address",
+      "body": "The private address a device uses inside the network: it does not work on the public internet."
+    },
+    "publicKey": {
+      "term": "Public key",
+      "body": "A code that identifies a device and lets others check it really is that device."
+    },
+    "posture": {
+      "term": "Security checks",
+      "body": "Checks on the device's state, such as encrypted disk, firewall and system version."
+    },
+    "notReported": {
+      "term": "Not reported yet",
+      "body": "The device has not sent this information yet: it does not mean it failed the check."
+    },
+    "attestation": {
+      "term": "Device checks",
+      "body": "Proof signed by the device itself that confirms its security features."
+    },
+    "quarantine": {
+      "term": "Block",
+      "body": "The device stays registered but cannot communicate with the others until the block is removed."
+    },
+    "revoke": {
+      "term": "Revoke",
+      "body": "The device is disconnected and its key is no longer accepted: this cannot be undone."
+    },
+    "subnetwork": {
+      "term": "Sub-network",
+      "body": "A separate group of devices: those in the same sub-network can see each other; others cannot until they are connected."
+    },
+    "accessRules": {
+      "term": "Access rules",
+      "body": "The list that decides which devices may communicate, by address and port. If no rule allows it, communication is blocked."
+    },
+    "blockingRule": {
+      "term": "Blocking rule",
+      "body": "A rule that discards traffic between two given addresses without notifying anyone."
+    },
+    "rules": {
+      "term": "Rules",
+      "body": "The settings that decide which links are allowed. They do not prove that data is flowing."
+    },
+    "path": {
+      "term": "Path",
+      "body": "The route data follows from one device to another, through the network or a relay."
+    },
+    "measuredPath": {
+      "term": "Measured path",
+      "body": "A link confirmed by real measurements between two devices."
+    },
+    "networkLink": {
+      "term": "Link between networks",
+      "body": "An agreement between two independent networks that lets some of their devices communicate."
+    },
+    "signedCode": {
+      "term": "Signed code",
+      "body": "A code with a digital signature: the recipient can check it came from the other side and was not changed."
+    },
+    "peer": {
+      "term": "Connected device",
+      "body": "Another device this one can communicate with."
+    },
+    "traffic": {
+      "term": "Traffic",
+      "body": "How much data passes through the network at a given moment."
+    },
+    "received": {
+      "term": "Received",
+      "body": "Data arriving at a device."
+    },
+    "sent": {
+      "term": "Sent",
+      "body": "Data a device sends out."
+    },
+    "responseTime": {
+      "term": "Response time",
+      "body": "The time a message takes to travel to a device and back, in milliseconds."
+    },
+    "responseVariation": {
+      "term": "Response variation",
+      "body": "How much response time changes from one message to the next: less variation means a steadier link."
+    },
+    "relay": {
+      "term": "Relay",
+      "body": "A device that forwards other devices' traffic when they cannot reach each other directly."
+    },
+    "derp": {
+      "term": "Forwarding relay",
+      "body": "A server that forwards encrypted data between two devices that cannot connect directly, for example behind strict firewalls."
+    },
+    "internetExit": {
+      "term": "Internet exit",
+      "body": "A device that sends network traffic out to the public internet."
+    },
+    "userDevice": {
+      "term": "User device",
+      "body": "A device a person uses to connect, which does not forward traffic for others."
+    },
+    "onion": {
+      "term": "Three-stop route",
+      "body": "Traffic passes through three stops, each with its own encryption layer: no single stop knows both the sender and the destination. In NeroNet this is not active yet."
+    },
+    "keyExchange": {
+      "term": "Key exchange",
+      "body": "The first exchange of messages in which two devices identify themselves and agree on a shared key."
+    },
+    "contactAddress": {
+      "term": "Contact address",
+      "body": "The address another network uses to reach ours."
+    },
+    "addressRange": {
+      "term": "Address range",
+      "body": "A way to write a group of addresses: for example 100.64.0.0/16 covers all addresses from 100.64.0.0 to 100.64.255.255."
+    },
+    "hiddenGroup": {
+      "term": "Hidden group",
+      "body": "A group of devices that stays invisible until the unlock password is entered."
+    },
+    "group": {
+      "term": "Group",
+      "body": "Devices collected together, so they can be shown or hidden as a single entry."
+    },
+    "responseWindow": {
+      "term": "Response window",
+      "body": "The time a device has to answer in order to count as reachable."
+    },
+    "controlServer": {
+      "term": "Control server",
+      "body": "The server that runs the network: it registers devices and distributes the rules."
+    },
+    "riskScore": {
+      "term": "Risk score",
+      "body": "A number estimating how risky a device's behaviour looks. Above 75 it is flagged as high risk."
+    },
+    "padding": {
+      "term": "Packet padding",
+      "body": "Filler data that makes every message the same length, so its content is not revealed. In NeroNet this is not active yet."
+    },
+    "connectionTest": {
+      "term": "Connection test",
+      "body": "A test message that measures how long a device takes to answer."
+    },
+    "withoutAdminRights": {
+      "term": "Without administrator rights",
+      "body": "The device runs the software without the system's highest permissions, which limits damage if it is breached."
+    },
+    "noiseScheme": {
+      "term": "Noise encryption scheme",
+      "body": "The specific key exchange scheme used by encrypted links between devices."
+    },
+    "xchacha": {
+      "term": "XChaCha20-Poly1305 encryption",
+      "body": "The mathematical method that protects data from being read by third parties."
+    },
+    "acl": {
+      "term": "ACL (zero-trust)",
+      "body": "A list of rules that decides which devices may talk to each other and on which ports. Nothing is allowed unless a rule allows it."
+    },
+    "defaultDeny": {
+      "term": "Default deny",
+      "body": "If no rule covers traffic, that traffic is blocked."
+    },
+    "defaultOpen": {
+      "term": "Default open",
+      "body": "If no rule covers traffic, that traffic is allowed."
+    },
+    "zeroTrust": {
+      "term": "Zero-trust",
+      "body": "A model in which no device is trusted just because it is already on the network: every connection must be checked."
+    },
+    "packetTest": {
+      "term": "Packet simulation",
+      "body": "A test that says whether a single data packet would pass, without actually sending it."
+    },
+    "compiledPolicy": {
+      "term": "Compiled policy",
+      "body": "The rules already translated into the format each device applies."
+    },
+    "policyVersion": {
+      "term": "Epoch (policy version)",
+      "body": "A number that goes up with each rule change. It shows which version each device has."
+    },
+    "auditChain": {
+      "term": "Audit chain",
+      "body": "Each log entry contains the fingerprint of the one before, so a change shows up."
+    },
+    "hmac": {
+      "term": "HMAC",
+      "body": "A cryptographic fingerprint that proves data was not altered without the secret key."
+    },
+    "checkpoint": {
+      "term": "Checkpoint (signed snapshot)",
+      "body": "A signed photograph of the log's state, to compare with later."
+    },
+    "ed25519": {
+      "term": "Ed25519",
+      "body": "The type of signature the system uses for snapshots and the transparency signal."
+    },
+    "siem": {
+      "term": "SIEM",
+      "body": "An external security monitoring system that receives and analyses events."
+    },
+    "mfa": {
+      "term": "MFA / TOTP",
+      "body": "A second check at sign-in: a 6-digit code that changes every 30 seconds and comes from the app on your phone."
+    },
+    "recoveryCode": {
+      "term": "Recovery code",
+      "body": "An emergency code to sign in if you lose your phone. It works only once."
+    },
+    "rbac": {
+      "term": "RBAC (roles)",
+      "body": "Role-based access control: each role grants a specific set of permissions."
+    },
+    "cryptoShredding": {
+      "term": "Crypto-shredding",
+      "body": "The keys that protect the data are erased for good: without keys, the data cannot be read."
+    },
+    "dualAuthorization": {
+      "term": "Dual authorisation (four eyes)",
+      "body": "A sensitive action needs the approval of two different people."
+    },
+    "legalHold": {
+      "term": "Legal hold",
+      "body": "A legal obligation that prevents an organisation's data from being erased until it is removed."
+    },
+    "deadMansSwitch": {
+      "term": "Dead man's switch",
+      "body": "A check that carries out an action (here: erasure) if the owner does not confirm they are present within a set time."
+    },
+    "warrantCanary": {
+      "term": "Warrant canary",
+      "body": "A signed signal updated regularly: if it stops being updated, something may have happened."
+    },
+    "splitTunneling": {
+      "term": "Split tunneling",
+      "body": "Some apps are excluded from the protected tunnel and connect directly to the internet."
+    },
+    "netmap": {
+      "term": "Netmap / validity limit",
+      "body": "The list of devices and rules a device keeps. The limit says how long it uses it without contacting the network."
+    },
+    "heartbeat": {
+      "term": "Heartbeat (regular check-in)",
+      "body": "The regular check-in in which each device confirms to the network that it is active."
+    },
+    "tenant": {
+      "term": "Tenant",
+      "body": "An isolated organisation within the network, with its own devices and users."
+    },
+    "sso": {
+      "term": "SSO / OIDC",
+      "body": "Single sign-on: the user signs in with their work account, without a separate console password."
+    },
+    "pkce": {
+      "term": "PKCE",
+      "body": "A protection for single sign-on that stops the access code from being stolen."
+    },
+    "dns": {
+      "term": "DNS / CNAME / TLS / FQDN",
+      "body": "DNS links a site name to its address; CNAME is an alias between two names; TLS is site encryption (the padlock); FQDN is a domain's full name."
+    },
+    "webrtc": {
+      "term": "WebRTC",
+      "body": "The technology that streams video and inputs directly between two devices in a browser."
+    },
+    "ice": {
+      "term": "ICE / STUN / TURN",
+      "body": "Procedures by which two devices find the most direct path to talk, even behind a router."
+    },
+    "vcpu": {
+      "term": "vCPU / NVMe / GPU",
+      "body": "Virtual processors, a type of fast disk, a virtual computer's graphics card."
+    },
+    "codec": {
+      "term": "Codec",
+      "body": "The format in which video is compressed for transmission."
+    },
+    "preAuthKey": {
+      "term": "Pre-auth key",
+      "body": "A one-time key that authorises a device to join the network."
+    },
+    "wireguardConfig": {
+      "term": "WireGuard configuration",
+      "body": "The file (or QR code) that connects a device to the WireGuard tunnel."
+    },
+    "wireguard": {
+      "term": "WireGuard",
+      "body": "The encrypted tunnel protocol used to connect devices."
+    },
+    "node": {
+      "term": "Node",
+      "body": "A device registered on the network. In the text, use 'device'."
+    },
+    "mebibyte": {
+      "term": "MiB (mebibyte)",
+      "body": "A unit of data equal to 1,048,576 bytes, slightly more than a megabyte."
+    }
+  },
+  "roles": {
+    "super-admin": {
+      "term": "Platform administrator",
+      "body": "Manages every organisation on this server."
+    },
+    "owner": {
+      "term": "Owner",
+      "body": "Has full control of the organisation, including erasing its data."
+    },
+    "admin": {
+      "term": "Administrator",
+      "body": "Manages users, devices and rules in the organisation."
+    },
+    "network_admin": {
+      "term": "Network administrator",
+      "body": "Manages devices, access rules and registration keys, but not users."
+    },
+    "auditor": {
+      "term": "Auditor",
+      "body": "Reads devices, rules and the activity log, and cannot change anything."
+    },
+    "member": {
+      "term": "Member",
+      "body": "Uses the network and sees their own devices."
+    },
+    "user": {
+      "term": "User",
+      "body": "Uses the network and sees their own devices."
+    }
+  },
+  "deviceType": {
+    "EXIT_BRIDGE": "Internet exit",
+    "CLIENT_ORIGIN": "User device",
+    "RELAY": "Forwards traffic",
+    "HYBRID": "Mixed",
+    "unknown": "Unknown type"
+  },
+  "page": {
+    "title": "Glossary",
+    "description": "Plain explanations of the technical words used in this console.",
+    "search": "Search the glossary"
+  }
+}
