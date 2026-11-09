@@ -657,7 +657,7 @@ async function getPeeringAgreementById(peeringId) {
     imported_nodes: parseJson(r.imported_nodes, []),
     status: r.status,
     expires_at: r.expires_at,
-    signature: tokenObj.signature || 'valid_sig',
+    signature: tokenObj.signature || null,
     created_at: r.created_at,
     updated_at: r.updated_at
   };

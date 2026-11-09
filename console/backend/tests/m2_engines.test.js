@@ -558,6 +558,12 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       const unsigned = listRes.body.peering_agreements.find((a) => a.peering_id === pid);
       assert.ok(unsigned, 'the unsigned agreement is listed');
       assert.strictEqual(unsigned.signature, null, 'a placeholder signature was reported');
+      // The single-agreement read is a second path to the same row.
+      const oneRes = await request(app)
+        .get(`/api/peering/agreements/${pid}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      assert.strictEqual(oneRes.status, 200, JSON.stringify(oneRes.body));
+      assert.strictEqual(oneRes.body.peering_agreement.signature, null, 'a placeholder signature was reported by id');
     });
 
     it('should retrieve peering agreement by ID via /api/peering/:id and /api/peering/agreements/:id', async () => {
