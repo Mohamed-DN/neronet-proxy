@@ -625,7 +625,10 @@ case "$SCENARIO" in
       netfault "$1" 'iptables -L -v -x -n | grep neronet-t0' | awk '{p+=$1} END {print p+0}'
     }
     admission_keys() {
-      curl -sS --cacert certs/ca.crt -X POST "https://127.0.0.1:$((8443 + ${NERONET_PORT_OFFSET:-0}))/v4/control/relay/admission" \
+      # The API port, like every other call here: the console's TLS port would need the
+      # host curl to trust the development CA, and Windows' schannel also wants a
+      # revocation answer that CA cannot give.
+      curl -sS -X POST "$API/v4/control/relay/admission" \
         -H "Authorization: Bearer $(cat "certs/relays/$1/credential")" | tr ',' '\n' | grep -c '[0-9a-f]\{64\}' || true
     }
     homes_ready() {

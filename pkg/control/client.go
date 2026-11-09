@@ -133,7 +133,12 @@ func NewClient(serverURL string) *Client {
 // returned clone contains trust configuration only, never the node credential.
 func (c *Client) TransportTLSConfig() *tls.Config {
 	if t, ok := c.httpClient.Transport.(*http.Transport); ok && t.TLSClientConfig != nil {
-		return t.TLSClientConfig.Clone()
+		cfg := t.TLSClientConfig.Clone()
+		// The trust (pinned CA, server name rules) carries over, the application
+		// protocols do not: net/http writes h2 into the control client's config at its
+		// first request, and a relay that accepted it could not take the DERP upgrade.
+		cfg.NextProtos = nil
+		return cfg
 	}
 	return nil
 }

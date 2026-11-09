@@ -211,8 +211,17 @@ func run(ctx context.Context, cfg relayConfig, ready func(net.Addr)) error {
 		return err
 	}
 	server := &http.Server{
-		Handler:           handler,
-		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
+		Handler: handler,
+		// HTTP/1.1 only. The DERP client upgrades a `GET /derp` HTTP/1.1 request; with
+		// h2 offered, a client whose config also lists h2 gets an HTTP/2 connection and
+		// its upgrade is a "bogus greeting". A non-nil empty TLSNextProto is what turns
+		// net/http's automatic HTTP/2 off.
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+			NextProtos:   []string{"http/1.1"},
+		},
+		TLSNextProto:      map[string]func(*http.Server, *tls.Conn, http.Handler){},
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	runCtx, cancel := context.WithCancel(ctx)

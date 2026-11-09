@@ -227,7 +227,12 @@ func healthy(t *testing.T, ca *testCA, derpURL string) int {
 
 func pool(t *testing.T, ca *testCA, k key.NodePrivate, relayURL string, received chan<- string) *derpwire.Pool {
 	t.Helper()
-	p, err := derpwire.NewPool(k.Raw32(), &tls.Config{RootCAs: ca.roots()}, func(relay string, source [32]byte, packet []byte) {
+	return poolWith(t, &tls.Config{RootCAs: ca.roots()}, k, relayURL, received)
+}
+
+func poolWith(t *testing.T, cfg *tls.Config, k key.NodePrivate, relayURL string, received chan<- string) *derpwire.Pool {
+	t.Helper()
+	p, err := derpwire.NewPool(k.Raw32(), cfg, func(relay string, source [32]byte, packet []byte) {
 		if received != nil {
 			received <- string(packet)
 		}
@@ -307,6 +312,39 @@ func TestRelayEntrypointEnforcesTheAdmissionSnapshot(t *testing.T) {
 	// Restored: admission resumes.
 	cp.set([]string{pubHex(b)}, 60, false)
 	eventually(t, "re-admitted after the control plane returned", 5*time.Second, func() bool { return len(pb.Homes()) == 1 })
+}
+
+// A real node hands the relay pool a clone of its control-plane TLS config, and
+// net/http has by then added "h2" to that config's NextProtos. The relay must still
+// speak the DERP upgrade over HTTP/1.1: seen on the dedicated stack, where an h2
+// handshake answered every node's `GET /derp` with "bogus greeting" and no node ever
+// got a home.
+func TestRelayServesANodeWhoseTLSConfigOffersHTTP2(t *testing.T) {
+	ca := newCA(t)
+	cred := credential()
+	cp := newControlPlane(t, ca, cred)
+	a, b := key.NewNode(), key.NewNode()
+	cp.set([]string{pubHex(a), pubHex(b)}, 60, false)
+	relayURL, _ := startRelay(t, ca, cp, cred)
+
+	nodeTLS := &tls.Config{RootCAs: ca.roots(), NextProtos: []string{"h2", "http/1.1"}}
+	got := make(chan string, 4)
+	pa := poolWith(t, nodeTLS.Clone(), a, relayURL, nil)
+	pb := poolWith(t, nodeTLS.Clone(), b, relayURL, got)
+	eventually(t, "both nodes homed on the relay", 5*time.Second, func() bool {
+		return len(pa.Homes()) == 1 && len(pb.Homes()) == 1
+	})
+	if err := pa.Send("relay-a", b.Public().Raw32(), []byte("over-http1")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case p := <-got:
+		if p != "over-http1" {
+			t.Fatal(p)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("packet not relayed")
+	}
 }
 
 func TestRelayIdentityPersistsAcrossRestarts(t *testing.T) {

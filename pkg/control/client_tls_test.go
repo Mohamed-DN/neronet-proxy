@@ -110,3 +110,25 @@ func TestNewClientWithCARefusesBadInput(t *testing.T) {
 		t.Error("a CA was accepted for an http URL")
 	}
 }
+
+// The node hands this config to its transports (the DERP relay pool). net/http adds
+// "h2" to the control client's own TLS config at its first request; a clone taken
+// after that offered h2 to every relay, which the relay accepted, and the DERP
+// upgrade (HTTP/1.1) then failed on every node.
+func TestTransportTLSConfigNeverOffersTheControlClientsALPN(t *testing.T) {
+	srv, ca := tlsControlPlane(t)
+	c, err := NewClientWithCA(srv.URL, ca)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := challenge(c); err != nil {
+		t.Fatal(err)
+	}
+	cfg := c.TransportTLSConfig()
+	if cfg == nil || cfg.RootCAs == nil {
+		t.Fatal("transport TLS config lost the pinned CA")
+	}
+	if len(cfg.NextProtos) != 0 {
+		t.Fatalf("transport TLS config offers %v", cfg.NextProtos)
+	}
+}
