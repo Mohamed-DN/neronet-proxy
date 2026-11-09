@@ -208,7 +208,13 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     assert.strictEqual(res.body.error, 'not_implemented');
     assert.match(res.body.message, /pre-auth key/i);
     const body = JSON.stringify(res.body);
-    for (const fabricated of ['config_text', 'qr_code_data_url', '10.42.100.25', 'vpn.sovereign.mesh', '4gC5z7y2M3oN9rPt8xV1wK0jL5qS6uI3dF2hB1eA4gA=']) {
+    for (const fabricated of [
+      'config_text',
+      'qr_code_data_url',
+      '10.42.100.25',
+      'vpn.sovereign.mesh',
+      '4gC5z7y2M3oN9rPt8xV1wK0jL5qS6uI3dF2hB1eA4gA='
+    ]) {
       assert.ok(!body.includes(fabricated), `response still carries ${fabricated}`);
     }
   });
