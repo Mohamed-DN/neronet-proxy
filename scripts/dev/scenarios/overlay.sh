@@ -81,16 +81,29 @@ api_login() {
   [ -n "$TOKEN" ] || die "the console API did not return a token; is the stack up on $API?"
 }
 
+# api <method> <path> [json body] -> prints the response body
+#
+# A console token lives 15 minutes (SOVEREIGN_JWT_EXPIRES_IN) and the longer scenarios
+# run past that: a 401 signs in again once and repeats the call.
 api() {
   method=$1
   path=$2
   body=${3:-}
-  if [ -n "$body" ]; then
-    curl -sS -X "$method" "$API$path" -H "Authorization: Bearer $TOKEN" \
-      -H 'Content-Type: application/json' -d "$body"
-  else
-    curl -sS -X "$method" "$API$path" -H "Authorization: Bearer $TOKEN"
-  fi
+  for attempt in 1 2; do
+    if [ -n "$body" ]; then
+      out=$(curl -sS -w '\n%{http_code}' -X "$method" "$API$path" -H "Authorization: Bearer $TOKEN" \
+        -H 'Content-Type: application/json' -d "$body")
+    else
+      out=$(curl -sS -w '\n%{http_code}' -X "$method" "$API$path" -H "Authorization: Bearer $TOKEN")
+    fi
+    code=$(printf '%s\n' "$out" | tail -n 1)
+    if [ "$code" = 401 ] && [ "$attempt" = 1 ]; then
+      api_login
+      continue
+    fi
+    printf '%s' "$(printf '%s\n' "$out" | sed '$d')"
+    return 0
+  done
 }
 
 # --- Reaching a node ---------------------------------------------------------
@@ -660,6 +673,13 @@ case "$SCENARIO" in
       done
       echo "$what after ${i}s"
     }
+
+    # Every fleet node must be one the control plane still lists. After `revoke` the
+    # revoked node keeps its overlay address in its log but has no node id: measuring
+    # DERP against it reports a revocation as a transport failure.
+    if grep -q ' unknown$' "$WORK/fleet"; then
+      die "the fleet holds a node the control plane no longer lists ($(awk '$3 == "unknown" { print $1 }' "$WORK/fleet" | tr '\n' ' ')); run derp on a fresh fleet, before revoke"
+    fi
 
     echo "registering the relays with the control plane"
     sh scripts/dev/gen-relay-certs.sh "$REPO_ROOT/certs" derp-a derp-b
