@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -399,7 +400,16 @@ func (m *Mux) sendConcrete(ep *endpoint, bufs [][]byte) error {
 		if race {
 			return m.raceData(ps, ep, bufs)
 		}
-		return m.sendCandidate(ps, candidate{tr: ep.tr, ep: ep.inner}, bufs)
+		err := m.sendCandidate(ps, candidate{tr: ep.tr, ep: ep.inner}, bufs)
+		if err == nil || errors.Is(err, ErrNotAllowed) {
+			return err
+		}
+		// The write failed here and now (EPERM from a firewall, an unreachable
+		// network): the other paths are tried rather than losing the batch.
+		if ferr := m.sendFirstWorking(ps, m.candidates(ps, nil), bufs, ep.tr, ep.inner); ferr != nil {
+			return errors.Join(err, ferr)
+		}
+		return nil
 	}
 
 	ps := ep.peer.Load()
@@ -410,7 +420,40 @@ func (m *Mux) sendConcrete(ep *endpoint, bufs [][]byte) error {
 	if len(cands) == 0 {
 		return ErrNoPath
 	}
-	return m.sendCandidate(ps, cands[0], bufs)
+	// The transport that last carried authenticated traffic goes first while that
+	// evidence is fresh; the rest follow in preference order.
+	ps.mu.Lock()
+	winner, fresh := ps.winner, time.Since(ps.lastAuthenticated) <= 2*time.Second
+	ps.mu.Unlock()
+	if fresh && winner != "" {
+		sort.SliceStable(cands, func(i, j int) bool { return cands[i].tr == winner && cands[j].tr != winner })
+	}
+	return m.sendFirstWorking(ps, cands, bufs, "", nil)
+}
+
+// sendFirstWorking sends through the first candidate whose write succeeds, skipping
+// the one already tried (skipTr/skipEP). A local failure on one path (EPERM, no route)
+// says nothing about the others, so a peer-level endpoint never stays on a path that
+// cannot send while an allowed one can. With every path failing, the errors are
+// returned together.
+func (m *Mux) sendFirstWorking(ps *peerState, cands []candidate, bufs [][]byte, skipTr string, skipEP conn.Endpoint) error {
+	var errs error
+	tried := false
+	for _, c := range cands {
+		if skipEP != nil && c.same(skipTr, skipEP) {
+			continue
+		}
+		tried = true
+		err := m.sendCandidate(ps, c, bufs)
+		if err == nil {
+			return nil
+		}
+		errs = errors.Join(errs, fmt.Errorf("%s: %w", c.tr, err))
+	}
+	if !tried {
+		return ErrNoPath
+	}
+	return errs
 }
 
 // sendOne is the only place a packet leaves the Mux, and so the only place the policy has
