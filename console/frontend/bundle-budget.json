@@ -1,0 +1,16 @@
+{
+  "measuredAt": "2026-11-09",
+  "baseline": {
+    "entryGzip": 176158,
+    "totalJsGzip": 398337,
+    "entryRaw": 545465,
+    "totalJsRaw": 1292695
+  },
+  "limits": {
+    "entryGzip": 193773,
+    "totalJsGzip": 438170,
+    "maxChunkGzip": 120000,
+    "portalFirstLoadGzip": 201158
+  },
+  "portalManifestKey": "src/portal/MeRoute.tsx"
+}

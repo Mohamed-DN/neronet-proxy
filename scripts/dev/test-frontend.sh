@@ -14,4 +14,5 @@ exec $ENGINE run --rm \
     set -e
     npm ci --no-audit --no-fund >/dev/null
     npm run build
+    npm run budget
     npm test'

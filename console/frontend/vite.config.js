@@ -35,6 +35,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    manifest: true,
     sourcemap: false,
     chunkSizeWarningLimit: 1500
     /*
