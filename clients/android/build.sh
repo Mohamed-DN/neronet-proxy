@@ -33,6 +33,7 @@ echo "Worktree mounted at /w from: $REPO"
 podman run --rm \
   -v "$REPO:/w" \
   -v "$GRADLE_CACHE_VOLUME:/root/.gradle" \
+  -v "nn-android-m2-cache:/root/.m2" \
   -w /w/clients/android \
   --entrypoint /bin/bash \
   "$IMAGE" \

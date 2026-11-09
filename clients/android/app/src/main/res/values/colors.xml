@@ -4,8 +4,6 @@
     <color name="nn_on_primary">#FFFFFFFF</color>
     <color name="nn_primary_container">#FFE6EEFF</color>
     <color name="nn_on_primary_container">#FF1E40AF</color>
-    <color name="nn_secondary">#FF6D28D9</color>
-    <color name="nn_on_secondary">#FFFFFFFF</color>
     <color name="nn_error">#FFB91C1C</color>
     <color name="nn_on_error">#FFFFFFFF</color>
     <color name="nn_background">#FFF8FAFC</color>
