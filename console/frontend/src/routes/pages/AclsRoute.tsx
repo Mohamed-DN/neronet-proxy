@@ -889,7 +889,10 @@ export default function AclsRoute() {
                   </div>
                 </div>
               ) : (
-                <EmptyState title="No compiled policy" body="Select a registered node to inspect its policy." />
+                <EmptyState
+                  title={t('acl.noCompiledPolicyTitle')}
+                  body={t('acl.noCompiledPolicyBody')}
+                />
               )}
             </div>
           ) : (

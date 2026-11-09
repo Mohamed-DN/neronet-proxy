@@ -1,4 +1,7 @@
 {
+  "common": {
+    "refresh": "Aggiorna"
+  },
   "glossary": {
     "ariaLabel": "Maggiori informazioni su {{term}}",
     "overlayAddress": {
@@ -439,6 +442,8 @@
     }
   },
   "acl": {
+    "noCompiledPolicyTitle": "Nessuna policy compilata",
+    "noCompiledPolicyBody": "Seleziona un nodo registrato per ispezionarne la policy.",
     "title": "Controllo Accessi di Rete Zero-Trust (ACL) & Policy di Routing",
     "description": "Matrice visuale delle regole, anteprima della compilazione dei VIP dei peer, simulazione dei pacchetti e policy predefinita dell'organizzazione.",
     "addRule": "Aggiungi Regola ACL",
@@ -581,7 +586,13 @@
       "partialBadge": "Copertura parziale per i record precedenti",
       "unknownBadge": "Copertura dei campi non disponibile",
       "emptyBadge": "Nessun evento da verificare",
-      "tamperedBadge": "Manomissione Rilevata"
+      "tamperedBadge": "Manomissione Rilevata",
+      "eventsHint": "Registro HMAC immutabile",
+      "checkpointsHint": "Ancore Ed25519 firmate",
+      "siemHint": "Collector di streaming attivi",
+      "adminOnlyHint": "Verificato dall'amministratore di piattaforma",
+      "checkingHint": "Verifica del collegamento hash in corso...",
+      "brokenAtHint": "Interrotto a #{{sequence}}"
     },
     "filters": {
       "searchPlaceholder": "Cerca per messaggio, tipo evento, autore, IP, target...",
@@ -771,6 +782,8 @@
         "description": "Applica un vincolo legale di conservazione per impedire qualsiasi distruzione di chiavi o cancellazione programmata.",
         "organizationId": "ID Organizzazione",
         "reason": "Motivazione Giuridica / Riferimento Atto",
+        "reasonHint": "Numero di fascicolo, citazione normativa o ordine del tribunale",
+        "reasonPlaceholder": "Ordine del tribunale #2026-CV-9824 Ordine di conservazione",
         "cancel": "Annulla",
         "submit": "Applica Legal Hold"
       },
@@ -805,6 +818,11 @@
     }
   },
   "users": {
+    "tabsLabel": "Viste di gestione utenti",
+    "statTotalUsersHint": "Tenant registrati della mesh sovrana",
+    "statPrivilegedHint": "Operatori Super-admin e Admin",
+    "statOrgsHint": "Unità di governance multi-tenant",
+    "statSecurityHint": "TOTP hardware e codici di recupero",
     "title": "Elenco Utenti e Controllo Accessi",
     "subtitle": "Controllo accessi basato sui ruoli (RBAC), account tenant, federazione OIDC e profili client.",
     "statTotalUsers": "Utenti Totali",

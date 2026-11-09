@@ -551,7 +551,7 @@ export default function UsersRoute() {
           <div className="flex items-center gap-3">
             <IconButton
               icon={RefreshCw}
-              label={t('common.refresh', 'Refresh')}
+              label={t('common.refresh')}
               onClick={() => {
                 refetchUsers();
                 refetchOrgs();
@@ -567,24 +567,24 @@ export default function UsersRoute() {
       {/* Top Stats Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
-          label={t('users.statTotalUsers', 'Total Users')}
+          label={t('users.statTotalUsers')}
           value={isLoadingUsers ? '...' : String(users.length)}
-          hint="Registered sovereign mesh tenants"
+          hint={t('users.statTotalUsersHint')}
         />
         <Stat
-          label={t('users.statPrivileged', 'Privileged Roles')}
+          label={t('users.statPrivileged')}
           value={isLoadingUsers ? '...' : String(privilegedCount)}
-          hint="Super-admin & Admin operators"
+          hint={t('users.statPrivilegedHint')}
         />
         <Stat
-          label={t('users.statOrgs', 'Organizations')}
+          label={t('users.statOrgs')}
           value={isLoadingOrgs ? '...' : String(Math.max(orgs.length, 1))}
-          hint="Multi-tenant governance units"
+          hint={t('users.statOrgsHint')}
         />
         <Stat
-          label={t('users.statSecurity', 'MFA Security Posture')}
+          label={t('users.statSecurity')}
           value="RFC 6238"
-          hint="Hardware TOTP & recovery codes"
+          hint={t('users.statSecurityHint')}
         />
       </div>
 
@@ -593,7 +593,7 @@ export default function UsersRoute() {
         items={tabItems}
         value={activeTab}
         onValueChange={(val) => setActiveTab(val as any)}
-        label={t('users.tabsLabel', 'User Management Views')}
+        label={t('users.tabsLabel')}
       />
 
       {/* MODAL 1: Provision User Dialog */}

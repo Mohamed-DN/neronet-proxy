@@ -1,4 +1,7 @@
 {
+  "common": {
+    "refresh": "Refresh"
+  },
   "glossary": {
     "ariaLabel": "More about {{term}}",
     "overlayAddress": {
@@ -439,6 +442,8 @@
     }
   },
   "acl": {
+    "noCompiledPolicyTitle": "No compiled policy",
+    "noCompiledPolicyBody": "Select a registered node to inspect its policy.",
     "title": "Zero-Trust Network Access Control (ACL) & Policy Routing",
     "description": "Visual rule matrix, peer VIP compilation preview, packet simulation, and organization default policy.",
     "addRule": "Add ACL Rule",
@@ -581,7 +586,13 @@
       "partialBadge": "Older records have partial field coverage",
       "unknownBadge": "Field coverage unavailable",
       "emptyBadge": "No events to verify",
-      "tamperedBadge": "Tampering Detected"
+      "tamperedBadge": "Tampering Detected",
+      "eventsHint": "Immutable HMAC ledger",
+      "checkpointsHint": "Signed Ed25519 anchors",
+      "siemHint": "Active streaming collectors",
+      "adminOnlyHint": "Verified by the platform administrator",
+      "checkingHint": "Checking hash link...",
+      "brokenAtHint": "Broken at #{{sequence}}"
     },
     "filters": {
       "searchPlaceholder": "Search by message, event type, actor username, IP, target...",
@@ -771,6 +782,8 @@
         "description": "Enforce a preservation order on an organization to prevent any key shredding or automated data purge.",
         "organizationId": "Organization ID",
         "reason": "Legal Reason / Court Order Reference",
+        "reasonHint": "Case number, regulatory subpoena, or court order",
+        "reasonPlaceholder": "Court Order #2026-CV-9824 Preservation Order",
         "cancel": "Cancel",
         "submit": "Enforce Legal Hold"
       },
@@ -805,6 +818,11 @@
     }
   },
   "users": {
+    "tabsLabel": "User Management Views",
+    "statTotalUsersHint": "Registered sovereign mesh tenants",
+    "statPrivilegedHint": "Super-admin & Admin operators",
+    "statOrgsHint": "Multi-tenant governance units",
+    "statSecurityHint": "Hardware TOTP & recovery codes",
     "title": "User Directory & Access Control",
     "subtitle": "Role-based access control, tenant accounts, OIDC federation, and client profiles.",
     "statTotalUsers": "Total Users",

@@ -340,7 +340,7 @@ export default function AuditRoute() {
 
       {/* Stats Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label={t('audit.stats.totalEvents')} value={events.length} hint="Immutable HMAC ledger" />
+        <Stat label={t('audit.stats.totalEvents')} value={events.length} hint={t('audit.stats.eventsHint')} />
         <Stat
           label={t('audit.stats.chainStatus')}
           value={
@@ -352,19 +352,19 @@ export default function AuditRoute() {
           }
           hint={
             !isPlatformAdmin
-              ? 'Verified by the platform administrator'
+              ? t('audit.stats.adminOnlyHint')
               : !verifyResult
-                ? 'Checking hash link...'
+                ? t('audit.stats.checkingHint')
                 : verifyResult.valid
                   ? t(`audit.stats.${verificationCoverage}Badge`)
-                  : `Broken at #${verifyResult.broken_at_sequence ?? '?'}`
+                  : t('audit.stats.brokenAtHint', { sequence: verifyResult.broken_at_sequence ?? '?' })
           }
         />
-        <Stat label={t('audit.stats.checkpoints')} value={checkpoints.length} hint="Signed Ed25519 anchors" />
+        <Stat label={t('audit.stats.checkpoints')} value={checkpoints.length} hint={t('audit.stats.checkpointsHint')} />
         <Stat
           label={t('audit.stats.siemForwarders')}
           value={siemDestinations.length}
-          hint="Active streaming collectors"
+          hint={t('audit.stats.siemHint')}
         />
       </div>
 

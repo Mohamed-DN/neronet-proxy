@@ -934,12 +934,12 @@ FISA court orders, or requests demanding backdoors.
 
             <FormField
               label={t('nuke.legalHolds.imposeModal.reason')}
-              hint="Case number, regulatory subpoena, or court order"
+              hint={t('nuke.legalHolds.imposeModal.reasonHint')}
               error={imposeError}
               required
             >
               <Input
-                placeholder="Court Order #2026-CV-9824 Preservation Order"
+                placeholder={t('nuke.legalHolds.imposeModal.reasonPlaceholder')}
                 value={imposeReason}
                 onChange={(e) => setImposeReason(e.target.value)}
                 required
