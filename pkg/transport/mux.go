@@ -391,6 +391,11 @@ func (m *Mux) sendConcrete(ep *endpoint, bufs [][]byte) error {
 		if ps == nil {
 			ps = m.incomingPeer(ep.tr, ep.inner.DstToString())
 		}
+		if ps == nil && ep.tr == UDP {
+			if ps = m.bindProfile(bufs, ep.inner); ps != nil {
+				ep.peer.Store(ps)
+			}
+		}
 		if ps == nil {
 			return ErrNoPath
 		}
@@ -513,6 +518,16 @@ func (m *Mux) wrapReceive(name string, fn conn.ReceiveFunc) conn.ReceiveFunc {
 			}
 			ps := m.incomingPeer(name, eps[i].DstToString())
 			if ps == nil {
+				// On a gateway, a handshake initiation from an address no peer declared may
+				// be a profile device that has just joined or changed network (ADR 0029).
+				// wireguard-go authenticates it; the answer may only go back if its MAC1
+				// names a profile device (bindProfile). Anything else stays dropped.
+				if name == UDP && isInitiation(packets[i][:sizes[i]]) && m.hasProfilePeer() {
+					c.rxPackets.Add(1)
+					c.rxBytes.Add(uint64(sizes[i]))
+					eps[i] = newConcrete(name, eps[i])
+					continue
+				}
 				sizes[i] = 0
 				continue
 			}

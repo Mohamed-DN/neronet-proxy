@@ -35,8 +35,13 @@ func TestProfilePeerCarriesItsStaticPSK(t *testing.T) {
 		t.Fatalf("dropped: %v", dropped)
 	}
 	byKey := map[string]string{}
+	profile := map[string]bool{}
 	for _, p := range peers {
 		byKey[p.PublicKey] = p.PresharedKey
+		profile[p.PublicKey] = p.Profile
+	}
+	if !profile[profileKeyHex] || profile[meshKeyHex] {
+		t.Fatalf("profile flags = %v; the device peer must reach the dataplane as a profile peer, the mesh peer must not", profile)
 	}
 	if byKey[profileKeyHex] != staticPSKHex {
 		t.Fatalf("profile device PSK = %q, want the static one", byKey[profileKeyHex])

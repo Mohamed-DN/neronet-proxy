@@ -72,6 +72,38 @@ func mac1Key(responderPub [32]byte) [32]byte {
 	return key
 }
 
+// responseMAC1Offset is where a handshake response carries its MAC1: after type (4),
+// sender (4), receiver (4), ephemeral (32) and the encrypted empty payload (16).
+const responseMAC1Offset = 60
+
+// handshakeIsFor reports whether a handshake initiation or response is addressed to the
+// peer whose MAC1 key is given. Both messages carry a MAC1 keyed with the recipient's
+// public key, so the sender's choice of recipient is readable without any secret.
+func handshakeIsFor(b []byte, key [32]byte) bool {
+	switch {
+	case isInitiation(b):
+		return initiationIsFor(b, key)
+	case len(b) == sizeResponse && binary.LittleEndian.Uint32(b) == msgResponse:
+		return macMatches(b, responseMAC1Offset, key)
+	}
+	return false
+}
+
+func macMatches(b []byte, at int, key [32]byte) bool {
+	h, err := blake2s.New128(key[:])
+	if err != nil {
+		return false
+	}
+	h.Write(b[:at])
+	var sum [16]byte
+	h.Sum(sum[:0])
+	var diff byte
+	for i := 0; i < initMAC1Size; i++ {
+		diff |= sum[i] ^ b[at+i]
+	}
+	return diff == 0
+}
+
 // initiationIsFor reports whether an initiation's MAC1 verifies under the key derived
 // from the given responder public key.
 func initiationIsFor(init []byte, key [32]byte) bool {

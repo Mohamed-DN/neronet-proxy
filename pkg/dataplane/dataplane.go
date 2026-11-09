@@ -169,6 +169,10 @@ type Peer struct {
 
 	// Stealth carries AmneziaWG parameters when Transport is "amneziawg".
 	Stealth *stealth.Config `json:"stealth,omitempty"`
+
+	// Profile marks a profile device on a gateway (ADR 0029): it has no paths, and the
+	// transport mux answers it wherever its authenticated handshake came from.
+	Profile bool `json:"profile,omitempty"`
 }
 
 func (p Peer) validate() error {
@@ -390,10 +394,13 @@ func (d *Device) SetPeers(peers []Peer) error {
 			return fmt.Errorf("dataplane: peer %d: public key %.8s appears twice", i, key)
 		}
 		seen[key] = struct{}{}
-		if d.mux != nil {
+		if d.mux != nil && !p.Profile {
 			if err := d.mux.ValidatePeerPaths(p.PublicKey, p.Paths); err != nil {
 				return err
 			}
+		}
+		if p.Profile && len(p.Paths) > 0 {
+			return fmt.Errorf("dataplane: peer %d: a profile device has no declared paths", i)
 		}
 	}
 
@@ -419,11 +426,19 @@ func (d *Device) SetPeers(peers []Peer) error {
 	}
 	for _, p := range peers {
 		if d.mux != nil {
-			if err := d.mux.SetPeerPaths(p.PublicKey, p.Paths); err != nil {
+			register := func() error { return d.mux.SetPeerPaths(p.PublicKey, p.Paths) }
+			if p.Profile {
+				register = func() error { return d.mux.SetProfilePeer(p.PublicKey) }
+			}
+			if err := register(); err != nil {
 				return err
 			}
 			if address := current[p.PublicKey]; d.mux.PeerAllows(p.PublicKey, address) {
 				p.Endpoint = address
+			} else if p.Profile {
+				// Answered wherever its next handshake comes from; until then the Mux has
+				// no address for it and a send has nowhere to go.
+				p.Endpoint = transport.PeerEndpoint(p.PublicKey)
 			} else if len(p.Paths) > 0 {
 				p.Endpoint = transport.PeerEndpoint(p.PublicKey)
 			} else {

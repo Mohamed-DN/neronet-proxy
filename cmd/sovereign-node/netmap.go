@@ -730,6 +730,7 @@ func netmapPeers(in []control.NetmapPeer, revoked map[string]uint64, documents .
 			AllowedIPs:          allowed,
 			PersistentKeepalive: p.KeepaliveSeconds,
 			PresharedKey:        presharedKey,
+			Profile:             p.Profile,
 		})
 	}
 

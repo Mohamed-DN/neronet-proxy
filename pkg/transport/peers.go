@@ -73,6 +73,14 @@ type peerState struct {
 	dataTimers        []timer
 	dataRacing        bool
 	dataGeneration    uint64
+
+	// profile marks a profile device on a gateway (ADR 0029): it has no declared path,
+	// and roamAddr is the one UDP address the Mux has bound to it, from a handshake
+	// answer whose MAC1 named it. Nothing else may reach or be reached from an address
+	// on its behalf.
+	profile  bool
+	roamAddr string
+	roamEP   conn.Endpoint
 }
 
 type peerTable struct {
@@ -140,6 +148,11 @@ func (m *Mux) SetPeerPaths(key string, specs []PathSpec) error {
 	m.peers.mu.Unlock()
 
 	ps.mu.Lock()
+	// Declared paths make it a mesh peer: whatever address a profile device had bound
+	// is no longer its.
+	ps.profile = false
+	ps.roamAddr = ""
+	ps.roamEP = nil
 	unchanged := len(paths) == len(ps.paths)
 	if unchanged {
 		for i, p := range paths {
@@ -424,6 +437,9 @@ func (m *Mux) raceData(ps *peerState, own *endpoint, bufs [][]byte) error {
 }
 
 func (m *Mux) peerAllowsLocked(ps *peerState, tr, addr string) bool {
+	if ps.profile && tr == UDP && ps.roamAddr != "" && addr == ps.roamAddr {
+		return true
+	}
 	for _, p := range ps.paths {
 		if p.tr != tr {
 			continue
@@ -442,6 +458,96 @@ func (m *Mux) peerAllowsLocked(ps *peerState, tr, addr string) bool {
 		}
 	}
 	return false
+}
+
+// SetProfilePeer registers a profile device (ADR 0029): a WireGuard peer with no
+// declared path, which the gateway answers wherever its handshake came from. Only UDP
+// is used for it.
+func (m *Mux) SetProfilePeer(key string) error {
+	k, pub, err := normaliseKey(key)
+	if err != nil {
+		return err
+	}
+	m.peers.mu.Lock()
+	ps, known := m.peers.byKey[k]
+	if !known {
+		ps = &peerState{key: k, pub: pub, mac1: mac1Key(pub)}
+		m.peers.byKey[k] = ps
+	}
+	m.peers.mu.Unlock()
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if !ps.profile {
+		ps.paths = nil
+		ps.winner = ""
+		ps.roamAddr = ""
+		ps.roamEP = nil
+	}
+	ps.profile = true
+	return nil
+}
+
+// hasProfilePeer reports whether this node serves any profile device, i.e. is a gateway.
+func (m *Mux) hasProfilePeer() bool {
+	m.peers.mu.RLock()
+	defer m.peers.mu.RUnlock()
+	for _, ps := range m.peers.byKey {
+		ps.mu.Lock()
+		p := ps.profile
+		ps.mu.Unlock()
+		if p {
+			return true
+		}
+	}
+	return false
+}
+
+// bindProfile binds addr to the profile device every packet in bufs is a handshake
+// message for, and returns it; nil when any packet is not a handshake message whose
+// MAC1 names one and the same profile device. Data never establishes a binding: only a
+// handshake answer wireguard-go produced after authenticating the device's initiation.
+func (m *Mux) bindProfile(bufs [][]byte, inner conn.Endpoint) *peerState {
+	addr := inner.DstToString()
+	m.peers.mu.RLock()
+	defer m.peers.mu.RUnlock()
+	var target *peerState
+	for _, b := range bufs {
+		var found *peerState
+		for _, ps := range m.peers.byKey {
+			ps.mu.Lock()
+			p := ps.profile
+			ps.mu.Unlock()
+			if p && handshakeIsFor(b, ps.mac1) {
+				found = ps
+				break
+			}
+		}
+		if found == nil || (target != nil && found != target) {
+			return nil
+		}
+		target = found
+	}
+	if target == nil {
+		return nil
+	}
+	// One address, one device: a NAT that hands the address to another device moves it.
+	for _, ps := range m.peers.byKey {
+		if ps == target {
+			continue
+		}
+		ps.mu.Lock()
+		if ps.profile && ps.roamAddr == addr {
+			ps.roamAddr = ""
+			ps.roamEP = nil
+		}
+		ps.mu.Unlock()
+	}
+	target.mu.Lock()
+	target.roamAddr = addr
+	target.roamEP = inner
+	target.mu.Unlock()
+	return target
 }
 
 func (m *Mux) incomingPeer(tr, addr string) *peerState {
@@ -491,9 +597,13 @@ func (m *Mux) sendCandidate(ps *peerState, c candidate, bufs [][]byte) error {
 // is not allowed or not open are left out.
 func (m *Mux) candidates(ps *peerState, own *endpoint) []candidate {
 	ps.mu.Lock()
-	list := make([]candidate, len(ps.paths), len(ps.paths)+1)
+	list := make([]candidate, len(ps.paths), len(ps.paths)+2)
 	copy(list, ps.paths)
 	fails := ps.fails
+	// A profile device's only path is the address its last handshake was answered at.
+	if ps.profile && ps.roamEP != nil {
+		list = append(list, candidate{tr: UDP, addr: ps.roamAddr, ep: ps.roamEP})
+	}
 	ps.mu.Unlock()
 
 	if own != nil && own.inner != nil && own.tr != trNone {
