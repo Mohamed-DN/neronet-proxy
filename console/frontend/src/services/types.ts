@@ -42,6 +42,11 @@ export interface MeshNode {
   memory_runtime_sys_bytes?: string | null;
   cpu_usage_pct?: number | null;
   endpoints?: string[];
+  /** 'profile' for a phone or computer that made its own keys; 'mesh' for an enrolled node. */
+  device_kind?: 'mesh' | 'profile';
+  /** The endpoint a profile device dials, set on the gateway node only. */
+  profile_gateway_endpoint?: string | null;
+  last_seen_at?: string | null;
   [key: string]: unknown;
 }
 
