@@ -740,6 +740,12 @@ case "$SCENARIO" in
     expect_isolated "$A" timeout || rc=1
     $COMPOSE --profile relays start derp-a derp-b
     wait_for "both relays homed again" homes_ready || rc=1
+    # Homes in the database are not homes in every node's netmap: a peer reaches
+    # another over DERP only once it has fetched a netmap that names that node's new
+    # home. On 9 November relay-de applied netmap 185 without relay-us's home, reached
+    # relay-fr, and was measured against relay-us two seconds before netmap 195
+    # arrived. Wait the same bound as every other phase before judging the matrix.
+    converge
     wait_for "$A reaching $B through the restarted relays" reaches "$A" "$(vip_of "$B")" || rc=1
     measure_matrix "UDP dropped at $A, relays back"
     expect_all ok || rc=1
