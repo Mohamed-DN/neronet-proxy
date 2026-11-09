@@ -889,10 +889,7 @@ export default function AclsRoute() {
                   </div>
                 </div>
               ) : (
-                <EmptyState
-                  title={t('acl.noCompiledPolicyTitle')}
-                  body={t('acl.noCompiledPolicyBody')}
-                />
+                <EmptyState title={t('acl.noCompiledPolicyTitle')} body={t('acl.noCompiledPolicyBody')} />
               )}
             </div>
           ) : (

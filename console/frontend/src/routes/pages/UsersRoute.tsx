@@ -581,11 +581,7 @@ export default function UsersRoute() {
           value={isLoadingOrgs ? '...' : String(Math.max(orgs.length, 1))}
           hint={t('users.statOrgsHint')}
         />
-        <Stat
-          label={t('users.statSecurity')}
-          value="RFC 6238"
-          hint={t('users.statSecurityHint')}
-        />
+        <Stat label={t('users.statSecurity')} value="RFC 6238" hint={t('users.statSecurityHint')} />
       </div>
 
       {/* Tabs */}
