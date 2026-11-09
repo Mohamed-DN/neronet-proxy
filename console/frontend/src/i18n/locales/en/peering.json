@@ -1,1 +1,84 @@
-{}
+{
+  "title": "Links with other networks",
+  "description": "Link this network to another independent network by exchanging a signed code with its administrator.",
+  "actions": {
+    "create": "Create a code for another network"
+  },
+  "tabs": {
+    "label": "Which links to show",
+    "active": "Active ({{n}})",
+    "waiting": "Waiting ({{n}})",
+    "paste": "Paste a code"
+  },
+  "columns": {
+    "network": "Network",
+    "shared": "What is shared",
+    "received": "Devices received",
+    "expires": "Expires",
+    "status": "Status",
+    "actions": "Action"
+  },
+  "scope": {
+    "ALL": "All devices",
+    "SPECIFIC_SUBNETS": "Only these address ranges: {{list}}",
+    "SPECIFIC_DEVICES": "Only chosen devices ({{count}})",
+    "none": "Not specified"
+  },
+  "status": {
+    "pending": "Waiting",
+    "active": "Active",
+    "revoked": "Revoked",
+    "expired": "Expired"
+  },
+  "revoke": {
+    "action": "Revoke link",
+    "title": "Revoke the link with {{name}}?",
+    "body": "The other network loses access immediately.",
+    "done": "Link revoked.",
+    "failed": "The link was not revoked: the other network still has access. Try again."
+  },
+  "create": {
+    "title": "Create a code for another network",
+    "body": "Create a signed code to send to the administrator of the other network. The code contains the terms you are offering.",
+    "endpoint": "Address of this network, as the other network will reach it",
+    "endpointHint": "Starts with https://",
+    "endpointInvalid": "The address must start with https://.",
+    "scope": "What to share",
+    "scopeOptions": {
+      "ALL": "All devices",
+      "SPECIFIC_SUBNETS": "Only these address ranges"
+    },
+    "subnets": "Shared networks (addresses, comma-separated)",
+    "subnetsInvalid": "Write address ranges like 10.0.0.0/8, separated by commas.",
+    "duration": "Duration",
+    "d7": "7 days",
+    "d30": "30 days",
+    "d90": "90 days",
+    "d365": "1 year",
+    "submit": "Create code",
+    "result": "Code to copy:",
+    "copy": "Copy",
+    "copied": "Copied",
+    "failed": "The code was not created. Check the address and try again.",
+    "done": "Done"
+  },
+  "paste": {
+    "title": "Paste a code you received",
+    "body": "Paste the code you received from the other network's administrator. The code is checked before it is accepted.",
+    "placeholder": "Paste the code here…",
+    "submit": "Check and accept the code",
+    "invalid": "This code is invalid or damaged. Ask the other network to send a new one.",
+    "failed": "The link was not accepted. Try again.",
+    "accepted": "Code accepted: the link has been created.",
+    "fingerprintTitle": "Confirm the other network's fingerprint",
+    "fingerprintBody": "Ask the other administrator to read this fingerprint to you by phone or in person. Accept only if it matches.",
+    "fingerprintConfirm": "The fingerprint matches, accept the code"
+  },
+  "empty": {
+    "title": "No links with other networks",
+    "body": "Create a code and send it to the administrator of the other network."
+  },
+  "error": {
+    "load": "The links could not be loaded. Try again."
+  }
+}

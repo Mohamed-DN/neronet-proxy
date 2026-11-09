@@ -1,1 +1,84 @@
-{}
+{
+  "title": "Collegamenti con altre reti",
+  "description": "Collega questa rete a un'altra rete indipendente scambiando un codice firmato con il suo amministratore.",
+  "actions": {
+    "create": "Crea un codice per un'altra rete"
+  },
+  "tabs": {
+    "label": "Quali collegamenti mostrare",
+    "active": "Attivi ({{n}})",
+    "waiting": "In attesa ({{n}})",
+    "paste": "Incolla un codice"
+  },
+  "columns": {
+    "network": "Rete",
+    "shared": "Cosa è condiviso",
+    "received": "Dispositivi ricevuti",
+    "expires": "Scadenza",
+    "status": "Stato",
+    "actions": "Azione"
+  },
+  "scope": {
+    "ALL": "Tutti i dispositivi",
+    "SPECIFIC_SUBNETS": "Solo questi intervalli di indirizzi: {{list}}",
+    "SPECIFIC_DEVICES": "Solo i dispositivi scelti ({{count}})",
+    "none": "Non indicato"
+  },
+  "status": {
+    "pending": "In attesa",
+    "active": "Attivo",
+    "revoked": "Revocato",
+    "expired": "Scaduto"
+  },
+  "revoke": {
+    "action": "Revoca collegamento",
+    "title": "Revocare il collegamento con {{name}}?",
+    "body": "La rete remota perde subito l'accesso.",
+    "done": "Collegamento revocato.",
+    "failed": "Il collegamento non è stato revocato: la rete remota ha ancora accesso. Riprova."
+  },
+  "create": {
+    "title": "Crea un collegamento con un'altra rete",
+    "body": "Crea un codice firmato da inviare all'amministratore dell'altra rete. Il codice contiene le condizioni che stai proponendo.",
+    "endpoint": "Indirizzo di questa rete, come lo raggiungerà l'altra rete",
+    "endpointHint": "Inizia con https://",
+    "endpointInvalid": "L'indirizzo deve iniziare con https://.",
+    "scope": "Cosa condividere",
+    "scopeOptions": {
+      "ALL": "Tutti i dispositivi",
+      "SPECIFIC_SUBNETS": "Solo questi intervalli di indirizzi"
+    },
+    "subnets": "Reti condivise (indirizzi separati da virgole)",
+    "subnetsInvalid": "Scrivi intervalli come 10.0.0.0/8, separati da virgole.",
+    "duration": "Durata",
+    "d7": "7 giorni",
+    "d30": "30 giorni",
+    "d90": "90 giorni",
+    "d365": "1 anno",
+    "submit": "Crea codice",
+    "result": "Codice da copiare:",
+    "copy": "Copia",
+    "copied": "Copiato",
+    "failed": "Il codice non è stato creato. Controlla l'indirizzo e riprova.",
+    "done": "Fatto"
+  },
+  "paste": {
+    "title": "Incolla un codice ricevuto",
+    "body": "Incolla il codice ricevuto dall'amministratore dell'altra rete. Il codice viene controllato prima di essere accettato.",
+    "placeholder": "Incolla qui il codice…",
+    "submit": "Controlla e accetta il codice",
+    "invalid": "Il codice non è valido o è danneggiato. Chiedi all'altra rete di inviarne uno nuovo.",
+    "failed": "Il collegamento non è stato accettato. Riprova.",
+    "accepted": "Codice accettato: il collegamento è stato creato.",
+    "fingerprintTitle": "Conferma l'impronta dell'altra rete",
+    "fingerprintBody": "Chiedi all'altro amministratore di leggerti questa impronta al telefono o di persona. Accetta solo se coincide.",
+    "fingerprintConfirm": "L'impronta coincide, accetta il codice"
+  },
+  "empty": {
+    "title": "Nessun collegamento con altre reti",
+    "body": "Crea un codice e invialo all'amministratore dell'altra rete."
+  },
+  "error": {
+    "load": "Impossibile caricare i collegamenti. Riprova."
+  }
+}
