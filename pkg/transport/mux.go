@@ -397,15 +397,21 @@ func (m *Mux) sendConcrete(ep *endpoint, bufs [][]byte) error {
 		ps.mu.Lock()
 		race := time.Since(ps.lastAuthenticated) > 2*time.Second || (ep.tr != UDP && time.Since(ps.lastProbe) > 10*time.Second)
 		ps.mu.Unlock()
+		var err error
 		if race {
-			return m.raceData(ps, ep, bufs)
+			// The race sends on the first path now and on the others after a stagger,
+			// or only on this endpoint's path while another race for the peer runs.
+			err = m.raceData(ps, ep, bufs)
+		} else {
+			err = m.sendCandidate(ps, candidate{tr: ep.tr, ep: ep.inner}, bufs)
 		}
-		err := m.sendCandidate(ps, candidate{tr: ep.tr, ep: ep.inner}, bufs)
 		if err == nil || errors.Is(err, ErrNotAllowed) {
 			return err
 		}
 		// The write failed here and now (EPERM from a firewall, an unreachable
-		// network): the other paths are tried rather than losing the batch.
+		// network): the other paths are tried at once rather than losing the batch or
+		// leaving it to a stagger timer. A duplicate that a timer still sends is
+		// dropped by WireGuard's replay window.
 		if ferr := m.sendFirstWorking(ps, m.candidates(ps, nil), bufs, ep.tr, ep.inner); ferr != nil {
 			return errors.Join(err, ferr)
 		}

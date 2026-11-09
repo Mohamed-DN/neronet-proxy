@@ -108,3 +108,39 @@ func TestPeerLevelSendFallsBackWhenAPathFailsLocally(t *testing.T) {
 		t.Fatal("a send that failed on every path reported success")
 	}
 }
+
+// Seen on the dedicated stack (a49f72a, UDP dropped at relay-de): right after the
+// periodic PSK rotation every session re-handshakes at once. relay-de received each
+// initiation over DERP, but its handshake response took the raced path -- the
+// authentication was older than 2 s -- and was written to UDP only: the first
+// candidate failed locally (EPERM) and the other paths were left to timers, or, with a
+// race already running for that peer, not sent at all. client-de never got an answer.
+// A raced send whose own path fails locally must reach the next path now, not later.
+func TestRacedSendFallsBackAtOnceWhenAPathFailsLocally(t *testing.T) {
+	for _, alreadyRacing := range []bool{false, true} {
+		m := NewMux(Config{Relays: []Relay{{Region: "derp-a"}}}, []string{UDP, DERP}, WithStagger(time.Hour))
+		udp := &fakeTransport{err: syscall.EPERM}
+		derp := &fakeTransport{}
+		m.open[UDP] = udp
+		m.open[DERP] = derp
+		std := conn.NewStdNetBind()
+		udpEP, _ := std.ParseEndpoint("10.0.0.2:51820")
+		derpEP, _ := std.ParseEndpoint("10.0.0.3:8443")
+		ps := &peerState{key: "peer", paths: []candidate{
+			{tr: UDP, addr: udpEP.DstToString(), ep: udpEP},
+			{tr: DERP, addr: derpEP.DstToString(), ep: derpEP},
+		}}
+		ps.lastAuthenticated = time.Now().Add(-time.Minute) // stale: the send races
+		ps.dataRacing = alreadyRacing
+		m.peers.byKey["peer"] = ps
+		concrete := newConcrete(UDP, udpEP)
+		concrete.peer.Store(ps)
+
+		if err := m.Send([][]byte{wirePacket(msgResponse, sizeResponse)}, concrete); err != nil {
+			t.Fatalf("racing=%v: handshake response failed although DERP is allowed and works: %v", alreadyRacing, err)
+		}
+		if derp.count() != 1 {
+			t.Fatalf("racing=%v: handshake response not carried over DERP at once after UDP failed locally (DERP sends: %d)", alreadyRacing, derp.count())
+		}
+	}
+}
