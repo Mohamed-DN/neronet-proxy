@@ -101,6 +101,16 @@ func (b *tunBackend) ping(ctx context.Context, dst netip.Addr) (time.Duration, e
 	return 0, fmt.Errorf("dataplane: ping is not implemented in %s mode; the kernel interface answers the host's own ping", ModeTUN)
 }
 
+func (b *tunBackend) wake(dst netip.AddrPort, payload []byte) error {
+	c, err := net.DialUDP("udp", nil, net.UDPAddrFromAddrPort(dst))
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	_, err = c.Write(payload)
+	return err
+}
+
 func (b *tunBackend) close() error {
 	return b.dev.Close()
 }

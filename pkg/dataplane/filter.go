@@ -1,12 +1,15 @@
 package dataplane
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net/netip"
 	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"golang.zx2c4.com/wireguard/tun"
 
@@ -65,6 +68,10 @@ type FilterStats struct {
 	InboundDropped   uint64
 	MalformedDropped uint64
 	DummyDropped     uint64
+	// Forwarded counts packets a profile gateway relayed between a profile device and
+	// the mesh (ADR 0029); ForwardDropped those it refused to relay.
+	Forwarded      uint64
+	ForwardDropped uint64
 }
 
 // filteredTUN wraps the tun.Device so every packet crossing the tunnel passes the
@@ -91,6 +98,39 @@ type filteredTUN struct {
 	// race detector reports and which can end in a send on a closed channel.
 	writeMu sync.RWMutex
 	closed  bool
+
+	// Profile gateway forwarding (forward.go). forward is nil on every node that
+	// serves no profile device, and then none of the fields below is used.
+	forward        atomic.Pointer[ForwardTable]
+	local          []netip.Addr
+	fwdQueue       chan *[]byte
+	forwarded      atomic.Uint64
+	forwardDropped atomic.Uint64
+
+	// The reader switch. Until forwarding is first switched on, Read reads the
+	// backend directly, exactly as before. From then on a pump goroutine reads the
+	// backend and Read serves whichever of the pump and the forwarding queue has a
+	// packet first: a blocking read of the local stack alone would leave forwarded
+	// packets waiting for the gateway itself to send something.
+	pumping atomic.Bool
+	pumpCh  chan pumpBatch
+	pumpAck chan struct{}
+	done    chan struct{}
+
+	// wake makes the local stack emit one recognisable datagram, which ends a direct
+	// read that is blocked when forwarding is switched on. It is dropped in Read and
+	// never reaches wireguard-go.
+	wake      func()
+	wakeDst   netip.AddrPort
+	wakeToken [16]byte
+	lastWake  atomic.Int64
+}
+
+type pumpBatch struct {
+	bufs  [][]byte
+	sizes []int
+	n     int
+	err   error
 }
 
 // Close is idempotent. The underlying gVisor device closes channels without
@@ -101,6 +141,7 @@ func (f *filteredTUN) Close() error {
 		f.writeMu.Lock()
 		f.closed = true
 		f.writeMu.Unlock()
+		close(f.done)
 		f.closeErr = f.Device.Close()
 	})
 	return f.closeErr
@@ -111,7 +152,15 @@ func newFilteredTUN(dev tun.Device, filter PacketFilter, shaper ...*daita.Shaper
 	if len(shaper) > 0 {
 		s = shaper[0]
 	}
-	return &filteredTUN{Device: dev, filter: filter, daitaShaper: s}
+	return &filteredTUN{
+		Device:      dev,
+		filter:      filter,
+		daitaShaper: s,
+		fwdQueue:    make(chan *[]byte, forwardQueueLen),
+		pumpCh:      make(chan pumpBatch),
+		pumpAck:     make(chan struct{}),
+		done:        make(chan struct{}),
+	}
 }
 
 func (f *filteredTUN) stats() FilterStats {
@@ -120,6 +169,8 @@ func (f *filteredTUN) stats() FilterStats {
 		InboundDropped:   f.inboundDropped.Load(),
 		MalformedDropped: f.malformedDropped.Load(),
 		DummyDropped:     f.dummyDropped.Load(),
+		Forwarded:        f.forwarded.Load(),
+		ForwardDropped:   f.forwardDropped.Load(),
 	}
 }
 
@@ -132,14 +183,33 @@ func (f *filteredTUN) stats() FilterStats {
 // index, and reordering the buffers would make an element point into another
 // element's memory.
 func (f *filteredTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	if f.pumping.Load() {
+		return f.readMerged(bufs, sizes, offset)
+	}
 	n, err := f.Device.Read(bufs, sizes, offset)
+	kept := f.keepOutbound(bufs, sizes, offset, n)
+	if err == nil && f.forward.Load() != nil && len(bufs) > 0 {
+		// Only this goroutine reads, so the switch needs no lock: from the next call on
+		// the pump is the only reader of the backend.
+		f.pumping.Store(true)
+		go f.pump(len(bufs), len(bufs[0]), offset)
+	}
+	return kept, err
+}
+
+// keepOutbound applies the sender-side filter to the n packets the local stack
+// produced and compacts the survivors to the front.
+func (f *filteredTUN) keepOutbound(bufs [][]byte, sizes []int, offset, n int) int {
 	if n == 0 {
-		return n, err
+		return 0
 	}
 
 	kept := 0
 	for i := 0; i < n; i++ {
 		raw := bufs[i][offset : offset+sizes[i]]
+		if f.isWake(raw) {
+			continue
+		}
 		if f.filter != nil && !f.allow(raw, true) {
 			continue
 		}
@@ -157,7 +227,158 @@ func (f *filteredTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) 
 		}
 		kept++
 	}
-	return kept, err
+	return kept
+}
+
+// readMerged serves the pump and the forwarding queue, whichever is ready first.
+func (f *filteredTUN) readMerged(bufs [][]byte, sizes []int, offset int) (int, error) {
+	select {
+	case b := <-f.pumpCh:
+		n := 0
+		for i := 0; i < b.n && i < len(bufs); i++ {
+			sizes[i] = copy(bufs[i][offset:], b.bufs[i][offset:offset+b.sizes[i]])
+			n++
+		}
+		err := b.err
+		select {
+		case f.pumpAck <- struct{}{}:
+		case <-f.done:
+		}
+		return f.keepOutbound(bufs, sizes, offset, n), err
+	case bp := <-f.fwdQueue:
+		n := 0
+		for {
+			pkt := *bp
+			if len(pkt) <= len(bufs[n])-offset {
+				sizes[n] = copy(bufs[n][offset:], pkt)
+				n++
+			} else {
+				f.forwardDropped.Add(1)
+			}
+			forwardBufPool.Put(bp)
+			if n == len(bufs) {
+				return n, nil
+			}
+			select {
+			case bp = <-f.fwdQueue:
+			default:
+				return n, nil
+			}
+		}
+	case <-f.done:
+		return 0, os.ErrClosed
+	}
+}
+
+// pump reads the backend into its own buffers and hands each batch to readMerged,
+// waiting until it has been copied out before reading again.
+func (f *filteredTUN) pump(batch, bufLen, offset int) {
+	bufs := make([][]byte, batch)
+	for i := range bufs {
+		bufs[i] = make([]byte, bufLen)
+	}
+	sizes := make([]int, batch)
+	for {
+		n, err := f.Device.Read(bufs, sizes, offset)
+		select {
+		case f.pumpCh <- pumpBatch{bufs: bufs, sizes: sizes, n: n, err: err}:
+		case <-f.done:
+			return
+		}
+		select {
+		case <-f.pumpAck:
+		case <-f.done:
+			return
+		}
+		if err != nil && !errors.Is(err, tun.ErrTooManySegments) {
+			return
+		}
+	}
+}
+
+// relay forwards one decrypted packet that belongs to a profile device flow and is
+// not addressed to this node.
+func (f *filteredTUN) relay(raw []byte, pkt Packet, t *ForwardTable) {
+	if err := t.decide(pkt); err != nil {
+		f.forwardDropped.Add(1)
+		return
+	}
+	bp := forwardBufPool.Get().(*[]byte)
+	buf := append((*bp)[:0], raw...)
+	*bp = buf
+	if err := decrementTTL(buf); err != nil {
+		forwardBufPool.Put(bp)
+		f.forwardDropped.Add(1)
+		return
+	}
+	select {
+	case f.fwdQueue <- bp:
+		f.forwarded.Add(1)
+		f.wakeIfDirect()
+	default:
+		forwardBufPool.Put(bp)
+		f.forwardDropped.Add(1)
+	}
+}
+
+func (f *filteredTUN) isLocal(a netip.Addr) bool {
+	a = a.Unmap()
+	for _, l := range f.local {
+		if l == a {
+			return true
+		}
+	}
+	return false
+}
+
+// wakeIfDirect ends a direct read that may be blocked, at most every 20ms.
+func (f *filteredTUN) wakeIfDirect() {
+	if f.pumping.Load() || f.wake == nil {
+		return
+	}
+	now := time.Now().UnixNano()
+	last := f.lastWake.Load()
+	if now-last < int64(20*time.Millisecond) || !f.lastWake.CompareAndSwap(last, now) {
+		return
+	}
+	// Not inline: the netstack hands a sent packet to the reader over an unbuffered
+	// channel, and this may run on wireguard-go's receive path.
+	go f.wake()
+}
+
+// isWake recognises the datagram wake sends: UDP to wakeDst carrying wakeToken.
+func (f *filteredTUN) isWake(raw []byte) bool {
+	if f.wake == nil || !f.wakeDst.IsValid() || len(raw) < 1 {
+		return false
+	}
+	var payload []byte
+	switch raw[0] >> 4 {
+	case 4:
+		if len(raw) < ipv4MinHeaderLen || raw[9] != ProtoUDP {
+			return false
+		}
+		ihl := int(raw[0]&0x0f) * 4
+		if len(raw) < ihl+8 {
+			return false
+		}
+		dst, _ := netip.AddrFromSlice(raw[16:20])
+		if dst != f.wakeDst.Addr() || binary.BigEndian.Uint16(raw[ihl+2:ihl+4]) != f.wakeDst.Port() {
+			return false
+		}
+		payload = raw[ihl+8:]
+	case 6:
+		if len(raw) < ipv6HeaderLen+8 || raw[6] != ProtoUDP {
+			return false
+		}
+		dst, _ := netip.AddrFromSlice(raw[24:40])
+		if dst != f.wakeDst.Addr() || binary.BigEndian.Uint16(raw[42:44]) != f.wakeDst.Port() {
+			return false
+		}
+		payload = raw[48:]
+	default:
+		return false
+	}
+	return bytes.Equal(payload, f.wakeToken[:])
 }
 
 // Write delivers decrypted packets to the local stack. Rejected packets are left
@@ -197,6 +418,13 @@ func (f *filteredTUN) Write(bufs [][]byte, offset int) (int, error) {
 			f.dummyDropped.Add(1)
 			startFiltering(i)
 			continue
+		}
+		if t := f.forward.Load(); t != nil {
+			if pkt, ok := ParsePacket(raw); ok && t.involves(pkt) && !f.isLocal(pkt.Dst) {
+				f.relay(raw, pkt, t)
+				startFiltering(i)
+				continue
+			}
 		}
 		if f.filter != nil && !f.allow(raw, false) {
 			startFiltering(i)

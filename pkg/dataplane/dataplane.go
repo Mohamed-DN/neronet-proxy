@@ -20,6 +20,7 @@ package dataplane
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -214,6 +215,9 @@ type backend interface {
 	dialContext(ctx context.Context, network, address string) (net.Conn, error)
 	listen(network, address string) (net.Listener, error)
 	ping(ctx context.Context, dst netip.Addr) (time.Duration, error)
+	// wake sends one UDP datagram from the local stack to dst, so a blocked read of
+	// the backend returns (see filteredTUN.wake).
+	wake(dst netip.AddrPort, payload []byte) error
 	close() error
 }
 
@@ -289,6 +293,16 @@ func New(cfg Config) (*Device, error) {
 	}
 
 	filtered := newFilteredTUN(back.tunDevice(), cfg.Filter, shaper)
+	for _, a := range cfg.Addresses {
+		filtered.local = append(filtered.local, a.Addr().Unmap())
+	}
+	if dst, ok := wakeDestination(cfg.Mode, cfg.Addresses); ok {
+		if _, err := rand.Read(filtered.wakeToken[:]); err == nil {
+			filtered.wakeDst = dst
+			token := filtered.wakeToken
+			filtered.wake = func() { _ = back.wake(dst, token[:]) }
+		}
+	}
 
 	level := device.LogLevelError
 	if cfg.Verbose {
@@ -741,4 +755,29 @@ func newLogger(level int, logf func(format string, args ...any)) *device.Logger 
 		l.Verbosef = func(format string, args ...any) { logf("[dataplane] "+format, args...) }
 	}
 	return l
+}
+
+// wakeDestination picks where the wake datagram goes: an address the local stack
+// routes into the tunnel and no peer holds. In TUN mode that has to be inside the
+// overlay prefix configured on the interface, the only route into it; the netstack
+// routes everything into the tunnel. The address is the one below the broadcast of
+// the first IPv4 prefix, which the sequential allocator reaches last, and the
+// datagram also carries a random token, so a real node there would not be mistaken
+// for it.
+func wakeDestination(mode Mode, addrs []netip.Prefix) (netip.AddrPort, bool) {
+	const discardPort = 9
+	for _, p := range addrs {
+		if !p.Addr().Is4() || p.Bits() > 30 {
+			continue
+		}
+		last := p.Masked().Addr().As4()
+		host := uint32(1)<<(32-p.Bits()) - 1
+		v := uint32(last[0])<<24 | uint32(last[1])<<16 | uint32(last[2])<<8 | uint32(last[3])
+		v = (v | host) - 1
+		return netip.AddrPortFrom(netip.AddrFrom4([4]byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)}), discardPort), true
+	}
+	if mode == ModeNetstack {
+		return netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), discardPort), true
+	}
+	return netip.AddrPort{}, false
 }
