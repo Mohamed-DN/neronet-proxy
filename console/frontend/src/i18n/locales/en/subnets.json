@@ -1,1 +1,68 @@
-{}
+{
+  "title": "Sub-networks",
+  "description": "Splits devices into separate networks. Devices in the same network can communicate. To let two different networks communicate, you connect them explicitly.",
+  "create": "New sub-network",
+  "stats": {
+    "subnets": "Sub-networks",
+    "connections": "Links between networks",
+    "outsideDefault": "Devices outside the default network"
+  },
+  "defaultBadge": "Default",
+  "hiddenBadge": "Hidden",
+  "devices_one": "{{count}} device",
+  "devices_other": "{{count}} devices",
+  "noDevices": "No devices yet. Add one to use this network.",
+  "isolated": "Isolated: does not communicate with other networks.",
+  "connectedTo": "Connected to",
+  "addDevices": "Add devices",
+  "connectTo": "Connect to another network…",
+  "remove": "Delete sub-network",
+  "disconnect": "Disconnect from {{name}}",
+  "moveOut": "Move {{name}} to the default network",
+  "moreDevices": "+{{count}} more",
+  "unassigned": "Unassigned",
+  "picker": {
+    "search": "Search by name, country or network address",
+    "selected_one": "{{count}} selected",
+    "selected_other": "{{count}} selected",
+    "currentlyIn": "Currently in {{name}}"
+  },
+  "createDialog": {
+    "title": "New sub-network",
+    "description": "Pick a name and the devices to add. These devices leave the network they are in now.",
+    "nameLabel": "Name",
+    "namePlaceholder": "E.g. Lab, Rome office, Guests",
+    "devicesLabel": "Devices",
+    "submit": "Create sub-network",
+    "nameRequired": "Enter a name for the sub-network."
+  },
+  "addDialog": {
+    "title": "Add devices to {{name}}",
+    "description": "The devices you pick leave the network they are in now.",
+    "submit": "Move selected devices",
+    "none": "Every device is already here."
+  },
+  "connectDialog": {
+    "title": "Connect {{name}}",
+    "description": "The two connected networks can communicate in both directions. Access rules still apply: the link does not replace them.",
+    "targetLabel": "Network to connect",
+    "submit": "Connect the networks",
+    "none": "It is already connected to every other network."
+  },
+  "deleteDialog": {
+    "title": "Delete {{name}}?",
+    "description": "Its devices go back to the default network and its links are removed.",
+    "confirm": "Delete sub-network"
+  },
+  "done": {
+    "created": "Sub-network {{name}} created.",
+    "moved_one": "{{count}} device moved.",
+    "moved_other": "{{count}} devices moved.",
+    "connected": "Networks connected.",
+    "disconnected": "Link removed.",
+    "deleted": "Sub-network deleted."
+  },
+  "failed": "This was not completed. Try again shortly.",
+  "empty": "No devices registered yet. Register the first device to create a sub-network.",
+  "addFirst": "Add device"
+}

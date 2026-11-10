@@ -1,1 +1,68 @@
-{}
+{
+  "title": "Sotto-reti",
+  "description": "Divide i dispositivi in reti separate. Due dispositivi nella stessa rete possono comunicare. Per far comunicare due reti diverse devi collegarle in modo esplicito.",
+  "create": "Nuova sotto-rete",
+  "stats": {
+    "subnets": "Sotto-reti",
+    "connections": "Collegamenti tra reti",
+    "outsideDefault": "Dispositivi fuori dalla rete predefinita"
+  },
+  "defaultBadge": "Predefinita",
+  "hiddenBadge": "Nascosta",
+  "devices_one": "{{count}} dispositivo",
+  "devices_other": "{{count}} dispositivi",
+  "noDevices": "Nessun dispositivo. Aggiungine uno per usare questa rete.",
+  "isolated": "Isolata: non comunica con altre reti.",
+  "connectedTo": "Collegata a",
+  "addDevices": "Aggiungi dispositivi",
+  "connectTo": "Collega ad altra rete…",
+  "remove": "Elimina sotto-rete",
+  "disconnect": "Scollega da {{name}}",
+  "moveOut": "Sposta {{name}} nella rete predefinita",
+  "moreDevices": "+{{count}} altri",
+  "unassigned": "Non assegnati",
+  "picker": {
+    "search": "Cerca per nome, paese o indirizzo di rete",
+    "selected_one": "{{count}} selezionato",
+    "selected_other": "{{count}} selezionati",
+    "currentlyIn": "Attualmente in {{name}}"
+  },
+  "createDialog": {
+    "title": "Nuova sotto-rete",
+    "description": "Scegli un nome e i dispositivi da inserire. Questi dispositivi lasciano la rete in cui si trovano ora.",
+    "nameLabel": "Nome",
+    "namePlaceholder": "Es. Laboratorio, Ufficio Roma, Ospiti",
+    "devicesLabel": "Dispositivi",
+    "submit": "Crea sotto-rete",
+    "nameRequired": "Scrivi un nome per la sotto-rete."
+  },
+  "addDialog": {
+    "title": "Aggiungi dispositivi a {{name}}",
+    "description": "I dispositivi scelti lasciano la rete in cui si trovano ora.",
+    "submit": "Sposta i dispositivi selezionati",
+    "none": "Tutti i dispositivi sono già qui."
+  },
+  "connectDialog": {
+    "title": "Collega {{name}}",
+    "description": "Le due reti collegate potranno comunicare in entrambe le direzioni. Le regole di accesso restano in vigore: il collegamento non le sostituisce.",
+    "targetLabel": "Rete da collegare",
+    "submit": "Collega le reti",
+    "none": "È già collegata a tutte le altre reti."
+  },
+  "deleteDialog": {
+    "title": "Eliminare {{name}}?",
+    "description": "I suoi dispositivi tornano nella rete predefinita e i suoi collegamenti vengono rimossi.",
+    "confirm": "Elimina sotto-rete"
+  },
+  "done": {
+    "created": "Sotto-rete {{name}} creata.",
+    "moved_one": "{{count}} dispositivo spostato.",
+    "moved_other": "{{count}} dispositivi spostati.",
+    "connected": "Reti collegate.",
+    "disconnected": "Collegamento rimosso.",
+    "deleted": "Sotto-rete eliminata."
+  },
+  "failed": "L'operazione non è stata completata. Riprova tra poco.",
+  "empty": "Nessun dispositivo registrato. Registra il primo dispositivo per creare la prima sotto-rete.",
+  "addFirst": "Aggiungi dispositivo"
+}

@@ -7,6 +7,7 @@ import { PageHeader } from '../../ui/PageHeader';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
+import { Row, RowList } from '../../ui/RowList';
 import { Checkbox } from '../../ui/Checkbox';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { Dialog } from '../../ui/Dialog';
@@ -14,6 +15,7 @@ import { FormField } from '../../ui/FormField';
 import { Input } from '../../ui/Input';
 import { Select } from '../../ui/Select';
 import { EmptyState } from '../../ui/States';
+import { useShell } from '../shell';
 import { Stat } from '../../ui/Stat';
 import { useToast } from '../../ui/Toast';
 
@@ -44,6 +46,15 @@ function isDefault(c: Compartment): boolean {
   return c.slug === 'default';
 }
 
+function FailureNote({ title, message }: { title: string; message: string }) {
+  return (
+    <div role="alert" className="rounded-card border border-danger/40 bg-danger-subtle p-4 text-danger">
+      <p className="font-semibold">{title}</p>
+      <p className="mt-1 break-words font-mono text-micro text-muted">{message}</p>
+    </div>
+  );
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -60,7 +71,7 @@ function DevicePicker({
   onChange: (next: Set<string>) => void;
   compartmentName: (id: string | null) => string;
 }) {
-  const { t } = useTranslation();
+  const { t } = useTranslation('subnets');
   const [query, setQuery] = useState('');
 
   const visible = useMemo(() => {
@@ -85,8 +96,8 @@ function DevicePicker({
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('subnets.picker.search')}
-          aria-label={t('subnets.picker.search')}
+          placeholder={t('picker.search')}
+          aria-label={t('picker.search')}
           className="pl-9"
         />
       </div>
@@ -101,20 +112,21 @@ function DevicePicker({
                 onChange={() => toggle(node.id)}
               />
               <span className="shrink-0 text-caption text-muted">
-                {t('subnets.picker.currentlyIn', { name: compartmentName(node.compartment_id) })}
+                {t('picker.currentlyIn', { name: compartmentName(node.compartment_id) })}
               </span>
             </li>
           ))}
         </ul>
       </div>
-      <span className="text-caption text-muted">{t('subnets.picker.selected', { count: selected.size })}</span>
+      <span className="text-caption text-muted">{t('picker.selected', { count: selected.size })}</span>
     </div>
   );
 }
 
 export function SubnetsRoute() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('subnets');
   const { notify } = useToast();
+  const shell = useShell();
 
   const compartmentsQuery = useCompartments();
   const topologyQuery = useTopology();
@@ -139,6 +151,7 @@ export function SubnetsRoute() {
   const [connectFrom, setConnectFrom] = useState<Compartment | null>(null);
   const [connectTo, setConnectTo] = useState<string>('');
   const [deleteTarget, setDeleteTarget] = useState<Compartment | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
   const ordered = useMemo(
     () =>
@@ -177,14 +190,20 @@ export function SubnetsRoute() {
   }, [peerings, byId]);
 
   const compartmentName = (id: string | null) =>
-    (id && byId.get(id)?.name) || defaultCompartment?.name || t('topology.canvas.clusterOther');
+    (id && byId.get(id)?.name) || defaultCompartment?.name || t('unassigned');
 
   const connectionCount = peerings.filter((p) => p.policy === 'allow').length;
   const outsideDefault = nodes.filter(
     (n) => n.compartment_id && defaultCompartment && n.compartment_id !== defaultCompartment.id
   ).length;
 
-  const fail = (err: unknown) => notify(t('subnets.failed', { message: errorMessage(err) }), { tone: 'danger' });
+  // A failed change closes the dialog it came from, so the message is not hidden behind it.
+  const fail = (err: unknown) => {
+    setFailure(errorMessage(err));
+    setAddTarget(null);
+    setConnectFrom(null);
+    setDeleteTarget(null);
+  };
 
   const openCreate = () => {
     setNewName('');
@@ -194,9 +213,10 @@ export function SubnetsRoute() {
   };
 
   const submitCreate = async () => {
+    setFailure(null);
     const name = newName.trim();
     if (!name) {
-      setNameError(t('subnets.createDialog.nameRequired'));
+      setNameError(t('createDialog.nameRequired'));
       return;
     }
     try {
@@ -205,7 +225,7 @@ export function SubnetsRoute() {
         await moveDevices.mutateAsync({ compartmentId: created.id, nodeIds: [...selected] });
       }
       setCreateOpen(false);
-      notify(t('subnets.done.created', { name }), { tone: 'success' });
+      notify(t('done.created', { name }), { tone: 'success' });
     } catch (err) {
       fail(err);
     }
@@ -217,21 +237,23 @@ export function SubnetsRoute() {
   };
 
   const submitAdd = async () => {
+    setFailure(null);
     if (!addTarget || selected.size === 0) return;
     try {
       const moved = await moveDevices.mutateAsync({ compartmentId: addTarget.id, nodeIds: [...selected] });
       setAddTarget(null);
-      notify(t('subnets.done.moved', { count: moved.length }), { tone: 'success' });
+      notify(t('done.moved', { count: moved.length }), { tone: 'success' });
     } catch (err) {
       fail(err);
     }
   };
 
   const moveOut = async (node: TopologyNode) => {
+    setFailure(null);
     if (!defaultCompartment) return;
     try {
       const moved = await moveDevices.mutateAsync({ compartmentId: defaultCompartment.id, nodeIds: [node.id] });
-      notify(t('subnets.done.moved', { count: moved.length }), { tone: 'success' });
+      notify(t('done.moved', { count: moved.length }), { tone: 'success' });
     } catch (err) {
       fail(err);
     }
@@ -248,31 +270,34 @@ export function SubnetsRoute() {
   };
 
   const submitConnect = async () => {
+    setFailure(null);
     if (!connectFrom || !connectTo) return;
     try {
       await connect.mutateAsync({ a: connectFrom.id, b: connectTo });
       setConnectFrom(null);
-      notify(t('subnets.done.connected'), { tone: 'success' });
+      notify(t('done.connected'), { tone: 'success' });
     } catch (err) {
       fail(err);
     }
   };
 
   const removeConnection = async (peeringId: string) => {
+    setFailure(null);
     try {
       await disconnect.mutateAsync(peeringId);
-      notify(t('subnets.done.disconnected'), { tone: 'success' });
+      notify(t('done.disconnected'), { tone: 'success' });
     } catch (err) {
       fail(err);
     }
   };
 
   const submitDelete = async () => {
+    setFailure(null);
     if (!deleteTarget) return;
     try {
       await deleteCompartment.mutateAsync(deleteTarget.id);
       setDeleteTarget(null);
-      notify(t('subnets.done.deleted'), { tone: 'success' });
+      notify(t('done.deleted'), { tone: 'success' });
     } catch (err) {
       fail(err);
     }
@@ -286,111 +311,128 @@ export function SubnetsRoute() {
   return (
     <PageFrame>
       <PageHeader
-        title={t('subnets.title')}
-        description={t('subnets.description')}
-        actions={
-          <Button variant="primary" size="sm" icon={Plus} onClick={openCreate} disabled={nodes.length === 0}>
-            {t('subnets.create')}
-          </Button>
+        title={t('title')}
+        description={t('description')}
+        primaryAction={
+          nodes.length > 0 ? (
+            <Button variant="primary" size="sm" icon={Plus} onClick={openCreate}>
+              {t('create')}
+            </Button>
+          ) : undefined
         }
       />
 
+      {failure !== null && !createOpen && (
+        <div className="mb-4">
+          <FailureNote title={t('failed')} message={failure} />
+        </div>
+      )}
+
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat label={t('subnets.stats.subnets')} value={compartments.length} />
-        <Stat label={t('subnets.stats.connections')} value={connectionCount} />
-        <Stat label={t('subnets.stats.outsideDefault')} value={outsideDefault} />
+        <Stat label={t('stats.subnets')} value={compartments.length} />
+        <Stat label={t('stats.connections')} value={connectionCount} />
+        <Stat label={t('stats.outsideDefault')} value={outsideDefault} />
       </div>
 
       {nodes.length === 0 && compartments.length <= 1 ? (
         <Card>
-          <EmptyState title={t('subnets.title')} body={t('subnets.empty')} />
+          <EmptyState
+            title={t('title')}
+            body={t('empty')}
+            action={
+              <Button variant="primary" onClick={shell.openEnroll}>
+                {t('addFirst')}
+              </Button>
+            }
+          />
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <RowList label={t('title')}>
           {ordered.map((c) => {
             const devices = devicesOf.get(c.id) ?? [];
             const connections = connectionsOf.get(c.id) ?? [];
             const canConnect = connectOptionsFor(c).length > 0;
             return (
-              <Card key={c.id}>
-                <section aria-labelledby={`subnet-${c.id}`} className="flex flex-col gap-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Boxes aria-hidden="true" className="h-4 w-4 shrink-0 text-accent" />
-                      <h2 id={`subnet-${c.id}`} className="truncate text-body font-semibold text-content">
-                        {c.name}
-                      </h2>
-                      {isDefault(c) && <Badge tone="neutral">{t('subnets.defaultBadge')}</Badge>}
-                      {c.is_hidden && <Badge tone="warning">{t('subnets.hiddenBadge')}</Badge>}
-                    </div>
-                    <span className="shrink-0 text-caption text-muted">
-                      {t('subnets.devices', { count: devices.length })}
-                    </span>
+              <Row
+                key={c.id}
+                className="items-start"
+                title={
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <Boxes aria-hidden="true" className="h-4 w-4 shrink-0 text-accent" />
+                    <h2 className="truncate text-body font-semibold text-content">{c.name}</h2>
+                    {isDefault(c) && <Badge tone="neutral">{t('defaultBadge')}</Badge>}
+                    {c.is_hidden && <Badge tone="warning">{t('hiddenBadge')}</Badge>}
                   </div>
+                }
+                meta={
+                  <div className="flex flex-col gap-2">
+                    <span className="text-caption text-muted">{t('devices', { count: devices.length })}</span>
 
-                  {devices.length === 0 ? (
-                    <p className="text-caption text-muted">{t('subnets.noDevices')}</p>
-                  ) : (
-                    <ul className="flex flex-wrap gap-1.5">
-                      {devices.slice(0, CHIP_LIMIT).map((node) => (
-                        <li
-                          key={node.id}
-                          className="flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-caption"
-                        >
-                          <span className="font-mono text-content">{node.name || node.id}</span>
-                          {node.country && <span className="text-muted">{node.country}</span>}
-                          {!isDefault(c) && defaultCompartment && (
-                            <button
-                              type="button"
-                              className="ml-0.5 rounded-full text-muted hover:text-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
-                              aria-label={t('subnets.moveOut', { name: node.name || node.id })}
-                              title={t('subnets.moveOut', { name: node.name || node.id })}
-                              onClick={() => moveOut(node)}
-                            >
-                              <X aria-hidden="true" className="h-3 w-3" />
-                            </button>
-                          )}
-                        </li>
-                      ))}
-                      {devices.length > CHIP_LIMIT && (
-                        <li className="px-1 text-caption text-muted">
-                          {t('subnets.moreDevices', { count: devices.length - CHIP_LIMIT })}
-                        </li>
-                      )}
-                    </ul>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-1.5 text-caption">
-                    {connections.length === 0 ? (
-                      <span className="text-muted">{t('subnets.isolated')}</span>
+                    {devices.length === 0 ? (
+                      <p className="text-caption text-muted">{t('noDevices')}</p>
                     ) : (
-                      <>
-                        <span className="text-muted">{t('subnets.connectedTo')}:</span>
-                        {connections.map((conn) => (
-                          <span
-                            key={conn.peeringId}
-                            className="flex items-center gap-1 rounded-full border border-accent/40 bg-accent-subtle px-2 py-0.5"
+                      <ul className="flex flex-wrap gap-1.5">
+                        {devices.slice(0, CHIP_LIMIT).map((node) => (
+                          <li
+                            key={node.id}
+                            className="flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-caption"
                           >
-                            <Link2 aria-hidden="true" className="h-3 w-3 text-accent" />
-                            <span className="text-content">{conn.other.name}</span>
-                            <button
-                              type="button"
-                              className="ml-0.5 rounded-full text-muted hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
-                              aria-label={t('subnets.disconnect', { name: conn.other.name })}
-                              title={t('subnets.disconnect', { name: conn.other.name })}
-                              onClick={() => removeConnection(conn.peeringId)}
-                            >
-                              <Unlink aria-hidden="true" className="h-3 w-3" />
-                            </button>
-                          </span>
+                            <span className="font-mono text-content">{node.name || node.id}</span>
+                            {node.country && <span className="text-muted">{node.country}</span>}
+                            {!isDefault(c) && defaultCompartment && (
+                              <button
+                                type="button"
+                                className="ml-0.5 rounded-full text-muted hover:text-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+                                aria-label={t('moveOut', { name: node.name || node.id })}
+                                title={t('moveOut', { name: node.name || node.id })}
+                                onClick={() => moveOut(node)}
+                              >
+                                <X aria-hidden="true" className="h-3 w-3" />
+                              </button>
+                            )}
+                          </li>
                         ))}
-                      </>
+                        {devices.length > CHIP_LIMIT && (
+                          <li className="px-1 text-caption text-muted">
+                            {t('moreDevices', { count: devices.length - CHIP_LIMIT })}
+                          </li>
+                        )}
+                      </ul>
                     )}
-                  </div>
 
-                  <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                    <div className="flex flex-wrap items-center gap-1.5 text-caption">
+                      {connections.length === 0 ? (
+                        <span className="text-muted">{t('isolated')}</span>
+                      ) : (
+                        <>
+                          <span className="text-muted">{t('connectedTo')}:</span>
+                          {connections.map((conn) => (
+                            <span
+                              key={conn.peeringId}
+                              className="flex items-center gap-1 rounded-full border border-accent/40 bg-accent-subtle px-2 py-0.5"
+                            >
+                              <Link2 aria-hidden="true" className="h-3 w-3 text-accent" />
+                              <span className="text-content">{conn.other.name}</span>
+                              <button
+                                type="button"
+                                className="ml-0.5 rounded-full text-muted hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+                                aria-label={t('disconnect', { name: conn.other.name })}
+                                title={t('disconnect', { name: conn.other.name })}
+                                onClick={() => removeConnection(conn.peeringId)}
+                              >
+                                <Unlink aria-hidden="true" className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                }
+                actions={
+                  <div className="flex flex-wrap gap-2">
                     <Button variant="secondary" size="sm" icon={UserPlus} onClick={() => openAdd(c)}>
-                      {t('subnets.addDevices')}
+                      {t('addDevices')}
                     </Button>
                     <Button
                       variant="secondary"
@@ -399,26 +441,26 @@ export function SubnetsRoute() {
                       onClick={() => openConnect(c)}
                       disabled={!canConnect}
                     >
-                      {t('subnets.connectTo')}
+                      {t('connectTo')}
                     </Button>
                     {!isDefault(c) && (
                       <Button variant="danger" size="sm" icon={Trash2} onClick={() => setDeleteTarget(c)}>
-                        {t('subnets.remove')}
+                        {t('remove')}
                       </Button>
                     )}
                   </div>
-                </section>
-              </Card>
+                }
+              />
             );
           })}
-        </div>
+        </RowList>
       )}
 
       <Dialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        title={t('subnets.createDialog.title')}
-        description={t('subnets.createDialog.description')}
+        title={t('createDialog.title')}
+        description={t('createDialog.description')}
         size="lg"
         footer={
           <Button
@@ -426,23 +468,24 @@ export function SubnetsRoute() {
             onClick={submitCreate}
             loading={createCompartment.isPending || moveDevices.isPending}
           >
-            {t('subnets.createDialog.submit')}
+            {t('createDialog.submit')}
           </Button>
         }
       >
         <div className="flex flex-col gap-4">
-          <FormField label={t('subnets.createDialog.nameLabel')} error={nameError}>
+          {failure !== null && <FailureNote title={t('failed')} message={failure} />}
+          <FormField label={t('createDialog.nameLabel')} error={nameError}>
             <Input
               value={newName}
               onChange={(e) => {
                 setNewName(e.target.value);
                 setNameError(null);
               }}
-              placeholder={t('subnets.createDialog.namePlaceholder')}
+              placeholder={t('createDialog.namePlaceholder')}
             />
           </FormField>
           <div className="flex flex-col gap-1.5">
-            <span className="text-caption font-medium text-content">{t('subnets.createDialog.devicesLabel')}</span>
+            <span className="text-caption font-medium text-content">{t('createDialog.devicesLabel')}</span>
             <DevicePicker nodes={nodes} selected={selected} onChange={setSelected} compartmentName={compartmentName} />
           </div>
         </div>
@@ -451,17 +494,17 @@ export function SubnetsRoute() {
       <Dialog
         open={addTarget !== null}
         onOpenChange={(open) => !open && setAddTarget(null)}
-        title={t('subnets.addDialog.title', { name: addTarget?.name ?? '' })}
-        description={t('subnets.addDialog.description')}
+        title={t('addDialog.title', { name: addTarget?.name ?? '' })}
+        description={t('addDialog.description')}
         size="lg"
         footer={
           <Button variant="primary" onClick={submitAdd} loading={moveDevices.isPending} disabled={selected.size === 0}>
-            {t('subnets.addDialog.submit')}
+            {t('addDialog.submit')}
           </Button>
         }
       >
         {addCandidates.length === 0 ? (
-          <p className="text-caption text-muted">{t('subnets.addDialog.none')}</p>
+          <p className="text-caption text-muted">{t('addDialog.none')}</p>
         ) : (
           <DevicePicker
             nodes={addCandidates}
@@ -475,18 +518,18 @@ export function SubnetsRoute() {
       <Dialog
         open={connectFrom !== null}
         onOpenChange={(open) => !open && setConnectFrom(null)}
-        title={t('subnets.connectDialog.title', { name: connectFrom?.name ?? '' })}
-        description={t('subnets.connectDialog.description')}
+        title={t('connectDialog.title', { name: connectFrom?.name ?? '' })}
+        description={t('connectDialog.description')}
         footer={
           <Button variant="primary" onClick={submitConnect} loading={connect.isPending} disabled={!connectTo}>
-            {t('subnets.connectDialog.submit')}
+            {t('connectDialog.submit')}
           </Button>
         }
       >
         {connectOptions.length === 0 ? (
-          <p className="text-caption text-muted">{t('subnets.connectDialog.none')}</p>
+          <p className="text-caption text-muted">{t('connectDialog.none')}</p>
         ) : (
-          <FormField label={t('subnets.connectDialog.targetLabel')}>
+          <FormField label={t('connectDialog.targetLabel')}>
             <Select value={connectTo} onValueChange={setConnectTo} options={connectOptions} />
           </FormField>
         )}
@@ -495,9 +538,9 @@ export function SubnetsRoute() {
       <ConfirmDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={t('subnets.deleteDialog.title', { name: deleteTarget?.name ?? '' })}
-        description={t('subnets.deleteDialog.description')}
-        confirmLabel={t('subnets.deleteDialog.confirm')}
+        title={t('deleteDialog.title', { name: deleteTarget?.name ?? '' })}
+        description={t('deleteDialog.description')}
+        confirmLabel={t('deleteDialog.confirm')}
         tone="danger"
         onConfirm={submitDelete}
         busy={deleteCompartment.isPending}
