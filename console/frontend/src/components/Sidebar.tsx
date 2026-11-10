@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import {
   Activity,
   ChevronDown,
@@ -20,21 +20,47 @@ import {
   Shield,
   ShieldCheck,
   Skull,
+  UserRound,
   Users,
   type LucideIcon
 } from 'lucide-react';
 
+import { useAuth } from '../context/AuthContext';
 import { filterNavSections } from '../services/features.js';
 import type { Features } from '../services/types';
+import { canSee, effectiveRole, type PageId } from '../services/roles';
 import { ROUTES, type RouteId } from '../routes/paths';
 import { cn, IconButton } from '../ui';
 
 const COLLAPSE_KEY = 'neronet_sidebar_collapsed';
 
+/*
+ * Every route id is a page id. The compiler rejects a route that has no entry
+ * here, so a page cannot appear in the navigation without its role being
+ * decided in services/roles.ts.
+ */
+const PAGE_OF: Record<RouteId, PageId> = {
+  overview: 'overview',
+  topology: 'topology',
+  subnets: 'subnets',
+  nodes: 'nodes',
+  onion: 'onion',
+  peering: 'peering',
+  cloudpc: 'cloudpc',
+  risk: 'risk',
+  acls: 'acls',
+  audit: 'audit',
+  users: 'users',
+  settings: 'settings',
+  nuke: 'nuke',
+  me: 'me',
+  meAdd: 'meAdd',
+  glossary: 'glossary'
+};
+
 interface NavItem {
   id: RouteId;
   icon: LucideIcon;
-  badge?: string;
   count?: number;
   alertCount?: number;
   danger?: boolean;
@@ -76,6 +102,8 @@ export default function Sidebar({
   onExecuteWipe
 }: SidebarProps) {
   const { t } = useTranslation('chrome');
+  const { user } = useAuth();
+  const role = effectiveRole(user);
   const reachablePct = nodeCount === 0 ? 0 : Math.round((reachableCount / nodeCount) * 100);
 
   const [collapsed, setCollapsed] = useState(readCollapsed);
@@ -83,7 +111,8 @@ export default function Sidebar({
     mesh: false,
     compute: false,
     security: false,
-    danger: false
+    danger: false,
+    you: false
   });
   const [timeRemaining, setTimeRemaining] = useState('');
 
@@ -133,13 +162,13 @@ export default function Sidebar({
         { id: 'topology', icon: Globe2 },
         { id: 'subnets', icon: Boxes },
         { id: 'nodes', icon: Server, count: nodeCount },
-        { id: 'onion', icon: Shield, badge: '3-hop' },
-        { id: 'peering', icon: Network, badge: 'Ed25519' }
+        { id: 'onion', icon: Shield },
+        { id: 'peering', icon: Network }
       ]
     },
     {
       key: 'compute',
-      items: [{ id: 'cloudpc', icon: Monitor, badge: 'WebRTC', feature: 'cloud_pc' }]
+      items: [{ id: 'cloudpc', icon: Monitor, feature: 'cloud_pc' }]
     },
     {
       key: 'security',
@@ -154,12 +183,21 @@ export default function Sidebar({
       key: 'danger',
       items: [
         { id: 'settings', icon: Settings },
-        { id: 'nuke', icon: Skull, danger: true, badge: '3-tier' }
+        { id: 'nuke', icon: Skull, danger: true }
       ]
+    },
+    {
+      key: 'you',
+      items: [{ id: 'me', icon: UserRound }]
     }
   ];
 
-  const sections = filterNavSections(navSections, features) as NavSection[];
+  // The role decides what is listed; the server still refuses what it must.
+  const visibleSections = navSections.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => canSee(PAGE_OF[item.id], role, features))
+  }));
+  const sections = filterNavSections(visibleSections, features) as NavSection[];
 
   return (
     <aside
@@ -178,9 +216,7 @@ export default function Sidebar({
               </div>
               <div className="min-w-0">
                 <div className="truncate text-body font-bold tracking-wider text-content">{t('brand.name')}</div>
-                <div className="truncate text-micro font-mono uppercase tracking-widest text-muted">
-                  {t('brand.tagline')}
-                </div>
+                <div className="truncate text-caption text-muted">{t('brand.tagline')}</div>
               </div>
             </div>
           )}
@@ -195,21 +231,21 @@ export default function Sidebar({
         {(nukeArmed || nukeScheduledAt) && !collapsed && (
           <div className="mx-3 my-2.5 space-y-2 rounded-xl border-2 border-danger bg-danger/15 p-3">
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-micro font-mono font-bold uppercase text-danger">
+              <span className="flex items-center gap-1.5 text-caption font-semibold text-danger">
                 <Skull aria-hidden="true" className="h-4 w-4" />
                 {t('sidebar.armed')}
               </span>
-              <span className="rounded-sm bg-danger px-1.5 py-0.5 text-micro font-mono font-bold text-danger-contrast">
+              <span className="rounded-sm bg-danger px-1.5 py-0.5 text-micro font-semibold text-danger-contrast">
                 {t('sidebar.armedPinned')}
               </span>
             </div>
-            <div className="rounded-sm border border-danger/40 bg-surface px-2 py-1 text-center text-micro font-mono font-bold tabular-nums text-danger">
+            <div className="rounded-sm border border-danger/40 bg-surface px-2 py-1 text-center text-micro font-semibold tabular-nums text-danger">
               {timeRemaining}
             </div>
             <button
               type="button"
               onClick={onExecuteWipe}
-              className="flex w-full items-center justify-center gap-1.5 rounded-control border border-danger bg-danger px-3 py-2 text-caption font-mono font-bold uppercase tracking-wider text-danger-contrast transition-colors hover:bg-danger-strong focus-visible:outline-focus"
+              className="flex w-full items-center justify-center gap-1.5 rounded-control border border-danger bg-danger px-3 py-2 text-caption font-semibold text-danger-contrast transition-colors hover:bg-danger-strong focus-visible:outline-focus"
             >
               <Skull aria-hidden="true" className="h-4 w-4" />
               <span>{t('sidebar.destroyNow')}</span>
@@ -227,7 +263,7 @@ export default function Sidebar({
                     type="button"
                     onClick={() => toggleSection(section.key)}
                     aria-expanded={!isCollapsed}
-                    className="flex w-full items-center justify-between px-2 py-1 text-micro font-mono font-semibold uppercase tracking-wider text-muted transition-colors hover:text-content focus-visible:outline-focus"
+                    className="flex w-full items-center justify-between px-2 py-1 text-caption font-medium text-subtle transition-colors hover:text-content focus-visible:outline-focus"
                   >
                     <span>{t(`nav.sections.${section.key}`)}</span>
                     {isCollapsed ? (
@@ -250,14 +286,15 @@ export default function Sidebar({
                           title={collapsed ? label : undefined}
                           className={({ isActive }) =>
                             cn(
-                              'group flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-caption font-medium transition-colors focus-visible:outline-focus',
+                              'relative flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-caption font-medium transition-colors focus-visible:outline-focus',
                               isActive
-                                ? item.danger
-                                  ? 'border-danger/40 bg-danger/20 text-danger'
-                                  : 'border-accent/30 bg-accent/10 text-accent'
+                                ? cn(
+                                    'before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full',
+                                    item.danger ? 'text-danger before:bg-danger' : 'text-accent before:bg-accent'
+                                  )
                                 : item.danger
-                                  ? 'border-transparent text-danger hover:bg-danger/20'
-                                  : 'border-transparent text-muted hover:bg-surface-hover hover:text-content'
+                                  ? 'text-danger hover:bg-danger/10'
+                                  : 'text-muted hover:bg-surface-hover hover:text-content'
                             )
                           }
                         >
@@ -268,25 +305,13 @@ export default function Sidebar({
 
                           {!collapsed && (
                             <span className="flex shrink-0 items-center gap-1">
-                              {item.badge && (
-                                <span
-                                  className={cn(
-                                    'rounded-sm border px-1.5 text-micro font-mono font-semibold',
-                                    item.danger
-                                      ? 'border-danger/50 bg-danger-subtle text-danger'
-                                      : 'border-info/40 bg-info-subtle text-info'
-                                  )}
-                                >
-                                  {item.badge}
-                                </span>
-                              )}
                               {item.count !== undefined && (
-                                <span className="rounded-sm bg-border px-1.5 text-micro font-mono tabular-nums text-muted">
+                                <span className="rounded-sm bg-border px-1.5 text-micro tabular-nums text-muted">
                                   {item.count}
                                 </span>
                               )}
                               {item.alertCount !== undefined && item.alertCount > 0 && (
-                                <span className="rounded-sm border border-danger/40 bg-danger-subtle px-1.5 text-micro font-mono font-bold tabular-nums text-danger">
+                                <span className="rounded-sm border border-danger/40 bg-danger-subtle px-1.5 text-micro font-semibold tabular-nums text-danger">
                                   {item.alertCount}
                                   <span className="sr-only"> {t('nav.alertCount', { count: item.alertCount })}</span>
                                 </span>
@@ -304,12 +329,12 @@ export default function Sidebar({
         </nav>
       </div>
 
-      {/* The bar shows the share of enrolled nodes that answered inside the
+      {/* The bar shows the share of enrolled devices that answered inside the
           liveness window. It used to show a constant 98.4% labelled "Security",
           beside an "HA Ready" claim for a single-instance deployment. */}
       {!collapsed && (
         <div className="shrink-0 space-y-2.5 border-t border-border bg-surface/50 p-3.5">
-          <div className="flex items-center justify-between text-caption font-mono text-muted">
+          <div className="flex items-center justify-between text-caption text-muted">
             <span className="flex items-center gap-1.5">
               <Cpu aria-hidden="true" className="h-3.5 w-3.5 text-subtle" />
               <span className="text-micro">{t('brand.tagline')}</span>
@@ -336,7 +361,7 @@ export default function Sidebar({
               style={{ width: `${reachablePct}%` }}
             />
           </div>
-          <div className="flex justify-between text-micro font-mono text-subtle">
+          <div className="flex justify-between text-micro text-subtle">
             <span>
               {nodeCount === 0
                 ? t('sidebar.reachableUnknown')
@@ -348,6 +373,12 @@ export default function Sidebar({
                 : t('sidebar.noneQuarantined')}
             </span>
           </div>
+          <Link
+            to={ROUTES.glossary}
+            className="inline-flex min-h-6 items-center rounded-sm text-micro text-muted underline hover:text-content focus-visible:outline-focus"
+          >
+            {t('sidebar.glossaryLink')}
+          </Link>
         </div>
       )}
     </aside>

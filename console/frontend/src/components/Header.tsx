@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowDownLeft, ArrowUpRight, Bell, LogOut, PlusCircle, Search, Shield, UserCheck, Zap } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Bell, LogOut, PlusCircle, Zap } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { useStatsOverview } from '../services/queries';
-import { cn, LanguageSwitcher, NotMeasured, ThemeToggle } from '../ui';
+import { effectiveRole, roleTier } from '../services/roles';
+import { Button, LanguageSwitcher, NotMeasured, ThemeToggle } from '../ui';
 
 export interface HeaderProps {
   onOpenEnrollModal?: () => void;
@@ -12,7 +13,8 @@ export interface HeaderProps {
 
 export default function Header({ onOpenEnrollModal }: HeaderProps) {
   const { t } = useTranslation('chrome');
-  const { user, role, switchRole, logout } = useAuth();
+  const { t: tGlossary } = useTranslation('glossary');
+  const { user, logout } = useAuth();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   // The ticker printed "RX: 88.4 MB/s | TX: 64.1 MB/s | Circuits: 142" as
@@ -25,24 +27,16 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
   const rate = (value: number | null | undefined) =>
     typeof value === 'number' ? <span className="font-bold tabular-nums">{value} MiB/s</span> : <NotMeasured />;
 
-  const isSuperAdmin = role === 'super-admin';
+  const role = effectiveRole(user);
+  // A read-only role has nothing to add, so the action is not offered to it.
+  const canAdd = roleTier(role) !== 'read';
 
   return (
     <header className="console-header sticky top-0 z-sticky flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-raised px-6 py-2">
       <div className="flex min-w-0 items-center gap-6">
-        <div className="console-header-search relative">
-          <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle" />
-          <input
-            type="search"
-            aria-label={t('header.searchLabel')}
-            placeholder={t('header.search')}
-            className="w-72 rounded-control border border-border-strong bg-surface-sunken py-1.5 pl-9 pr-4 font-mono text-caption text-content placeholder:text-subtle focus-visible:outline-focus"
-          />
-        </div>
-
         <div
           aria-label={t('header.throughput')}
-          className="console-header-throughput hidden items-center gap-4 rounded-control border border-border bg-surface-sunken px-3 py-1.5 font-mono text-caption lg:flex"
+          className="console-header-throughput hidden items-center gap-4 rounded-control border border-border bg-surface-sunken px-3 py-1.5 text-caption lg:flex"
         >
           <span className="flex items-center gap-1.5 text-content">
             <ArrowDownLeft aria-hidden="true" className="h-3.5 w-3.5 text-accent" />
@@ -61,8 +55,8 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
             |
           </span>
           {/* This read "Circuits: 142". Circuits are built on request and never
-              stored, so there is no count to report; live nodes is a figure the
-              control plane holds. */}
+              stored, so there is no count to report; devices online is a figure
+              the control plane holds. */}
           <span className="flex items-center gap-1.5 text-content">
             <Zap aria-hidden="true" className="h-3.5 w-3.5 text-success" />
             <span className="text-muted">{t('header.nodesUp')}:</span>
@@ -76,49 +70,12 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
       </div>
 
       <div className="console-header-actions flex min-w-0 flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={onOpenEnrollModal}
-          className="flex items-center gap-2 rounded-control bg-accent px-3 py-1.5 text-caption font-semibold text-accent-contrast transition-colors hover:bg-accent-strong focus-visible:outline-focus"
-        >
-          <PlusCircle aria-hidden="true" className="h-3.5 w-3.5" />
-          <span>{t('header.enrol')}</span>
-        </button>
-
-        <div
-          role="radiogroup"
-          aria-label={t('header.roleScope')}
-          className="flex items-center gap-1 rounded-control border border-border bg-surface-sunken p-1"
-        >
-          <button
-            type="button"
-            role="radio"
-            aria-checked={isSuperAdmin}
-            onClick={() => switchRole('super-admin')}
-            className={cn(
-              'flex items-center gap-1.5 rounded-sm px-2.5 py-1 font-mono text-caption font-medium transition-colors focus-visible:outline-focus',
-              isSuperAdmin ? 'border border-info/40 bg-info-subtle text-info' : 'text-muted hover:text-content'
-            )}
-          >
-            <Shield aria-hidden="true" className="h-3 w-3" />
-            <span>{t('header.superAdmin')}</span>
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={!isSuperAdmin}
-            onClick={() => switchRole('user')}
-            className={cn(
-              'flex items-center gap-1.5 rounded-sm px-2.5 py-1 font-mono text-caption font-medium transition-colors focus-visible:outline-focus',
-              !isSuperAdmin
-                ? 'border border-success/40 bg-success-subtle text-success'
-                : 'text-muted hover:text-content'
-            )}
-          >
-            <UserCheck aria-hidden="true" className="h-3 w-3" />
-            <span>{t('header.user')}</span>
-          </button>
-        </div>
+        {canAdd && (
+          <Button variant="secondary" size="sm" onClick={onOpenEnrollModal}>
+            <PlusCircle aria-hidden="true" className="h-3.5 w-3.5" />
+            <span>{t('header.enrol')}</span>
+          </Button>
+        )}
 
         <div className="flex items-center gap-2">
           <LanguageSwitcher />
@@ -154,15 +111,13 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
         <div className="flex items-center gap-2 border-l border-border pl-2" aria-label={t('header.account')}>
           <div
             aria-hidden="true"
-            className="flex h-7 w-7 items-center justify-center rounded-pill bg-accent font-mono text-caption font-bold text-accent-contrast"
+            className="flex h-7 w-7 items-center justify-center rounded-pill bg-accent text-caption font-bold text-accent-contrast"
           >
             {user?.username?.[0]?.toUpperCase() ?? 'U'}
           </div>
-          <div className="hidden text-left font-mono sm:block">
+          <div className="hidden text-left sm:block">
             <div className="text-caption font-semibold text-content">{user?.username}</div>
-            <div className="text-micro text-muted">
-              {user?.role === 'super-admin' ? t('header.superAdmin') : t('header.user')}
-            </div>
+            {role && <div className="text-micro text-muted">{tGlossary(`roles.${role}.term`)}</div>}
           </div>
           {/* The console had no way to end a session short of destroying the account. */}
           <button

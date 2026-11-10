@@ -1,73 +1,70 @@
 {
   "brand": {
     "name": "NeroNet",
-    "tagline": "Mesh sovrana v4.0"
+    "tagline": "Rete privata"
   },
   "nav": {
     "landmark": "Principale",
     "sections": {
-      "mesh": "Mesh e rete",
-      "compute": "Calcolo e archiviazione",
-      "security": "Sicurezza e governance",
-      "danger": "Sistema e zona critica"
+      "mesh": "Rete",
+      "compute": "Computer",
+      "security": "Sicurezza",
+      "danger": "Sistema",
+      "you": "Tu"
     },
     "collapseSection": "Comprimi la sezione",
     "expandSection": "Espandi la sezione",
     "collapseSidebar": "Comprimi la navigazione",
     "expandSidebar": "Espandi la navigazione",
     "items": {
-      "overview": "Panoramica globale",
-      "topology": "Topologia della mesh",
+      "overview": "Panoramica",
+      "topology": "Mappa della rete",
       "subnets": "Sotto-reti",
-      "nodes": "Matrice dei nodi",
-      "onion": "Onion e offuscamento",
-      "peering": "Peering fra mesh",
-      "cloudpc": "Cloud PC sovrano",
-      "risk": "Punteggio di rischio comportamentale",
-      "acls": "ACL zero-trust",
-      "audit": "Registri forensi",
-      "users": "Directory utenti",
-      "settings": "Impostazioni della mesh",
-      "nuke": "Autodistruzione"
+      "nodes": "Dispositivi",
+      "onion": "Percorsi a tre tappe",
+      "peering": "Altre reti",
+      "cloudpc": "Computer virtuali",
+      "risk": "Punteggio di rischio",
+      "acls": "Regole di accesso",
+      "audit": "Registro attività",
+      "users": "Utenti",
+      "settings": "Impostazioni",
+      "nuke": "Cancellazione dati",
+      "me": "I miei dispositivi",
+      "glossary": "Glossario"
     },
     "alertCount_one": "{{count}} richiede attenzione",
     "alertCount_other": "{{count}} richiedono attenzione"
   },
   "sidebar": {
-    "nodesReachable": "{{reachable}}/{{total}} attivi",
-    "noNodes": "Nessun nodo",
+    "nodesReachable": "{{reachable}} di {{total}} raggiungibili",
+    "noNodes": "Nessun dispositivo",
     "reachable": "Raggiungibili: {{percent}}",
     "reachableUnknown": "Raggiungibili: non applicabile",
-    "quarantined_one": "{{count}} in quarantena",
-    "quarantined_other": "{{count}} in quarantena",
-    "noneQuarantined": "Nessuno in quarantena",
-    "reachabilityBar": "Quota di nodi registrati che hanno risposto entro la finestra di liveness",
+    "quarantined_one": "{{count}} bloccato",
+    "quarantined_other": "{{count}} bloccati",
+    "noneQuarantined": "Nessun dispositivo bloccato",
+    "reachabilityBar": "Percentuale di dispositivi che hanno risposto di recente",
     "armed": "Autodistruzione armata",
     "armedPinned": "Fissata",
     "destroyNow": "Distruggi ora",
     "armedInstant": "Armata, immediata",
-    "triggered": "Attivata"
+    "triggered": "Attivata",
+    "glossaryLink": "Cosa significano queste parole?"
   },
   "header": {
-    "search": "Cerca nodi, indirizzi, utenti, registri",
-    "searchLabel": "Cerca nella console",
-    "throughput": "Traffico aggregato",
-    "rx": "In entrata",
-    "tx": "In uscita",
-    "nodesUp": "Nodi attivi",
-    "enrol": "Registra dispositivo",
-    "roleScope": "Ambito del ruolo",
-    "superAdmin": "Super amministratore",
-    "superAdminHint": "Panoramica globale della mesh, tutti i relay e i nodi dei tenant",
-    "user": "Utente",
-    "userHint": "Mesh limitata ai dispositivi di questo tenant",
+    "throughput": "Traffico totale della rete",
+    "rx": "Ricevuto",
+    "tx": "Inviato",
+    "nodesUp": "Dispositivi online",
+    "enrol": "Aggiungi dispositivo",
     "notifications": "Notifiche",
     "notificationsUnread": "Notifiche, non lette",
     "alerts": "Avvisi di sicurezza",
     "markAllRead": "Segna tutte come lette",
     "account": "Account",
-    "signOut": "Esci",
-    "noAlerts": "Nessun avviso. Dietro a questo la console non ha ancora un flusso di notifiche."
+    "signOut": "Esci dalla console",
+    "noAlerts": "Nessun avviso. Le notifiche non sono ancora collegate a questa console."
   },
   "connection": {
     "label": "Piano di controllo",
@@ -98,7 +95,8 @@
   },
   "narrow": {
     "title": "Usa una finestra piu larga",
-    "body": "La console e uno strumento da scrivania: le tabelle e la topologia richiedono almeno 1024 pixel di larghezza. Allarga la finestra o spostala su uno schermo piu grande."
+    "body": "La console di amministrazione richiede una finestra larga almeno 1024 pixel.",
+    "portalLink": "Da telefono, apri I miei dispositivi."
   },
   "page": {
     "title": "{{page}} - Console NeroNet",
@@ -110,27 +108,36 @@
   },
   "login": {
     "title": "NeroNet Enterprise",
-    "subtitle": "Piano di controllo della mesh sovrana - v4.0",
+    "subtitle": "Console di gestione della rete NeroNet",
     "username": "Nome utente",
     "password": "Password",
-    "submit": "Accedi",
+    "submit": "Accedi alla console",
     "working": "Accesso in corso",
-    "failed": "Accesso non riuscito.",
-    "method": "Accesso con password - bcrypt - token di sessione firmato",
+    "failed": "Accesso non riuscito. Controlla nome utente e password e riprova. Se il problema continua, avvisa un amministratore.",
+    "method": "Accesso con password e sessione protetta",
     "mfa": {
-      "prompt": "Inserisci il codice di sei cifre dell'app di autenticazione.",
-      "codeLabel": "Codice di autenticazione",
-      "submit": "Verifica",
-      "useRecovery": "Usa un codice di recupero",
-      "useCode": "Usa il codice dell'app",
-      "recoveryPrompt": "Inserisci uno dei codici di recupero. Ogni codice vale una volta sola.",
+      "prompt": "Inserisci il codice di 6 cifre che mostra l'app di verifica sul telefono.",
+      "codeLabel": "Codice dall'app di verifica",
+      "submit": "Verifica e accedi",
+      "useRecovery": "Non hai il telefono? Usa un codice di recupero",
+      "useCode": "Torna al codice dell'app",
+      "recoveryPrompt": "Inserisci uno dei codici di recupero. Ogni codice funziona una sola volta.",
       "recoveryLabel": "Codice di recupero",
-      "startOver": "Ricomincia",
-      "enrolIntro": "Questo account richiede l'accesso a due fattori. Inquadra il codice con un'app di autenticazione (per esempio Aegis, 2FAS o Google Authenticator), poi inserisci il codice di sei cifre che mostra.",
-      "qrAlt": "Codice QR per aggiungere questo account a un'app di autenticazione",
-      "secretLabel": "Oppure inserisci questa chiave a mano:",
-      "recoveryIntro": "Codici di recupero. Conservali subito in un posto sicuro: vengono mostrati una sola volta, e ognuno sostituisce un codice una volta se perdi il dispositivo.",
-      "enrolSubmit": "Conferma e accedi"
-    }
+      "startOver": "Torna alla password",
+      "enrolIntro": "Questo account richiede un secondo codice. Sul telefono apri un'app di verifica (per esempio Google Authenticator), inquadra il codice QR qui sotto, poi scrivi il codice di 6 cifre che l'app mostra.",
+      "qrAlt": "Codice QR da inquadrare con l'app di verifica",
+      "secretLabel": "Se non puoi inquadrarlo, scrivi questo codice nell'app:",
+      "recoveryIntro": "Sono i tuoi codici di recupero. Salvali ora in un posto sicuro: non verranno mostrati di nuovo. Ti servono se perdi il telefono; ogni codice funziona una sola volta.",
+      "enrolSubmit": "Conferma il codice e accedi",
+      "failed": "Il codice non funziona. Controlla le sei cifre e riprova."
+    },
+    "unreachable": "Impossibile raggiungere il server. Controlla la connessione e riprova."
+  },
+  "wipe": {
+    "title": "Eliminare il tuo account e i suoi dispositivi?",
+    "body": "Il tuo account e tutti i dispositivi registrati a tuo nome vengono eliminati subito. Non si può annullare.",
+    "confirm": "Elimina l'account ora",
+    "done": "Account eliminato.",
+    "failed": "Non è stato eliminato nulla. Riprova."
   }
 }

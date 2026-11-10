@@ -1,73 +1,70 @@
 {
   "brand": {
     "name": "NeroNet",
-    "tagline": "Sovereign mesh v4.0"
+    "tagline": "Private network"
   },
   "nav": {
     "landmark": "Main",
     "sections": {
-      "mesh": "Mesh and network",
-      "compute": "Compute and storage",
-      "security": "Security and governance",
-      "danger": "System and danger zone"
+      "mesh": "Network",
+      "compute": "Computers",
+      "security": "Security",
+      "danger": "System",
+      "you": "You"
     },
     "collapseSection": "Collapse section",
     "expandSection": "Expand section",
     "collapseSidebar": "Collapse the navigation",
     "expandSidebar": "Expand the navigation",
     "items": {
-      "overview": "Global overview",
-      "topology": "Mesh topology",
+      "overview": "Overview",
+      "topology": "Network map",
       "subnets": "Sub-networks",
-      "nodes": "Node matrix",
-      "onion": "Onion and obfuscation",
-      "peering": "Cross-mesh peering",
-      "cloudpc": "Sovereign cloud PC",
-      "risk": "Behavioural risk score",
-      "acls": "Zero-trust ACLs",
-      "audit": "Forensic audit logs",
-      "users": "User directory",
-      "settings": "Mesh settings",
-      "nuke": "Self-destruct"
+      "nodes": "Devices",
+      "onion": "Three-stop routes",
+      "peering": "Other networks",
+      "cloudpc": "Virtual computers",
+      "risk": "Risk score",
+      "acls": "Access rules",
+      "audit": "Activity log",
+      "users": "Users",
+      "settings": "Settings",
+      "nuke": "Data erasure",
+      "me": "My devices",
+      "glossary": "Glossary"
     },
     "alertCount_one": "{{count}} needs attention",
     "alertCount_other": "{{count}} need attention"
   },
   "sidebar": {
-    "nodesReachable": "{{reachable}}/{{total}} up",
-    "noNodes": "No nodes",
+    "nodesReachable": "{{reachable}} of {{total}} reachable",
+    "noNodes": "No devices",
     "reachable": "Reachable: {{percent}}",
     "reachableUnknown": "Reachable: not applicable",
-    "quarantined_one": "{{count}} quarantined",
-    "quarantined_other": "{{count}} quarantined",
-    "noneQuarantined": "None quarantined",
-    "reachabilityBar": "Share of enrolled nodes that answered within the liveness window",
+    "quarantined_one": "{{count}} blocked",
+    "quarantined_other": "{{count}} blocked",
+    "noneQuarantined": "No device blocked",
+    "reachabilityBar": "Share of devices that answered recently",
     "armed": "Self-destruct armed",
     "armedPinned": "Pinned",
     "destroyNow": "Destroy now",
     "armedInstant": "Armed, immediate",
-    "triggered": "Triggered"
+    "triggered": "Triggered",
+    "glossaryLink": "What do these words mean?"
   },
   "header": {
-    "search": "Search nodes, addresses, users, audit logs",
-    "searchLabel": "Search the console",
-    "throughput": "Aggregate throughput",
-    "rx": "In",
-    "tx": "Out",
-    "nodesUp": "Nodes up",
-    "enrol": "Enrol device",
-    "roleScope": "Role scope",
-    "superAdmin": "Super admin",
-    "superAdminHint": "Global mesh overview, all relays and tenant nodes",
-    "user": "User",
-    "userHint": "Mesh scoped to this tenant's own devices",
+    "throughput": "Total network traffic",
+    "rx": "Received",
+    "tx": "Sent",
+    "nodesUp": "Devices online",
+    "enrol": "Add device",
     "notifications": "Notifications",
     "notificationsUnread": "Notifications, unread",
     "alerts": "Security alerts",
     "markAllRead": "Mark all read",
     "account": "Account",
-    "signOut": "Sign out",
-    "noAlerts": "No alerts. The console has no notification feed behind this yet."
+    "signOut": "Sign out of the console",
+    "noAlerts": "No alerts. Notifications are not connected to this console yet."
   },
   "connection": {
     "label": "Control plane",
@@ -98,7 +95,8 @@
   },
   "narrow": {
     "title": "Use a wider window",
-    "body": "The console is a desktop tool: its tables and the topology need at least 1024 pixels of width. Widen the window or move it to a larger display."
+    "body": "The admin console needs a window at least 1024 pixels wide.",
+    "portalLink": "On a phone, open My devices."
   },
   "page": {
     "title": "{{page}} - NeroNet console",
@@ -110,27 +108,36 @@
   },
   "login": {
     "title": "NeroNet Enterprise",
-    "subtitle": "Sovereign mesh control plane - v4.0",
+    "subtitle": "NeroNet network management console",
     "username": "Username",
     "password": "Password",
-    "submit": "Sign in",
+    "submit": "Sign in to the console",
     "working": "Signing in",
-    "failed": "Sign-in failed.",
-    "method": "Password sign-in - bcrypt - signed session token",
+    "failed": "Sign-in failed. Check your username and password and try again. If it keeps happening, tell an administrator.",
+    "method": "Sign-in with a password and a protected session",
     "mfa": {
-      "prompt": "Enter the six-digit code from your authenticator app.",
-      "codeLabel": "Authenticator code",
-      "submit": "Verify",
-      "useRecovery": "Use a recovery code",
-      "useCode": "Use the authenticator code",
-      "recoveryPrompt": "Enter one of your recovery codes. Each code works once.",
+      "prompt": "Enter the 6-digit code shown by the verification app on your phone.",
+      "codeLabel": "Code from the verification app",
+      "submit": "Verify and sign in",
+      "useRecovery": "No phone? Use a recovery code",
+      "useCode": "Back to the app code",
+      "recoveryPrompt": "Enter one of your recovery codes. Each code works only once.",
       "recoveryLabel": "Recovery code",
-      "startOver": "Start over",
-      "enrolIntro": "This account must use two-factor sign-in. Scan the code with an authenticator app (for example Aegis, 2FAS or Google Authenticator), then enter the six-digit code it shows.",
-      "qrAlt": "QR code to add this account to an authenticator app",
-      "secretLabel": "Or enter this key by hand:",
-      "recoveryIntro": "Recovery codes. Store them somewhere safe now: they are shown only once, and each one replaces a code once if you lose the device.",
-      "enrolSubmit": "Confirm and sign in"
-    }
+      "startOver": "Back to password",
+      "enrolIntro": "This account needs a second code. On your phone, open a verification app (for example Google Authenticator), scan the QR code below, then type the 6-digit code that the app shows.",
+      "qrAlt": "QR code to scan with the verification app",
+      "secretLabel": "If you cannot scan it, type this code into the app:",
+      "recoveryIntro": "These are your recovery codes. Save them now somewhere safe: they will not be shown again. You need them if you lose your phone; each code works only once.",
+      "enrolSubmit": "Confirm the code and sign in",
+      "failed": "That code did not work. Check the six digits and try again."
+    },
+    "unreachable": "Cannot reach the server. Check your connection and try again."
+  },
+  "wipe": {
+    "title": "Delete your account and its devices?",
+    "body": "Your account and every device registered to it are deleted now. This cannot be undone.",
+    "confirm": "Delete account now",
+    "done": "Account deleted.",
+    "failed": "Nothing was deleted. Try again."
   }
 }

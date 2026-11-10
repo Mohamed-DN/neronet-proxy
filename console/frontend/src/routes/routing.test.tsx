@@ -308,3 +308,93 @@ describe('the shell', () => {
     expect(await screen.findByRole('button', { name: 'Expand the navigation' })).toBeInTheDocument();
   });
 });
+
+/*
+ * The real route table, not the stub one above. A member is a self role: the
+ * console is not shown to them at all, so they are sent to their own devices.
+ */
+function stubSignedInAs(user: Record<string, unknown>) {
+  vi.stubGlobal('matchMedia', ((query: string) => ({
+    matches: query.includes('min-width'),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false
+  })) as unknown as typeof window.matchMedia);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url === '/api/auth/me') return jsonResponse({ user });
+      if (url === '/api/nodes') return jsonResponse({ nodes: [] });
+      if (url === '/api/features') return jsonResponse({ cloud_pc: false });
+      if (url === '/api/stats/overview') return jsonResponse({ active_nodes: 0, total_nodes: 0 });
+      return jsonResponse({});
+    }) as unknown as typeof fetch
+  );
+  vi.stubGlobal(
+    'WebSocket',
+    class {
+      onopen: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onmessage: (() => void) | null = null;
+      close() {}
+    } as unknown as typeof WebSocket
+  );
+}
+
+function renderRealRoutes(initialEntries: string[]) {
+  const router = createMemoryRouter(routes, { initialEntries });
+  const client = createQueryClient();
+  client.setDefaultOptions({ queries: { retry: false, refetchOnWindowFocus: false, refetchInterval: false } });
+  renderUI(
+    <QueryClientProvider client={client}>
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+  return router;
+}
+
+describe('the real routes by role', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetConnectionState();
+    resetPageFocusHistory();
+    storeSession({ token: 'tok' });
+  });
+
+  afterEach(() => {
+    clearSession();
+    vi.unstubAllGlobals();
+  });
+
+  it('a member opening /overview lands on /me', async () => {
+    stubSignedInAs({ id: 'u2', username: 'mina', role: 'user', org_role: 'member' });
+    const router = renderRealRoutes([ROUTES.overview]);
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(ROUTES.me));
+  });
+
+  it('/me renders without the console sidebar', async () => {
+    stubSignedInAs({ id: 'u2', username: 'mina', role: 'user', org_role: 'member' });
+    renderRealRoutes([ROUTES.me]);
+
+    expect(
+      await screen.findByRole('heading', { name: i18n.t('me.title', { ns: 'portal' }) }, { timeout: 3000 })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull();
+  });
+
+  it('/help/glossary renders the glossary for an administrator', async () => {
+    stubSignedInAs({ id: 'u1', username: 'admin', role: 'super-admin' });
+    const router = renderRealRoutes([ROUTES.glossary]);
+
+    expect(await screen.findByRole('heading', { name: /glossary/i }, { timeout: 3000 })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(ROUTES.glossary);
+  });
+});

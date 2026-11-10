@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '../context/AuthContext';
 import { clearSession, readAccessToken } from '../services/authToken';
+import i18n from '../i18n';
 import { renderUI } from '../test/harness';
 import LoginRoute from './LoginRoute';
 import { LOGIN_PATH, ROUTES } from './paths';
@@ -18,6 +19,9 @@ function json(body: unknown, status = 200): Response {
 }
 
 const USER = { id: 'u1', username: 'admin', role: 'super-admin' };
+
+/* The copy comes from the translations, so a wording change does not break these tests. */
+const L = (key: string) => i18n.t(key, { ns: 'chrome' });
 
 function renderLogin() {
   const router = createMemoryRouter(
@@ -38,7 +42,7 @@ async function submitPassword() {
   const user = userEvent.setup();
   await user.type(await screen.findByLabelText('Username'), 'admin');
   await user.type(screen.getByLabelText('Password'), 'pw');
-  await user.click(screen.getByRole('button', { name: 'Sign in' }));
+  await user.click(screen.getByRole('button', { name: L('login.submit') }));
   return user;
 }
 
@@ -86,8 +90,8 @@ describe('sign-in with MFA', () => {
     renderLogin();
 
     const user = await submitPassword();
-    await user.type(await screen.findByLabelText('Authenticator code'), '123 456');
-    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await user.type(await screen.findByLabelText(L('login.mfa.codeLabel')), '123 456');
+    await user.click(screen.getByRole('button', { name: L('login.mfa.submit') }));
 
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     expect(calls.find((c) => c.url === '/api/auth/mfa/verify')?.body).toEqual({
@@ -102,9 +106,9 @@ describe('sign-in with MFA', () => {
     renderLogin();
 
     const user = await submitPassword();
-    await user.click(await screen.findByRole('button', { name: 'Use a recovery code' }));
-    await user.type(screen.getByLabelText('Recovery code'), 'aaaa-1111');
-    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await user.click(await screen.findByRole('button', { name: L('login.mfa.useRecovery') }));
+    await user.type(screen.getByLabelText(L('login.mfa.recoveryLabel')), 'aaaa-1111');
+    await user.click(screen.getByRole('button', { name: L('login.mfa.submit') }));
 
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
   });
@@ -114,13 +118,13 @@ describe('sign-in with MFA', () => {
     renderLogin();
 
     const user = await submitPassword();
-    expect(await screen.findByAltText('QR code to add this account to an authenticator app')).toBeInTheDocument();
+    expect(await screen.findByAltText(L('login.mfa.qrAlt'))).toBeInTheDocument();
     expect(screen.getByText('JBSWY3DPEHPK3PXP')).toBeInTheDocument();
     expect(screen.getByText('bbbb-2222')).toBeInTheDocument();
     expect(calls.find((c) => c.url === '/api/auth/mfa/setup')?.body).toEqual({ mfa_token: 'pending-3' });
 
-    await user.type(screen.getByLabelText('Authenticator code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Confirm and sign in' }));
+    await user.type(screen.getByLabelText(L('login.mfa.codeLabel')), '123456');
+    await user.click(screen.getByRole('button', { name: L('login.mfa.enrolSubmit') }));
 
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
   });
@@ -130,11 +134,50 @@ describe('sign-in with MFA', () => {
     renderLogin();
 
     const user = await submitPassword();
-    await user.type(await screen.findByLabelText('Authenticator code'), '000000');
-    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await user.type(await screen.findByLabelText(L('login.mfa.codeLabel')), '000000');
+    await user.click(screen.getByRole('button', { name: L('login.mfa.submit') }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid TOTP code');
-    expect(screen.getByLabelText('Authenticator code')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('login.mfa.failed', { ns: 'chrome' }));
+    expect(screen.queryByText('Invalid TOTP code')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(L('login.mfa.codeLabel'))).toBeInTheDocument();
     expect(readAccessToken()).toBeNull();
+  });
+});
+
+describe('sign-in errors in plain words', () => {
+  afterEach(() => {
+    clearSession();
+    vi.unstubAllGlobals();
+  });
+
+  it('says the server cannot be reached, with no raw browser error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/auth/login') throw new TypeError('Failed to fetch');
+        return json({});
+      }) as unknown as typeof fetch
+    );
+    renderLogin();
+
+    const user = await submitPassword();
+    expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('login.unreachable', { ns: 'chrome' }));
+    expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument();
+    expect(user).toBeDefined();
+  });
+
+  it('says sign-in failed, not the raw server text, for a wrong password', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/auth/login') return json({ error: 'Invalid username or password' }, 401);
+        return json({});
+      }) as unknown as typeof fetch
+    );
+    renderLogin();
+
+    await submitPassword();
+    expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('login.failed', { ns: 'chrome' }));
+    expect(screen.queryByText('Invalid username or password')).not.toBeInTheDocument();
   });
 });

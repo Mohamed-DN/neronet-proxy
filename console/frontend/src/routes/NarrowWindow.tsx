@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { MonitorX } from 'lucide-react';
+
+import { ROUTES } from './paths';
 
 const MIN_WIDTH_PX = 1024;
 const QUERY = `(min-width: ${MIN_WIDTH_PX}px)`;
@@ -45,6 +48,12 @@ export function NarrowWindow({ children }: { children: React.ReactNode }) {
       <MonitorX aria-hidden="true" className="h-6 w-6 text-muted" />
       <h1 className="text-title font-semibold text-content">{t('narrow.title')}</h1>
       <p className="max-w-prose text-caption text-subtle">{t('narrow.body')}</p>
+      <Link
+        to={ROUTES.me}
+        className="inline-flex min-h-11 items-center rounded-sm text-caption text-accent underline focus-visible:outline-focus"
+      >
+        {t('narrow.portalLink')}
+      </Link>
     </div>
   );
 }

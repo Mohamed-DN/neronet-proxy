@@ -1,1 +1,21 @@
-{}
+{
+  "devices": {
+    "title": "Add a device",
+    "description": "Choose how the device will connect.",
+    "profile": {
+      "title": "Phone or computer with the WireGuard app",
+      "body": "Creates a one-time code on your screen. The device is registered to your own account.",
+      "go": "Continue in My devices"
+    },
+    "agent": {
+      "title": "Server or computer with the NeroNet agent",
+      "body": "Creates a registration key for the agent.",
+      "create": "Create registration key",
+      "howTo": "Set this line in the server's environment, then start the NeroNet agent.",
+      "expiry": "The key works once and expires in 24 hours.",
+      "copy": "Copy",
+      "copied": "Copied.",
+      "failed": "The key was not created. Try again."
+    }
+  }
+}

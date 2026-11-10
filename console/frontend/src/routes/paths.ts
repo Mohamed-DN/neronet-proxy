@@ -19,7 +19,10 @@ export const ROUTES = {
   audit: '/audit',
   users: '/users',
   settings: '/settings',
-  nuke: '/nuke'
+  nuke: '/nuke',
+  me: '/me',
+  meAdd: '/me/add',
+  glossary: '/help/glossary'
 } as const;
 
 export type RouteId = keyof typeof ROUTES;

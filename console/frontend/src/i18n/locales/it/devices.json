@@ -1,1 +1,21 @@
-{}
+{
+  "devices": {
+    "title": "Aggiungi un dispositivo",
+    "description": "Scegli come si collegherà il dispositivo.",
+    "profile": {
+      "title": "Telefono o computer con l'app WireGuard",
+      "body": "Crea un codice monouso sul tuo schermo. Il dispositivo viene registrato a tuo nome.",
+      "go": "Continua in I miei dispositivi"
+    },
+    "agent": {
+      "title": "Server o computer con l'agente NeroNet",
+      "body": "Crea una chiave di registrazione per l'agente.",
+      "create": "Crea la chiave di registrazione",
+      "howTo": "Imposta questa riga nell'ambiente del server, poi avvia l'agente NeroNet.",
+      "expiry": "La chiave funziona una sola volta e scade tra 24 ore.",
+      "copy": "Copia",
+      "copied": "Copiato.",
+      "failed": "La chiave non è stata creata. Riprova."
+    }
+  }
+}

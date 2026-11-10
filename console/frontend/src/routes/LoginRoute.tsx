@@ -3,12 +3,39 @@ import { useTranslation } from 'react-i18next';
 import { Navigate, useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../context/AuthContext';
+import { ApiError } from '../services/apiClient';
 import { MfaChallenge, startMfaEnrolment, type MfaEnrolment } from '../services/session';
 import { Button, LanguageSwitcher, ThemeToggle } from '../ui';
 import { NEXT_PARAM, safeNextPath } from './paths';
 
 const INPUT_CLASS =
-  'w-full rounded-control border border-border bg-surface px-3.5 py-2.5 font-mono text-caption text-content placeholder:text-subtle focus-visible:outline-focus';
+  'w-full rounded-control border border-border bg-surface px-3.5 py-2.5 text-caption text-content placeholder:text-subtle focus-visible:outline-focus';
+
+interface PlainError {
+  message: string;
+  /** The server's own words, shown as a secondary line only for a server fault. */
+  detail: string | null;
+}
+
+/**
+ * Turns a failed sign-in into words a person can act on. A server that cannot
+ * be reached is named as such; a server fault keeps its own text as a small
+ * detail; anything else gets the plain fallback, never the raw message alone.
+ */
+function plainError(err: unknown, fallback: string, t: (key: string) => string): PlainError {
+  if (err instanceof ApiError && err.isUnreachable) return { message: t('login.unreachable'), detail: null };
+  if (err instanceof ApiError && err.status >= 500) return { message: fallback, detail: err.message };
+  return { message: fallback, detail: null };
+}
+
+function PlainErrorAlert({ error }: { error: PlainError }) {
+  return (
+    <p role="alert" className="rounded-control border border-danger/40 bg-danger-subtle p-3 text-caption text-danger">
+      {error.message}
+      {error.detail && <span className="mt-1 block text-micro text-muted">{error.detail}</span>}
+    </p>
+  );
+}
 
 interface MfaStep {
   token: string;
@@ -29,7 +56,7 @@ export default function LoginRoute() {
   const [params] = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<PlainError | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Set once the password is accepted and the account needs a TOTP code. With
   // `enrolment`, the account has no authenticator yet and enrols one here.
@@ -59,7 +86,7 @@ export default function LoginRoute() {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
-    setError('');
+    setError(null);
     try {
       await login(username, password);
       // The redirect happens through isAuthenticated on the next render, so a
@@ -72,10 +99,10 @@ export default function LoginRoute() {
           setMfa({ token: err.mfaToken, enrolment });
           setPassword('');
         } catch (enrolErr) {
-          setError(enrolErr instanceof Error ? enrolErr.message : t('login.failed'));
+          setError(plainError(enrolErr, t('login.failed'), t));
         }
       } else {
-        setError(err instanceof Error ? err.message : t('login.failed'));
+        setError(plainError(err, t('login.failed'), t));
       }
     } finally {
       setSubmitting(false);
@@ -86,12 +113,12 @@ export default function LoginRoute() {
     event.preventDefault();
     if (!mfa) return;
     setSubmitting(true);
-    setError('');
+    setError(null);
     try {
       const proof = useRecovery ? { recovery_code: code.trim() } : { code: code.replace(/\s+/g, '') };
       await completeMfaSignIn(mfa.token, proof);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('login.failed'));
+      setError(plainError(err, t('login.mfa.failed'), t));
     } finally {
       setSubmitting(false);
     }
@@ -101,7 +128,7 @@ export default function LoginRoute() {
     setMfa(null);
     setCode('');
     setUseRecovery(false);
-    setError('');
+    setError(null);
   };
 
   return (
@@ -113,26 +140,26 @@ export default function LoginRoute() {
         </div>
 
         <div className="space-y-2 text-center">
-          <h1 className="font-mono text-title font-bold tracking-wider text-content">{t('login.title')}</h1>
-          <p className="font-mono text-caption text-muted">{t('login.subtitle')}</p>
+          <h1 className="text-title font-bold tracking-wider text-content">{t('login.title')}</h1>
+          <p className="text-caption text-muted">{t('login.subtitle')}</p>
         </div>
 
         {mfa ? (
           <form onSubmit={handleMfaSubmit} className="space-y-4">
             {mfa.enrolment ? (
               <div className="space-y-3">
-                <p className="font-mono text-caption text-content">{t('login.mfa.enrolIntro')}</p>
+                <p className="text-caption text-content">{t('login.mfa.enrolIntro')}</p>
                 <img
                   src={mfa.enrolment.qrDataUrl}
                   alt={t('login.mfa.qrAlt')}
                   className="mx-auto h-44 w-44 rounded-control bg-white p-2"
                 />
-                <p className="font-mono text-micro text-muted">
+                <p className="text-micro text-muted">
                   {t('login.mfa.secretLabel')} <code className="break-all text-content">{mfa.enrolment.secret}</code>
                 </p>
                 <div className="rounded-control border border-border p-3">
-                  <p className="font-mono text-micro text-muted">{t('login.mfa.recoveryIntro')}</p>
-                  <ul className="mt-2 grid grid-cols-2 gap-1 font-mono text-caption text-content">
+                  <p className="text-micro text-muted">{t('login.mfa.recoveryIntro')}</p>
+                  <ul className="mt-2 grid grid-cols-2 gap-1 text-caption text-content">
                     {mfa.enrolment.recoveryCodes.map((c) => (
                       <li key={c}>{c}</li>
                     ))}
@@ -140,13 +167,13 @@ export default function LoginRoute() {
                 </div>
               </div>
             ) : (
-              <p className="font-mono text-caption text-content">
+              <p className="text-caption text-content">
                 {useRecovery ? t('login.mfa.recoveryPrompt') : t('login.mfa.prompt')}
               </p>
             )}
 
             <div className="space-y-1">
-              <label htmlFor="login-mfa-code" className="block font-mono text-caption text-muted">
+              <label htmlFor="login-mfa-code" className="block text-caption text-muted">
                 {useRecovery ? t('login.mfa.recoveryLabel') : t('login.mfa.codeLabel')}
               </label>
               <input
@@ -162,20 +189,13 @@ export default function LoginRoute() {
               />
             </div>
 
-            {error && (
-              <p
-                role="alert"
-                className="rounded-control border border-danger/40 bg-danger-subtle p-3 font-mono text-caption text-danger"
-              >
-                {error}
-              </p>
-            )}
+            {error && <PlainErrorAlert error={error} />}
 
             <Button type="submit" fullWidth loading={submitting} loadingLabel={t('login.working')}>
               {mfa.enrolment ? t('login.mfa.enrolSubmit') : t('login.mfa.submit')}
             </Button>
 
-            <div className="flex justify-between font-mono text-micro">
+            <div className="flex justify-between text-micro">
               {!mfa.enrolment && (
                 <button
                   type="button"
@@ -196,7 +216,7 @@ export default function LoginRoute() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
-              <label htmlFor="login-username" className="block font-mono text-caption text-muted">
+              <label htmlFor="login-username" className="block text-caption text-muted">
                 {t('login.username')}
               </label>
               <input
@@ -212,7 +232,7 @@ export default function LoginRoute() {
             </div>
 
             <div className="space-y-1">
-              <label htmlFor="login-password" className="block font-mono text-caption text-muted">
+              <label htmlFor="login-password" className="block text-caption text-muted">
                 {t('login.password')}
               </label>
               <input
@@ -226,14 +246,7 @@ export default function LoginRoute() {
               />
             </div>
 
-            {error && (
-              <p
-                role="alert"
-                className="rounded-control border border-danger/40 bg-danger-subtle p-3 font-mono text-caption text-danger"
-              >
-                {error}
-              </p>
-            )}
+            {error && <PlainErrorAlert error={error} />}
 
             <Button type="submit" fullWidth loading={submitting} loadingLabel={t('login.working')}>
               {t('login.submit')}
@@ -241,7 +254,7 @@ export default function LoginRoute() {
           </form>
         )}
 
-        <p className="border-t border-border-subtle pt-3 text-center font-mono text-micro text-subtle">
+        <p className="border-t border-border-subtle pt-3 text-center text-micro text-subtle">
           {/* This read "Zero-Knowledge Cryptographic Authentication - Ed25519".
               Console sign-in is a password verified with bcrypt against a hash,
               and the session is a signed JWT. Ed25519 is used for node identity

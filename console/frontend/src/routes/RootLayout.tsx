@@ -1,6 +1,5 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQueryClient } from '@tanstack/react-query';
 import { Outlet, useMatches } from 'react-router-dom';
 
 import ConnectionStatus from '../components/ConnectionStatus';
@@ -8,21 +7,23 @@ import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { fleetCounts, queryKeys, useFeatures, useLiveUpdates, useNodes } from '../services/queries';
-import { Skeleton, SkipLink } from '../ui';
+import { fleetCounts, useFeatures, useLiveUpdates, useNodes } from '../services/queries';
+import { ConfirmDialog, Skeleton, SkipLink, useToast } from '../ui';
 import { NarrowWindow } from './NarrowWindow';
 import { useShell } from './shell';
 
 /*
- * The enrolment dialog carries a QR encoder and a key generator that no other
+ * The add-device dialog carries a QR encoder and a key generator that no other
  * page needs, so it loads when it is first opened rather than with the shell.
  */
-const CryptoConfigModal = lazy(() => import('../components/CryptoConfigModal.jsx'));
+const AddDeviceDialog = lazy(() => import('../devices/AddDeviceDialog'));
 
 /** Set on a route to name the page in the document title. */
 export interface RouteHandle {
   titleKey?: string;
 }
+
+const WIPE_PHRASE = 'DELETE MY ACCOUNT';
 
 function usePageTitle(): void {
   const { t } = useTranslation('chrome');
@@ -46,11 +47,14 @@ function usePageTitle(): void {
  */
 export function RootLayout() {
   const { t } = useTranslation('chrome');
-  const queryClient = useQueryClient();
   const { logout } = useAuth();
   const features = useFeatures();
   const nodes = useNodes();
   const shell = useShell();
+  const { notify } = useToast();
+  const [wipeOpen, setWipeOpen] = useState(false);
+  const [wipeBusy, setWipeBusy] = useState(false);
+  const [wipeFailed, setWipeFailed] = useState(false);
 
   usePageTitle();
   // One socket for the whole console, held for as long as there is a session.
@@ -59,27 +63,26 @@ export function RootLayout() {
   const counts = fleetCounts(nodes.data);
 
   /*
-   * Tier 1 self-destruct. Unchanged in substance from the shell it replaces:
-   * the control plane performs the deletion and the console reports only what
-   * the control plane confirmed. A failure is shown, never swallowed, because
-   * what follows it is irreversible.
+   * Deleting the account is irreversible, so it is asked for in a dialog that
+   * needs the exact phrase. The control plane performs the deletion and the
+   * console reports only what it confirmed. A failure stays on screen, inside
+   * the dialog, so the operator knows nothing was removed.
    */
-  const handleExecuteWipe = async () => {
-    if (
-      !window.confirm(
-        'FINAL WARNING: This is the Point of No Return. Executing will PERMANENTLY DESTROY the account and network assets. Execute?'
-      )
-    ) {
+  const handleWipe = async () => {
+    setWipeBusy(true);
+    setWipeFailed(false);
+    try {
+      await api.nuke.userSelfDestruct(WIPE_PHRASE, true);
+    } catch {
+      setWipeBusy(false);
+      setWipeFailed(true);
       return;
     }
-    try {
-      await api.nuke.userSelfDestruct('DELETE MY ACCOUNT', true);
-      window.alert('DESTRUCTION COMPLETE. System wiped. Logging out.');
-      shell.disarmNuke();
-      await logout();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Wipe failed');
-    }
+    setWipeBusy(false);
+    setWipeOpen(false);
+    shell.disarmNuke();
+    notify(t('wipe.done'), { tone: 'success' });
+    await logout();
   };
 
   return (
@@ -95,7 +98,7 @@ export function RootLayout() {
         highRiskCount={counts.highRisk}
         nukeArmed={shell.nukeArmed}
         nukeScheduledAt={shell.nukeScheduledAt}
-        onExecuteWipe={handleExecuteWipe}
+        onExecuteWipe={() => setWipeOpen(true)}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -128,15 +131,32 @@ export function RootLayout() {
         </main>
       </div>
 
+      <ConfirmDialog
+        open={wipeOpen}
+        onOpenChange={(open) => {
+          if (!wipeBusy) setWipeOpen(open);
+        }}
+        title={t('wipe.title')}
+        description={t('wipe.body')}
+        confirmPhrase={WIPE_PHRASE}
+        confirmLabel={t('wipe.confirm')}
+        tone="danger"
+        busy={wipeBusy}
+        onConfirm={() => void handleWipe()}
+      >
+        {wipeFailed && (
+          <p
+            role="alert"
+            className="rounded-control border border-danger/40 bg-danger-subtle p-3 text-caption text-danger"
+          >
+            {t('wipe.failed')}
+          </p>
+        )}
+      </ConfirmDialog>
+
       {shell.enrollOpen && (
         <Suspense fallback={null}>
-          <CryptoConfigModal
-            isOpen
-            onClose={shell.closeEnroll}
-            onNodeEnrolled={() => {
-              void queryClient.invalidateQueries({ queryKey: queryKeys.nodes });
-            }}
-          />
+          <AddDeviceDialog open onOpenChange={(open) => !open && shell.closeEnroll()} />
         </Suspense>
       )}
     </div>
