@@ -120,7 +120,14 @@ const PERMISSION_MATRIX = [
     roles: ['super-admin', 'owner', 'admin', 'network_admin', 'member', 'user'],
     rule: 'own-node'
   },
-  { method: 'DELETE', path: '/api/nodes/:id', roles: ['super-admin', 'owner', 'admin'], rule: 'own-node' },
+  // A member removes their own device (verifyNodeAccess, routes/nodes.js): the owner of an
+  // iPhone joined with the WireGuard app controls it from /me (ADR 0029).
+  {
+    method: 'DELETE',
+    path: '/api/nodes/:id',
+    roles: ['super-admin', 'owner', 'admin', 'network_admin', 'member', 'user'],
+    rule: 'own-node'
+  },
   { method: 'POST', path: '/api/nodes/:id/quarantine', roles: ['super-admin', 'owner', 'admin'], rule: 'own-node' },
   { method: 'POST', path: '/api/nodes/:id/release', roles: ['super-admin', 'owner', 'admin'], rule: 'own-node' },
 

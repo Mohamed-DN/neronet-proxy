@@ -165,6 +165,30 @@ describe('ADR 0029 A1: profile devices through a gateway', () => {
     assert.ok(!JSON.stringify(rows[0]).includes(psk));
   });
 
+  it('lets a person remove their own phone from the web, revoking its key, but not a device of someone else', async () => {
+    // iOS joins with the official WireGuard app (ADR 0029); the owner controls it from /me.
+    assert.strictEqual(
+      (await setGateway(adminToken, { node_id: 'node-prof-gw', endpoint: 'gw.example:51820' })).status,
+      200
+    );
+    const pub = key();
+    const mine = await register(memberToken, { name: 'iPhone', public_key: pub, preshared_key: key() });
+    assert.strictEqual(mine.status, 201);
+    const theirs = await register(adminToken, { name: 'admin laptop', public_key: key(), preshared_key: key() });
+    assert.strictEqual(theirs.status, 201);
+
+    const denied = await request(app).delete(`/api/nodes/${theirs.body.device_id}`).set(auth(memberToken));
+    assert.strictEqual(denied.status, 404, 'a device of someone else must look like it does not exist');
+
+    const removed = await request(app).delete(`/api/nodes/${mine.body.device_id}`).set(auth(memberToken));
+    assert.strictEqual(removed.status, 200);
+    const row = await pool.query('SELECT 1 FROM nodes WHERE id = $1', [mine.body.device_id]);
+    assert.strictEqual(row.rows.length, 0);
+    const hex = Buffer.from(pub, 'base64').toString('hex');
+    const revoked = await pool.query('SELECT 1 FROM revoked_keys WHERE lower(public_key_hex) = $1', [hex]);
+    assert.strictEqual(revoked.rows.length, 1, 'the key must be revoked so the gateway drops it');
+  });
+
   it('moves the netmap version so the gateway learns the device', async () => {
     assert.strictEqual(
       (await setGateway(adminToken, { node_id: 'node-prof-gw', endpoint: 'gw.example:51820' })).status,
