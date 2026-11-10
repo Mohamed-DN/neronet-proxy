@@ -6,6 +6,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AclsRoute from './AclsRoute';
+import AuthContext, { type AuthValue } from '../../context/AuthContext';
+import i18n from '../../i18n';
 import { ShellProvider } from '../shell';
 import { createQueryClient } from '../../services/queries/client';
 import type {
@@ -96,22 +98,45 @@ function jsonResponse(data: unknown, status = 200) {
   );
 }
 
-function renderAcls(initialEntries = ['/acls']) {
+/** The signed-in user as the console reads it: super-admin on users.role, others on org_role. */
+function authAs(orgRole: string): AuthValue {
+  const user = (orgRole === 'super-admin'
+    ? { id: 'usr-root', username: 'root', role: 'super-admin', org_role: null }
+    : { id: `usr-${orgRole}`, username: orgRole, role: 'user', org_role: orgRole }) as unknown as NonNullable<
+    AuthValue['user']
+  >;
+  return {
+    user,
+    role: user.role ?? null,
+    token: 'test-token',
+    loading: false,
+    isAuthenticated: true,
+    switchRole: () => {},
+    login: async () => user,
+    completeMfaSignIn: async () => user,
+    logout: async () => {},
+    refreshUser: async () => {}
+  };
+}
+
+function renderAcls(initialEntries = ['/acls'], orgRole = 'admin') {
   const queryClient = createQueryClient();
   queryClient.setDefaultOptions({
     queries: { retry: false, refetchOnWindowFocus: false }
   });
 
   return renderUI(
-    <QueryClientProvider client={queryClient}>
-      <ShellProvider>
-        <MemoryRouter initialEntries={initialEntries}>
-          <Routes>
-            <Route path="/acls" element={<AclsRoute />} />
-          </Routes>
-        </MemoryRouter>
-      </ShellProvider>
-    </QueryClientProvider>
+    <AuthContext.Provider value={authAs(orgRole)}>
+      <QueryClientProvider client={queryClient}>
+        <ShellProvider>
+          <MemoryRouter initialEntries={initialEntries}>
+            <Routes>
+              <Route path="/acls" element={<AclsRoute />} />
+            </Routes>
+          </MemoryRouter>
+        </ShellProvider>
+      </QueryClientProvider>
+    </AuthContext.Provider>
   );
 }
 
@@ -278,8 +303,8 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
     // Check stats and badges
     expect(screen.getByText('#50')).toBeInTheDocument();
     expect(screen.getByText('#90')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1, name: /Zero-Trust/i })).toBeInTheDocument();
-    expect(screen.getAllByText(/Zero-Trust/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { level: 1, name: /Access rules between devices/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/Access rules between devices/i).length).toBeGreaterThan(0);
 
     // Verify zero axe violations
     await expectNoAxeViolations(container);
@@ -295,7 +320,7 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
       expect(screen.getByText('100.64.20.0/24')).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByLabelText(/filter rules search/i);
+    const searchInput = screen.getByLabelText(/search rules/i);
     await user.type(searchInput, 'external');
 
     // Rule 1 should be filtered out, Rule 2 remains
@@ -345,14 +370,14 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
 
     // Confirm dialog should open
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /confirm policy change/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /allow traffic with no rule/i })).toBeInTheDocument();
     });
 
     // Confirm change
-    await user.click(screen.getByRole('button', { name: /confirm policy change/i }));
+    await user.click(screen.getByRole('button', { name: /allow traffic with no rule/i }));
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /confirm policy change/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /allow traffic with no rule/i })).not.toBeInTheDocument();
     });
   });
 
@@ -369,11 +394,11 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
 
     // Preview modal opens
     await waitFor(() => {
-      expect(screen.getByText(/Node Compiled Policy/i)).toBeInTheDocument();
+      expect(screen.getByText(/Rules received by the device/i)).toBeInTheDocument();
     });
 
     // Switch to simulator tab
-    await user.click(screen.getByText(/Live Packet Simulator/i));
+    await user.click(screen.getByText(/Test a packet/i));
 
     await waitFor(() => {
       expect(screen.getByTestId('simulate-packet-submit')).toBeInTheDocument();
@@ -387,7 +412,7 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
 
     await waitFor(() => {
       expect(screen.getByTestId('simulation-result-card')).toBeInTheDocument();
-      expect(screen.getByText(/TRAFFIC BLOCKED/i)).toBeInTheDocument();
+      expect(screen.getByText(/The packet is blocked/i)).toBeInTheDocument();
     });
   });
 
@@ -406,10 +431,10 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
 
     // Confirm dialog opens
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /delete rule/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /delete the rule/i })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: /delete rule/i }));
+    await user.click(screen.getByRole('button', { name: /delete the rule/i }));
 
     await waitFor(() => {
       expect(screen.queryByText('100.64.10.0/24')).not.toBeInTheDocument();
@@ -427,7 +452,7 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
     expect(card).toHaveTextContent('ops SSH');
 
     await user.click(screen.getByTestId('run-policy-tests'));
-    expect(await screen.findByTestId('policy-tests-run-result')).toHaveTextContent('1 of 1 tests passed');
+    expect(await screen.findByTestId('policy-tests-run-result')).toHaveTextContent('1 of 1 checks passed');
     await expectNoAxeViolations(container);
   });
 
@@ -445,7 +470,7 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
     expect(list).toHaveTextContent('100.64.10.1');
     expect(list).toHaveTextContent('100.64.10.2');
     // The verdicts read as words, not raw ACCEPT/DROP tokens.
-    expect(list).toHaveTextContent('expected allowed, would be blocked');
+    expect(list).toHaveTextContent('should be allowed, would become blocked');
     expect(screen.getByTestId('save-rule-button')).toBeInTheDocument();
   });
 
@@ -457,7 +482,7 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
 
     await waitFor(() => expect(screen.getByText('100.64.10.0/24')).toBeInTheDocument());
     await user.click(screen.getByTestId('preview-simulator-button'));
-    await user.click(await screen.findByText(/Live Packet Simulator/i));
+    await user.click(await screen.findByText(/Test a packet/i));
     await user.click(await screen.findByTestId('simulate-packet-submit'));
     await screen.findByTestId('simulation-result-card');
 
@@ -472,5 +497,64 @@ describe('WP-407: AclsRoute (Visual ACL Rule Editor, Policy Routing & Organizati
       port: 53,
       expect: 'DROP'
     });
+  });
+
+  it('10. A failed default-policy change says so inline and never opens a native alert', async () => {
+    const base = setupFetchMock();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).includes('/api/acl/default-policy') && init?.method === 'PUT') {
+          return jsonResponse({ error: 'database unavailable' }, 500);
+        }
+        return base(url, init);
+      })
+    );
+    const alertSpy = vi.fn();
+    vi.stubGlobal('alert', alertSpy);
+    const user = userEvent.setup();
+    renderAcls();
+
+    await user.click(await screen.findByTestId('toggle-default-policy-button'));
+    await user.click(await screen.findByRole('button', { name: /allow traffic with no rule/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not change the rule for traffic with no rule. Nothing was changed. Try again.'
+    );
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('11. A destination of 0.0.0.0/0 reads as Any address, not as a bare CIDR', async () => {
+    vi.stubGlobal('fetch', setupFetchMock());
+    renderAcls();
+
+    await waitFor(() => expect(screen.getByText('100.64.20.0/24')).toBeInTheDocument());
+    expect(screen.getByText('Any address')).toBeInTheDocument();
+    expect(screen.queryByText('0.0.0.0/0')).not.toBeInTheDocument();
+  });
+
+  it('12. Italian shows the rule status and the table caption from the acl namespace', async () => {
+    await i18n.changeLanguage('it');
+    try {
+      vi.stubGlobal('fetch', setupFetchMock());
+      renderAcls();
+
+      await waitFor(() => expect(screen.getByText('100.64.10.0/24')).toBeInTheDocument());
+      expect(screen.getAllByText('Attiva').length).toBeGreaterThan(0);
+      expect(screen.queryByText('Active')).not.toBeInTheDocument();
+      expect(screen.getByRole('table', { name: 'Regole di accesso attive' })).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('13. A network administrator reads the rules but cannot add, edit, delete or change the default policy', async () => {
+    vi.stubGlobal('fetch', setupFetchMock());
+    renderAcls(['/acls'], 'network_admin');
+
+    await waitFor(() => expect(screen.getByText('100.64.10.0/24')).toBeInTheDocument());
+    expect(screen.queryByTestId('add-rule-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('toggle-default-policy-button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /delete rule/i })).not.toBeInTheDocument();
   });
 });

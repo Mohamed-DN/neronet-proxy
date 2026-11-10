@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { GlossaryHint } from '../GlossaryHint';
 import AuthContext from '../../context/AuthContext';
+import { effectiveRole } from '../../services/roles';
 import { PolicyTestFailures, PolicyTestsCard } from './PolicyTestsCard';
 
 import {
@@ -39,7 +40,8 @@ import {
   Stat,
   Switch,
   Table,
-  type TableColumn
+  type TableColumn,
+  Tooltip
 } from '../../ui';
 
 interface RuleFormState {
@@ -67,11 +69,30 @@ const DEFAULT_FORM: RuleFormState = {
   enabled: true
 };
 
+/** 0.0.0.0/0 reads as "Any address"; the CIDR stays one hover away. */
+function AddressCell({ cidr }: { cidr: string }) {
+  const { t } = useTranslation(['acl', 'ui']);
+  if (cidr !== '0.0.0.0/0') return <CodeText>{cidr}</CodeText>;
+  return (
+    <Tooltip content={<CodeText>{cidr}</CodeText>}>
+      <span className="text-xs underline decoration-dotted underline-offset-2">{t('anyAddress')}</span>
+    </Tooltip>
+  );
+}
+
 export default function AclsRoute() {
-  const { t } = useTranslation('ui');
-  // The same roles the server lets write ACLs and policy tests (requireAclAdmin).
+  const { t } = useTranslation(['acl', 'ui']);
+  // The roles the server lets write ACLs (routes/acl.js requireAclAdmin reads org_role || role).
+  // network_admin and owner can read the rules, but the server refuses their writes.
   const auth = useContext(AuthContext);
-  const canManageAcls = ['super-admin', 'admin'].includes(String(auth?.user?.role || ''));
+  const writerRole = effectiveRole(auth?.user ?? null);
+  const canManageAcls = writerRole === 'super-admin' || writerRole === 'admin';
+
+  // Failures are shown where the person acted: the card, the preview, or above the table.
+  const [policyError, setPolicyError] = useState<string | null>(null);
+  const [simError, setSimError] = useState<string | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Queries
   const { data: aclData, isLoading, error, refetch } = useAclRules();
@@ -190,7 +211,7 @@ export default function AclsRoute() {
           port_start: 0,
           port_end: 65535,
           action: 'ACCEPT',
-          description: t('acl.form.presetAllMesh')
+          description: t('form.presetAllMesh')
         }));
         break;
       case 'egress':
@@ -202,7 +223,7 @@ export default function AclsRoute() {
           port_start: 0,
           port_end: 65535,
           action: 'ACCEPT',
-          description: t('acl.form.presetEgress')
+          description: t('form.presetEgress')
         }));
         break;
       case 'https':
@@ -212,7 +233,7 @@ export default function AclsRoute() {
           port_start: 443,
           port_end: 443,
           action: 'ACCEPT',
-          description: t('acl.form.presetHttps')
+          description: t('form.presetHttps')
         }));
         break;
       case 'dns':
@@ -222,7 +243,7 @@ export default function AclsRoute() {
           port_start: 53,
           port_end: 53,
           action: 'ACCEPT',
-          description: t('acl.form.presetDns')
+          description: t('form.presetDns')
         }));
         break;
       case 'ssh':
@@ -232,7 +253,7 @@ export default function AclsRoute() {
           port_start: 22,
           port_end: 22,
           action: 'ACCEPT',
-          description: t('acl.form.presetSsh')
+          description: t('form.presetSsh')
         }));
         break;
       case 'wireguard':
@@ -242,7 +263,7 @@ export default function AclsRoute() {
           port_start: 51820,
           port_end: 51820,
           action: 'ACCEPT',
-          description: t('acl.form.presetWireguard')
+          description: t('form.presetWireguard')
         }));
         break;
     }
@@ -288,7 +309,7 @@ export default function AclsRoute() {
     } catch (err: any) {
       const failures = policyTestFailuresOf(err);
       if (failures) setPolicyFailures(failures);
-      else setFormError(err?.message || 'Failed to persist ACL rule');
+      else setFormError(t('errors.saveRule'));
     }
   };
 
@@ -297,22 +318,27 @@ export default function AclsRoute() {
     try {
       await deleteRule.mutateAsync(deleteTarget.id);
       setDeleteTarget(null);
-    } catch (err: any) {
-      setFormError(err?.message || 'Failed to delete rule');
+      setDeleteError(null);
+    } catch {
+      setDeleteTarget(null);
+      setDeleteError(t('errors.deleteRule'));
     }
   };
 
   const handleToggleDefaultPolicy = async () => {
     const nextPolicy = defaultPolicy === 'deny' ? 'open' : 'deny';
+    setPolicyError(null);
     try {
       await updateDefaultPolicy.mutateAsync(nextPolicy);
       setPolicyConfirmOpen(false);
-    } catch (err: any) {
-      alert(err?.message || 'Failed to change default policy');
+    } catch {
+      setPolicyConfirmOpen(false);
+      setPolicyError(t('errors.policyChange'));
     }
   };
 
   const handleRunSimulation = async () => {
+    setSimError(null);
     try {
       const res = await simulateAcl.mutateAsync({
         source_ip: simSource.trim(),
@@ -321,14 +347,15 @@ export default function AclsRoute() {
         port: Number(simPort)
       });
       setSimResult(res);
-    } catch (err: any) {
-      alert(err?.message || 'Simulation failed');
+    } catch {
+      setSimError(t('errors.simulation'));
     }
   };
 
   // The packet just simulated becomes an assertion expecting the verdict seen.
   const handleSaveSimulationAsTest = async () => {
     if (!simResult) return;
+    setTestError(null);
     try {
       await createPolicyTest.mutateAsync({
         source_ip: simResult.packet.source_ip,
@@ -337,38 +364,38 @@ export default function AclsRoute() {
         port: simResult.packet.port,
         expect: simResult.verdict
       });
-    } catch (err: any) {
-      alert(err?.message || 'Failed to save the policy test');
+    } catch {
+      setTestError(t('errors.saveTest'));
     }
   };
 
   // Table Columns
-  const columns: Array<TableColumn<AclRule>> = useMemo(
-    () => [
+  const columns: Array<TableColumn<AclRule>> = useMemo(() => {
+    const all: Array<TableColumn<AclRule>> = [
       {
         id: 'priority',
-        header: t('acl.columns.priority'),
+        header: t('columns.priority'),
         cell: (r) => <span className="font-mono font-bold text-accent">#{r.priority ?? 100}</span>,
         width: '80px'
       },
       {
         id: 'source',
-        header: t('acl.columns.sourceCidr'),
-        cell: (r) => <CodeText>{r.source_cidr || r.src_cidr || '0.0.0.0/0'}</CodeText>
+        header: t('columns.sourceCidr'),
+        cell: (r) => <AddressCell cidr={r.source_cidr || r.src_cidr || '0.0.0.0/0'} />
       },
       {
         id: 'destination',
-        header: t('acl.columns.destCidr'),
-        cell: (r) => <CodeText>{r.destination_cidr || r.dst_cidr || '0.0.0.0/0'}</CodeText>
+        header: t('columns.destCidr'),
+        cell: (r) => <AddressCell cidr={r.destination_cidr || r.dst_cidr || '0.0.0.0/0'} />
       },
       {
         id: 'protocol_ports',
-        header: t('acl.columns.protoPorts'),
+        header: t('columns.protoPorts'),
         cell: (r) => {
           const proto = (r.protocol || r.proto || 'ALL').toUpperCase();
           const pStart = r.port_start ?? 0;
           const pEnd = r.port_end ?? 65535;
-          const portsDesc = pStart === 0 && pEnd === 65535 ? t('acl.columns.allPorts') : `${pStart} - ${pEnd}`;
+          const portsDesc = pStart === 0 && pEnd === 65535 ? t('columns.allPorts') : `${pStart} - ${pEnd}`;
           return (
             <span className="font-mono text-xs">
               <span className="font-bold">{proto}</span> • {portsDesc}
@@ -378,12 +405,12 @@ export default function AclsRoute() {
       },
       {
         id: 'action',
-        header: t('acl.columns.action'),
+        header: t('columns.action'),
         cell: (r) => {
           const isAccept = (r.action || 'ACCEPT').toUpperCase() === 'ACCEPT';
           return (
             <Badge tone={isAccept ? 'success' : 'danger'}>
-              {isAccept ? t('acl.form.actionAccept') : t('acl.form.actionDrop')}
+              {isAccept ? t('form.actionAccept') : t('form.actionDrop')}
             </Badge>
           );
         },
@@ -391,33 +418,38 @@ export default function AclsRoute() {
       },
       {
         id: 'status',
-        header: t('acl.columns.status'),
+        header: t('columns.status'),
         cell: (r) => (
           <Badge tone={r.enabled !== false ? 'neutral' : 'warning'}>
-            {r.enabled !== false ? 'Active' : 'Disabled'}
+            {r.enabled !== false ? t('active') : t('off')}
           </Badge>
         ),
         width: '90px'
       },
       {
         id: 'description',
-        header: t('acl.columns.description'),
+        header: t('columns.description'),
         cell: (r) => <span className="text-muted text-xs line-clamp-1">{r.description || '—'}</span>
       },
       {
         id: 'actions',
-        header: t('acl.columns.actions'),
+        header: t('columns.actions'),
         cell: (r) => (
           <div className="flex items-center space-x-2">
             <Button
               size="sm"
               variant="secondary"
               onClick={() => handleOpenEdit(r)}
-              aria-label={`${t('acl.columns.actions')} ${r.id}`}
+              aria-label={t('rowEdit', { id: r.id })}
             >
               <Edit2 className="w-3.5 h-3.5" />
             </Button>
-            <Button size="sm" variant="danger" onClick={() => setDeleteTarget(r)} aria-label={`Delete rule ${r.id}`}>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => setDeleteTarget(r)}
+              aria-label={t('rowDelete', { id: r.id })}
+            >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
           </div>
@@ -425,9 +457,9 @@ export default function AclsRoute() {
         numeric: true,
         width: '110px'
       }
-    ],
-    [t]
-  );
+    ];
+    return all.filter((c) => canManageAcls || c.id !== 'actions');
+  }, [t, canManageAcls]);
 
   if (isLoading && !aclData) {
     return <Skeleton className="h-[400px] w-full rounded-xl" />;
@@ -438,34 +470,34 @@ export default function AclsRoute() {
   }
 
   const actionOptions: SelectOption[] = [
-    { value: 'ALL', label: t('acl.filterActionAll') },
-    { value: 'ACCEPT', label: t('acl.filterActionAccept') },
-    { value: 'DROP', label: t('acl.filterActionDrop') }
+    { value: 'ALL', label: t('filterActionAll') },
+    { value: 'ACCEPT', label: t('filterActionAccept') },
+    { value: 'DROP', label: t('filterActionDrop') }
   ];
 
   const protoOptions: SelectOption[] = [
-    { value: 'ALL', label: t('acl.filterProtoAll') },
+    { value: 'ALL', label: t('filterProtoAll') },
     { value: 'TCP', label: 'TCP' },
     { value: 'UDP', label: 'UDP' },
     { value: 'ICMP', label: 'ICMP' }
   ];
 
   const presetOptions: SelectOption[] = [
-    { value: 'custom', label: t('acl.form.presetCustom') },
-    { value: 'all-mesh', label: t('acl.form.presetAllMesh') },
-    { value: 'egress', label: t('acl.form.presetEgress') },
-    { value: 'https', label: t('acl.form.presetHttps') },
-    { value: 'dns', label: t('acl.form.presetDns') },
-    { value: 'ssh', label: t('acl.form.presetSsh') },
-    { value: 'wireguard', label: t('acl.form.presetWireguard') }
+    { value: 'custom', label: t('form.presetCustom') },
+    { value: 'all-mesh', label: t('form.presetAllMesh') },
+    { value: 'egress', label: t('form.presetEgress') },
+    { value: 'https', label: t('form.presetHttps') },
+    { value: 'dns', label: t('form.presetDns') },
+    { value: 'ssh', label: t('form.presetSsh') },
+    { value: 'wireguard', label: t('form.presetWireguard') }
   ];
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
-        title={t('acl.title')}
-        description={t('acl.description')}
+        title={t('title')}
+        description={t('description')}
         meta={
           <GlossaryHint
             text={t('glossary.acl.body')}
@@ -476,12 +508,14 @@ export default function AclsRoute() {
           <div className="flex items-center space-x-3">
             <Button variant="secondary" onClick={() => setPreviewOpen(true)} data-testid="preview-simulator-button">
               <Play className="w-4 h-4 mr-2" />
-              <span>{t('acl.previewSimulate')}</span>
+              <span>{t('previewSimulate')}</span>
             </Button>
-            <Button variant="primary" onClick={handleOpenCreate} data-testid="add-rule-button">
-              <Plus className="w-4 h-4 mr-2" />
-              <span>{t('acl.addRule')}</span>
-            </Button>
+            {canManageAcls && (
+              <Button variant="primary" onClick={handleOpenCreate} data-testid="add-rule-button">
+                <Plus className="w-4 h-4 mr-2" />
+                <span>{t('addRule')}</span>
+              </Button>
+            )}
           </div>
         }
       />
@@ -489,17 +523,17 @@ export default function AclsRoute() {
       {/* Stats Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat
-          label={t('acl.stats.activeRules')}
+          label={t('stats.activeRules')}
           value={rules.length}
-          hint={rules.length === 0 ? t('acl.stats.hintPermissive') : t('acl.stats.hintZeroTrust')}
+          hint={rules.length === 0 ? t('stats.hintPermissive') : t('stats.hintZeroTrust')}
         />
         <Stat
-          label={t('acl.stats.defaultPolicy')}
+          label={t('stats.defaultPolicy')}
           value={defaultPolicy.toUpperCase()}
-          hint={defaultPolicy === 'deny' ? t('acl.stats.hintStrict') : t('acl.stats.hintPermissiveAllow')}
+          hint={defaultPolicy === 'deny' ? t('stats.hintStrict') : t('stats.hintPermissiveAllow')}
         />
-        <Stat label={t('acl.stats.policyEpoch')} value={`#${epoch}`} hint={t('acl.stats.epochHint')} />
-        <Stat label={t('acl.stats.enforcingNodes')} value={nodes.length} hint={t('acl.stats.hintEnforcing')} />
+        <Stat label={t('stats.policyEpoch')} value={`#${epoch}`} hint={t('stats.epochHint')} />
+        <Stat label={t('stats.enforcingNodes')} value={nodes.length} hint={t('stats.hintEnforcing')} />
       </div>
 
       {/* Mesh Policy Open vs Zero-Trust Status Banner */}
@@ -507,52 +541,53 @@ export default function AclsRoute() {
         <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 space-y-1">
           <div className="flex items-center space-x-2 text-warning font-bold text-sm">
             <ShieldAlert className="w-5 h-5 flex-shrink-0" />
-            <span>{t('acl.statusBanner.openTitle')}</span>
+            <span>{t('statusBanner.openTitle')}</span>
           </div>
-          <p className="text-xs text-muted leading-relaxed pl-7">{t('acl.statusBanner.openDesc')}</p>
+          <p className="text-xs text-muted leading-relaxed pl-7">{t('statusBanner.openDesc')}</p>
         </div>
       ) : (
         <div className="rounded-xl border border-success/40 bg-success/10 p-4 space-y-1">
           <div className="flex items-center space-x-2 text-success font-bold text-sm">
             <ShieldCheck className="w-5 h-5 flex-shrink-0" />
-            <span>{t('acl.statusBanner.enforcedTitle')}</span>
+            <span>{t('statusBanner.enforcedTitle')}</span>
           </div>
-          <p className="text-xs text-muted leading-relaxed pl-7">{t('acl.statusBanner.enforcedDesc')}</p>
+          <p className="text-xs text-muted leading-relaxed pl-7">{t('statusBanner.enforcedDesc')}</p>
         </div>
       )}
 
       {/* Organization Default Policy Card */}
       <Card>
-        <CardHeader
-          as="h2"
-          title={t('acl.defaultPolicyCard.title')}
-          description={t('acl.defaultPolicyCard.description')}
-        />
+        <CardHeader as="h2" title={t('defaultPolicyCard.title')} description={t('defaultPolicyCard.description')} />
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
           <div className="space-y-1">
             <div className="flex items-center space-x-2">
               <Badge tone={defaultPolicy === 'deny' ? 'success' : 'warning'}>
-                {defaultPolicy === 'deny' ? t('acl.defaultPolicyCard.denyLabel') : t('acl.defaultPolicyCard.openLabel')}
+                {defaultPolicy === 'deny' ? t('defaultPolicyCard.denyLabel') : t('defaultPolicyCard.openLabel')}
               </Badge>
               <span className="text-xs text-muted">
-                {defaultPolicy === 'deny' ? t('acl.defaultPolicyCard.denyExpl') : t('acl.defaultPolicyCard.openExpl')}
+                {defaultPolicy === 'deny' ? t('defaultPolicyCard.denyExpl') : t('defaultPolicyCard.openExpl')}
               </span>
             </div>
           </div>
-          <Button
-            variant={defaultPolicy === 'deny' ? 'secondary' : 'primary'}
-            onClick={() => setPolicyConfirmOpen(true)}
-            loading={updateDefaultPolicy.isPending}
-            data-testid="toggle-default-policy-button"
-          >
-            <Sliders className="w-4 h-4 mr-2" />
-            <span>
-              {defaultPolicy === 'deny'
-                ? t('acl.defaultPolicyCard.toggleToOpen')
-                : t('acl.defaultPolicyCard.toggleToDeny')}
-            </span>
-          </Button>
+          {canManageAcls && (
+            <Button
+              variant={defaultPolicy === 'deny' ? 'secondary' : 'primary'}
+              onClick={() => setPolicyConfirmOpen(true)}
+              loading={updateDefaultPolicy.isPending}
+              data-testid="toggle-default-policy-button"
+            >
+              <Sliders className="w-4 h-4 mr-2" />
+              <span>
+                {defaultPolicy === 'deny' ? t('defaultPolicyCard.toggleToOpen') : t('defaultPolicyCard.toggleToDeny')}
+              </span>
+            </Button>
+          )}
         </div>
+        {policyError && (
+          <p role="alert" className="pt-3 text-xs text-danger">
+            {policyError}
+          </p>
+        )}
       </Card>
 
       {/* Rules Table Filters & Search */}
@@ -562,9 +597,9 @@ export default function AclsRoute() {
           <Input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder={t('acl.searchPlaceholder')}
+            placeholder={t('searchPlaceholder')}
             className="pl-9"
-            aria-label="Filter rules search"
+            aria-label={t('ariaSearch')}
           />
         </div>
         <div className="flex items-center space-x-3">
@@ -573,8 +608,8 @@ export default function AclsRoute() {
               value={actionFilter}
               onValueChange={(val) => setActionFilter(val as any)}
               options={actionOptions}
-              label="Filter by action"
-              aria-label="Filter by action"
+              label={t('ariaFilterAction')}
+              aria-label={t('ariaFilterAction')}
             />
           </div>
           <div className="w-36">
@@ -582,30 +617,49 @@ export default function AclsRoute() {
               value={protoFilter}
               onValueChange={setProtoFilter}
               options={protoOptions}
-              label="Filter by protocol"
-              aria-label="Filter by protocol"
+              label={t('ariaFilterProto')}
+              aria-label={t('ariaFilterProto')}
             />
           </div>
         </div>
       </div>
 
+      {deleteError && (
+        <p role="alert" className="text-xs text-danger">
+          {deleteError}
+        </p>
+      )}
+
       {/* Rules Table */}
       <Table<AclRule>
-        caption="Active Zero-Trust Access Control Rules"
+        caption={t('caption')}
         columns={columns}
         rows={filteredRules}
         rowKey={(r) => r.id}
         empty={
           <EmptyState
-            title={rules.length === 0 ? t('acl.empty.title') : t('acl.empty.noMatches')}
-            body={rules.length === 0 ? t('acl.empty.desc') : undefined}
+            title={rules.length === 0 ? t('empty.title') : t('empty.noMatches')}
+            body={rules.length === 0 ? t('empty.desc') : undefined}
             action={
               rules.length === 0 ? (
-                <Button variant="primary" onClick={handleOpenCreate}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  <span>{t('acl.addRule')}</span>
+                canManageAcls ? (
+                  <Button variant="primary" onClick={handleOpenCreate}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    <span>{t('addRule')}</span>
+                  </Button>
+                ) : undefined
+              ) : (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setActionFilter('ALL');
+                    setProtoFilter('ALL');
+                  }}
+                >
+                  {t('empty.clearFilters')}
                 </Button>
-              ) : undefined
+              )
             }
           />
         }
@@ -618,13 +672,13 @@ export default function AclsRoute() {
       <Dialog
         open={ruleModalOpen}
         onOpenChange={setRuleModalOpen}
-        title={editingRuleId ? t('acl.form.editTitle') : t('acl.form.createTitle')}
-        description={t('acl.form.subtitle')}
+        title={editingRuleId ? t('form.editTitle') : t('form.createTitle')}
+        description={t('form.subtitle')}
         size="lg"
         footer={
           <div className="flex items-center justify-end space-x-3">
             <Button variant="secondary" onClick={() => setRuleModalOpen(false)}>
-              {t('acl.form.cancelAction')}
+              {t('form.cancelAction')}
             </Button>
             <Button
               variant="primary"
@@ -632,30 +686,32 @@ export default function AclsRoute() {
               loading={createRule.isPending || updateRule.isPending}
               data-testid="save-rule-button"
             >
-              {editingRuleId ? t('acl.form.saveAction') : t('acl.form.createAction')}
+              {editingRuleId ? t('form.saveAction') : t('form.createAction')}
             </Button>
           </div>
         }
       >
         <form onSubmit={handleSubmitRule} className="space-y-4 py-2">
           {formError && (
-            <div className="p-3 rounded-lg bg-danger/10 border border-danger/30 text-xs text-danger">{formError}</div>
+            <div role="alert" className="p-3 rounded-lg bg-danger/10 border border-danger/30 text-xs text-danger">
+              {formError}
+            </div>
           )}
-          {policyFailures && <PolicyTestFailures failures={policyFailures} title={t('acl.policyTests.refusedTitle')} />}
+          {policyFailures && <PolicyTestFailures failures={policyFailures} title={t('policyTests.refusedTitle')} />}
 
           {!editingRuleId && (
-            <FormField label={t('acl.form.presetLabel')}>
+            <FormField label={t('form.presetLabel')}>
               <Select
                 value="custom"
                 onValueChange={handlePresetSelect}
                 options={presetOptions}
-                aria-label="Quick preset"
+                aria-label={t('form.presetLabel')}
               />
             </FormField>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label={t('acl.form.priorityLabel')} hint={t('acl.form.priorityHint')} required>
+            <FormField label={t('form.priorityLabel')} hint={t('form.priorityHint')} required>
               <Input
                 type="number"
                 min={1}
@@ -671,20 +727,20 @@ export default function AclsRoute() {
               />
             </FormField>
 
-            <FormField label={t('acl.form.actionLabel')} required>
+            <FormField label={t('form.actionLabel')} required>
               <Select
                 value={formData.action}
                 onValueChange={(val) => setFormData((p) => ({ ...p, action: val as any }))}
                 options={[
-                  { value: 'ACCEPT', label: t('acl.form.actionAccept') },
-                  { value: 'DROP', label: t('acl.form.actionDrop') }
+                  { value: 'ACCEPT', label: t('form.actionAccept') },
+                  { value: 'DROP', label: t('form.actionDrop') }
                 ]}
               />
             </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label={t('acl.form.sourceLabel')} hint={t('acl.form.sourcePlaceholder')} required>
+            <FormField label={t('form.sourceLabel')} hint={t('form.sourceHint')} required>
               <Input
                 value={formData.source_cidr}
                 onChange={(e) => setFormData((p) => ({ ...p, source_cidr: e.target.value }))}
@@ -693,7 +749,7 @@ export default function AclsRoute() {
               />
             </FormField>
 
-            <FormField label={t('acl.form.destLabel')} hint={t('acl.form.destPlaceholder')} required>
+            <FormField label={t('form.destLabel')} hint={t('form.destHint')} required>
               <Input
                 value={formData.destination_cidr}
                 onChange={(e) =>
@@ -709,7 +765,7 @@ export default function AclsRoute() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <FormField label={t('acl.form.protoLabel')} required>
+            <FormField label={t('form.protoLabel')} required>
               <Select
                 value={formData.protocol}
                 onValueChange={(val) => setFormData((p) => ({ ...p, protocol: val as any }))}
@@ -722,7 +778,7 @@ export default function AclsRoute() {
               />
             </FormField>
 
-            <FormField label={t('acl.form.portStartLabel')} required>
+            <FormField label={t('form.portStartLabel')} required>
               <Input
                 type="number"
                 min={0}
@@ -738,7 +794,7 @@ export default function AclsRoute() {
               />
             </FormField>
 
-            <FormField label={t('acl.form.portEndLabel')} required>
+            <FormField label={t('form.portEndLabel')} required>
               <Input
                 type="number"
                 min={0}
@@ -755,19 +811,19 @@ export default function AclsRoute() {
             </FormField>
           </div>
 
-          <FormField label={t('acl.form.descLabel')}>
+          <FormField label={t('form.descLabel')}>
             <Input
               value={formData.description}
               onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
-              placeholder={t('acl.form.descPlaceholder')}
+              placeholder={t('form.descPlaceholder')}
             />
           </FormField>
 
-          <FormField label={t('acl.form.enabledLabel')}>
+          <FormField label={t('form.enabledLabel')}>
             <Switch
               checked={formData.enabled}
               onCheckedChange={(checked) => setFormData((p) => ({ ...p, enabled: checked }))}
-              description={formData.enabled ? 'Rule is active in netstack' : 'Rule is disabled'}
+              description={formData.enabled ? t('form.enabledOn') : t('form.enabledOff')}
             />
           </FormField>
         </form>
@@ -777,15 +833,15 @@ export default function AclsRoute() {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={t('acl.delete.title', {
+        title={t('delete.title', {
           priority: deleteTarget?.priority || 100
         })}
-        description={t('acl.delete.description', {
+        description={t('delete.description', {
           id: deleteTarget?.id || '',
           source: deleteTarget?.source_cidr || deleteTarget?.src_cidr || '',
           destination: deleteTarget?.destination_cidr || deleteTarget?.dst_cidr || ''
         })}
-        confirmLabel={t('acl.delete.confirmAction')}
+        confirmLabel={t('delete.confirmAction')}
         tone="danger"
         busy={deleteRule.isPending}
         onConfirm={handleConfirmDelete}
@@ -795,11 +851,9 @@ export default function AclsRoute() {
       <ConfirmDialog
         open={policyConfirmOpen}
         onOpenChange={setPolicyConfirmOpen}
-        title={t('acl.defaultPolicyCard.confirmTitle')}
-        description={t('acl.defaultPolicyCard.confirmDesc', {
-          policy: (defaultPolicy === 'deny' ? 'OPEN' : 'DENY').toUpperCase()
-        })}
-        confirmLabel={t('acl.defaultPolicyCard.confirmAction')}
+        title={t('defaultPolicyCard.confirmTitle')}
+        description={t('defaultPolicyCard.confirmDesc')}
+        confirmLabel={t(defaultPolicy === 'deny' ? 'defaultPolicyCard.confirmAllow' : 'defaultPolicyCard.confirmDeny')}
         tone={defaultPolicy === 'deny' ? 'primary' : 'danger'}
         busy={updateDefaultPolicy.isPending}
         onConfirm={handleToggleDefaultPolicy}
@@ -809,12 +863,12 @@ export default function AclsRoute() {
       <Dialog
         open={previewOpen}
         onOpenChange={setPreviewOpen}
-        title={t('acl.preview.title')}
-        description={t('acl.preview.subtitle')}
+        title={t('preview.title')}
+        description={t('preview.subtitle')}
         size="lg"
         footer={
           <Button variant="secondary" onClick={() => setPreviewOpen(false)}>
-            {t('acl.preview.close')}
+            {t('preview.close')}
           </Button>
         }
       >
@@ -829,7 +883,7 @@ export default function AclsRoute() {
                   : 'border-transparent text-muted hover:text-content'
               }`}
             >
-              {t('acl.preview.tabCompiled')}
+              {t('preview.tabCompiled')}
             </button>
             <button
               onClick={() => setPreviewTab('simulator')}
@@ -839,23 +893,23 @@ export default function AclsRoute() {
                   : 'border-transparent text-muted hover:text-content'
               }`}
             >
-              {t('acl.preview.tabSimulator')}
+              {t('preview.tabSimulator')}
             </button>
           </div>
 
           {previewTab === 'compiled' ? (
             <div className="space-y-4">
-              <FormField label={t('acl.preview.selectNode')}>
+              <FormField label={t('preview.selectNode')}>
                 <Select
                   value={selectedNodeId}
                   onValueChange={setSelectedNodeId}
                   options={
                     nodes.map((n) => ({
                       value: n.id,
-                      label: `${n.name || n.id} (${n.overlay_ipv4 || 'No VIP'})`
+                      label: `${n.name || n.id} (${n.overlay_ipv4 || t('noAddress')})`
                     })) || []
                   }
-                  placeholder={nodes.length === 0 ? t('acl.preview.noNodes') : undefined}
+                  placeholder={nodes.length === 0 ? t('preview.noNodes') : undefined}
                 />
               </FormField>
 
@@ -865,20 +919,18 @@ export default function AclsRoute() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between text-xs font-mono p-2 rounded bg-surface border border-border">
                     <span className="text-muted">
-                      {t('acl.preview.nodeVip', {
+                      {t('preview.nodeVip', {
                         ip: compiledPolicy.overlay_ipv4
                       })}
                     </span>
-                    <Badge tone="neutral">Epoch #{compiledPolicy.epoch}</Badge>
+                    <Badge tone="neutral">{t('preview.version', { epoch: compiledPolicy.epoch })}</Badge>
                   </div>
 
                   {/* Inbound Rules */}
                   <div className="space-y-2">
-                    <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-muted">
-                      {t('acl.preview.inboundTitle')}
-                    </h4>
+                    <h4 className="text-xs font-bold font-mono text-muted">{t('preview.inboundTitle')}</h4>
                     {compiledPolicy.inbound_rules.length === 0 ? (
-                      <p className="text-xs text-muted font-mono">{t('acl.preview.noRulesCompiled')}</p>
+                      <p className="text-xs text-muted font-mono">{t('preview.noRulesCompiled')}</p>
                     ) : (
                       <div className="max-h-40 overflow-y-auto space-y-1">
                         {compiledPolicy.inbound_rules.map((ir, i) => (
@@ -887,7 +939,7 @@ export default function AclsRoute() {
                             className="p-2 rounded bg-surface text-xs font-mono flex items-center justify-between border border-border/50"
                           >
                             <span>
-                              {t('acl.preview.peerVip')}: <CodeText>{ir.allowed_peer_vip}</CodeText> • {ir.protocol}
+                              {t('preview.peerVip')}: <CodeText>{ir.allowed_peer_vip}</CodeText> • {ir.protocol}
                             </span>
                             <Badge tone={ir.action === 'ACCEPT' ? 'success' : 'danger'}>{ir.action}</Badge>
                           </div>
@@ -898,11 +950,9 @@ export default function AclsRoute() {
 
                   {/* Outbound Rules */}
                   <div className="space-y-2">
-                    <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-muted">
-                      {t('acl.preview.outboundTitle')}
-                    </h4>
+                    <h4 className="text-xs font-bold font-mono text-muted">{t('preview.outboundTitle')}</h4>
                     {compiledPolicy.outbound_rules.length === 0 ? (
-                      <p className="text-xs text-muted font-mono">{t('acl.preview.noRulesCompiled')}</p>
+                      <p className="text-xs text-muted font-mono">{t('preview.noRulesCompiled')}</p>
                     ) : (
                       <div className="max-h-40 overflow-y-auto space-y-1">
                         {compiledPolicy.outbound_rules.map((orRule, i) => (
@@ -911,8 +961,7 @@ export default function AclsRoute() {
                             className="p-2 rounded bg-surface text-xs font-mono flex items-center justify-between border border-border/50"
                           >
                             <span>
-                              {t('acl.preview.peerVip')}: <CodeText>{orRule.allowed_peer_vip}</CodeText> •{' '}
-                              {orRule.protocol}
+                              {t('preview.peerVip')}: <CodeText>{orRule.allowed_peer_vip}</CodeText> • {orRule.protocol}
                             </span>
                             <Badge tone={orRule.action === 'ACCEPT' ? 'success' : 'danger'}>{orRule.action}</Badge>
                           </div>
@@ -922,22 +971,22 @@ export default function AclsRoute() {
                   </div>
                 </div>
               ) : (
-                <EmptyState title={t('acl.noCompiledPolicyTitle')} body={t('acl.noCompiledPolicyBody')} />
+                <EmptyState title={t('preview.emptyTitle')} body={t('preview.emptyBody')} />
               )}
             </div>
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField label={t('acl.preview.simSourceIp')} required>
+                <FormField label={t('preview.simSourceIp')} required>
                   <Input value={simSource} onChange={(e) => setSimSource(e.target.value)} placeholder="100.64.10.1" />
                 </FormField>
-                <FormField label={t('acl.preview.simDestIp')} required>
+                <FormField label={t('preview.simDestIp')} required>
                   <Input value={simDest} onChange={(e) => setSimDest(e.target.value)} placeholder="100.64.10.2" />
                 </FormField>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField label={t('acl.preview.simProto')} required>
+                <FormField label={t('preview.simProto')} required>
                   <Select
                     value={simProto}
                     onValueChange={setSimProto}
@@ -948,7 +997,7 @@ export default function AclsRoute() {
                     ]}
                   />
                 </FormField>
-                <FormField label={t('acl.preview.simPort')} required>
+                <FormField label={t('preview.simPort')} required>
                   <Input
                     type="number"
                     min={0}
@@ -967,8 +1016,13 @@ export default function AclsRoute() {
                 data-testid="simulate-packet-submit"
               >
                 <Play className="w-4 h-4 mr-2" />
-                <span>{t('acl.preview.simButton')}</span>
+                <span>{t('preview.simButton')}</span>
               </Button>
+              {simError && (
+                <p role="alert" className="text-xs text-danger">
+                  {simError}
+                </p>
+              )}
 
               {simResult && (
                 <div
@@ -979,14 +1033,14 @@ export default function AclsRoute() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-sm">
-                      {simResult.verdict === 'ACCEPT' ? t('acl.preview.verdictAccept') : t('acl.preview.verdictDrop')}
+                      {simResult.verdict === 'ACCEPT' ? t('preview.verdictAccept') : t('preview.verdictDrop')}
                     </span>
                     <Badge tone={simResult.verdict === 'ACCEPT' ? 'success' : 'danger'}>{simResult.verdict}</Badge>
                   </div>
                   <p className="text-muted leading-relaxed">{simResult.reason}</p>
                   {simResult.matched_rule && (
                     <div className="pt-2 border-t border-border/50 text-[11px] text-muted">
-                      {t('acl.preview.matchedRule', {
+                      {t('preview.matchedRule', {
                         priority: simResult.matched_rule.priority,
                         id: simResult.matched_rule.id
                       })}
@@ -994,7 +1048,7 @@ export default function AclsRoute() {
                   )}
                   {createPolicyTest.isSuccess ? (
                     <p className="font-sans text-success" role="status">
-                      {t('acl.policyTests.savedFromSimulator')}
+                      {t('policyTests.savedFromSimulator')}
                     </p>
                   ) : (
                     <Button
@@ -1004,8 +1058,13 @@ export default function AclsRoute() {
                       onClick={handleSaveSimulationAsTest}
                       data-testid="save-as-policy-test"
                     >
-                      {t('acl.policyTests.saveFromSimulator')}
+                      {t('policyTests.saveFromSimulator')}
                     </Button>
+                  )}
+                  {testError && (
+                    <p role="alert" className="font-sans text-danger">
+                      {testError}
+                    </p>
                   )}
                 </div>
               )}

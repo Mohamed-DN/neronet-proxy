@@ -11,7 +11,7 @@ function packetLabel(
   t: (k: string, o?: Record<string, unknown>) => string,
   p: { source_ip: string; destination_ip: string; protocol: string; port: number }
 ) {
-  return t('acl.policyTests.packet', { src: p.source_ip, dst: p.destination_ip, proto: p.protocol, port: p.port });
+  return t('policyTests.packet', { src: p.source_ip, dst: p.destination_ip, proto: p.protocol, port: p.port });
 }
 
 /**
@@ -19,7 +19,7 @@ function packetLabel(
  * it judges: the rules are the working data, the tests are the promise they must keep.
  */
 export function PolicyTestsCard({ canManage }: { canManage: boolean }) {
-  const { t } = useTranslation('ui');
+  const { t } = useTranslation(['acl', 'ui']);
   const { data: tests = [] } = usePolicyTests();
   const deleteTest = useDeletePolicyTest();
   const runTests = useRunPolicyTests();
@@ -33,17 +33,14 @@ export function PolicyTestsCard({ canManage }: { canManage: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testIds]);
 
-  const verdict = (v: 'ACCEPT' | 'DROP') =>
-    v === 'ACCEPT' ? t('acl.policyTests.accepted') : t('acl.policyTests.dropped');
-  const runText = run
-    ? t('acl.policyTests.runResult', { passed: run.total - run.failures.length, total: run.total })
-    : '';
+  const verdict = (v: 'ACCEPT' | 'DROP') => (v === 'ACCEPT' ? t('policyTests.accepted') : t('policyTests.dropped'));
+  const runText = run ? t('policyTests.runResult', { passed: run.total - run.failures.length, total: run.total }) : '';
 
   return (
     <Card data-testid="policy-tests-card">
-      <CardHeader as="h2" title={t('acl.policyTests.title')} description={t('acl.policyTests.description')} />
+      <CardHeader as="h2" title={t('policyTests.title')} description={t('policyTests.description')} />
       {tests.length === 0 ? (
-        <EmptyState title={t('acl.policyTests.empty')} body={t('acl.policyTests.emptyBody')} />
+        <EmptyState title={t('policyTests.empty')} body={t('policyTests.emptyBody')} />
       ) : (
         <ul className="divide-y divide-border/60 text-xs">
           {tests.map((test) => (
@@ -54,12 +51,12 @@ export function PolicyTestsCard({ canManage }: { canManage: boolean }) {
               </span>
               <span className="flex items-center gap-2 flex-shrink-0">
                 <Badge tone={test.expect === 'ACCEPT' ? 'success' : 'danger'}>
-                  {t('acl.policyTests.expects', { verdict: verdict(test.expect) })}
+                  {t('policyTests.expects', { verdict: verdict(test.expect) })}
                 </Badge>
                 {canManage && (
                   <IconButton
                     icon={Trash2}
-                    label={t('acl.policyTests.deleteNamed', { packet: packetLabel(t, test) })}
+                    label={t('policyTests.deleteNamed', { packet: packetLabel(t, test) })}
                     variant="danger"
                     size="sm"
                     onClick={() => setDeleteTarget(test)}
@@ -76,11 +73,11 @@ export function PolicyTestsCard({ canManage }: { canManage: boolean }) {
           icon={Play}
           onClick={() => runTests.mutate()}
           loading={runTests.isPending}
-          loadingLabel={t('acl.policyTests.running')}
+          loadingLabel={t('policyTests.running')}
           disabled={tests.length === 0}
           data-testid="run-policy-tests"
         >
-          {t('acl.policyTests.run')}
+          {t('policyTests.run')}
         </Button>
         {/* Always mounted, so a screen reader hears the result when it arrives. */}
         <span
@@ -97,9 +94,9 @@ export function PolicyTestsCard({ canManage }: { canManage: boolean }) {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={t('acl.policyTests.deleteTitle')}
+        title={t('policyTests.deleteTitle')}
         description={deleteTarget ? packetLabel(t, deleteTarget) : ''}
-        confirmLabel={t('acl.policyTests.deleteConfirm')}
+        confirmLabel={t('policyTests.deleteConfirm')}
         tone="danger"
         busy={deleteTest.isPending}
         onConfirm={async () => {
@@ -125,25 +122,25 @@ export function PolicyTestFailures({
   title?: string;
   announce?: boolean;
 }) {
-  const { t } = useTranslation('ui');
-  const verdict = (v: string) => (v === 'ACCEPT' ? t('acl.policyTests.accepted') : t('acl.policyTests.dropped'));
+  const { t } = useTranslation(['acl', 'ui']);
+  const verdict = (v: string) => (v === 'ACCEPT' ? t('policyTests.accepted') : t('policyTests.dropped'));
   return (
     <div
       className="mt-3 p-3 rounded-lg bg-danger/10 border border-danger/30 text-xs text-danger space-y-1"
       data-testid="policy-test-failures"
       role={announce ? 'alert' : undefined}
     >
-      <p className="font-bold">{title ?? t('acl.policyTests.failuresTitle')}</p>
+      <p className="font-bold">{title ?? t('policyTests.failuresTitle')}</p>
       <ul className="space-y-1">
         {failures.map((f, i) => (
           <li key={`${f.test_id ?? 'candidate'}-${f.organization_id}-${i}`}>
-            {t('acl.policyTests.failureLine', {
+            {t('policyTests.failureLine', {
               packet: packetLabel(t, f),
               expect: verdict(f.expect),
               got: verdict(f.got)
             })}
             {f.description ? `, ${f.description}` : ''}
-            <span className="text-muted">{`. ${t('acl.policyTests.organization', { org: f.organization_id })}`}</span>
+            <span className="text-muted">{`. ${t('policyTests.organization', { org: f.organization_id })}`}</span>
           </li>
         ))}
       </ul>
