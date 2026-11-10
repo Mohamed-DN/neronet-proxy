@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import UsersRoute from './UsersRoute';
+import AuthContext, { type AuthValue } from '../../context/AuthContext';
 import { ShellProvider } from '../shell';
 import { createQueryClient } from '../../services/queries/client';
 import type { Organization, UserAccount } from '../../services/types';
@@ -79,22 +80,45 @@ function nth<T>(items: T[], index: number): T {
   return item;
 }
 
-function renderUsers(initialEntries = ['/users']) {
+/** The signed-in user as the console reads it: super-admin on users.role, others on org_role. */
+function authAs(orgRole: string): AuthValue {
+  const user = (orgRole === 'super-admin'
+    ? { id: 'usr-root', username: 'root', role: 'super-admin', org_role: null }
+    : { id: 'usr-' + orgRole, username: orgRole, role: 'user', org_role: orgRole }) as unknown as NonNullable<
+    AuthValue['user']
+  >;
+  return {
+    user,
+    role: user.role ?? null,
+    token: 'test-token',
+    loading: false,
+    isAuthenticated: true,
+    switchRole: () => {},
+    login: async () => user,
+    completeMfaSignIn: async () => user,
+    logout: async () => {},
+    refreshUser: async () => {}
+  };
+}
+
+function renderUsers(initialEntries = ['/users'], orgRole = 'super-admin') {
   const queryClient = createQueryClient();
   queryClient.setDefaultOptions({
     queries: { retry: false, refetchOnWindowFocus: false }
   });
 
   return renderUI(
-    <QueryClientProvider client={queryClient}>
-      <ShellProvider>
-        <MemoryRouter initialEntries={initialEntries}>
-          <Routes>
-            <Route path="/users" element={<UsersRoute />} />
-          </Routes>
-        </MemoryRouter>
-      </ShellProvider>
-    </QueryClientProvider>
+    <AuthContext.Provider value={authAs(orgRole)}>
+      <QueryClientProvider client={queryClient}>
+        <ShellProvider>
+          <MemoryRouter initialEntries={initialEntries}>
+            <Routes>
+              <Route path="/users" element={<UsersRoute />} />
+            </Routes>
+          </MemoryRouter>
+        </ShellProvider>
+      </QueryClientProvider>
+    </AuthContext.Provider>
   );
 }
 
@@ -235,7 +259,7 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
     });
 
     // Click "Provision User" button
-    const provisionBtn = screen.getByRole('button', { name: /provision user|crea utente/i });
+    const provisionBtn = screen.getByRole('button', { name: /add user|aggiungi utente/i });
     await user.click(provisionBtn);
 
     // Dialog title should appear
@@ -246,11 +270,12 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
     await user.type(usernameInput, 'new_field_operator');
 
     // Fill email
-    const emailInput = screen.getByPlaceholderText(/operator@sovereign.local/i);
+    const emailInput = screen.getByPlaceholderText(/name@example.org/i);
     await user.type(emailInput, 'new_field_operator@acme.corp');
+    await user.type(screen.getByLabelText(/starting password/i), 'a-long-starting-pass');
 
     // Submit
-    const submitBtn = screen.getByRole('button', { name: /create user|crea utente/i });
+    const submitBtn = screen.getByRole('button', { name: /create the user|crea l'utente/i });
     await user.click(submitBtn);
 
     // Wait for new user to appear in table
@@ -259,28 +284,18 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
     });
   });
 
-  // The page used to fall back, on any error, to a WireGuard profile it made up (a
-  // fixed address, a public key and an endpoint that exist nowhere) and offered it to
-  // copy and download. A device configured from it reaches nothing.
-  it('3. Says per-user onboarding profiles are unavailable and invents none', async () => {
-    const user = userEvent.setup();
+  // The page used to offer a per-user connection code. The server has no per-user
+  // profile to back it, so the action is gone; devices are added from Devices.
+  it('3. Offers no connection-code action for users', async () => {
     renderUsers();
 
     await waitFor(() => {
       expect(screen.getByText('secops_admin')).toBeInTheDocument();
     });
 
-    const qrButtons = screen.getAllByRole('button', { name: /onboarding qr|qr onboarding/i });
-    await user.click(nth(qrButtons, 0));
-
-    const dialog = await screen.findByRole('dialog');
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/pre-auth key/i);
-    expect(dialog).not.toHaveTextContent(
-      /vpn\.sovereign\.mesh|4gC5z7y2M3oN9rPt8xV1wK0jL5qS6uI3dF2hB1eA4gA=|10\.42\.100\./
-    );
-    expect(within(dialog).queryByRole('img', { name: /qr code/i })).not.toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: /copy config|copia configurazione/i })).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: /download \.conf|scarica \.conf/i })).toBeDisabled();
+    expect(
+      screen.queryByRole('button', { name: /qr|connection code|codice di collegamento/i })
+    ).not.toBeInTheDocument();
   });
 
   it('4. Updates split tunneling app bypass rules for a user', async () => {
@@ -292,18 +307,18 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
     });
 
     // Click split tunnel button
-    const splitButtons = screen.getAllByRole('button', { name: /split tunnel/i });
+    const splitButtons = screen.getAllByRole('button', { name: /exclude apps from the vpn/i });
     await user.click(nth(splitButtons, 0));
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText(/Split Tunneling App Bypass/i)).toBeInTheDocument();
+    expect(screen.getByText(/Apps excluded from the VPN/i)).toBeInTheDocument();
 
     // Add preset app
     const presetBtn = screen.getByRole('button', { name: /zoom\.us\.Zoom/i });
     await user.click(presetBtn);
 
     // Save
-    const saveBtn = screen.getByRole('button', { name: /save changes|salva modifiche/i });
+    const saveBtn = screen.getByRole('button', { name: /save the exclusions|salva le esclusioni/i });
     await user.click(saveBtn);
 
     await waitFor(() => {
@@ -320,14 +335,18 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
     });
 
     // Click revoke button
-    const revokeButtons = screen.getAllByRole('button', { name: /revoke sessions|revoca sessioni/i });
+    const revokeButtons = screen.getAllByRole('button', {
+      name: /sign out of all devices|disconnetti da tutti i dispositivi/i
+    });
     await user.click(nth(revokeButtons, 1));
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText(/Revoke All User Sessions/i)).toBeInTheDocument();
+    expect(screen.getByText('Sign the user out of all devices?')).toBeInTheDocument();
 
     // Confirm revoke
-    const confirmBtn = screen.getByRole('button', { name: /revoke all sessions|revoca tutte le sessioni/i });
+    const confirmBtn = screen.getByRole('button', {
+      name: /sign out of all devices|disconnetti da tutti i dispositivi/i
+    });
     await user.click(confirmBtn);
 
     await waitFor(() => {
@@ -344,14 +363,18 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
     });
 
     // Click delete button
-    const deleteButtons = screen.getAllByRole('button', { name: /delete user|elimina utente/i });
+    const deleteButtons = screen.getAllByRole('button', {
+      name: /permanently delete the user|elimina definitivamente l'utente/i
+    });
     await user.click(nth(deleteButtons, 2));
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText(/Delete User Account/i)).toBeInTheDocument();
+    expect(screen.getByText('Delete the account of auditor_bob?')).toBeInTheDocument();
 
     // Confirm delete
-    const confirmBtn = screen.getByRole('button', { name: /delete account|elimina account/i });
+    const confirmBtn = screen.getByRole('button', {
+      name: /permanently delete the account|elimina definitivamente l'account/i
+    });
     await user.click(confirmBtn);
 
     await waitFor(() => {
@@ -391,5 +414,66 @@ describe('WP-410: UsersRoute (Role-Based Access Control, Organizations & Client 
     await waitFor(() => {
       expect(screen.getByText('Galactic Defense Alliance')).toBeInTheDocument();
     });
+  });
+
+  it('8. The role choice offers only User and Platform administrator, the roles the server stores', async () => {
+    const user = userEvent.setup();
+    renderUsers();
+
+    await waitFor(() => expect(screen.getByText('secops_admin')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /add user/i }));
+    await user.click(await screen.findByRole('combobox', { name: 'Role' }));
+
+    const options = await screen.findAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(['User', 'Platform administrator']);
+  });
+
+  it('9. Only a platform administrator can add users, and an administrator reads why', async () => {
+    renderUsers(['/users'], 'admin');
+
+    await waitFor(() => expect(screen.getByText('secops_admin')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /add user/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Only a platform administrator can add users.')).toBeInTheDocument();
+  });
+
+  it('10. Deleting an account names the consequence and asks first, with no native dialog', async () => {
+    const confirmSpy = vi.fn();
+    vi.stubGlobal('confirm', confirmSpy);
+    const user = userEvent.setup();
+    renderUsers();
+
+    await waitFor(() => expect(screen.getByText('auditor_bob')).toBeInTheDocument());
+    await user.click(nth(screen.getAllByRole('button', { name: /permanently delete the user/i }), 2));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Delete the account of auditor_bob?')).toBeInTheDocument();
+    expect(dialog).toHaveTextContent('This cannot be undone');
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it('11. A new account needs a starting password, so no default password is sent', async () => {
+    const user = userEvent.setup();
+    renderUsers();
+
+    await waitFor(() => expect(screen.getByText('secops_admin')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /add user/i }));
+    await user.type(screen.getByPlaceholderText(/operator_alpha/i), 'new_field_operator');
+
+    expect(screen.getByRole('button', { name: /create the user/i })).toBeDisabled();
+    await user.type(screen.getByLabelText(/starting password/i), 'a-long-starting-pass');
+    expect(screen.getByRole('button', { name: /create the user/i })).toBeEnabled();
+  });
+
+  it('12. The single sign-on tab shows no fixed group table and no operator role', async () => {
+    const user = userEvent.setup();
+    renderUsers();
+
+    await waitFor(() => expect(screen.getByText('secops_admin')).toBeInTheDocument());
+    await user.click(screen.getByRole('tab', { name: /single sign-on/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Company single sign-on (SSO)' })).toBeInTheDocument();
+    expect(screen.queryByText(/neronet-ops/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('operator')).not.toBeInTheDocument();
+    expect(screen.getAllByText(/not measured/i).length).toBeGreaterThan(0);
   });
 });

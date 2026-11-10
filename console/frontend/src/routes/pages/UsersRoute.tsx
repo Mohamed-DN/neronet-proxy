@@ -1,51 +1,34 @@
-import React, { useId, useMemo, useState } from 'react';
+import React, { useContext, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Building2,
-  Copy,
-  Download,
-  Lock,
-  Plus,
-  QrCode,
-  RefreshCw,
-  Search,
-  Shield,
-  Sliders,
-  Trash2,
-  UserPlus,
-  Users
-} from 'lucide-react';
+
+import AuthContext from '../../context/AuthContext';
+import { effectiveRole } from '../../services/roles';
+import { Building2, Lock, Plus, RefreshCw, Search, Shield, Sliders, Trash2, UserPlus, Users } from 'lucide-react';
 
 import {
   useCreateOrganization,
   useCreateUser,
   useDeleteUser,
-  useGenerateQrOnboarding,
   useOrganizations,
   useRevokeUserSessions,
   useUpdateSplitTunneling,
   useUsers
 } from '../../services/queries';
-import type {
-  CreateOrgPayload,
-  CreateUserPayload,
-  Organization,
-  QrOnboardingData,
-  UserAccount
-} from '../../services/types';
+import type { CreateOrgPayload, CreateUserPayload, Organization, UserAccount } from '../../services/types';
 import {
   Badge,
   type BadgeTone,
   Button,
   Card,
   CodeText,
+  ConfirmDialog,
   Dialog,
   FormField,
   IconButton,
   Input,
+  NotMeasured,
   PageHeader,
   Select,
-  Skeleton,
   Stat,
   StatusBadge,
   Table,
@@ -63,7 +46,7 @@ const PRESET_BYPASS_APPS = [
 ];
 
 export default function UsersRoute() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['users', 'ui', 'glossary']);
 
   // Queries
   const { data: users = [], isLoading: isLoadingUsers, isError: isUsersError, refetch: refetchUsers } = useUsers();
@@ -73,7 +56,6 @@ export default function UsersRoute() {
   const createUserMutation = useCreateUser();
   const deleteUserMutation = useDeleteUser();
   const revokeSessionsMutation = useRevokeUserSessions();
-  const generateQrMutation = useGenerateQrOnboarding();
   const updateSplitMutation = useUpdateSplitTunneling();
   const createOrgMutation = useCreateOrganization();
 
@@ -86,15 +68,15 @@ export default function UsersRoute() {
   const [newUsername, setNewUsername] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState<'super-admin' | 'admin' | 'operator' | 'auditor' | 'user'>('user');
+  const [newRole, setNewRole] = useState<'super-admin' | 'user'>('user');
   const [newOrgId, setNewOrgId] = useState('');
 
-  // QR Modal
-  const [selectedUserForQr, setSelectedUserForQr] = useState<UserAccount | null>(null);
-  const [qrData, setQrData] = useState<QrOnboardingData | null>(null);
-  const [qrError, setQrError] = useState<string | null>(null);
-  const [copiedConfig, setCopiedConfig] = useState(false);
+  // Which roles the server accepts for these actions (routes/users.js: create and delete are super-admin only).
+  const auth = useContext(AuthContext);
+  const canAddUsers = effectiveRole(auth?.user ?? null) === 'super-admin';
+  const [actionError, setActionError] = useState<string | null>(null);
 
+  // Split Tunneling Modal
   // Split Tunneling Modal
   const [selectedUserForSplit, setSelectedUserForSplit] = useState<UserAccount | null>(null);
   const [bypassApps, setBypassApps] = useState<string[]>([]);
@@ -152,7 +134,7 @@ export default function UsersRoute() {
     const payload: CreateUserPayload = {
       username: newUsername.trim(),
       email: newEmail.trim() || undefined,
-      password: newPassword || 'TempPass123!',
+      password: newPassword,
       role: newRole,
       organization_id: newOrgId || undefined,
       bypass_apps: ['com.apple.Music', 'com.spotify.client']
@@ -160,48 +142,6 @@ export default function UsersRoute() {
 
     await createUserMutation.mutateAsync(payload);
     setIsProvisionOpen(false);
-  };
-
-  const handleOpenQr = async (user: UserAccount) => {
-    setSelectedUserForQr(user);
-    setCopiedConfig(false);
-    setQrError(null);
-    setQrData(null);
-    try {
-      const result = await generateQrMutation.mutateAsync(user.id);
-      setQrData(result);
-    } catch (err) {
-      // No fallback profile: one made up here would configure a device against nothing.
-      const status = err && typeof err === 'object' && 'status' in err ? (err as { status: number }).status : 0;
-      setQrError(
-        status === 501
-          ? t(
-              'users.qrDialog.unavailable',
-              'Per-user onboarding profiles are not available. Enrol a device with a pre-auth key from Nodes → Enroll Node.'
-            )
-          : `${t('users.qrDialog.failed', 'The onboarding profile could not be loaded')}: ${err instanceof Error ? err.message : ''}`
-      );
-    }
-  };
-
-  const handleCopyConfig = () => {
-    if (!qrData?.config_text) return;
-    navigator.clipboard.writeText(qrData.config_text);
-    setCopiedConfig(true);
-    setTimeout(() => setCopiedConfig(false), 2000);
-  };
-
-  const handleDownloadConf = () => {
-    if (!qrData?.config_text) return;
-    const blob = new Blob([qrData.config_text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `neronet-${selectedUserForQr?.username || 'onboarding'}.conf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   const handleOpenSplit = (user: UserAccount) => {
@@ -239,14 +179,26 @@ export default function UsersRoute() {
 
   const handleConfirmRevoke = async () => {
     if (!selectedUserForRevoke) return;
-    await revokeSessionsMutation.mutateAsync(selectedUserForRevoke.id);
-    setSelectedUserForRevoke(null);
+    setActionError(null);
+    try {
+      await revokeSessionsMutation.mutateAsync(selectedUserForRevoke.id);
+      setSelectedUserForRevoke(null);
+    } catch {
+      setSelectedUserForRevoke(null);
+      setActionError(t('revokeDialog.failed', 'The user was not signed out. Try again.'));
+    }
   };
 
   const handleConfirmDelete = async () => {
     if (!selectedUserForDelete) return;
-    await deleteUserMutation.mutateAsync(selectedUserForDelete.id);
-    setSelectedUserForDelete(null);
+    setActionError(null);
+    try {
+      await deleteUserMutation.mutateAsync(selectedUserForDelete.id);
+      setSelectedUserForDelete(null);
+    } catch {
+      setSelectedUserForDelete(null);
+      setActionError(t('deleteDialog.failed', 'The account was not deleted. Try again.'));
+    }
   };
 
   const handleCreateOrgSubmit = async (e: React.FormEvent) => {
@@ -270,8 +222,6 @@ export default function UsersRoute() {
         return 'danger';
       case 'admin':
         return 'warning';
-      case 'operator':
-        return 'info';
       case 'auditor':
         return 'accent';
       default:
@@ -279,12 +229,15 @@ export default function UsersRoute() {
     }
   };
 
+  // The role's name, from the shared glossary. An unknown role shows as it was sent.
+  const roleLabel = (role: string) => t(`roles.${role}.term`, { ns: 'glossary', defaultValue: role });
+
   // User Columns for Table
   const userColumns: TableColumn<UserAccount>[] = useMemo(
     () => [
       {
         id: 'username',
-        header: t('users.colUsername', 'Username'),
+        header: t('colUsername', 'Username'),
         cell: (u) => (
           <div className="flex items-center gap-2">
             <CodeText>{u.username}</CodeText>
@@ -294,52 +247,49 @@ export default function UsersRoute() {
       },
       {
         id: 'email',
-        header: t('users.colEmail', 'Email'),
+        header: t('colEmail', 'Email'),
         cell: (u) => <span className="text-muted">{u.email || '—'}</span>
       },
       {
         id: 'role',
-        header: t('users.colRole', 'Role'),
-        cell: (u) => <Badge tone={getRoleBadgeTone(u.role)}>{u.role}</Badge>
+        header: t('colRole', 'Role'),
+        cell: (u) => <Badge tone={getRoleBadgeTone(u.role)}>{roleLabel(u.role)}</Badge>
       },
       {
         id: 'status',
-        header: t('users.colStatus', 'Status'),
+        header: t('colStatus', 'Status'),
         cell: (u) => <StatusBadge status={u.status === 'active' ? 'ok' : 'warning'} label={u.status} />
       },
       {
         id: 'bypass',
-        header: t('users.colBypass', 'Split Tunneling'),
+        header: t('colBypass', 'Split Tunneling'),
         cell: (u) => (
           <span className="text-xs font-mono text-muted">
             {Array.isArray(u.bypass_apps) && u.bypass_apps.length > 0
-              ? `${u.bypass_apps.length} apps bypassed`
-              : 'All traffic tunneled'}
+              ? t('bypassCount', { count: u.bypass_apps.length })
+              : t('bypassNone', 'All traffic goes through the VPN')}
           </span>
         )
       },
       {
         id: 'actions',
-        header: t('users.colActions', 'Actions'),
+        header: t('colActions', 'Actions'),
         cell: (u) => (
           <div className="flex items-center gap-1">
-            <IconButton icon={QrCode} label={t('users.actionQr', 'Onboarding QR')} onClick={() => handleOpenQr(u)} />
-            <IconButton
-              icon={Sliders}
-              label={t('users.actionSplit', 'Split Tunnel')}
-              onClick={() => handleOpenSplit(u)}
-            />
+            <IconButton icon={Sliders} label={t('actionSplit', 'Split Tunnel')} onClick={() => handleOpenSplit(u)} />
             <IconButton
               icon={Lock}
-              label={t('users.actionRevoke', 'Revoke Sessions')}
+              label={t('actionRevoke', 'Revoke Sessions')}
               onClick={() => setSelectedUserForRevoke(u)}
             />
-            <IconButton
-              icon={Trash2}
-              variant="danger"
-              label={t('users.actionDelete', 'Delete User')}
-              onClick={() => setSelectedUserForDelete(u)}
-            />
+            {canAddUsers && (
+              <IconButton
+                icon={Trash2}
+                variant="danger"
+                label={t('actionDelete', 'Delete User')}
+                onClick={() => setSelectedUserForDelete(u)}
+              />
+            )}
           </div>
         )
       }
@@ -393,7 +343,7 @@ export default function UsersRoute() {
       label: (
         <span className="flex items-center gap-2">
           <Users className="h-4 w-4" />
-          <span>{t('users.tabDirectory', 'Directory & RBAC')}</span>
+          <span>{t('tabDirectory', 'Directory & RBAC')}</span>
         </span>
       ),
       badge: (
@@ -410,18 +360,18 @@ export default function UsersRoute() {
                 id={searchInputId}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('users.searchPlaceholder', 'Filter by username, email, or role...')}
+                placeholder={t('searchPlaceholder', 'Filter by username, email, or role...')}
                 className="pl-9"
-                aria-label={t('users.searchPlaceholder', 'Filter by username, email, or role...')}
+                aria-label={t('searchPlaceholder', 'Filter by username, email, or role...')}
               />
             </div>
             <div className="text-xs text-muted font-mono">
-              {filteredUsers.length} / {users.length} {t('users.tableTitle', 'Tenants')}
+              {filteredUsers.length} / {users.length} {t('tableTitle', 'Tenants')}
             </div>
           </div>
 
           <Table<UserAccount>
-            caption={t('users.tableTitle', 'Registered Tenants')}
+            caption={t('tableTitle', 'Registered Tenants')}
             columns={userColumns}
             rows={filteredUsers}
             rowKey={(u) => u.id}
@@ -437,7 +387,7 @@ export default function UsersRoute() {
       label: (
         <span className="flex items-center gap-2">
           <Building2 className="h-4 w-4" />
-          <span>{t('users.tabOrganizations', 'Organizations')}</span>
+          <span>{t('tabOrganizations', 'Organizations')}</span>
         </span>
       ),
       badge: (
@@ -487,7 +437,7 @@ export default function UsersRoute() {
       label: (
         <span className="flex items-center gap-2">
           <Shield className="h-4 w-4" />
-          <span>{t('users.tabSso', 'SSO & Identity')}</span>
+          <span>{t('tabSso', 'SSO & Identity')}</span>
         </span>
       ),
       content: (
@@ -495,42 +445,25 @@ export default function UsersRoute() {
           <div className="flex items-center gap-3">
             <Shield className="h-5 w-5 text-accent" />
             <div>
-              <h3 className="text-base font-bold text-content">OIDC Enterprise Single Sign-On (SSO)</h3>
+              <h3 className="text-base font-bold text-content">{t('sso.title', 'Company single sign-on (SSO)')}</h3>
               <p className="text-xs text-muted">
-                Sovereign Identity Provider federation adhering to OpenID Connect Core 1.0.
+                {t('sso.body', 'Company login systems check the password and pass the groups to the console.')}
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <div className="p-4 rounded-xl bg-surface border border-border space-y-2">
-              <div className="text-xs font-bold uppercase tracking-wider text-muted">Federation Status</div>
-              <div className="flex items-center gap-2">
-                <StatusBadge status="ok" label="OIDC Active" />
-                <span className="text-xs text-muted font-mono">PKCE S256 Enforced</span>
-              </div>
-              <p className="text-xs text-muted mt-2">
-                External identity providers (Keycloak, Okta, Microsoft Entra ID) verify user credentials and pass mapped
-                roles directly into PostgreSQL.
-              </p>
+              <div className="text-xs font-bold text-muted">{t('sso.status', 'Connection status')}</div>
+              <NotMeasured />
             </div>
-
             <div className="p-4 rounded-xl bg-surface border border-border space-y-2">
-              <div className="text-xs font-bold uppercase tracking-wider text-muted">Role Mapping Protocol</div>
-              <div className="space-y-1 text-xs font-mono">
-                <div className="flex justify-between py-0.5 border-b border-border/50">
-                  <span className="text-muted">IdP 'neronet-admins':</span>
-                  <Badge tone="danger">super-admin</Badge>
-                </div>
-                <div className="flex justify-between py-0.5 border-b border-border/50">
-                  <span className="text-muted">IdP 'neronet-ops':</span>
-                  <Badge tone="info">operator</Badge>
-                </div>
-                <div className="flex justify-between py-0.5">
-                  <span className="text-muted">IdP 'neronet-auditors':</span>
-                  <Badge tone="accent">auditor</Badge>
-                </div>
+              <div className="text-xs font-bold text-muted">
+                {t('sso.groupsTitle', 'How company groups become roles')}
               </div>
+              <p className="text-xs text-muted">
+                {t('sso.groupsBody', 'Each organisation maps its groups to roles in its own settings.')}
+              </p>
             </div>
           </div>
         </Card>
@@ -542,7 +475,7 @@ export default function UsersRoute() {
     <div className="space-y-6">
       {/* Header */}
       <PageHeader
-        title={t('users.title', 'User Directory & Access Control')}
+        title={t('title', 'User Directory & Access Control')}
         description={t(
           'users.subtitle',
           'Role-based access control, tenant accounts, OIDC federation, and client profiles.'
@@ -557,31 +490,43 @@ export default function UsersRoute() {
                 refetchOrgs();
               }}
             />
-            <Button variant="primary" size="md" icon={UserPlus} onClick={handleOpenProvision}>
-              {t('users.btnProvision', 'Provision User')}
-            </Button>
+            {canAddUsers ? (
+              <Button variant="primary" size="md" icon={UserPlus} onClick={handleOpenProvision}>
+                {t('btnProvision', 'Add user')}
+              </Button>
+            ) : (
+              <p className="max-w-xs text-right text-xs text-muted">
+                {t('addOnlySuperAdmin', 'Only a platform administrator can add users.')}
+              </p>
+            )}
           </div>
         }
       />
 
+      {actionError && (
+        <p role="alert" className="text-xs text-danger">
+          {actionError}
+        </p>
+      )}
+
       {/* Top Stats Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
-          label={t('users.statTotalUsers')}
+          label={t('statTotalUsers')}
           value={isLoadingUsers ? '...' : String(users.length)}
-          hint={t('users.statTotalUsersHint')}
+          hint={t('statTotalUsersHint')}
         />
         <Stat
-          label={t('users.statPrivileged')}
+          label={t('statPrivileged')}
           value={isLoadingUsers ? '...' : String(privilegedCount)}
-          hint={t('users.statPrivilegedHint')}
+          hint={t('statPrivilegedHint')}
         />
         <Stat
-          label={t('users.statOrgs')}
+          label={t('statOrgs')}
           value={isLoadingOrgs ? '...' : String(Math.max(orgs.length, 1))}
-          hint={t('users.statOrgsHint')}
+          hint={t('statOrgsHint')}
         />
-        <Stat label={t('users.statSecurity')} value="RFC 6238" hint={t('users.statSecurityHint')} />
+        <Stat label={t('statSecurity')} value="RFC 6238" hint={t('statSecurityHint')} />
       </div>
 
       {/* Tabs */}
@@ -589,63 +534,63 @@ export default function UsersRoute() {
         items={tabItems}
         value={activeTab}
         onValueChange={(val) => setActiveTab(val as any)}
-        label={t('users.tabsLabel')}
+        label={t('tabsLabel')}
       />
 
       {/* MODAL 1: Provision User Dialog */}
       <Dialog
         open={isProvisionOpen}
         onOpenChange={setIsProvisionOpen}
-        title={t('users.provisionDialog.title', 'Provision New Tenant Account')}
+        title={t('provisionDialog.title', 'Provision New Tenant Account')}
         description={t(
           'users.provisionDialog.desc',
           'Create a new user account with role-based permissions and initial WireGuard profile credentials.'
         )}
       >
         <form onSubmit={handleCreateUserSubmit} className="space-y-4 pt-2">
-          <FormField label={t('users.provisionDialog.username', 'Username')} required>
+          <FormField label={t('provisionDialog.username', 'Username')} required>
             <Input
               value={newUsername}
               onChange={(e) => setNewUsername(e.target.value)}
-              placeholder="e.g. operator_alpha"
+              placeholder={t('provisionDialog.usernamePlaceholder', 'E.g. operator_alpha')}
               required
             />
           </FormField>
 
-          <FormField label={t('users.provisionDialog.email', 'Email Address')}>
+          <FormField label={t('provisionDialog.email', 'Email Address')}>
             <Input
               type="email"
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="e.g. operator@sovereign.local"
+              placeholder={t('provisionDialog.emailPlaceholder', 'E.g. name@example.org')}
             />
           </FormField>
 
-          <FormField label={t('users.provisionDialog.password', 'Initial Password')}>
+          <FormField label={t('provisionDialog.password', 'Starting password')} required>
             <Input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Enter secure password"
+              placeholder={t('provisionDialog.passwordPlaceholder', 'Choose a starting password')}
             />
           </FormField>
 
-          <FormField label={t('users.provisionDialog.role', 'Assigned Role')}>
+          <FormField
+            label={t('provisionDialog.role', 'Role')}
+            hint={t('provisionDialog.roleHint', 'Organisation roles are set in the member list of the organisation.')}
+          >
             <Select
               value={newRole}
               onValueChange={(val) => setNewRole(val as any)}
               options={[
-                { value: 'user', label: t('users.roleUser', 'Standard User') },
-                { value: 'operator', label: t('users.roleOperator', 'Operator') },
-                { value: 'auditor', label: t('users.roleAuditor', 'Auditor') },
-                { value: 'admin', label: t('users.roleAdmin', 'Admin') },
-                { value: 'super-admin', label: t('users.roleSuperAdmin', 'Super Admin') }
+                { value: 'user', label: t('roleUser', 'User') },
+                { value: 'super-admin', label: t('roleSuperAdmin', 'Platform administrator') }
               ]}
             />
           </FormField>
 
           {orgs.length > 0 && (
-            <FormField label={t('users.provisionDialog.org', 'Organization')}>
+            <FormField label={t('provisionDialog.org', 'Organization')}>
               <Select
                 value={newOrgId}
                 onValueChange={setNewOrgId}
@@ -656,95 +601,19 @@ export default function UsersRoute() {
 
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <Button type="button" variant="secondary" onClick={() => setIsProvisionOpen(false)}>
-              {t('users.provisionDialog.cancel', 'Cancel')}
+              {t('provisionDialog.cancel', 'Cancel')}
             </Button>
-            <Button type="submit" variant="primary" disabled={createUserMutation.isPending || !newUsername.trim()}>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={createUserMutation.isPending || !newUsername.trim() || !newPassword}
+            >
               {createUserMutation.isPending
                 ? t('loading.label', 'Creating...')
-                : t('users.provisionDialog.submit', 'Create User')}
+                : t('provisionDialog.submit', 'Create User')}
             </Button>
           </div>
         </form>
-      </Dialog>
-
-      {/* MODAL 2: QR Code Onboarding Dialog */}
-      <Dialog
-        open={Boolean(selectedUserForQr)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedUserForQr(null);
-            setQrData(null);
-          }
-        }}
-        title={t('users.qrDialog.title', 'WireGuard Client Onboarding Profile')}
-        description={t(
-          'users.qrDialog.desc',
-          'Scan this QR code with the NeroNet mobile/desktop client, or download the configuration file.'
-        )}
-      >
-        <div className="space-y-4 pt-2">
-          <div className="flex justify-center p-4 rounded-xl bg-surface border border-border">
-            {qrError ? (
-              <p role="alert" className="text-sm text-content text-center">
-                {qrError}
-              </p>
-            ) : qrData?.qr_code_data_url ? (
-              <img
-                src={qrData.qr_code_data_url}
-                alt="WireGuard Onboarding QR Code"
-                className="w-48 h-48 rounded-lg bg-white p-2"
-              />
-            ) : (
-              <div className="w-48 h-48 flex items-center justify-center text-muted">
-                <Skeleton lines={4} className="w-32" />
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-xs font-bold text-muted uppercase tracking-wider">WireGuard Configuration Preview</div>
-            <pre className="p-3 rounded-lg bg-surface font-mono text-xs text-content max-h-40 overflow-y-auto border border-border">
-              {qrData?.config_text || (qrError ? '—' : 'Loading profile...')}
-            </pre>
-          </div>
-
-          <div className="flex justify-between items-center pt-4 border-t border-border">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              icon={Copy}
-              onClick={handleCopyConfig}
-              disabled={!qrData?.config_text}
-            >
-              {copiedConfig ? t('users.qrDialog.copied', 'Copied') : t('users.qrDialog.copyConfig', 'Copy Config')}
-            </Button>
-
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                icon={Download}
-                onClick={handleDownloadConf}
-                disabled={!qrData?.config_text}
-              >
-                {t('users.qrDialog.downloadConf', 'Download .conf')}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setSelectedUserForQr(null);
-                  setQrData(null);
-                }}
-              >
-                {t('users.qrDialog.close', 'Close')}
-              </Button>
-            </div>
-          </div>
-        </div>
       </Dialog>
 
       {/* MODAL 3: Split Tunneling Dialog */}
@@ -753,7 +622,7 @@ export default function UsersRoute() {
         onOpenChange={(open) => {
           if (!open) setSelectedUserForSplit(null);
         }}
-        title={t('users.splitDialog.title', 'Split Tunneling App Bypass')}
+        title={t('splitDialog.title', 'Split Tunneling App Bypass')}
         description={t(
           'users.splitDialog.desc',
           'Select application bundle IDs that bypass the encrypted WireGuard mesh tunnel for direct internet access.'
@@ -766,25 +635,23 @@ export default function UsersRoute() {
                 id={newAppInputId}
                 value={newAppInput}
                 onChange={(e) => setNewAppInput(e.target.value)}
-                placeholder={t('users.splitDialog.newAppPlaceholder', 'e.g. com.spotify.client')}
+                placeholder={t('splitDialog.newAppPlaceholder', 'e.g. com.spotify.client')}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     handleAddApp();
                   }
                 }}
-                aria-label={t('users.splitDialog.newApp', 'Add Application Identifier')}
+                aria-label={t('splitDialog.newApp', 'Add Application Identifier')}
               />
             </div>
             <Button type="button" variant="secondary" size="md" onClick={handleAddApp}>
-              {t('users.splitDialog.btnAdd', 'Add App')}
+              {t('splitDialog.btnAdd', 'Add App')}
             </Button>
           </div>
 
           <div className="space-y-2">
-            <div className="text-xs font-bold text-muted uppercase tracking-wider">
-              {t('users.splitDialog.presets', 'Common Presets')}
-            </div>
+            <div className="text-xs font-bold text-muted">{t('splitDialog.presets', 'Common Presets')}</div>
             <div className="flex flex-wrap gap-2">
               {PRESET_BYPASS_APPS.map((preset) => (
                 <button
@@ -800,8 +667,8 @@ export default function UsersRoute() {
           </div>
 
           <div className="space-y-2">
-            <div className="text-xs font-bold text-muted uppercase tracking-wider">
-              {t('users.splitDialog.activeApps', 'Bypassed Applications')} ({bypassApps.length})
+            <div className="text-xs font-bold text-muted">
+              {t('splitDialog.activeApps', 'Bypassed Applications')} ({bypassApps.length})
             </div>
             {bypassApps.length === 0 ? (
               <div className="p-4 text-center text-xs text-muted border border-dashed border-border rounded-xl">
@@ -831,84 +698,48 @@ export default function UsersRoute() {
 
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <Button type="button" variant="secondary" onClick={() => setSelectedUserForSplit(null)}>
-              {t('users.splitDialog.cancel', 'Cancel')}
+              {t('splitDialog.cancel', 'Cancel')}
             </Button>
             <Button type="button" variant="primary" onClick={handleSaveSplit} disabled={updateSplitMutation.isPending}>
               {updateSplitMutation.isPending
-                ? t('users.splitDialog.saving', 'Saving...')
-                : t('users.splitDialog.save', 'Save Changes')}
+                ? t('splitDialog.saving', 'Saving...')
+                : t('splitDialog.save', 'Save Changes')}
             </Button>
           </div>
         </div>
       </Dialog>
 
-      {/* MODAL 4: Revoke Sessions Confirmation */}
-      <Dialog
+      {/* MODAL 4: Revoke sessions */}
+      <ConfirmDialog
         open={Boolean(selectedUserForRevoke)}
-        onOpenChange={(open) => {
-          if (!open) setSelectedUserForRevoke(null);
-        }}
-        title={t('users.revokeDialog.title', 'Revoke All User Sessions')}
+        onOpenChange={(open) => !open && setSelectedUserForRevoke(null)}
+        title={t('revokeDialog.title', 'Sign the user out of all devices?')}
         description={t(
-          'users.revokeDialog.desc',
-          'This action immediately revokes all active JWT refresh tokens and terminates all login sessions across devices.'
+          'revokeDialog.desc',
+          'The user is signed out everywhere and must sign in again on each device. The account is not deleted.'
         )}
-      >
-        <div className="space-y-4 pt-2">
-          <div className="p-4 rounded-xl bg-surface border border-border text-sm text-content">
-            User: <CodeText>{selectedUserForRevoke?.username ?? ''}</CodeText> ({selectedUserForRevoke?.id})
-          </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button type="button" variant="secondary" onClick={() => setSelectedUserForRevoke(null)}>
-              {t('users.revokeDialog.cancel', 'Cancel')}
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              onClick={handleConfirmRevoke}
-              disabled={revokeSessionsMutation.isPending}
-            >
-              {revokeSessionsMutation.isPending
-                ? t('loading.label', 'Revoking...')
-                : t('users.revokeDialog.confirm', 'Revoke All Sessions')}
-            </Button>
-          </div>
-        </div>
-      </Dialog>
+        confirmLabel={t('revokeDialog.confirm', 'Sign out of all devices')}
+        tone="danger"
+        busy={revokeSessionsMutation.isPending}
+        onConfirm={handleConfirmRevoke}
+      />
 
-      {/* MODAL 5: Delete User Confirmation */}
-      <Dialog
+      {/* MODAL 5: Delete user */}
+      <ConfirmDialog
         open={Boolean(selectedUserForDelete)}
-        onOpenChange={(open) => {
-          if (!open) setSelectedUserForDelete(null);
-        }}
-        title={t('users.deleteDialog.title', 'Delete User Account')}
+        onOpenChange={(open) => !open && setSelectedUserForDelete(null)}
+        title={t('deleteDialog.title', 'Delete the account of {{name}}?', {
+          name: selectedUserForDelete?.username ?? ''
+        })}
         description={t(
-          'users.deleteDialog.desc',
-          'Are you sure you want to permanently delete this user? All their device keys and permissions will be deleted.'
+          'deleteDialog.desc',
+          "The account and the keys of all its devices are erased. This cannot be undone: the user's devices will stop working."
         )}
-      >
-        <div className="space-y-4 pt-2">
-          <div className="p-4 rounded-xl bg-surface border border-border text-sm text-content">
-            User: <CodeText>{selectedUserForDelete?.username ?? ''}</CodeText> ({selectedUserForDelete?.id})
-          </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button type="button" variant="secondary" onClick={() => setSelectedUserForDelete(null)}>
-              {t('users.deleteDialog.cancel', 'Cancel')}
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              onClick={handleConfirmDelete}
-              disabled={deleteUserMutation.isPending}
-            >
-              {deleteUserMutation.isPending
-                ? t('loading.label', 'Deleting...')
-                : t('users.deleteDialog.confirm', 'Delete Account')}
-            </Button>
-          </div>
-        </div>
-      </Dialog>
+        confirmLabel={t('deleteDialog.confirm', 'Permanently delete the account')}
+        tone="danger"
+        busy={deleteUserMutation.isPending}
+        onConfirm={handleConfirmDelete}
+      />
 
       {/* MODAL 6: Create Organization Dialog */}
       <Dialog
@@ -917,7 +748,7 @@ export default function UsersRoute() {
         title={t('organizations.createDialog.title', 'Create Multi-Tenant Organization')}
         description={t(
           'organizations.createDialog.desc',
-          'Establish a distinct sovereign tenant boundary with its own cryptographic netmap epoch and default ACL policy.'
+          'Create a separate organisation with its own devices and default rule.'
         )}
       >
         <form onSubmit={handleCreateOrgSubmit} className="space-y-4 pt-2">
