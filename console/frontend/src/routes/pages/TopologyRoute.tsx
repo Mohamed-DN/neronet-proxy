@@ -1280,9 +1280,9 @@ export function TopologyRoute() {
                     <span className="flex items-center gap-1.5">
                       <span className="h-2 w-2 rounded-full bg-danger" /> {t('nodeDrawer.quarantined')}
                       <GlossaryHint
-                        text={t('glossary.quarantine.body')}
-                        label={t('glossary.ariaLabel', {
-                          term: t('glossary.quarantine.term')
+                        text={t('glossary:terms.quarantine.body')}
+                        label={t('glossary:ariaLabel', {
+                          term: t('glossary:terms.quarantine.term')
                         })}
                       />
                     </span>
@@ -1374,9 +1374,9 @@ export function TopologyRoute() {
                               <span className="mt-0.5 flex items-center gap-1">
                                 <CodeText>{selectedNode.overlay_ipv4}</CodeText>
                                 <GlossaryHint
-                                  text={t('glossary.overlayAddress.body')}
-                                  label={t('glossary.ariaLabel', {
-                                    term: t('glossary.overlayAddress.term')
+                                  text={t('glossary:terms.overlayAddress.body')}
+                                  label={t('glossary:ariaLabel', {
+                                    term: t('glossary:terms.overlayAddress.term')
                                   })}
                                 />
                               </span>

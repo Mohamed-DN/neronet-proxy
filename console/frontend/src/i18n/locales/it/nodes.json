@@ -1,6 +1,6 @@
 {
   "title": "Dispositivi",
-  "description": "Tutti i dispositivi registrati nella rete, con i loro controlli di sicurezza, se sono raggiungibili e se sono bloccati.",
+  "description": "Tutti i dispositivi registrati nella rete, con i controlli di sicurezza, se rispondono e se sono bloccati.",
   "addDevice": "Aggiungi dispositivo",
   "searchPlaceholder": "Cerca per nome, indirizzo o tipo…",
   "filter": {
@@ -95,6 +95,7 @@
     "revokeConfirm": "Revoca la chiave",
     "revokeDefaultReason": "Chiave revocata da un amministratore",
     "close": "Chiudi",
-    "loadFailed": "Impossibile caricare il dispositivo. Riprova."
+    "loadFailed": "Impossibile caricare il dispositivo. Riprova.",
+    "title": "Dettagli del dispositivo"
   }
 }

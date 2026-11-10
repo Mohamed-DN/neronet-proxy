@@ -1,6 +1,6 @@
 {
   "title": "Cloud virtual computers",
-  "description": "Manage your virtual computers and the company domains that point to them; remote streaming is not running yet, so access links will not connect.",
+  "description": "Virtual computers and the company domains that point to them; remote viewing does not connect yet.",
   "tabs": {
     "label": "Virtual computers and domains",
     "computers": "Virtual computers ({{count}})",

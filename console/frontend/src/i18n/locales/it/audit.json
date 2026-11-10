@@ -1,6 +1,6 @@
 {
   "title": "Registro delle attività, protetto da modifiche",
-  "description": "Ogni voce è collegata a quella precedente con una firma crittografica. Puoi controllare il registro e inviarne gli eventi a sistemi di sicurezza esterni.",
+  "description": "Il registro di ciò che è successo nella rete e nella console, con ogni voce legata alla precedente così che le modifiche si possano scoprire.",
   "captionEntries": "Voci del registro attività",
   "actions": {
     "verifyChain": "Controlla il registro",

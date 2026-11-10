@@ -30,7 +30,7 @@ export default function PortalLayout() {
       <SkipLink />
       <header className="border-b border-border-subtle">
         <div className="mx-auto flex w-full max-w-xl items-center justify-between gap-2 px-4 py-3">
-          <span className="text-body font-semibold text-content">NeroNet</span>
+          <span className="text-body font-semibold text-content">{'NeroNet'}</span>
           <div className="flex items-center gap-1">
             <LanguageSwitcher />
             <ThemeToggle />

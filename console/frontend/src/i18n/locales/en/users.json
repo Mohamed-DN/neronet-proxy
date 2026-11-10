@@ -1,11 +1,11 @@
 {
+  "description": "Who can sign in to the console and what each person's role lets them do.",
   "tabsLabel": "User Management Views",
   "statTotalUsersHint": "Users registered on the network",
   "statPrivilegedHint": "Those who can change the network",
   "statOrgsHint": "Multi-tenant governance units",
   "statSecurityHint": "Authenticator apps and recovery codes",
   "title": "Users and permissions",
-  "subtitle": "Who can do what in the console, the accounts, and single sign-on (SSO).",
   "statTotalUsers": "Users",
   "statPrivileged": "Administrators",
   "statOrgs": "Organizations",

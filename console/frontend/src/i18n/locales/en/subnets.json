@@ -1,6 +1,6 @@
 {
   "title": "Sub-networks",
-  "description": "Splits devices into separate networks. Devices in the same network can communicate. To let two different networks communicate, you connect them explicitly.",
+  "description": "Groups of devices that can reach each other; two sub-networks talk only after you connect them.",
   "create": "New sub-network",
   "stats": {
     "subnets": "Sub-networks",

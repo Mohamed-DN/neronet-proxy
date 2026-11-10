@@ -178,7 +178,7 @@ export default function SettingsRoute() {
   if (org.isError) {
     return (
       <div className="space-y-6">
-        <PageHeader title={t('title')} description={t('subtitle')} />
+        <PageHeader title={t('title')} description={t('description')} />
         <ErrorState title={t('loadError')} detail={org.error.message} onRetry={() => org.refetch()} />
       </div>
     );
@@ -188,7 +188,7 @@ export default function SettingsRoute() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t('title')} description={t('subtitle')} />
+      <PageHeader title={t('title')} description={t('description')} />
 
       {org.isLoading ? (
         <Skeleton lines={6} />

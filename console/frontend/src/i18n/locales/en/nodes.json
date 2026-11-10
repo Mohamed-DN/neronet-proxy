@@ -1,6 +1,6 @@
 {
   "title": "Devices",
-  "description": "All devices registered in the network, with their security checks, whether they are reachable, and whether they are blocked.",
+  "description": "Every device registered on the network, with its security checks, whether it answers, and whether it is blocked.",
   "addDevice": "Add device",
   "searchPlaceholder": "Search by name, address or type…",
   "filter": {
@@ -95,6 +95,7 @@
     "revokeConfirm": "Revoke key",
     "revokeDefaultReason": "Key revoked by an administrator",
     "close": "Close",
-    "loadFailed": "The device could not be loaded. Try again."
+    "loadFailed": "The device could not be loaded. Try again.",
+    "title": "Device details"
   }
 }

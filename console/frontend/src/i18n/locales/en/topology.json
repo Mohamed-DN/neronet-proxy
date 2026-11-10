@@ -1,6 +1,6 @@
 {
   "title": "Network map",
-  "description": "A map of the devices and the links the rules allow between them. A line means the link is allowed, not that data is flowing right now.",
+  "description": "A map of your devices and the links the access rules allow; a line does not mean data is flowing.",
   "searchPlaceholder": "Search by name, ID or network address…",
   "filterRoleAll": "All types",
   "filterRoleRelay": "Forwards traffic",

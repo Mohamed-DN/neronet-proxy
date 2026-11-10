@@ -1,6 +1,6 @@
 {
   "title": "Mappa della rete",
-  "description": "Mappa dei dispositivi e dei collegamenti che le regole permettono tra loro. Una linea indica un collegamento permesso, non che i dati stiano passando in questo momento.",
+  "description": "La mappa dei dispositivi e dei collegamenti permessi dalle regole; una linea non significa che i dati stiano passando.",
   "searchPlaceholder": "Cerca per nome, numero o indirizzo di rete…",
   "filterRoleAll": "Tutti i tipi",
   "filterRoleRelay": "Inoltra traffico",

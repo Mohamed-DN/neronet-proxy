@@ -1,6 +1,6 @@
 {
   "title": "Access rules between devices",
-  "description": "The rule list, a preview of what each device receives, a single-packet test, and the default rule.",
+  "description": "Decide which devices may talk to each other and on which ports; traffic no rule covers follows the default rule.",
   "addRule": "Add access rule",
   "previewSimulate": "Preview and packet test",
   "filterActionAll": "All decisions",

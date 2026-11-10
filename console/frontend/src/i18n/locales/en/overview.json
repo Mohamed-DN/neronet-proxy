@@ -1,6 +1,6 @@
 {
   "title": "Network overview",
-  "description": "The network at a glance: how many devices are online, how much data is moving, and where the devices are.",
+  "description": "How many devices are online, how much data is moving, and where the devices are.",
   "unreachable": "Cannot reach the network server. Try again shortly.",
   "staleWarning": "The numbers below may be out of date.",
   "openMap": "Open the network map",

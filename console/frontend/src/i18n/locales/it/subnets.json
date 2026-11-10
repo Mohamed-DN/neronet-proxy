@@ -1,6 +1,6 @@
 {
   "title": "Sotto-reti",
-  "description": "Divide i dispositivi in reti separate. Due dispositivi nella stessa rete possono comunicare. Per far comunicare due reti diverse devi collegarle in modo esplicito.",
+  "description": "Gruppi di dispositivi che si raggiungono tra loro; due sotto-reti comunicano solo dopo che le colleghi.",
   "create": "Nuova sotto-rete",
   "stats": {
     "subnets": "Sotto-reti",

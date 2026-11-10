@@ -500,8 +500,8 @@ export default function AclsRoute() {
         description={t('description')}
         meta={
           <GlossaryHint
-            text={t('glossary.acl.body')}
-            label={t('glossary.ariaLabel', { term: t('glossary.acl.term') })}
+            text={t('glossary:terms.acl.body')}
+            label={t('glossary:ariaLabel', { term: t('glossary:terms.acl.term') })}
           />
         }
         actions={

@@ -1,11 +1,11 @@
 {
+  "description": "Chi può accedere alla console e cosa permette di fare il ruolo di ciascuno.",
   "tabsLabel": "Viste di gestione utenti",
   "statTotalUsersHint": "Utenti registrati della rete",
   "statPrivilegedHint": "Chi può modificare la rete",
   "statOrgsHint": "Unità di governance multi-tenant",
   "statSecurityHint": "App di autenticazione e codici di recupero",
   "title": "Utenti e permessi",
-  "subtitle": "Chi può fare cosa nella console, gli account e il login unico aziendale (SSO).",
   "statTotalUsers": "Utenti",
   "statPrivileged": "Amministratori",
   "statOrgs": "Organizzazioni",

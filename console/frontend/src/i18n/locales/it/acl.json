@@ -1,6 +1,6 @@
 {
   "title": "Regole di accesso tra dispositivi",
-  "description": "Elenco delle regole, anteprima di ciò che ogni dispositivo riceve, prova di un pacchetto e regola predefinita.",
+  "description": "Decidi quali dispositivi possono comunicare e su quali porte; il traffico che nessuna regola copre segue la regola predefinita.",
   "addRule": "Aggiungi regola di accesso",
   "previewSimulate": "Anteprima e prova di un pacchetto",
   "filterActionAll": "Tutte le decisioni",

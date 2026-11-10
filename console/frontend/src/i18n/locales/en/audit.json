@@ -1,6 +1,6 @@
 {
   "title": "Activity log, protected from changes",
-  "description": "Each entry is linked to the one before by a cryptographic signature. You can check the log and send its events to external security systems.",
+  "description": "A record of what happened on the network and in the console, with each entry linked to the one before so changes can be detected.",
   "captionEntries": "Activity log entries",
   "actions": {
     "verifyChain": "Check the log",

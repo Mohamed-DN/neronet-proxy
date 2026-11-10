@@ -1,6 +1,6 @@
 {
+  "description": "Rules that apply to every device in your organisation; devices pick up a change at their next check-in.",
   "title": "Organisation settings",
-  "subtitle": "The rules the network applies to this organisation's devices. A change reaches every device at its next routine check.",
   "sectionPolicy": "Access rules",
   "sectionPolicyDesc": "The organisation's devices only talk to each other. Rules decide traffic; what no rule covers follows the setting below.",
   "fieldPolicy": "Traffic with no rule",

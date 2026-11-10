@@ -1,6 +1,6 @@
 {
   "title": "Panoramica della rete",
-  "description": "Lo stato della rete in un colpo d'occhio: quanti dispositivi sono online, quanti dati passano e dove si trovano.",
+  "description": "Quanti dispositivi sono online, quanti dati passano e dove si trovano i dispositivi.",
   "unreachable": "Impossibile contattare il server della rete. Riprova tra poco.",
   "staleWarning": "I numeri qui sotto potrebbero non essere aggiornati.",
   "openMap": "Apri la mappa della rete",

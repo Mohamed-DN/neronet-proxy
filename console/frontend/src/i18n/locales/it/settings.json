@@ -1,6 +1,6 @@
 {
+  "description": "Le regole valide per tutti i dispositivi della tua organizzazione; i dispositivi ricevono una modifica al prossimo controllo.",
   "title": "Impostazioni dell'organizzazione",
-  "subtitle": "Le regole che la rete applica ai dispositivi di questa organizzazione. Una modifica arriva a tutti i dispositivi al prossimo controllo periodico.",
   "sectionPolicy": "Regole di accesso",
   "sectionPolicyDesc": "I dispositivi dell'organizzazione comunicano solo tra loro. Le regole decidono il traffico; ciò che nessuna regola copre segue l'impostazione qui sotto.",
   "fieldPolicy": "Traffico senza regola",

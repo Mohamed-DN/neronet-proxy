@@ -1,6 +1,6 @@
 {
   "title": "Computer virtuali in cloud",
-  "description": "Gestisci i computer virtuali e i domini aziendali che li indirizzano; la trasmissione a distanza non è ancora attiva, quindi i link di accesso non si collegano.",
+  "description": "I computer virtuali e i domini aziendali che portano a loro; la visione da remoto non si collega ancora.",
   "tabs": {
     "label": "Computer virtuali e domini",
     "computers": "Computer virtuali ({{count}})",

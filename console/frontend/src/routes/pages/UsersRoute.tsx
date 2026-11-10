@@ -476,10 +476,7 @@ export default function UsersRoute() {
       {/* Header */}
       <PageHeader
         title={t('title', 'User Directory & Access Control')}
-        description={t(
-          'users.subtitle',
-          'Role-based access control, tenant accounts, OIDC federation, and client profiles.'
-        )}
+        description={t('description')}
         actions={
           <div className="flex items-center gap-3">
             <IconButton
@@ -543,7 +540,7 @@ export default function UsersRoute() {
         onOpenChange={setIsProvisionOpen}
         title={t('provisionDialog.title', 'Provision New Tenant Account')}
         description={t(
-          'users.provisionDialog.desc',
+          'provisionDialog.desc',
           'Create a new user account with role-based permissions and initial WireGuard profile credentials.'
         )}
       >
@@ -624,7 +621,7 @@ export default function UsersRoute() {
         }}
         title={t('splitDialog.title', 'Split Tunneling App Bypass')}
         description={t(
-          'users.splitDialog.desc',
+          'splitDialog.desc',
           'Select application bundle IDs that bypass the encrypted WireGuard mesh tunnel for direct internet access.'
         )}
       >
