@@ -16,6 +16,7 @@ import {
   useTriggerOwnerWipe
 } from '../../services/queries';
 import type { DualAuthRequest, LegalHold } from '../../services/types';
+import { ConfirmDialog, useToast } from '../../ui';
 import {
   Badge,
   Button,
@@ -36,7 +37,7 @@ import {
 import { PageFrame } from '../PageFrame';
 
 export default function NukeRoute() {
-  const { t } = useTranslation('ui');
+  const { t } = useTranslation(['nuke', 'ui']);
 
   // Queries
   const { data: overview, refetch: refetchOverview } = useNukeOverview();
@@ -140,7 +141,7 @@ export default function NukeRoute() {
   const dualAuthColumns: TableColumn<DualAuthRequest>[] = [
     {
       id: 'target',
-      header: t('nuke.dualAuth.columns.target'),
+      header: t('dualAuth.columns.target'),
       cell: (r) => (
         <div className="flex items-center gap-2">
           <Badge tone={r.target_type === 'global' ? 'danger' : 'accent'} mono>
@@ -152,12 +153,12 @@ export default function NukeRoute() {
     },
     {
       id: 'initiator',
-      header: t('nuke.dualAuth.columns.initiator'),
+      header: t('dualAuth.columns.initiator'),
       cell: (r) => <span className="font-mono text-caption text-content">{r.initiator_user_id}</span>
     },
     {
       id: 'comment',
-      header: t('nuke.dualAuth.columns.comment'),
+      header: t('dualAuth.columns.comment'),
       cell: (r) => (
         <span className="truncate text-caption text-subtle max-w-xs block" title={r.initiator_comment || ''}>
           {r.initiator_comment || '—'}
@@ -166,28 +167,28 @@ export default function NukeRoute() {
     },
     {
       id: 'status',
-      header: t('nuke.dualAuth.columns.status'),
+      header: t('dualAuth.columns.status'),
       cell: (r) => {
         if (r.status === 'pending') {
-          return <StatusBadge status="warning" label={t('nuke.dualAuth.status.pending')} />;
+          return <StatusBadge status="warning" label={t('dualAuth.status.pending')} />;
         }
         if (r.status === 'executed') {
-          return <StatusBadge status="critical" label={t('nuke.dualAuth.status.executed')} />;
+          return <StatusBadge status="critical" label={t('dualAuth.status.executed')} />;
         }
         if (r.status === 'rejected') {
-          return <StatusBadge status="unknown" label={t('nuke.dualAuth.status.rejected')} />;
+          return <StatusBadge status="unknown" label={t('dualAuth.status.rejected')} />;
         }
-        return <StatusBadge status="not-measured" label={t('nuke.dualAuth.status.expired')} />;
+        return <StatusBadge status="not-measured" label={t('dualAuth.status.expired')} />;
       }
     },
     {
       id: 'expiresAt',
-      header: t('nuke.dualAuth.columns.expiresAt'),
+      header: t('dualAuth.columns.expiresAt'),
       cell: (r) => <span className="font-mono text-caption text-muted">{new Date(r.expires_at).toLocaleString()}</span>
     },
     {
       id: 'actions',
-      header: t('nuke.dualAuth.columns.actions'),
+      header: t('dualAuth.columns.actions'),
       cell: (r) => (
         <div className="flex items-center gap-1.5">
           {r.status === 'pending' && (
@@ -202,26 +203,15 @@ export default function NukeRoute() {
                   setApproveError(null);
                 }}
               >
-                {t('nuke.dualAuth.actions.approve')}
+                {t('dualAuth.actions.approve')}
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={async () => {
-                  if (confirm(t('nuke.dualAuth.actions.reject') + '?')) {
-                    await rejectDestructionMutation.mutateAsync({
-                      id: r.id,
-                      comment: 'Rejected by administrator via console'
-                    });
-                  }
-                }}
-              >
-                {t('nuke.dualAuth.actions.reject')}
+              <Button variant="ghost" size="sm" onClick={() => setRejectTarget(r)}>
+                {t('dualAuth.actions.reject')}
               </Button>
             </>
           )}
           <Button variant="ghost" size="sm" onClick={() => setInspectTarget(r)}>
-            {t('nuke.dualAuth.actions.details')}
+            {t('dualAuth.actions.details')}
           </Button>
         </div>
       )
@@ -232,12 +222,12 @@ export default function NukeRoute() {
   const holdColumns: TableColumn<LegalHold>[] = [
     {
       id: 'id',
-      header: t('nuke.legalHolds.columns.id'),
+      header: t('legalHolds.columns.id'),
       cell: (h) => <CodeText>{h.id}</CodeText>
     },
     {
       id: 'organization',
-      header: t('nuke.legalHolds.columns.organization'),
+      header: t('legalHolds.columns.organization'),
       cell: (h) => (
         <div className="flex items-center gap-1.5">
           <Shield className="h-4 w-4 text-warning shrink-0" />
@@ -247,7 +237,7 @@ export default function NukeRoute() {
     },
     {
       id: 'reason',
-      header: t('nuke.legalHolds.columns.reason'),
+      header: t('legalHolds.columns.reason'),
       cell: (h) => (
         <span className="text-caption text-content font-medium" title={h.reason}>
           {h.reason}
@@ -256,31 +246,31 @@ export default function NukeRoute() {
     },
     {
       id: 'imposedBy',
-      header: t('nuke.legalHolds.columns.imposedBy'),
+      header: t('legalHolds.columns.imposedBy'),
       cell: (h) => <span className="font-mono text-caption text-muted">{h.imposed_by_user_id}</span>
     },
     {
       id: 'createdAt',
-      header: t('nuke.legalHolds.columns.createdAt'),
+      header: t('legalHolds.columns.createdAt'),
       cell: (h) => <span className="font-mono text-caption text-muted">{new Date(h.created_at).toLocaleString()}</span>
     },
     {
       id: 'status',
-      header: t('nuke.legalHolds.columns.status'),
+      header: t('legalHolds.columns.status'),
       cell: (h) =>
         h.active ? (
-          <StatusBadge status="critical" label={t('nuke.legalHolds.status.active')} />
+          <StatusBadge status="critical" label={t('legalHolds.status.active')} />
         ) : (
-          <StatusBadge status="ok" label={t('nuke.legalHolds.status.released')} />
+          <StatusBadge status="ok" label={t('legalHolds.status.released')} />
         )
     },
     {
       id: 'actions',
-      header: t('nuke.legalHolds.columns.actions'),
+      header: t('legalHolds.columns.actions'),
       cell: (h) =>
         h.active ? (
           <Button variant="secondary" size="sm" onClick={() => setReleaseTarget(h)}>
-            {t('nuke.legalHolds.actions.release')}
+            {t('legalHolds.actions.release')}
           </Button>
         ) : (
           <span className="text-micro text-subtle">—</span>
@@ -314,7 +304,7 @@ export default function NukeRoute() {
       setReqComment('');
       setReqConfirmation('');
     } catch (err: any) {
-      setReqError(err?.message || 'Failed to submit destruction request');
+      setReqError(t('errors.request'));
     }
   };
 
@@ -335,7 +325,7 @@ export default function NukeRoute() {
       });
       setApproveTarget(null);
     } catch (err: any) {
-      setApproveError(err?.message || 'Failed to execute destruction approval');
+      setApproveError(t('errors.approve'));
     }
   };
 
@@ -361,17 +351,38 @@ export default function NukeRoute() {
       setImposeOrgId('');
       setImposeReason('');
     } catch (err: any) {
-      setImposeError(err?.message || 'Failed to impose legal hold');
+      setImposeError(t('errors.impose'));
+    }
+  };
+
+  const { notify } = useToast();
+  const [rejectTarget, setRejectTarget] = useState<DualAuthRequest | null>(null);
+  const [rejectError, setRejectError] = useState<string | null>(null);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
+
+  // A refused rejection stays in the dialog, so the person can read why and try again.
+  const handleConfirmReject = async () => {
+    if (!rejectTarget) return;
+    setRejectError(null);
+    try {
+      await rejectDestructionMutation.mutateAsync({
+        id: rejectTarget.id,
+        comment: 'Rejected by administrator via console'
+      });
+      setRejectTarget(null);
+    } catch {
+      setRejectError(t('errors.reject'));
     }
   };
 
   const handleReleaseConfirm = async () => {
     if (!releaseTarget) return;
+    setReleaseError(null);
     try {
       await releaseHoldMutation.mutateAsync(releaseTarget.id);
       setReleaseTarget(null);
-    } catch (err: any) {
-      alert(err?.message || 'Failed to release legal hold');
+    } catch {
+      setReleaseError(t('errors.release'));
     }
   };
 
@@ -383,7 +394,7 @@ export default function NukeRoute() {
       setDmsPassphrase('');
       setDmsMsg({ text: 'Heartbeat confirmed. Global wipe timer reset successfully.', ok: true });
     } catch (err: any) {
-      setDmsMsg({ text: err?.message || 'Invalid owner passphrase', ok: false });
+      setDmsMsg({ text: t('errors.passphrase'), ok: false });
     }
   };
 
@@ -392,11 +403,11 @@ export default function NukeRoute() {
     setPurgeError(null);
 
     if (purgePhrase !== 'DESTROY EVERYTHING PERMANENTLY') {
-      setPurgeError("Phrase must match exactly 'DESTROY EVERYTHING PERMANENTLY'");
+      setPurgeError(t('purge.phraseMismatch'));
       return;
     }
     if (!purgePassword) {
-      setPurgeError('Super-admin password is required');
+      setPurgeError(t('purge.passwordRequired'));
       return;
     }
 
@@ -406,9 +417,9 @@ export default function NukeRoute() {
         password: purgePassword
       });
       setPurgeModalOpen(false);
-      alert('Global wipe triggered successfully');
+      notify(t('purge.done'), { tone: 'success' });
     } catch (err: any) {
-      setPurgeError(err?.message || 'Purge rejected by server');
+      setPurgeError(t('errors.purge'));
     }
   };
 
@@ -425,11 +436,11 @@ export default function NukeRoute() {
       <div className="flex flex-col gap-6">
         {/* Page Header */}
         <PageHeader
-          title={t('nuke.title')}
-          description={t('nuke.description')}
+          title={t('title')}
+          description={t('description')}
           meta={
             <Badge tone={overview?.keys_status === 'destroyed' ? 'danger' : 'accent'} mono>
-              {overview?.keys_status === 'destroyed' ? t('nuke.stats.shredded') : t('nuke.stats.activeEpoch')}
+              {overview?.keys_status === 'destroyed' ? t('stats.shredded') : t('stats.activeEpoch')}
             </Badge>
           }
           actions={
@@ -443,7 +454,7 @@ export default function NukeRoute() {
                 }}
               >
                 <Flame className="h-4 w-4 mr-1.5 shrink-0" />
-                {t('nuke.dualAuth.requestBtn')}
+                {t('dualAuth.requestBtn')}
               </Button>
               <Button
                 variant="secondary"
@@ -454,9 +465,9 @@ export default function NukeRoute() {
                 }}
               >
                 <ShieldAlert className="h-4 w-4 mr-1.5 shrink-0" />
-                {t('nuke.legalHolds.imposeBtn')}
+                {t('legalHolds.imposeBtn')}
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleRefreshAll} title="Refresh">
+              <Button variant="ghost" size="sm" onClick={handleRefreshAll} title={t('common.refresh')}>
                 <RefreshCw className="h-4 w-4 shrink-0" />
               </Button>
             </>
@@ -467,31 +478,29 @@ export default function NukeRoute() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <Stat
-              label={t('nuke.stats.keysStatus')}
+              label={t('stats.keysStatus')}
               value={overview?.keys_status?.toUpperCase() || 'ACTIVE'}
               hint="AES-256-GCM Envelope"
             />
           </Card>
           <Card>
             <Stat
-              label={t('nuke.stats.legalHolds')}
+              label={t('stats.legalHolds')}
               value={overview?.active_legal_holds ?? legalHolds.filter((h) => h.active).length}
-              hint={(overview?.active_legal_holds || 0) > 0 ? t('nuke.stats.holdsBlocked') : t('nuke.stats.noHolds')}
+              hint={(overview?.active_legal_holds || 0) > 0 ? t('stats.holdsBlocked') : t('stats.noHolds')}
             />
           </Card>
           <Card>
             <Stat
-              label={t('nuke.stats.dualAuthGate')}
+              label={t('stats.dualAuthGate')}
               value={overview?.pending_authorizations ?? dualAuthRequests.filter((r) => r.status === 'pending').length}
-              hint={
-                (overview?.pending_authorizations || 0) > 0 ? t('nuke.stats.pendingAuth') : t('nuke.stats.allClear')
-              }
+              hint={(overview?.pending_authorizations || 0) > 0 ? t('stats.pendingAuth') : t('stats.allClear')}
             />
           </Card>
           <Card>
             <Stat
-              label={t('nuke.stats.deadManSwitch')}
-              value={overview?.owner_dms_armed ? t('nuke.stats.armed') : t('nuke.stats.disarmed')}
+              label={t('stats.deadManSwitch')}
+              value={overview?.owner_dms_armed ? t('stats.armed') : t('stats.disarmed')}
               hint="Owner DMS Fail-Safe"
             />
           </Card>
@@ -505,7 +514,7 @@ export default function NukeRoute() {
           items={[
             {
               value: 'dualAuth',
-              label: t('nuke.tabs.dualAuth'),
+              label: t('tabs.dualAuth'),
               badge: (
                 <Badge tone="warning" mono>
                   {dualAuthRequests.filter((r) => r.status === 'pending').length}
@@ -518,8 +527,8 @@ export default function NukeRoute() {
                     <div className="flex items-start gap-3">
                       <Lock className="h-5 w-5 text-warning shrink-0 mt-0.5" />
                       <div>
-                        <h2 className="text-body font-semibold text-content">{t('nuke.dualAuth.bannerTitle')}</h2>
-                        <p className="mt-0.5 text-caption text-muted">{t('nuke.dualAuth.bannerText')}</p>
+                        <h2 className="text-body font-semibold text-content">{t('dualAuth.bannerTitle')}</h2>
+                        <p className="mt-0.5 text-caption text-muted">{t('dualAuth.bannerText')}</p>
                       </div>
                     </div>
                   </Card>
@@ -529,8 +538,8 @@ export default function NukeRoute() {
                     <div className="p-4 flex flex-wrap items-center justify-between gap-3 border-b border-border">
                       <div className="flex-1 min-w-[240px] max-w-md relative">
                         <Input
-                          aria-label={t('nuke.dualAuth.searchPlaceholder')}
-                          placeholder={t('nuke.dualAuth.searchPlaceholder')}
+                          aria-label={t('dualAuth.searchPlaceholder')}
+                          placeholder={t('dualAuth.searchPlaceholder')}
                           value={dualAuthSearch}
                           onChange={(e) => setDualAuthSearch(e.target.value)}
                         />
@@ -563,7 +572,7 @@ export default function NukeRoute() {
             },
             {
               value: 'legalHolds',
-              label: t('nuke.tabs.legalHolds'),
+              label: t('tabs.legalHolds'),
               badge: (
                 <Badge tone="danger" mono>
                   {legalHolds.filter((h) => h.active).length}
@@ -576,8 +585,8 @@ export default function NukeRoute() {
                     <div className="flex items-start gap-3">
                       <ShieldAlert className="h-5 w-5 text-danger shrink-0 mt-0.5" />
                       <div>
-                        <h2 className="text-body font-semibold text-content">{t('nuke.legalHolds.bannerTitle')}</h2>
-                        <p className="mt-0.5 text-caption text-muted">{t('nuke.legalHolds.bannerText')}</p>
+                        <h2 className="text-body font-semibold text-content">{t('legalHolds.bannerTitle')}</h2>
+                        <p className="mt-0.5 text-caption text-muted">{t('legalHolds.bannerText')}</p>
                       </div>
                     </div>
                   </Card>
@@ -587,8 +596,8 @@ export default function NukeRoute() {
                     <div className="p-4 flex flex-wrap items-center justify-between gap-3 border-b border-border">
                       <div className="flex-1 min-w-[240px] max-w-md">
                         <Input
-                          aria-label={t('nuke.legalHolds.searchPlaceholder')}
-                          placeholder={t('nuke.legalHolds.searchPlaceholder')}
+                          aria-label={t('legalHolds.searchPlaceholder')}
+                          placeholder={t('legalHolds.searchPlaceholder')}
                           value={holdSearch}
                           onChange={(e) => setHoldSearch(e.target.value)}
                         />
@@ -619,18 +628,18 @@ export default function NukeRoute() {
             },
             {
               value: 'deadManSwitch',
-              label: t('nuke.tabs.deadManSwitch'),
+              label: t('tabs.deadManSwitch'),
               content: (
                 <div className="flex flex-col gap-6">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Owner DMS Heartbeat */}
                     <Card>
-                      <CardHeader title={t('nuke.dms.heartbeatReset')} description={t('nuke.dms.heartbeatDesc')} />
+                      <CardHeader title={t('dms.heartbeatReset')} description={t('dms.heartbeatDesc')} />
                       <form onSubmit={handleHeartbeatSubmit} className="flex flex-col gap-4">
                         <FormField label="Owner Master Passphrase" required>
                           <Input
                             type="password"
-                            placeholder={t('nuke.dms.passphrasePlaceholder')}
+                            placeholder={t('dms.passphrasePlaceholder')}
                             value={dmsPassphrase}
                             onChange={(e) => setDmsPassphrase(e.target.value)}
                             required
@@ -649,7 +658,7 @@ export default function NukeRoute() {
                         )}
                         <Button type="submit" variant="primary" disabled={!dmsPassphrase}>
                           <Clock className="h-4 w-4 mr-2" />
-                          {t('nuke.dms.resetBtn')}
+                          {t('dms.resetBtn')}
                         </Button>
                       </form>
                     </Card>
@@ -657,11 +666,11 @@ export default function NukeRoute() {
                     {/* Warrant Canary */}
                     <Card>
                       <CardHeader
-                        title={t('nuke.dms.canaryTitle')}
-                        description={t('nuke.dms.canaryUpdated')}
+                        title={t('dms.canaryTitle')}
+                        description={t('dms.canaryUpdated')}
                         actions={
                           <Badge tone="success" mono>
-                            {t('nuke.dms.canaryValid')}
+                            {t('dms.canaryValid')}
                           </Badge>
                         }
                       />
@@ -684,10 +693,10 @@ FISA court orders, or requests demanding backdoors.
                       title={
                         <span className="flex items-center gap-2 text-danger">
                           <Skull className="h-5 w-5" />
-                          {t('nuke.dms.emergencyTitle')}
+                          {t('dms.emergencyTitle')}
                         </span>
                       }
-                      description={t('nuke.dms.emergencyDesc')}
+                      description={t('dms.emergencyDesc')}
                       actions={
                         <Button
                           variant="danger"
@@ -698,7 +707,7 @@ FISA court orders, or requests demanding backdoors.
                             setPurgeError(null);
                           }}
                         >
-                          {t('nuke.dms.emergencyBtn')}
+                          {t('dms.emergencyBtn')}
                         </Button>
                       }
                     />
@@ -713,25 +722,25 @@ FISA court orders, or requests demanding backdoors.
         <Dialog
           open={requestModalOpen}
           onOpenChange={setRequestModalOpen}
-          title={t('nuke.dualAuth.requestModal.title')}
-          description={t('nuke.dualAuth.requestModal.description')}
+          title={t('dualAuth.requestModal.title')}
+          description={t('dualAuth.requestModal.description')}
           footer={
             <div className="flex items-center gap-2">
               <Button variant="ghost" onClick={() => setRequestModalOpen(false)}>
-                {t('nuke.dualAuth.requestModal.cancel')}
+                {t('dualAuth.requestModal.cancel')}
               </Button>
               <Button
                 variant="danger"
                 onClick={handleRequestSubmit}
                 disabled={reqConfirmation.trim() !== 'CONFIRM DESTRUCTION' || !reqTargetId.trim()}
               >
-                {t('nuke.dualAuth.requestModal.submit')}
+                {t('dualAuth.requestModal.submit')}
               </Button>
             </div>
           }
         >
           <form onSubmit={handleRequestSubmit} className="flex flex-col gap-4 py-2">
-            <FormField label={t('nuke.dualAuth.requestModal.targetType')} required>
+            <FormField label={t('dualAuth.requestModal.targetType')} required>
               <Select
                 label="Target Scope"
                 value={reqTargetType}
@@ -743,7 +752,7 @@ FISA court orders, or requests demanding backdoors.
               />
             </FormField>
 
-            <FormField label={t('nuke.dualAuth.requestModal.targetId')} required>
+            <FormField label={t('dualAuth.requestModal.targetId')} required>
               <Input
                 placeholder="e.g. org-target-1"
                 value={reqTargetId}
@@ -753,7 +762,7 @@ FISA court orders, or requests demanding backdoors.
               />
             </FormField>
 
-            <FormField label={t('nuke.dualAuth.requestModal.comment')}>
+            <FormField label={t('dualAuth.requestModal.comment')}>
               <Input
                 placeholder="Administrative reason or ticket reference..."
                 value={reqComment}
@@ -762,7 +771,7 @@ FISA court orders, or requests demanding backdoors.
             </FormField>
 
             <FormField
-              label={t('nuke.dualAuth.requestModal.confirmation')}
+              label={t('dualAuth.requestModal.confirmation')}
               hint="Type CONFIRM DESTRUCTION in all caps"
               error={reqError}
               required
@@ -781,18 +790,18 @@ FISA court orders, or requests demanding backdoors.
         <Dialog
           open={Boolean(approveTarget)}
           onOpenChange={(open) => !open && setApproveTarget(null)}
-          title={t('nuke.dualAuth.approveModal.title')}
+          title={t('dualAuth.approveModal.title')}
           footer={
             <div className="flex items-center gap-2">
               <Button variant="ghost" onClick={() => setApproveTarget(null)}>
-                {t('nuke.dualAuth.approveModal.cancel')}
+                {t('dualAuth.approveModal.cancel')}
               </Button>
               <Button
                 variant="danger"
                 onClick={handleApproveSubmit}
                 disabled={!approveCertified || Boolean(approveTargetHold)}
               >
-                {t('nuke.dualAuth.approveModal.execute')}
+                {t('dualAuth.approveModal.execute')}
               </Button>
             </div>
           }
@@ -800,32 +809,32 @@ FISA court orders, or requests demanding backdoors.
           <div className="flex flex-col gap-4 py-2">
             <div className="p-3 rounded bg-danger-subtle/30 border border-danger/40 text-caption text-danger flex items-start gap-2">
               <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
-              <span>{t('nuke.dualAuth.approveModal.warning')}</span>
+              <span>{t('dualAuth.approveModal.warning')}</span>
             </div>
 
             {approveTargetHold && (
               <div className="p-3 rounded bg-warning-subtle/30 border border-warning/40 text-caption text-warning flex items-start gap-2">
                 <ShieldAlert className="h-5 w-5 shrink-0 mt-0.5" />
                 <span>
-                  {t('nuke.dualAuth.approveModal.holdBlocked')} ({approveTargetHold.reason})
+                  {t('dualAuth.approveModal.holdBlocked')} ({approveTargetHold.reason})
                 </span>
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-3 text-caption">
               <div>
-                <span className="text-subtle block">{t('nuke.dualAuth.approveModal.initiatorLabel')}</span>
+                <span className="text-subtle block">{t('dualAuth.approveModal.initiatorLabel')}</span>
                 <span className="font-mono text-content font-semibold">{approveTarget?.initiator_user_id}</span>
               </div>
               <div>
-                <span className="text-subtle block">{t('nuke.dualAuth.approveModal.targetLabel')}</span>
+                <span className="text-subtle block">{t('dualAuth.approveModal.targetLabel')}</span>
                 <span className="font-mono text-content font-semibold">
                   {approveTarget?.target_id} ({approveTarget?.target_type})
                 </span>
               </div>
             </div>
 
-            <FormField label={t('nuke.dualAuth.approveModal.commentLabel')}>
+            <FormField label={t('dualAuth.approveModal.commentLabel')}>
               <Input
                 placeholder="Approval rationale..."
                 value={approveComment}
@@ -840,7 +849,7 @@ FISA court orders, or requests demanding backdoors.
                 onChange={(e) => setApproveCertified(e.target.checked)}
                 className="mt-1"
               />
-              <span className="text-caption text-content">{t('nuke.dualAuth.approveModal.confirmationPrompt')}</span>
+              <span className="text-caption text-content">{t('dualAuth.approveModal.confirmationPrompt')}</span>
             </label>
 
             {approveError && <p className="text-caption text-danger">{approveError}</p>}
@@ -904,25 +913,25 @@ FISA court orders, or requests demanding backdoors.
         <Dialog
           open={imposeModalOpen}
           onOpenChange={setImposeModalOpen}
-          title={t('nuke.legalHolds.imposeModal.title')}
-          description={t('nuke.legalHolds.imposeModal.description')}
+          title={t('legalHolds.imposeModal.title')}
+          description={t('legalHolds.imposeModal.description')}
           footer={
             <div className="flex items-center gap-2">
               <Button variant="ghost" onClick={() => setImposeModalOpen(false)}>
-                {t('nuke.legalHolds.imposeModal.cancel')}
+                {t('legalHolds.imposeModal.cancel')}
               </Button>
               <Button
                 variant="primary"
                 onClick={handleImposeSubmit}
                 disabled={!imposeOrgId.trim() || !imposeReason.trim()}
               >
-                {t('nuke.legalHolds.imposeModal.submit')}
+                {t('legalHolds.imposeModal.submit')}
               </Button>
             </div>
           }
         >
           <form onSubmit={handleImposeSubmit} className="flex flex-col gap-4 py-2">
-            <FormField label={t('nuke.legalHolds.imposeModal.organizationId')} required>
+            <FormField label={t('legalHolds.imposeModal.organizationId')} required>
               <Input
                 placeholder="e.g. org-enterprise-target"
                 value={imposeOrgId}
@@ -933,13 +942,13 @@ FISA court orders, or requests demanding backdoors.
             </FormField>
 
             <FormField
-              label={t('nuke.legalHolds.imposeModal.reason')}
-              hint={t('nuke.legalHolds.imposeModal.reasonHint')}
+              label={t('legalHolds.imposeModal.reason')}
+              hint={t('legalHolds.imposeModal.reasonHint')}
               error={imposeError}
               required
             >
               <Input
-                placeholder={t('nuke.legalHolds.imposeModal.reasonPlaceholder')}
+                placeholder={t('legalHolds.imposeModal.reasonPlaceholder')}
                 value={imposeReason}
                 onChange={(e) => setImposeReason(e.target.value)}
                 required
@@ -948,35 +957,63 @@ FISA court orders, or requests demanding backdoors.
           </form>
         </Dialog>
 
+        {/* Reject a request: named, asked first, and the refusal stays visible */}
+        <ConfirmDialog
+          open={Boolean(rejectTarget)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setRejectTarget(null);
+              setRejectError(null);
+            }
+          }}
+          title={t('dualAuth.rejectTitle')}
+          description={t('dualAuth.rejectDesc')}
+          confirmLabel={t('dualAuth.actions.reject')}
+          tone="danger"
+          busy={rejectDestructionMutation.isPending}
+          onConfirm={handleConfirmReject}
+        >
+          {rejectError && (
+            <p role="alert" className="text-caption text-danger">
+              {rejectError}
+            </p>
+          )}
+        </ConfirmDialog>
+
         {/* MODAL 5: Release Legal Hold Modal */}
         <Dialog
           open={Boolean(releaseTarget)}
           onOpenChange={(open) => !open && setReleaseTarget(null)}
-          title={t('nuke.legalHolds.releaseModal.title')}
-          description={t('nuke.legalHolds.releaseModal.description')}
+          title={t('legalHolds.releaseModal.title')}
+          description={t('legalHolds.releaseModal.description')}
           footer={
             <div className="flex items-center gap-2">
               <Button variant="ghost" onClick={() => setReleaseTarget(null)}>
-                {t('nuke.legalHolds.releaseModal.cancel')}
+                {t('legalHolds.releaseModal.cancel')}
               </Button>
               <Button variant="danger" onClick={handleReleaseConfirm}>
-                {t('nuke.legalHolds.releaseModal.confirm')}
+                {t('legalHolds.releaseModal.confirm')}
               </Button>
             </div>
           }
         >
           {releaseTarget && (
             <div className="py-2 text-caption flex flex-col gap-2">
+              {releaseError && (
+                <p role="alert" className="text-danger">
+                  {releaseError}
+                </p>
+              )}
               <div className="flex justify-between py-1 border-b border-border">
-                <span className="text-subtle">Hold ID</span>
+                <span className="text-subtle">{t('legalHolds.releaseModal.holdId')}</span>
                 <CodeText>{releaseTarget.id}</CodeText>
               </div>
               <div className="flex justify-between py-1 border-b border-border">
-                <span className="text-subtle">Organization</span>
+                <span className="text-subtle">{t('legalHolds.releaseModal.organization')}</span>
                 <span className="font-mono font-semibold text-content">{releaseTarget.organization_id}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border">
-                <span className="text-subtle">Reason</span>
+                <span className="text-subtle">{t('legalHolds.releaseModal.reason')}</span>
                 <span className="text-content font-medium">{releaseTarget.reason}</span>
               </div>
             </div>
@@ -987,29 +1024,29 @@ FISA court orders, or requests demanding backdoors.
         <Dialog
           open={purgeModalOpen}
           onOpenChange={setPurgeModalOpen}
-          title={t('nuke.dms.emergencyModal.title')}
+          title={t('dms.emergencyModal.title')}
           footer={
             <div className="flex items-center gap-2">
               <Button variant="ghost" onClick={() => setPurgeModalOpen(false)}>
-                {t('nuke.dms.emergencyModal.cancel')}
+                {t('dms.emergencyModal.cancel')}
               </Button>
               <Button
                 variant="danger"
                 onClick={handlePurgeSubmit}
                 disabled={purgePhrase !== 'DESTROY EVERYTHING PERMANENTLY' || !purgePassword}
               >
-                {t('nuke.dms.emergencyModal.confirm')}
+                {t('dms.emergencyModal.confirm')}
               </Button>
             </div>
           }
         >
           <form onSubmit={handlePurgeSubmit} className="flex flex-col gap-4 py-2">
             <div className="p-3 bg-danger-subtle/30 border border-danger/50 rounded text-caption text-danger font-bold">
-              {t('nuke.dms.emergencyModal.warning')}
+              {t('dms.emergencyModal.warning')}
             </div>
 
             <FormField
-              label={t('nuke.dms.emergencyModal.phrasePrompt')}
+              label={t('dms.emergencyModal.phrasePrompt')}
               hint="Type DESTROY EVERYTHING PERMANENTLY in all caps"
               required
             >
@@ -1021,7 +1058,7 @@ FISA court orders, or requests demanding backdoors.
               />
             </FormField>
 
-            <FormField label={t('nuke.dms.emergencyModal.passwordPrompt')} error={purgeError} required>
+            <FormField label={t('dms.emergencyModal.passwordPrompt')} error={purgeError} required>
               <Input
                 type="password"
                 placeholder="Super-admin password..."

@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations, renderUI } from '../../test/harness';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -9,7 +9,7 @@ import NukeRoute from './NukeRoute';
 import { ShellProvider } from '../shell';
 import { createQueryClient } from '../../services/queries/client';
 import type { DualAuthRequest, LegalHold, NukeGovernanceOverview } from '../../services/types';
-import '../../i18n';
+import i18n from '../../i18n';
 
 const mockOverview: NukeGovernanceOverview = {
   armed: true,
@@ -185,7 +185,7 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     });
 
     // Open Request Destruction modal
-    const reqBtn = screen.getByRole('button', { name: /Request Destruction/i });
+    const reqBtn = screen.getByRole('button', { name: /request erasure/i });
     await user.click(reqBtn);
 
     // Fill form
@@ -284,8 +284,9 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     });
 
     // Click Reject Request
-    const rejectBtn = screen.getByRole('button', { name: /Reject Request/i });
+    const rejectBtn = screen.getByRole('button', { name: /reject the request/i });
     await user.click(rejectBtn);
+    await user.click(await screen.findByRole('button', { name: /reject the request/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/Rejected/i)).toBeInTheDocument();
@@ -354,16 +355,18 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     });
 
     // Release existing hold hold-201
-    const releaseBtn = screen.getAllByRole('button', { name: /Release Hold/i })[0];
+    const releaseBtn = screen.getAllByRole('button', { name: /remove the legal hold/i })[0];
     if (!releaseBtn) throw new Error('expected at least one Release Hold button');
     await user.click(releaseBtn);
 
     // Confirm release modal
-    const confirmReleaseBtn = screen.getByRole('button', { name: /Confirm Release/i });
+    const confirmReleaseBtn = within(await screen.findByRole('dialog')).getByRole('button', {
+      name: /remove the legal hold/i
+    });
     await user.click(confirmReleaseBtn);
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /Confirm Release/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
   });
 
@@ -406,5 +409,73 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     await waitFor(() => {
       expect(screen.getByText(/Heartbeat confirmed. Global wipe timer reset successfully./i)).toBeInTheDocument();
     });
+  });
+
+  it('12. Rejecting a request asks first in a dialog, and window.confirm is never called', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input);
+      const method = init?.method || 'GET';
+      if (url.includes('/nuke/status')) return jsonResponse(mockOverview);
+      if (url.includes('/nuke/legal-hold')) return jsonResponse({ legal_holds: holdsState });
+      if (url.includes('/nuke/dual-auth/reject/') && method === 'POST') return jsonResponse({ success: true });
+      if (url.includes('/nuke/dual-auth')) return jsonResponse({ authorizations: authState });
+      return jsonResponse({});
+    });
+
+    renderNuke();
+    await waitFor(() => expect(screen.getByText('org-shred-target')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /reject the request/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Reject this erasure request?')).toBeInTheDocument();
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it('13. A legal hold that is not removed says so inline, and window.alert is never called', async () => {
+    const user = userEvent.setup();
+    const alertSpy = vi.fn();
+    vi.stubGlobal('alert', alertSpy);
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input);
+      const method = init?.method || 'GET';
+      if (method !== 'GET') return jsonResponse({ error: 'database unavailable' }, 500);
+      if (url.includes('/nuke/status')) return jsonResponse(mockOverview);
+      if (url.includes('/nuke/legal-hold')) return jsonResponse({ legal_holds: holdsState });
+      if (url.includes('/nuke/dual-auth')) return jsonResponse({ authorizations: authState });
+      return jsonResponse({});
+    });
+
+    renderNuke();
+    await user.click(await screen.findByRole('tab', { name: /Legal Holds & Preservation/i }));
+    const releaseButton = (await screen.findAllByRole('button', { name: /remove the legal hold/i }))[0];
+    if (!releaseButton) throw new Error('expected a release button');
+    await user.click(releaseButton);
+    const releaseDialog = await screen.findByRole('dialog');
+    await user.click(within(releaseDialog).getByRole('button', { name: /remove the legal hold/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The legal hold was not removed. Try again.');
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('14. Italian keeps CONFIRM DESTRUCTION in English inside the request dialog', async () => {
+    const user = userEvent.setup();
+    await i18n.changeLanguage('it');
+    try {
+      vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+        const url = String(input);
+        if (url.includes('/nuke/status')) return jsonResponse(mockOverview);
+        if (url.includes('/nuke/legal-hold')) return jsonResponse({ legal_holds: holdsState });
+        if (url.includes('/nuke/dual-auth')) return jsonResponse({ authorizations: authState });
+        return jsonResponse({});
+      });
+      renderNuke();
+      await user.click(await screen.findByRole('button', { name: /richiedi la cancellazione/i }));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getAllByText(/CONFIRM DESTRUCTION/).length).toBeGreaterThan(0);
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 });
