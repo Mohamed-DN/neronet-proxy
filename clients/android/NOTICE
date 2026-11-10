@@ -1,0 +1,44 @@
+NeroNet Android client - third-party notices
+
+This file lists the software NeroNet Android ships or builds from. The full
+licence texts are in the app under Settings > Open source licences.
+
+NeroNet
+  Licence: GNU Affero General Public License v3.0 (AGPL-3.0).
+  Licence text: the repository LICENSE file, shipped as agpl-3.0-neronet.txt.
+  Copyright line in the licence text: Copyright (C) 2007 Free Software Foundation, Inc.
+
+WireGuard tunnel library for Android (com.wireguard.android:tunnel)
+  Licence: Apache License 2.0.
+  Licence text: apache-2.0.txt.
+  Copyright: Copyright © 2017-2025 WireGuard LLC. All Rights Reserved. (as found in the library sources)
+
+wireguard-go, inside the tunnel library
+  Licence: MIT License.
+  Licence text: mit-wireguard-go.txt.
+  Copyright: the licence text as shipped in the module carries no copyright holder line; the
+  WireGuard authors hold the copyright (see the module sources).
+
+Go standard library, inside the tunnel library
+  Licence: BSD 3-Clause License.
+  Licence text: bsd-3-go.txt.
+  Copyright: Copyright 2009 The Go Authors.
+
+AndroidX and Jetpack Compose
+  Licence: Apache License 2.0. Licence text: apache-2.0.txt.
+
+Kotlin and kotlinx.coroutines
+  Licence: Apache License 2.0. Licence text: apache-2.0.txt.
+
+ZXing and ZXing Android Embedded
+  Licence: Apache License 2.0. Licence text: apache-2.0.txt.
+
+Inter typeface
+  Licence: SIL Open Font License 1.1.
+  Licence text: OFL-Inter.txt.
+  Copyright: Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+
+No source code from other VPN apps is included.
+
+Source adapted from
+  (none)
