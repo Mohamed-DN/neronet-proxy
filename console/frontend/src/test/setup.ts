@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeAll } from 'vitest';
 
+import { allResources } from '../i18n/allResources';
 import { initI18n } from '../i18n';
 
 /*
@@ -54,7 +55,8 @@ beforeAll(() => {
     });
   }
 
-  initI18n('en');
+  // Every namespace is loaded up front so tests never wait on a fetch.
+  initI18n('en', { resources: allResources });
 });
 
 afterEach(() => {

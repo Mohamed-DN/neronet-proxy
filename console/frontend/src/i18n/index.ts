@@ -3,6 +3,8 @@ import { initReactI18next } from 'react-i18next';
 
 import { LANGUAGE_STORAGE_KEY } from '../ui/tokens';
 
+import { lazyLocaleBackend } from './backend';
+
 export const LANGUAGES = ['en', 'it'] as const;
 export type Language = (typeof LANGUAGES)[number];
 export const DEFAULT_LANGUAGE: Language = 'en';
@@ -11,19 +13,19 @@ type LocaleFile = Record<string, unknown>;
 
 /*
  * Namespaces follow the areas of the console. `ui` belongs to the primitives
- * and is loaded everywhere; `chrome` is the shell around the pages. Every file
- * in locales/<lang>/ is a namespace named after the file, so a page area adds
- * its keys by adding a file and never edits this module. A key a page namespace
- * lacks falls back to `ui`.
+ * and `chrome` is the shell around the pages, which includes the sign-in strings
+ * under `login`. Both are bundled with the entry. Every other file in
+ * locales/<lang>/ is a namespace named after the file and is fetched the first
+ * time a page asks for it (see backend.ts), so a page area adds its keys by
+ * adding a file and never edits this module. A key a page namespace lacks falls
+ * back to `ui`.
  */
-const enFiles = import.meta.glob('./locales/en/*.json', { eager: true, import: 'default' }) as Record<
-  string,
-  LocaleFile
->;
-const itFiles = import.meta.glob('./locales/it/*.json', { eager: true, import: 'default' }) as Record<
-  string,
-  LocaleFile
->;
+export const EAGER_NAMESPACES = ['chrome', 'ui'] as const;
+
+const eagerFiles = import.meta.glob('./locales/{en,it}/{chrome,ui}.json', {
+  eager: true,
+  import: 'default'
+}) as Record<string, LocaleFile>;
 
 function namespaceOf(path: string): string {
   return path
@@ -32,16 +34,16 @@ function namespaceOf(path: string): string {
     .replace(/\.json$/, '');
 }
 
-function toResources(files: Record<string, LocaleFile>): Record<string, LocaleFile> {
-  return Object.fromEntries(Object.entries(files).map(([path, json]) => [namespaceOf(path), json]));
+const eagerResources = { en: {} as Record<string, LocaleFile>, it: {} as Record<string, LocaleFile> };
+for (const [path, json] of Object.entries(eagerFiles)) {
+  const lng = path.split('/')[2] as Language;
+  eagerResources[lng][namespaceOf(path)] = json;
 }
 
-export const NAMESPACES: string[] = Object.keys(enFiles).map(namespaceOf).sort();
-
-const resources = {
-  en: toResources(enFiles),
-  it: toResources(itFiles)
-};
+// Every namespace, from the names of the English files. The paths alone are
+// needed here, so no locale file is loaded to build this list.
+const namespaceFiles = import.meta.glob('./locales/en/*.json');
+export const NAMESPACES: string[] = Object.keys(namespaceFiles).map(namespaceOf).sort();
 
 export function isLanguage(value: unknown): value is Language {
   return typeof value === 'string' && (LANGUAGES as readonly string[]).includes(value);
@@ -74,13 +76,22 @@ export function syncDocumentLanguage(language: string): void {
   }
 }
 
-export function initI18n(language: Language = detectLanguage()) {
+export interface InitOptions {
+  /** Every namespace up front, for tests. Production fetches the rest on demand. */
+  resources?: Record<Language, Record<string, LocaleFile>>;
+}
+
+export function initI18n(language: Language = detectLanguage(), options: InitOptions = {}) {
   if (!i18n.isInitialized) {
-    void i18n.use(initReactI18next).init({
-      resources,
+    const eagerOnly = options.resources === undefined;
+    const instance = i18n.use(initReactI18next);
+    if (eagerOnly) instance.use(lazyLocaleBackend);
+    void instance.init({
+      resources: options.resources ?? eagerResources,
       lng: language,
       fallbackLng: DEFAULT_LANGUAGE,
-      ns: NAMESPACES,
+      ns: eagerOnly ? [...EAGER_NAMESPACES] : NAMESPACES,
+      partialBundledLanguages: eagerOnly,
       defaultNS: 'ui',
       fallbackNS: 'ui',
       interpolation: { escapeValue: false },
