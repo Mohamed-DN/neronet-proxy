@@ -1,12 +1,14 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clearSession, storeSession } from '../../services/authToken';
 import { createQueryClient } from '../../services/queries';
+import { setLanguage } from '../../i18n';
 import { expectNoAxeViolations, renderUI } from '../../test/harness';
+import type { ThemeName } from '../../ui/tokens';
 import { ShellProvider } from '../shell';
 import NodesRoute from './NodesRoute';
 
@@ -25,6 +27,7 @@ const mockNodes = [
     overlay_ipv4: '10.200.0.1',
     overlay_ipv6: 'fd00:beef::1',
     role: 'EXIT_BRIDGE',
+    device_kind: 'mesh',
     country_code: 'IT',
     is_healthy: true,
     is_quarantined: false,
@@ -33,7 +36,7 @@ const mockNodes = [
       disk_encrypted: true,
       firewall_active: true,
       os_name: 'Linux',
-      os_version: '6.6.0-sovereign',
+      os_version: '6.6.0',
       is_rootless: true,
       measured_at: '2026-09-24T07:00:00Z'
     },
@@ -48,10 +51,11 @@ const mockNodes = [
     overlay_ipv4: '10.200.0.2',
     overlay_ipv6: 'fd00:beef::2',
     role: 'RELAY',
+    device_kind: 'mesh',
     country_code: 'DE',
     is_healthy: true,
     is_quarantined: false,
-    posture_status: 'unverified', // Unverified posture truthfulness
+    posture_status: 'unverified',
     posture_checks: {
       disk_encrypted: null,
       firewall_active: null,
@@ -60,7 +64,7 @@ const mockNodes = [
       is_rootless: null,
       measured_at: null
     },
-    risk_score: null, // Unmeasured risk score truthfulness
+    risk_score: null,
     public_key: 'WGPubKeyBerlin2222222222222222222222222222222=',
     last_heartbeat: new Date().toISOString()
   },
@@ -71,25 +75,26 @@ const mockNodes = [
     overlay_ipv4: '10.200.0.3',
     overlay_ipv6: 'fd00:beef::3',
     role: 'CLIENT_ORIGIN',
+    device_kind: 'profile',
     country_code: 'FR',
     is_healthy: false,
-    is_quarantined: true, // Quarantined node
+    is_quarantined: true,
     quarantine_reason: 'Detected anomalous egress burst',
     posture_status: 'non_compliant',
     posture_checks: {
       disk_encrypted: false,
-      firewall_active: true,
+      firewall_active: false,
       os_name: 'Linux',
       os_version: '6.1.0',
       is_rootless: false
     },
     risk_score: 85,
     public_key: 'WGPubKeyParis33333333333333333333333333333333=',
-    last_heartbeat: new Date(Date.now() - 3600_000).toISOString() // 1 hour ago (offline)
+    last_heartbeat: new Date(Date.now() - 3600_000).toISOString()
   }
 ];
 
-function renderNodes(initialEntries = ['/nodes']) {
+function renderNodes(initialEntries = ['/nodes'], theme: ThemeName = 'light') {
   const queryClient = createQueryClient();
   queryClient.setDefaultOptions({
     queries: { retry: false, refetchOnWindowFocus: false }
@@ -105,276 +110,261 @@ function renderNodes(initialEntries = ['/nodes']) {
           </Routes>
         </MemoryRouter>
       </ShellProvider>
-    </QueryClientProvider>
+    </QueryClientProvider>,
+    { theme }
   );
 
   return { queryClient, ...result };
 }
 
-describe('WP-405: NodesRoute (Sovereign Nodes Fleet Management)', () => {
+/** The fleet list only, so names in the open detail dialog do not match twice. */
+function listTable(): HTMLElement {
+  return screen.getByRole('table');
+}
+
+function fleetFetch(nodes: unknown[]) {
+  return vi.fn(async (url: string) => (url === '/api/nodes' ? jsonResponse({ nodes }) : jsonResponse({})));
+}
+
+describe('Devices page', () => {
   beforeEach(() => {
     localStorage.clear();
     storeSession({ token: 'test-token' });
-
     vi.stubGlobal(
       'WebSocket',
       class {
-        onopen: (() => void) | null = null;
-        onclose: (() => void) | null = null;
-        onmessage: (() => void) | null = null;
         close() {}
+        send() {}
+        addEventListener() {}
+        removeEventListener() {}
       }
     );
   });
 
-  afterEach(() => {
-    clearSession();
+  afterEach(async () => {
     vi.unstubAllGlobals();
+    clearSession();
+    await setLanguage('en');
+    localStorage.clear();
   });
 
-  it('1. Truthfulness & Posture: renders fleet nodes, unverified posture as not-measured, and null risk score as em-dash', async () => {
+  it('lists devices in plain words, with checks not confirmed and an em dash for an unscored risk', async () => {
+    vi.stubGlobal('fetch', fleetFetch(mockNodes));
+
+    renderNodes();
+
+    expect(screen.getByRole('heading', { name: 'Devices', level: 1 })).toBeInTheDocument();
+    await within(await screen.findByRole('table')).findByText('Rome Gateway Alpha');
+    expect(screen.getByText('Checks passed')).toBeInTheDocument();
+    expect(screen.getByText('Not confirmed')).toBeInTheDocument();
+    expect(screen.getByText('Checks failed')).toBeInTheDocument();
+    const berlin = within(listTable()).getByText('Berlin Relay Bravo').closest('tr') as HTMLElement;
+    expect(within(berlin).getByText('—')).toBeInTheDocument();
+  });
+
+  it('reads Unknown type when a device has no role', async () => {
+    const noRole = { ...mockNodes[0], id: 'svrn-node-norole', name: 'No Role Delta', role: undefined };
+    vi.stubGlobal('fetch', fleetFetch([noRole]));
+
+    renderNodes();
+
+    await waitFor(() => {
+      expect(within(listTable()).getByText('No Role Delta')).toBeInTheDocument();
+    });
+    expect(within(listTable()).getByText('Unknown type')).toBeInTheDocument();
+  });
+
+  it('filters by search and by block status', async () => {
+    vi.stubGlobal('fetch', fleetFetch(mockNodes));
+
+    const user = userEvent.setup();
+    renderNodes();
+
+    await waitFor(() => {
+      expect(within(listTable()).getByText('Rome Gateway Alpha')).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByRole('textbox'), 'Berlin');
+    expect(within(listTable()).getByText('Berlin Relay Bravo')).toBeInTheDocument();
+    expect(within(listTable()).queryByText('Rome Gateway Alpha')).not.toBeInTheDocument();
+
+    await user.clear(screen.getByRole('textbox'));
+    await user.click(screen.getByRole('button', { name: 'Blocked' }));
+    expect(within(listTable()).getByText('Paris Client Charlie')).toBeInTheDocument();
+    expect(within(listTable()).queryByText('Berlin Relay Bravo')).not.toBeInTheDocument();
+  });
+
+  it('filters with no match show FilteredEmptyState with Clear filters', async () => {
+    vi.stubGlobal('fetch', fleetFetch(mockNodes));
+
+    const user = userEvent.setup();
+    renderNodes();
+
+    await waitFor(() => {
+      expect(within(listTable()).getByText('Rome Gateway Alpha')).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByRole('textbox'), 'no such device');
+    expect(screen.getByText('No devices match these filters')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(within(listTable()).getByText('Rome Gateway Alpha')).toBeInTheDocument();
+  });
+
+  it('says Not measured when the test did not measure a response time, not a number', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
-        if (url === '/api/nodes') {
-          return jsonResponse({ nodes: mockNodes });
+        if (url === '/api/nodes') return jsonResponse({ nodes: [mockNodes[0]] });
+        if (url.endsWith('/api/nodes/svrn-node-rome/action')) {
+          return jsonResponse({
+            success: true,
+            result: { rtt_ms: null, jitter_ms: null, measured: false, status: 'active' }
+          });
         }
+        if (url.endsWith('/api/nodes/svrn-node-rome')) return jsonResponse({ node: mockNodes[0] });
         return jsonResponse({});
-      }) as unknown as typeof fetch
+      })
     );
-
-    const { container } = renderNodes(['/nodes']);
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sovereign Nodes' })).toBeInTheDocument();
-      expect(screen.getByText('Rome Gateway Alpha')).toBeInTheDocument();
-      expect(screen.getByText('Berlin Relay Bravo')).toBeInTheDocument();
-      expect(screen.getByText('Paris Client Charlie')).toBeInTheDocument();
-    });
-
-    // Check KPI counts: Total 3, Reachable 2, Quarantined 1, Unverified 1
-    expect(screen.getByText('3')).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
-
-    // Check posture statuses
-    expect(screen.getByText('Verified Compliant')).toBeInTheDocument();
-    expect(screen.getByText('Unverified')).toBeInTheDocument();
-    expect(screen.getByText('Non-Compliant')).toBeInTheDocument();
-
-    // Check truthfulness: unverified node must have data-state="not-measured"
-    const notMeasuredElements = container.querySelectorAll('[data-state="not-measured"]');
-    expect(notMeasuredElements.length).toBeGreaterThan(0);
-
-    // Axe accessibility compliance
-    await expectNoAxeViolations(container);
-  });
-
-  it('2. Search & Filtering: filters nodes by search query and category filters', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string) => {
-        if (url === '/api/nodes') {
-          return jsonResponse({ nodes: mockNodes });
-        }
-        return jsonResponse({});
-      }) as unknown as typeof fetch
-    );
-
-    const user = userEvent.setup();
-    renderNodes(['/nodes']);
-
-    await waitFor(() => {
-      expect(screen.getByText('Rome Gateway Alpha')).toBeInTheDocument();
-    });
-
-    // Filter by search text 'berlin'
-    const searchInput = screen.getByPlaceholderText(/Search by hostname/i);
-    await user.type(searchInput, 'berlin');
-
-    expect(screen.getByText('Berlin Relay Bravo')).toBeInTheDocument();
-    expect(screen.queryByText('Rome Gateway Alpha')).not.toBeInTheDocument();
-    expect(screen.queryByText('Paris Client Charlie')).not.toBeInTheDocument();
-
-    // Clear search
-    await user.clear(searchInput);
-
-    // Click 'Quarantined' filter button
-    const quarantinedBtn = screen.getByRole('button', { name: 'Quarantined' });
-    await user.click(quarantinedBtn);
-
-    expect(screen.getByText('Paris Client Charlie')).toBeInTheDocument();
-    expect(screen.queryByText('Rome Gateway Alpha')).not.toBeInTheDocument();
-    expect(screen.queryByText('Berlin Relay Bravo')).not.toBeInTheDocument();
-  });
-
-  it('3. Node Detail & Diagnostics: deep-links to /nodes/:id, renders hardware attestation and tests ping', async () => {
-    const fetchSpy = vi.fn(async (url: string, _init?: RequestInit) => {
-      if (url === '/api/nodes') {
-        return jsonResponse({ nodes: mockNodes });
-      }
-      if (url.includes('/api/nodes/svrn-node-rome/action')) {
-        return jsonResponse({
-          success: true,
-          result: { rtt_ms: 12.4, jitter_ms: 0.9, status: 'active' }
-        });
-      }
-      if (url.includes('/api/nodes/svrn-node-rome')) {
-        return jsonResponse({ node: mockNodes[0] });
-      }
-      return jsonResponse({});
-    });
-    vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
-
-    const user = userEvent.setup();
-    const { container } = renderNodes(['/nodes/svrn-node-rome']);
-
-    // Detail dialog should open
-    await waitFor(() => {
-      expect(screen.getAllByText('Rome Gateway Alpha').length).toBeGreaterThan(0);
-      expect(screen.getByText('Zero-Trust Hardware Attestation')).toBeInTheDocument();
-      expect(screen.getByText('Encrypted')).toBeInTheDocument();
-      expect(screen.getAllByText('Active').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText('Yes (Rootless)')).toBeInTheDocument();
-    });
-
-    // Test ping diagnostics
-    const pingBtn = screen.getByRole('button', { name: /Ping Peer/i });
-    await user.click(pingBtn);
-
-    await waitFor(() => {
-      expect(screen.getByText(/RTT: 12.4ms/i)).toBeInTheDocument();
-    });
-
-    await expectNoAxeViolations(container);
-  });
-
-  it('4. Quarantine and Lift Quarantine actions trigger control plane mutations', async () => {
-    let quarantinedState = false;
-    const fetchSpy = vi.fn(async (url: string, _init?: RequestInit) => {
-      if (url === '/api/nodes') {
-        return jsonResponse({
-          nodes: [
-            {
-              ...mockNodes[0],
-              is_quarantined: quarantinedState
-            }
-          ]
-        });
-      }
-      if (url.includes('/api/nodes/svrn-node-rome/quarantine')) {
-        quarantinedState = true;
-        return jsonResponse({ success: true, result: { is_quarantined: true } });
-      }
-      if (url.includes('/api/nodes/svrn-node-rome/unquarantine')) {
-        quarantinedState = false;
-        return jsonResponse({ success: true, result: { is_quarantined: false } });
-      }
-      if (url.includes('/api/nodes/svrn-node-rome')) {
-        return jsonResponse({
-          node: {
-            ...mockNodes[0],
-            is_quarantined: quarantinedState
-          }
-        });
-      }
-      return jsonResponse({});
-    });
-    vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
 
     const user = userEvent.setup();
     renderNodes(['/nodes/svrn-node-rome']);
 
+    const dialog = await screen.findByRole('dialog');
+    await user.click(await within(dialog).findByRole('button', { name: 'Test connection' }));
+
     await waitFor(() => {
-      expect(screen.getAllByText('Rome Gateway Alpha').length).toBeGreaterThan(0);
+      expect(within(dialog).getByText(/Not measured/)).toBeInTheDocument();
     });
+    expect(within(dialog).queryByText(/Replied in/)).not.toBeInTheDocument();
+  });
 
-    // Click Quarantine Node button in detail view
-    const quarantineActionBtn = screen.getByRole('button', { name: 'Quarantine Node' });
-    await user.click(quarantineActionBtn);
+  it('ping failure shows the inline alert that says what to do', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/nodes') return jsonResponse({ nodes: [mockNodes[0]] });
+        if (url.endsWith('/api/nodes/svrn-node-rome/action')) {
+          return jsonResponse({ error: 'unreachable' }, 502);
+        }
+        if (url.endsWith('/api/nodes/svrn-node-rome')) return jsonResponse({ node: mockNodes[0] });
+        return jsonResponse({});
+      })
+    );
 
-    // Confirm dialog appears
-    expect(screen.getByText('Quarantine Rationale')).toBeInTheDocument();
-    const reasonInput = screen.getByPlaceholderText('Manual security quarantine');
-    await user.type(reasonInput, 'Testing security response');
+    const user = userEvent.setup();
+    renderNodes(['/nodes/svrn-node-rome']);
 
-    // Click confirm in dialog
-    const confirmQuarantineBtn = screen.getByRole('button', { name: 'Confirm Quarantine' });
-    await user.click(confirmQuarantineBtn);
+    const dialog = await screen.findByRole('dialog');
+    await user.click(await within(dialog).findByRole('button', { name: 'Test connection' }));
+
+    const alert = await within(dialog).findByRole('alert');
+    expect(alert).toHaveTextContent('Test failed: the device did not respond. Try again.');
+  });
+
+  it('block asks for a reason, then sends the request', async () => {
+    let blocked = false;
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (url === '/api/nodes') return jsonResponse({ nodes: [{ ...mockNodes[0], is_quarantined: blocked }] });
+      if (url.endsWith('/api/nodes/svrn-node-rome/quarantine')) {
+        blocked = true;
+        return jsonResponse({ success: true });
+      }
+      if (url.endsWith('/api/nodes/svrn-node-rome')) {
+        return jsonResponse({ node: { ...mockNodes[0], is_quarantined: blocked } });
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const user = userEvent.setup();
+    renderNodes(['/nodes/svrn-node-rome']);
+
+    const dialog = await screen.findByRole('dialog');
+    await user.click(await within(dialog).findByRole('button', { name: 'Block device' }));
+
+    const confirm = await screen.findByRole('dialog', { name: 'Block this device?' });
+    await user.type(within(confirm).getByLabelText('Reason (optional)'), 'Testing security response');
+    await user.click(within(confirm).getByRole('button', { name: 'Block device' }));
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
         expect.stringContaining('/nodes/svrn-node-rome/quarantine'),
-        expect.objectContaining({ method: 'POST' })
+        expect.objectContaining({ method: 'POST', body: expect.stringContaining('Testing security response') })
       );
     });
   });
 
-  it('5. Revoke Cryptographic Key triggers confirmation and API deletion', async () => {
-    const fetchSpy = vi.fn(async (url: string, _init?: RequestInit) => {
-      if (url === '/api/nodes') {
-        return jsonResponse({ nodes: [mockNodes[0]] });
-      }
-      if (url.includes('/api/nodes/svrn-node-rome/revoke')) {
-        return jsonResponse({ success: true, message: 'Node revoked successfully' });
-      }
-      if (url.includes('/api/nodes/svrn-node-rome')) {
-        return jsonResponse({ node: mockNodes[0] });
-      }
+  it('revoke sends the localised default reason', async () => {
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (url === '/api/nodes') return jsonResponse({ nodes: [mockNodes[0]] });
+      if (url.endsWith('/api/nodes/svrn-node-rome/revoke')) return jsonResponse({ success: true });
+      if (url.endsWith('/api/nodes/svrn-node-rome')) return jsonResponse({ node: mockNodes[0] });
       return jsonResponse({});
     });
-    vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
+    vi.stubGlobal('fetch', fetchSpy);
 
     const user = userEvent.setup();
     renderNodes(['/nodes/svrn-node-rome']);
 
-    await waitFor(() => {
-      expect(screen.getAllByText('Rome Gateway Alpha').length).toBeGreaterThan(0);
-    });
+    const dialog = await screen.findByRole('dialog');
+    await user.click(await within(dialog).findByRole('button', { name: 'Disconnect and revoke key' }));
 
-    // Click Revoke Cryptographic Key
-    const revokeBtn = screen.getByRole('button', { name: 'Revoke Cryptographic Key' });
-    await user.click(revokeBtn);
-
-    // Confirmation dialog opens
-    expect(screen.getByText('Revoke Node Key')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Are you sure you want to permanently revoke this node's cryptographic key/i)
-    ).toBeInTheDocument();
-
-    // Type confirmation phrase (node name 'Rome Gateway Alpha')
-    const confirmInput = screen.getByRole('textbox');
-    await user.type(confirmInput, 'Rome Gateway Alpha');
-
-    const confirmRevokeBtn = screen.getByRole('button', { name: 'Confirm' });
-    expect(confirmRevokeBtn).not.toBeDisabled();
-    await user.click(confirmRevokeBtn);
+    const confirm = await screen.findByRole('dialog', { name: 'Revoke the key of Rome Gateway Alpha?' });
+    await user.type(within(confirm).getByRole('textbox'), 'Rome Gateway Alpha');
+    await user.click(within(confirm).getByRole('button', { name: 'Revoke key' }));
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
         expect.stringContaining('/nodes/svrn-node-rome/revoke'),
-        expect.objectContaining({ method: 'POST' })
+        expect.objectContaining({ body: expect.stringContaining('Key revoked by an administrator') })
       );
     });
   });
 
-  it('6. Empty fleet: renders friendly empty state with enroll action', async () => {
+  it('shows no English device values in Italian', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
-        if (url === '/api/nodes') {
-          return jsonResponse({ nodes: [] });
-        }
+        if (url === '/api/nodes') return jsonResponse({ nodes: [mockNodes[0]] });
+        if (url.endsWith('/api/nodes/svrn-node-rome')) return jsonResponse({ node: mockNodes[0] });
         return jsonResponse({});
-      }) as unknown as typeof fetch
+      })
     );
+
+    await setLanguage('it');
+    renderNodes(['/nodes/svrn-node-rome']);
+
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(dialog.textContent).toContain('Sì'));
+    const text = dialog.textContent ?? '';
+    for (const english of ['Encrypted', 'Plaintext', 'Active', 'Inactive', 'Yes', 'Rootless']) {
+      expect(text).not.toContain(english);
+    }
+    expect(text).toContain('Attivo');
+  });
+
+  it('empty fleet offers Add device', async () => {
+    vi.stubGlobal('fetch', fleetFetch([]));
 
     const { container } = renderNodes(['/nodes']);
 
     await waitFor(() => {
-      expect(screen.getByText('No sovereign nodes found')).toBeInTheDocument();
-      expect(screen.getByText('Enroll your first node to join the sovereign mesh network.')).toBeInTheDocument();
+      expect(screen.getByText('No devices found')).toBeInTheDocument();
     });
+    expect(screen.getAllByRole('button', { name: 'Add device' }).length).toBeGreaterThan(0);
+    await expectNoAxeViolations(container, 'light');
+  });
 
-    await expectNoAxeViolations(container);
+  it.each(['light', 'dark'] as const)('has no axe violations with the list in %s theme', async (theme) => {
+    vi.stubGlobal('fetch', fleetFetch(mockNodes));
+
+    const { container, unmount } = renderNodes(['/nodes'], theme);
+    await waitFor(() => {
+      expect(within(listTable()).getByText('Rome Gateway Alpha')).toBeInTheDocument();
+    });
+    await expectNoAxeViolations(container, theme);
+    unmount();
   });
 });

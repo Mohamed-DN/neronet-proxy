@@ -1,1 +1,100 @@
-{}
+{
+  "title": "Devices",
+  "description": "All devices registered in the network, with their security checks, whether they are reachable, and whether they are blocked.",
+  "addDevice": "Add device",
+  "searchPlaceholder": "Search by name, address or type…",
+  "filter": {
+    "all": "All devices",
+    "reachable": "Reachable",
+    "blocked": "Blocked",
+    "unverified": "Checks not confirmed",
+    "highRisk": "High risk"
+  },
+  "counts": {
+    "total": "Registered devices",
+    "reachable": "Reachable now",
+    "blocked": "Blocked",
+    "unverified": "Checks not confirmed"
+  },
+  "columns": {
+    "device": "Device",
+    "address": "Network address",
+    "type": "Type",
+    "checks": "Security checks",
+    "reachability": "Reachability",
+    "risk": "Risk",
+    "actions": "Actions"
+  },
+  "row": {
+    "openDetails": "Open details"
+  },
+  "posture": {
+    "passed": "Checks passed",
+    "failed": "Checks failed",
+    "unverified": "Not confirmed"
+  },
+  "reachability": {
+    "online": "Reachable",
+    "offline": "Unreachable",
+    "blocked": "Blocked"
+  },
+  "kind": {
+    "profile": "Phone or computer with the WireGuard app",
+    "mesh": "Enrolled device"
+  },
+  "empty": {
+    "title": "No devices found",
+    "body": "Add your first device to get started."
+  },
+  "filtered": {
+    "title": "No devices match these filters",
+    "body": "Change or clear the filters to see more.",
+    "reset": "Clear filters"
+  },
+  "loadFailed": {
+    "title": "Devices could not be loaded",
+    "body": "The list did not load. Try again."
+  },
+  "actionFailed": "This was not completed. Try again shortly.",
+  "detail": {
+    "description": "Details for one device: security checks, addresses, a connection test, and actions to block it or disconnect it.",
+    "alert": "This device is blocked and cannot communicate with any other device on the network.",
+    "reason": "Reason for the block",
+    "securityChecks": "Device security checks",
+    "diskEncrypted": "Disk encrypted",
+    "firewall": "Firewall on",
+    "os": "Operating system",
+    "rootless": "Runs without administrator rights",
+    "yes": "Yes",
+    "no": "No",
+    "on": "On",
+    "off": "Off",
+    "runsAsAdmin": "No, runs as administrator",
+    "notReported": "Not reported yet",
+    "kind": "Kind of device",
+    "publicKey": "Device public key",
+    "address": "Network address",
+    "subnet": "Sub-network",
+    "defaultSubnet": "Default network",
+    "connectionTest": "Connection test",
+    "testButton": "Test connection",
+    "testing": "Testing…",
+    "replied": "Replied in {{rtt}} ms. Variation: {{jitter}} ms.",
+    "notMeasured": "Not measured. No response time has been recorded for this device yet.",
+    "testFailed": "Test failed: the device did not respond. Try again.",
+    "actions": "Device actions",
+    "block": "Block device",
+    "unblock": "Remove block",
+    "revoke": "Disconnect and revoke key",
+    "blockTitle": "Block this device?",
+    "blockBody": "The device cannot communicate with the network until the block is removed. Nothing is deleted. Enter a reason (optional):",
+    "blockReason": "Reason (optional)",
+    "blockDefaultReason": "Manual block",
+    "revokeTitle": "Revoke the key of {{name}}?",
+    "revokeBody": "The device is disconnected immediately. Its key will no longer be accepted by other devices on the network. This cannot be undone.",
+    "revokeConfirm": "Revoke key",
+    "revokeDefaultReason": "Key revoked by an administrator",
+    "close": "Close",
+    "loadFailed": "The device could not be loaded. Try again."
+  }
+}

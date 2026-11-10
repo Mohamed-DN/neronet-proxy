@@ -1,1 +1,100 @@
-{}
+{
+  "title": "Dispositivi",
+  "description": "Tutti i dispositivi registrati nella rete, con i loro controlli di sicurezza, se sono raggiungibili e se sono bloccati.",
+  "addDevice": "Aggiungi dispositivo",
+  "searchPlaceholder": "Cerca per nome, indirizzo o tipo…",
+  "filter": {
+    "all": "Tutti i dispositivi",
+    "reachable": "Raggiungibili",
+    "blocked": "Bloccati",
+    "unverified": "Controlli non confermati",
+    "highRisk": "Rischio alto"
+  },
+  "counts": {
+    "total": "Dispositivi registrati",
+    "reachable": "Raggiungibili ora",
+    "blocked": "Bloccati",
+    "unverified": "Controlli non confermati"
+  },
+  "columns": {
+    "device": "Dispositivo",
+    "address": "Indirizzo di rete",
+    "type": "Tipo",
+    "checks": "Controlli di sicurezza",
+    "reachability": "Raggiungibilità",
+    "risk": "Rischio",
+    "actions": "Azioni"
+  },
+  "row": {
+    "openDetails": "Apri dettagli"
+  },
+  "posture": {
+    "passed": "Controlli superati",
+    "failed": "Controlli non superati",
+    "unverified": "Non confermati"
+  },
+  "reachability": {
+    "online": "Raggiungibile",
+    "offline": "Non raggiungibile",
+    "blocked": "Bloccato"
+  },
+  "kind": {
+    "profile": "Telefono o computer con app WireGuard",
+    "mesh": "Dispositivo registrato"
+  },
+  "empty": {
+    "title": "Nessun dispositivo trovato",
+    "body": "Aggiungi il primo dispositivo per iniziare."
+  },
+  "filtered": {
+    "title": "Nessun dispositivo corrisponde a questi filtri",
+    "body": "Cambia o cancella i filtri per vedere altro.",
+    "reset": "Cancella i filtri"
+  },
+  "loadFailed": {
+    "title": "Impossibile caricare i dispositivi",
+    "body": "L'elenco non si è caricato. Riprova."
+  },
+  "actionFailed": "L'operazione non è stata completata. Riprova tra poco.",
+  "detail": {
+    "description": "Scheda di un singolo dispositivo: controlli di sicurezza, indirizzi, una verifica di collegamento e le azioni per bloccarlo o disconnetterlo.",
+    "alert": "Questo dispositivo è bloccato e non può comunicare con nessun altro dispositivo della rete.",
+    "reason": "Motivo del blocco",
+    "securityChecks": "Controlli di sicurezza del dispositivo",
+    "diskEncrypted": "Disco cifrato",
+    "firewall": "Firewall attivo",
+    "os": "Sistema operativo",
+    "rootless": "Eseguito senza privilegi di amministratore",
+    "yes": "Sì",
+    "no": "No",
+    "on": "Attivo",
+    "off": "Non attivo",
+    "runsAsAdmin": "No, con privilegi di amministratore",
+    "notReported": "Non ancora segnalato",
+    "kind": "Tipo di dispositivo",
+    "publicKey": "Chiave pubblica del dispositivo",
+    "address": "Indirizzo di rete",
+    "subnet": "Sotto-rete",
+    "defaultSubnet": "Rete predefinita",
+    "connectionTest": "Verifica del collegamento",
+    "testButton": "Verifica collegamento",
+    "testing": "Verifica in corso…",
+    "replied": "Risposta in {{rtt}} ms. Variazione: {{jitter}} ms.",
+    "notMeasured": "Non misurato. Per questo dispositivo non è ancora stato registrato alcun tempo di risposta.",
+    "testFailed": "Verifica non riuscita: il dispositivo non ha risposto. Riprova.",
+    "actions": "Azioni sul dispositivo",
+    "block": "Blocca dispositivo",
+    "unblock": "Rimuovi blocco",
+    "revoke": "Disconnetti e revoca la chiave",
+    "blockTitle": "Bloccare questo dispositivo?",
+    "blockBody": "Il dispositivo non potrà comunicare con la rete finché il blocco non viene rimosso. Non viene cancellato. Scrivi il motivo (facoltativo):",
+    "blockReason": "Motivo (facoltativo)",
+    "blockDefaultReason": "Blocco manuale",
+    "revokeTitle": "Revocare la chiave di {{name}}?",
+    "revokeBody": "Il dispositivo viene disconnesso subito. La sua chiave non sarà più accettata dagli altri dispositivi della rete. Questa azione non si può annullare.",
+    "revokeConfirm": "Revoca la chiave",
+    "revokeDefaultReason": "Chiave revocata da un amministratore",
+    "close": "Chiudi",
+    "loadFailed": "Impossibile caricare il dispositivo. Riprova."
+  }
+}
