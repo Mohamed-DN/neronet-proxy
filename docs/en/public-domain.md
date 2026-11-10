@@ -99,3 +99,61 @@ curl -I https://vpn.example.org/
 
 The first must return your public IP; the second an `HTTP/2 200` or a redirect, with no
 certificate error.
+
+## Changing public IP: updating Cloudflare
+
+A home line usually changes its public IP now and then. The kit in
+`scripts/ops/cloudflare-ddns/` checks the IP every 5 minutes and, only when it changed, fixes
+the two Cloudflare A records (`neronet.darknero.com` and `gw.neronet.darknero.com` in the example).
+It never creates records: create them once by hand, "DNS only", then let the kit keep them current.
+
+**The token, in plain words.** In Cloudflare, My Profile, API Tokens, create a custom token with a
+single permission: **Zone, DNS, Edit**, and under "Zone Resources" choose **only your zone**
+(for example `darknero.com`). That token can change DNS records of that one zone and nothing else:
+it cannot read your other domains, billing or account. If it ever leaks, delete it on Cloudflare
+and create another. Do not paste it in the repository, in chat, or on a command line.
+
+**Install** (as root on the VM, with `curl` and `jq` installed):
+
+```sh
+sudo bash scripts/ops/cloudflare-ddns/install.sh
+```
+
+The installer copies the script and the systemd timer, creates `/etc/neronet/ddns.env` (check
+`ZONE_NAME` and `RECORD_NAMES`) and asks for the token with the input hidden. The token is stored
+in `/etc/neronet/cloudflare-token` (mode 600); the script refuses to run if the mode or the owner
+is wrong. Check it with:
+
+```sh
+sudo /usr/local/sbin/neronet-ddns.sh --dry-run     # shows what it would change, changes nothing
+systemctl list-timers neronet-ddns.timer
+journalctl -u neronet-ddns -n 20
+```
+
+The public IP is asked of two independent services (`https://api.ipify.org` and
+`https://ifconfig.co/ip`, changeable with `IP_SOURCES` in `ddns.env`). If they disagree, or the answer
+is not a public IPv4 address, nothing is changed. Remove everything with
+`sudo bash scripts/ops/cloudflare-ddns/install.sh --uninstall` (add `--purge` to delete the token too).
+
+Tests: `sh scripts/ops/cloudflare-ddns/test.sh` (fake Cloudflare, never the real one).
+
+## Behind an existing reverse proxy (for example Nginx Proxy Manager)
+
+If a reverse proxy already owns ports 80 and 443 on your network, put the console behind it:
+
+1. In the proxy create a **Proxy Host** for your name (for example `neronet.darknero.com`). Forward
+   scheme **https** to the VM's address and the **console port** (`NERONET_CONSOLE_PORT`, see
+   [tls-certificates.md](tls-certificates.md)). The console uses its own certificate, so tell the
+   proxy not to verify the upstream certificate (in Nginx Proxy Manager this is the default for https).
+2. Turn on **Websockets Support**. Without it the live pages of the console stay empty.
+3. On the SSL tab request the certificate **from the proxy** (Let's Encrypt) and enable Force SSL.
+   In this setup the proxy, not NeroNet, answers HTTP-01 on port 80.
+4. **Do not send these two through the proxy**: forward them straight from the router to the VM:
+   - **TCP 8443**, the control plane: nodes pin the control-plane certificate, so a proxy that
+     re-encrypts the traffic with its own certificate makes nodes refuse to connect.
+   - **UDP 51820**, WireGuard: a web proxy does not carry UDP.
+   Make sure the proxy itself does not use 8443; if it does, move the proxy's admin port.
+5. Keep the DNS records "DNS only" and pointing at the public IP (see the section above).
+
+Check: `curl -I https://neronet.darknero.com/` from outside returns a normal answer and a valid
+certificate, and a node still connects.
