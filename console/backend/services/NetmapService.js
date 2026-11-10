@@ -571,23 +571,53 @@ async function buildNetmap(nodeId) {
   // ADR 0029: profile devices are peers of their organisation's gateway only. Every
   // other node reaches them through the gateway, so their addresses join the gateway's
   // allowed IPs below.
+  //
+  // The gateway relays; it is not a party to the traffic. So the peers it holds do not
+  // follow its own policy alone: it serves every device of its organisation, and holds
+  // every mesh node some device's own policy lets that device reach, or a rule naming
+  // only a device and a server would connect nothing. What actually passes is decided
+  // per packet: the gateway enforces each device's policy, which travels in the
+  // device's entry (`acl`), and the server enforces its own. Listing a peer grants no
+  // traffic -- the gateway's filter still applies its own policy to anything it sends
+  // or receives itself.
   const selfIsGateway = Boolean(self.profile_gateway_endpoint) && self.device_kind !== 'profile';
   const routedThroughGateway = [];
+  const sorted = candidates.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
 
-  for (const row of candidates.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)))) {
-    if (!permitted.has(String(row.overlay_ipv4))) continue;
+  const servedDevice = (row) => {
+    if (row.device_kind !== 'profile') return null;
+    const deviceKey = normalisePublicKeyHex(row.public_key);
+    const psk = Buffer.from(String(row.preshared_key || ''), 'base64');
+    if (!deviceKey || revoked.has(deviceKey.toLowerCase()) || psk.length !== 32) return null;
+    const ips = [];
+    if (row.overlay_ipv4) ips.push(`${row.overlay_ipv4}/32`);
+    if (row.overlay_ipv6) ips.push(`${row.overlay_ipv6}/128`);
+    return { deviceKey, psk, ips };
+  };
 
+  const devicePolicies = new Map();
+  const deviceReach = new Set();
+  if (selfIsGateway) {
+    for (const row of sorted) {
+      if (!servedDevice(row)) continue;
+      const devicePolicy = await AclEngine.compilePolicyFor(row.id);
+      devicePolicies.set(row.id, devicePolicy);
+      for (const vip of permittedPeerVIPs(devicePolicy)) deviceReach.add(vip);
+    }
+  } else {
+    // A device this node's policy permits is reached through the gateway, whether or not
+    // this node may talk to the gateway itself.
+    for (const row of sorted) {
+      const device = servedDevice(row);
+      if (device && permitted.has(String(row.overlay_ipv4))) routedThroughGateway.push(...device.ips);
+    }
+  }
+
+  for (const row of sorted) {
     if (row.device_kind === 'profile') {
-      const deviceKey = normalisePublicKeyHex(row.public_key);
-      const psk = Buffer.from(String(row.preshared_key || ''), 'base64');
-      if (!deviceKey || revoked.has(deviceKey.toLowerCase()) || psk.length !== 32) continue;
-      const deviceIPs = [];
-      if (row.overlay_ipv4) deviceIPs.push(`${row.overlay_ipv4}/32`);
-      if (row.overlay_ipv6) deviceIPs.push(`${row.overlay_ipv6}/128`);
-      if (!selfIsGateway) {
-        routedThroughGateway.push(...deviceIPs);
-        continue;
-      }
+      const device = servedDevice(row);
+      if (!device || !selfIsGateway) continue;
+      const { deviceKey, psk, ips: deviceIPs } = device;
       const deviceEntry = {
         node_id: row.id,
         public_key_hex: deviceKey.toLowerCase(),
@@ -601,10 +631,16 @@ async function buildNetmap(nodeId) {
         profile: true,
         preshared_key_hex: psk.toString('hex')
       };
+      if (devicePolicies.get(row.id)) deviceEntry.acl = devicePolicies.get(row.id);
       if (row.name) deviceEntry.name = row.name;
       peers.push(deviceEntry);
       continue;
     }
+
+    const vip = String(row.overlay_ipv4);
+    const ownTraffic = permitted.has(vip) || deviceReach.has(vip);
+    const isOrgGateway = Boolean(row.profile_gateway_endpoint);
+    if (!ownTraffic && !(isOrgGateway && routedThroughGateway.length > 0)) continue;
 
     const keyHex = normalisePublicKeyHex(row.public_key);
     // A node whose stored key cannot be decoded cannot be a WireGuard peer. Sending
@@ -618,11 +654,13 @@ async function buildNetmap(nodeId) {
     const pair = transports.peer(row);
     if (!pair) continue;
 
+    // A gateway this node may not talk to is held for the devices behind it only.
     const allowed = [];
-    if (row.overlay_ipv4) allowed.push(`${row.overlay_ipv4}/32`);
-    if (row.overlay_ipv6) allowed.push(`${row.overlay_ipv6}/128`);
+    if (ownTraffic && row.overlay_ipv4) allowed.push(`${row.overlay_ipv4}/32`);
+    if (ownTraffic && row.overlay_ipv6) allowed.push(`${row.overlay_ipv6}/128`);
 
     for (const route of routeList) {
+      if (!ownTraffic) break;
       const cidr = goIPNetToCidr(route.network_cidr);
       if (!cidr || claimedSubnets.has(cidr)) continue;
       const gateway = route.routing_peers.find((p) => p.is_healthy);

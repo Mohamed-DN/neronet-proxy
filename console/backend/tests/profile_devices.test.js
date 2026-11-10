@@ -304,3 +304,136 @@ describe('ADR 0029 A2: the gateway netmap carries profile devices', () => {
     assert.ok(!other.peers.find((p) => p.node_id === 'node-nm-gw').allowed_ips.includes(`${dev.body.overlay_ipv4}/32`));
   });
 });
+
+describe('ADR 0029 A5: the gateway relays under each device own policy', () => {
+  const NetmapService = require('../services/NetmapService');
+  let dbHelper;
+  let pool;
+  let app;
+  let adminToken;
+  const org = 'org-prof-a5';
+  // A node enrolled over the control plane stores its key in hex (goBridge), which is
+  // not what a WireGuard configuration takes.
+  const gwKey = crypto.randomBytes(32).toString('hex');
+  const auth = () => ({ Authorization: `Bearer ${adminToken}` });
+
+  before(async () => {
+    dbHelper = await setupTestDatabase();
+    pool = dbHelper.pool;
+    app = createApp();
+    // Deny by default: what is permitted is exactly what a rule names.
+    await pool.query(
+      `INSERT INTO organizations (id, name, slug, default_policy) VALUES ($1, 'A5', 'prof-a5', 'deny')`,
+      [org]
+    );
+    await pool.query(
+      `INSERT INTO users (id, username, email, password_hash, role, organization_id)
+       VALUES ('usr-a5-admin', 'a5admin', 'a5@prof.local', 'x', 'admin', $1)`,
+      [org]
+    );
+    await pool.query(
+      `INSERT INTO nodes (id, organization_id, user_id, name, overlay_ipv4, overlay_ipv6, public_key, role, is_healthy, is_quarantined)
+       VALUES ('node-a5-gw', $1, 'usr-a5-admin', 'gw', '100.64.50.1', 'fd00:50::1', $2, 'RELAY', TRUE, FALSE),
+              ('node-a5-srv', $1, 'usr-a5-admin', 'srv', '100.64.50.2', 'fd00:50::2', $3, 'CLIENT_ORIGIN', TRUE, FALSE),
+              ('node-a5-other', $1, 'usr-a5-admin', 'other', '100.64.50.3', 'fd00:50::3', $4, 'CLIENT_ORIGIN', TRUE, FALSE)`,
+      [org, gwKey, key(), key()]
+    );
+    adminToken = await issueConsoleTestToken({
+      sub: 'usr-a5-admin',
+      id: 'usr-a5-admin',
+      username: 'a5admin',
+      role: 'admin',
+      organization_id: org
+    });
+    const gw = await request(app)
+      .put('/api/devices/gateway')
+      .set(auth())
+      .send({ node_id: 'node-a5-gw', endpoint: 'gw.example:51820' });
+    assert.strictEqual(gw.status, 200);
+  });
+
+  beforeEach(async () => {
+    await pool.query("DELETE FROM nodes WHERE device_kind = 'profile'");
+    await pool.query('DELETE FROM acl_rules WHERE organization_id = $1', [org]);
+  });
+
+  after(async () => {
+    if (dbHelper) await dbHelper.cleanup();
+  });
+
+  const registerDevice = async () => {
+    const res = await request(app)
+      .post('/api/devices/profile')
+      .set(auth())
+      .send({ name: 'phone', public_key: key(), preshared_key: key() });
+    assert.strictEqual(res.status, 201);
+    return res.body;
+  };
+  const allow = (id, src, dst, port) =>
+    pool.query(
+      `INSERT INTO acl_rules (id, priority, source_cidr, destination_cidr, protocol, port_start, port_end, action, organization_id)
+       VALUES ($1, 10, $2, $3, 'TCP', $4, $4, 'ACCEPT', $5)`,
+      [id, src, dst, port, org]
+    );
+
+  it("sends the gateway the device's own compiled policy", async () => {
+    const dev = await registerDevice();
+    await allow('acl-a5-dev-srv', `${dev.overlay_ipv4}/32`, '100.64.50.2/32', 9999);
+    const gw = await NetmapService.buildNetmap('node-a5-gw');
+    const entry = gw.peers.find((p) => p.node_id === dev.device_id);
+    assert.ok(entry && entry.acl, 'the device entry carries its policy');
+    assert.strictEqual(entry.acl.overlay_ipv4, dev.overlay_ipv4);
+    assert.deepStrictEqual(
+      entry.acl.outbound_rules.map((r) => [r.allowed_peer_vip, r.protocol, r.port_ranges[0].start, r.action]),
+      [['100.64.50.2', 'TCP', 9999, 'ACCEPT']]
+    );
+    const mesh = gw.peers.find((p) => p.node_id === 'node-a5-srv');
+    assert.ok(mesh && !mesh.acl, 'a mesh peer carries no policy of its own');
+  });
+
+  it('connects device and server through the gateway when a rule names only the two of them', async () => {
+    const dev = await registerDevice();
+    await allow('acl-a5-dev-srv', `${dev.overlay_ipv4}/32`, '100.64.50.2/32', 9999);
+
+    // The gateway's own policy permits nobody, yet it must serve the device and reach
+    // the server the device may reach, or the rule connects nothing.
+    const gw = await NetmapService.buildNetmap('node-a5-gw');
+    assert.ok(
+      gw.peers.some((p) => p.node_id === dev.device_id),
+      'the gateway serves the device whatever its own policy says'
+    );
+    const srvAtGw = gw.peers.find((p) => p.node_id === 'node-a5-srv');
+    assert.ok(srvAtGw, 'the gateway holds the server the device may reach');
+    assert.deepStrictEqual(srvAtGw.allowed_ips, ['100.64.50.2/32', 'fd00:50::2/128']);
+    assert.ok(
+      !gw.peers.some((p) => p.node_id === 'node-a5-other'),
+      'a node neither the gateway nor any device may reach is not listed'
+    );
+
+    // The server's policy permits the device and not the gateway: it holds the gateway
+    // for the device's address only.
+    const srv = await NetmapService.buildNetmap('node-a5-srv');
+    const gwAtSrv = srv.peers.find((p) => p.node_id === 'node-a5-gw');
+    assert.ok(gwAtSrv, 'the server holds the gateway, the only way to the device');
+    assert.deepStrictEqual(
+      gwAtSrv.allowed_ips.filter((a) => !a.includes(':')),
+      [`${dev.overlay_ipv4}/32`],
+      "only the device's address, not the gateway's own"
+    );
+
+    const other = await NetmapService.buildNetmap('node-a5-other');
+    assert.ok(!other.peers.some((p) => p.node_id === 'node-a5-gw'), 'a node the device may not reach gets no route');
+  });
+
+  it('keeps the gateway own address when its own policy permits it', async () => {
+    const dev = await registerDevice();
+    await allow('acl-a5-dev-srv', `${dev.overlay_ipv4}/32`, '100.64.50.2/32', 9999);
+    await allow('acl-a5-gw-srv', '100.64.50.1/32', '100.64.50.2/32', 22);
+    const srv = await NetmapService.buildNetmap('node-a5-srv');
+    const gwAtSrv = srv.peers.find((p) => p.node_id === 'node-a5-gw');
+    assert.deepStrictEqual(
+      new Set(gwAtSrv.allowed_ips.filter((a) => !a.includes(':'))),
+      new Set(['100.64.50.1/32', `${dev.overlay_ipv4}/32`])
+    );
+  });
+});
