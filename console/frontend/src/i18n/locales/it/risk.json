@@ -1,1 +1,72 @@
-{}
+{
+  "title": "Punteggio di rischio dei dispositivi",
+  "description": "Un punteggio da 0 a 100 per ogni dispositivo in base a comportamenti insoliti; sopra 75 il dispositivo viene bloccato in automatico.",
+  "refresh": "Aggiorna i dati",
+  "band": {
+    "low": "Rischio basso (sotto 40)",
+    "medium": "Rischio medio (da 40 a 75)",
+    "critical": "Rischio critico (sopra 75)",
+    "mediumHint": "Da controllare: non ancora bloccato",
+    "criticalHint": "Bloccato in automatico"
+  },
+  "average": "Punteggio medio della rete",
+  "averageHint": "Media di tutti i dispositivi registrati",
+  "leaderboard": "Dispositivi per punteggio",
+  "feed": "Segnalazioni recenti",
+  "columns": {
+    "device": "Dispositivo",
+    "score": "Punteggio",
+    "status": "Stato",
+    "action": "Azione"
+  },
+  "status": {
+    "notReported": "Controlli non ancora ricevuti",
+    "allPassed": "Tutti i controlli superati",
+    "blocked": "Bloccato"
+  },
+  "action": {
+    "block": "Blocca dispositivo"
+  },
+  "block": {
+    "title": "Bloccare {{name}}?",
+    "body": "Il dispositivo non potrà comunicare con la rete finché il blocco non viene rimosso. Non viene cancellato nulla.",
+    "done": "Dispositivo bloccato.",
+    "failed": "Il dispositivo non è stato bloccato. Riprova."
+  },
+  "blockReason": "Bloccato dalla pagina del punteggio di rischio",
+  "filters": {
+    "label": "Filtra i dispositivi per rischio",
+    "all": "Tutti",
+    "critical": "Critico",
+    "medium": "Medio",
+    "low": "Basso"
+  },
+  "filter": {
+    "emptyTitle": "Nessun dispositivo corrisponde a questo filtro",
+    "emptyBody": "Scegli un'altra fascia per vedere i dispositivi.",
+    "clear": "Rimuovi i filtri"
+  },
+  "event": {
+    "delta": "+{{n}} punti",
+    "deltaUnknown": "Non segnalato",
+    "types": {
+      "NODE_QUARANTINED": "Dispositivo bloccato",
+      "NODE_QUARANTINE": "Dispositivo bloccato",
+      "NODE_LIFT_QUARANTINE": "Blocco rimosso",
+      "IMPOSSIBLE_TRAVEL_DETECTED": "Connessione da luoghi troppo lontani",
+      "POSTURE_VIOLATION": "Controllo di sicurezza non superato",
+      "GEO_DRIFT_DETECTED": "Posizione cambiata in modo insolito",
+      "NODE_ATTESTED": "Punteggio azzerato dopo un controllo",
+      "RISK_ATTESTATION": "Punteggio azzerato dopo un controllo",
+      "OTHER": "Altro evento di sicurezza"
+    }
+  },
+  "empty": {
+    "leaderboard": "Nessun dispositivo ha ancora un punteggio.",
+    "feed": "Nessuna segnalazione per ora."
+  },
+  "error": {
+    "load": "Impossibile caricare i dati di rischio. Riprova.",
+    "feed": "Impossibile caricare le segnalazioni recenti. Riprova."
+  }
+}

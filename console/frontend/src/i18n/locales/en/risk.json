@@ -1,1 +1,72 @@
-{}
+{
+  "title": "Device risk score",
+  "description": "A score from 0 to 100 for each device based on unusual behaviour; above 75 the device is blocked automatically.",
+  "refresh": "Refresh data",
+  "band": {
+    "low": "Low risk (below 40)",
+    "medium": "Medium risk (40 to 75)",
+    "critical": "Critical risk (above 75)",
+    "mediumHint": "Review it: not blocked yet",
+    "criticalHint": "Blocked automatically"
+  },
+  "average": "Network average score",
+  "averageHint": "Average across all registered devices",
+  "leaderboard": "Devices by score",
+  "feed": "Recent alerts",
+  "columns": {
+    "device": "Device",
+    "score": "Score",
+    "status": "Status",
+    "action": "Action"
+  },
+  "status": {
+    "notReported": "Checks not received yet",
+    "allPassed": "All checks passed",
+    "blocked": "Blocked"
+  },
+  "action": {
+    "block": "Block device"
+  },
+  "block": {
+    "title": "Block {{name}}?",
+    "body": "The device cannot communicate with the network until the block is removed. Nothing is deleted.",
+    "done": "Device blocked.",
+    "failed": "The device was not blocked. Try again."
+  },
+  "blockReason": "Blocked from the risk score page",
+  "filters": {
+    "label": "Filter devices by risk",
+    "all": "All",
+    "critical": "Critical",
+    "medium": "Medium",
+    "low": "Low"
+  },
+  "filter": {
+    "emptyTitle": "No devices match this filter",
+    "emptyBody": "Choose another band to see devices.",
+    "clear": "Clear filters"
+  },
+  "event": {
+    "delta": "+{{n}} points",
+    "deltaUnknown": "Not reported",
+    "types": {
+      "NODE_QUARANTINED": "Device blocked",
+      "NODE_QUARANTINE": "Device blocked",
+      "NODE_LIFT_QUARANTINE": "Block removed",
+      "IMPOSSIBLE_TRAVEL_DETECTED": "Connection from places too far apart",
+      "POSTURE_VIOLATION": "Security check failed",
+      "GEO_DRIFT_DETECTED": "Location changed unexpectedly",
+      "NODE_ATTESTED": "Score reset after a check",
+      "RISK_ATTESTATION": "Score reset after a check",
+      "OTHER": "Other security event"
+    }
+  },
+  "empty": {
+    "leaderboard": "No device has a score yet.",
+    "feed": "No alerts yet."
+  },
+  "error": {
+    "load": "The risk data could not be loaded. Try again.",
+    "feed": "Recent alerts could not be loaded. Try again."
+  }
+}
