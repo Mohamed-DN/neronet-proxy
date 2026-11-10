@@ -24,6 +24,23 @@ describe('LineChart', () => {
     expect(within(rows[3] as HTMLElement).getByRole('cell', { name: '30' })).toBeInTheDocument();
   });
 
+  it('draws in real pixels with fixed-size text, so the viewBox never scales it', () => {
+    const { container } = renderUI(
+      <LineChart
+        title="Latency"
+        labels={labels}
+        unit="ms"
+        series={[{ id: 'lat', label: 'Latency', values: [10, null, 30], tone: 'chart-1' }]}
+      />
+    );
+
+    const svg = container.querySelector('svg') as SVGSVGElement;
+    expect(svg.getAttribute('viewBox')).toBe(`0 0 ${svg.getAttribute('width')} ${svg.getAttribute('height')}`);
+    const texts = Array.from(svg.querySelectorAll('text'));
+    expect(texts.length).toBeGreaterThan(0);
+    for (const text of texts) expect(text.style.fontSize).toBe('12px');
+  });
+
   it('splits the path at a gap instead of drawing zero', () => {
     const { container } = renderUI(
       <LineChart

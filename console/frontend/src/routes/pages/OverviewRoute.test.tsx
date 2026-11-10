@@ -180,6 +180,22 @@ describe('Overview page', () => {
     expect(within(table).getByText('28.3')).toBeInTheDocument();
   });
 
+  it('shows a plain empty state, not a lone spike, when only one sample carried traffic', async () => {
+    stubStats({
+      overview: FLEET,
+      timeseries: [
+        { timestamp: '2026-09-24T06:00:00Z', time: '08:00', rx: 0, tx: 0 },
+        { timestamp: '2026-09-24T07:00:00Z', time: '09:00', rx: 12.5, tx: 0 },
+        { timestamp: '2026-09-24T08:00:00Z', time: '10:00', rx: 0, tx: 0 }
+      ],
+      geo: GEO
+    });
+    const { container } = renderOverview();
+
+    expect(await screen.findByText('No traffic recorded in this period')).toBeInTheDocument();
+    expect(container.querySelector('path[data-series]')).toBeNull();
+  });
+
   it('shows no 3D, posture-score, latency or "Time:" wording', async () => {
     stubStats({
       overview: FLEET,

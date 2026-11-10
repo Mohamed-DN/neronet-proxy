@@ -111,6 +111,10 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
     }
   ];
 
+  // A lone sample above zero is not a trend: with fewer than two samples that
+  // carried traffic the chart would draw one spike over a flat line.
+  const sampledTraffic = chartSeries.some((s) => s.values.filter((v) => v !== null && v > 0).length >= 2);
+
   const primaryAction =
     !overviewQuery.isLoading && !unreachable && totalNodes === 0 ? (
       <Button variant="primary" icon={Plus} onClick={shell.openEnroll}>
@@ -176,7 +180,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
 
               <div>
                 <dl className="divide-y divide-border-subtle border-y border-border-subtle">
-                  <Figure label={t('answering')}>{`${liveNodes} of ${totalNodes}`}</Figure>
+                  <Figure label={t('answering')}>{t('answeringOf', { live: liveNodes, total: totalNodes })}</Figure>
                   <Figure label={t('blocked')}>{quarantinedNodes}</Figure>
                   <Figure label={t('usersConnected')}>{activeUsers}</Figure>
                   <Figure label={t('trafficNow')}>
@@ -247,6 +251,8 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
                   <Skeleton lines={5} />
                 ) : timeseries.length === 0 ? (
                   <EmptyState title={t('noSamples')} body={t('noSamplesDesc')} />
+                ) : !sampledTraffic ? (
+                  <EmptyState title={t('noTraffic')} body={t('noTrafficDesc')} />
                 ) : (
                   <LineChart
                     title={t('timeseriesTitle')}

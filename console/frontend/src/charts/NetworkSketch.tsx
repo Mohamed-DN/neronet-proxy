@@ -1,5 +1,7 @@
 import { useId } from 'react';
 
+import { useMeasuredWidth } from './useMeasuredWidth';
+
 /*
  * A small picture of sub-networks around one centre: one circle per
  * sub-network, sized by how many devices it holds, filled when at least one
@@ -27,13 +29,16 @@ export interface NetworkSketchProps {
   hollowLegend: string;
 }
 
-const WIDTH = 320;
-const HEIGHT = 200;
-const CX = WIDTH / 2;
-const CY = HEIGHT / 2 - 6;
-const RX = 120;
-const RY = 70;
+const FALLBACK_WIDTH = 480;
+const HEIGHT = 280;
+const CY = 140;
+const RY = 82;
 const LABEL_CHARS = 12;
+// Body-sized text, fixed in pixels: the viewBox is the drawn width (see useMeasuredWidth).
+const TEXT_PX = 13;
+// Room each side for the longest label, about 12 characters at 13 px.
+const LABEL_ROOM = 92;
+const MIN_RX = 56;
 
 function shortLabel(label: string): string {
   return label.length > LABEL_CHARS ? `${label.slice(0, LABEL_CHARS - 1)}…` : label;
@@ -49,6 +54,9 @@ export function NetworkSketch({
   hollowLegend
 }: NetworkSketchProps) {
   const captionId = useId();
+  const [frameRef, width] = useMeasuredWidth<HTMLDivElement>(FALLBACK_WIDTH);
+  const CX = width / 2;
+  const RX = Math.max(MIN_RX, width / 2 - LABEL_ROOM);
   const ordered = [...sites].sort((a, b) => b.total - a.total);
   const shown = ordered.slice(0, maxSites);
   const hidden = ordered.length - shown.length;
@@ -56,6 +64,8 @@ export function NetworkSketch({
     const angle = -Math.PI / 2 + (2 * Math.PI * i) / shown.length;
     return {
       site,
+      cos: Math.cos(angle),
+      sin: Math.sin(angle),
       x: CX + RX * Math.cos(angle),
       y: CY + RY * Math.sin(angle),
       r: 3 + Math.min(5, Math.sqrt(Math.max(0, site.total)))
@@ -69,11 +79,14 @@ export function NetworkSketch({
         <p className="mt-1 text-caption text-muted">{description}</p>
       </figcaption>
 
+      <div ref={frameRef} className="mt-3 w-full">
       <svg
         role="img"
         aria-labelledby={captionId}
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="mt-3 block h-auto w-full"
+        width={width}
+        height={HEIGHT}
+        viewBox={`0 0 ${width} ${HEIGHT}`}
+        className="block max-w-full"
         focusable="false"
       >
         {placed.map(({ site, x, y }) => (
@@ -92,17 +105,29 @@ export function NetworkSketch({
 
         <circle cx={CX} cy={CY} r={6} style={{ fill: 'rgb(var(--color-content))' }} />
         <text
+          data-center-label
           x={CX}
-          y={CY + 20}
+          y={CY + 24}
           textAnchor="middle"
-          className="text-micro"
-          style={{ fill: 'rgb(var(--color-content-muted))' }}
+          style={{
+            fill: 'rgb(var(--color-content))',
+            fontSize: TEXT_PX,
+            // A halo in the page colour keeps the spokes from running through the words.
+            stroke: 'rgb(var(--color-surface))',
+            strokeWidth: 5,
+            paintOrder: 'stroke',
+            strokeLinejoin: 'round'
+          }}
         >
           {centerLabel}
         </text>
 
-        {placed.map(({ site, x, y, r }) => {
+        {placed.map(({ site, x, y, r, cos, sin }) => {
           const live = site.live > 0;
+          // The label sits outside its circle, on the side facing away from the centre.
+          const anchor = cos > 0.35 ? 'start' : cos < -0.35 ? 'end' : 'middle';
+          const labelX = anchor === 'middle' ? x : x + (r + 6) * Math.sign(cos);
+          const labelY = anchor === 'middle' ? (sin < 0 ? y - r - 7 : y + r + 16) : y + 4;
           return (
             <g key={site.id} data-site={site.id} data-live={String(live)}>
               <circle
@@ -117,11 +142,11 @@ export function NetworkSketch({
                 }
               />
               <text
-                x={x}
-                y={y + r + 11}
-                textAnchor="middle"
-                className="text-micro"
-                style={{ fill: 'rgb(var(--color-content-muted))' }}
+                data-site-label={site.id}
+                x={labelX}
+                y={labelY}
+                textAnchor={anchor}
+                style={{ fill: 'rgb(var(--color-content-muted))', fontSize: TEXT_PX }}
               >
                 <title>{site.label}</title>
                 {shortLabel(site.label)}
@@ -135,13 +160,13 @@ export function NetworkSketch({
             x={CX}
             y={HEIGHT - 4}
             textAnchor="middle"
-            className="text-micro"
-            style={{ fill: 'rgb(var(--color-content-muted))' }}
+            style={{ fill: 'rgb(var(--color-content-muted))', fontSize: TEXT_PX }}
           >
             {moreLabel(hidden)}
           </text>
         ) : null}
       </svg>
+      </div>
 
       <p className="mt-2 text-caption text-muted">{hollowLegend}</p>
     </figure>

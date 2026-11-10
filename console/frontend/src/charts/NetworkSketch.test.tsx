@@ -49,6 +49,34 @@ describe('NetworkSketch', () => {
     expect(container.querySelector('[data-site-line="b"]')).not.toHaveAttribute('stroke-dasharray');
   });
 
+  it('draws in real pixels with body-sized text, so the viewBox never scales it', () => {
+    const { container } = renderUI(<NetworkSketch {...common} sites={sites(6)} />);
+
+    const svg = container.querySelector('svg') as SVGSVGElement;
+    expect(svg.getAttribute('viewBox')).toBe(`0 0 ${svg.getAttribute('width')} ${svg.getAttribute('height')}`);
+    for (const text of Array.from(svg.querySelectorAll('text'))) {
+      expect(parseInt(text.style.fontSize, 10)).toBeGreaterThanOrEqual(12);
+    }
+  });
+
+  it('keeps every site label outside the circles on the side away from the centre', () => {
+    const { container } = renderUI(<NetworkSketch {...common} sites={sites(8)} />);
+    const centre = Number(container.querySelector('svg')?.getAttribute('width')) / 2;
+
+    const right = container.querySelector('[data-site-label="s2"]') as SVGTextElement;
+    const circle = container.querySelector('[data-site="s2"] circle') as SVGCircleElement;
+    expect(right.getAttribute('text-anchor')).toBe('start');
+    expect(Number(right.getAttribute('x'))).toBeGreaterThan(Number(circle.getAttribute('cx')));
+    expect(Number(circle.getAttribute('cx'))).toBeGreaterThan(centre);
+  });
+
+  it('puts a halo behind the centre label so no spoke runs through it', () => {
+    const { container } = renderUI(<NetworkSketch {...common} sites={sites(8)} />);
+
+    const label = container.querySelector('[data-center-label]') as SVGTextElement;
+    expect(label.style.paintOrder).toBe('stroke');
+  });
+
   it('labels the picture with its visible caption', () => {
     renderUI(<NetworkSketch {...common} sites={sites(2)} />);
 

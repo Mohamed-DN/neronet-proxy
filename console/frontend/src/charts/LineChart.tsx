@@ -5,6 +5,8 @@
  * sit in a visually hidden table with the title as its caption.
  */
 
+import { useMeasuredWidth } from './useMeasuredWidth';
+
 export interface LineSeries {
   id: string;
   label: string;
@@ -21,10 +23,12 @@ export interface LineChartProps {
   height?: number;
 }
 
-const WIDTH = 600;
-const PAD_X = 40;
+const FALLBACK_WIDTH = 600;
+const PAD_LEFT = 48;
+const PAD_RIGHT = 12;
+const TEXT_PX = 12;
 const PAD_TOP = 12;
-const PAD_BOTTOM = 24;
+const PAD_BOTTOM = 26;
 
 function formatValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
@@ -53,10 +57,11 @@ function pathFor(values: Array<number | null>, x: (i: number) => number, y: (v: 
 }
 
 export function LineChart({ title, labels, series, unit, height = 200 }: LineChartProps) {
+  const [frameRef, width] = useMeasuredWidth<HTMLDivElement>(FALLBACK_WIDTH);
   const max = yMax(series);
   const innerH = height - PAD_TOP - PAD_BOTTOM;
-  const innerW = WIDTH - PAD_X * 2;
-  const x = (i: number) => (labels.length <= 1 ? WIDTH / 2 : PAD_X + (i * innerW) / (labels.length - 1));
+  const innerW = width - PAD_LEFT - PAD_RIGHT;
+  const x = (i: number) => (labels.length <= 1 ? PAD_LEFT + innerW / 2 : PAD_LEFT + (i * innerW) / (labels.length - 1));
   const y = (v: number) => PAD_TOP + innerH - (v / max) * innerH;
   const ticks = [0, max / 2, max];
   const xLabelIndexes = [...new Set([0, Math.floor((labels.length - 1) / 2), labels.length - 1])].filter(
@@ -65,25 +70,36 @@ export function LineChart({ title, labels, series, unit, height = 200 }: LineCha
 
   return (
     <figure className="m-0">
-      <svg aria-hidden="true" viewBox={`0 0 ${WIDTH} ${height}`} className="block h-auto w-full" focusable="false">
+      {/* One viewBox unit is one pixel (see useMeasuredWidth), so the text below
+          keeps its fixed size at any column width. */}
+      <div ref={frameRef} className="w-full">
+      <svg
+        aria-hidden="true"
+        data-chart-width={width}
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        className="block max-w-full"
+        focusable="false"
+      >
         {ticks.map((t) => (
           <g key={t}>
             <line
-              x1={PAD_X}
-              x2={WIDTH - PAD_X}
+              x1={PAD_LEFT}
+              x2={width - PAD_RIGHT}
               y1={y(t)}
               y2={y(t)}
               style={{ stroke: 'rgb(var(--color-border-subtle))' }}
               strokeWidth={1}
             />
             <text
-              x={PAD_X - 6}
+              x={PAD_LEFT - 6}
               y={y(t) + 4}
               textAnchor="end"
-              className="text-micro tabular-nums"
-              style={{ fill: 'rgb(var(--color-content-muted))' }}
+              className="tabular-nums"
+              style={{ fill: 'rgb(var(--color-content-muted))', fontSize: TEXT_PX }}
             >
-              {`${formatValue(t)} ${unit}`}
+              {formatValue(t)}
             </text>
           </g>
         ))}
@@ -105,13 +121,13 @@ export function LineChart({ title, labels, series, unit, height = 200 }: LineCha
             x={x(i)}
             y={height - 6}
             textAnchor={i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle'}
-            className="text-micro"
-            style={{ fill: 'rgb(var(--color-content-muted))' }}
+            style={{ fill: 'rgb(var(--color-content-muted))', fontSize: TEXT_PX }}
           >
             {labels[i]}
           </text>
         ))}
       </svg>
+      </div>
 
       <figcaption>
         <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted">
