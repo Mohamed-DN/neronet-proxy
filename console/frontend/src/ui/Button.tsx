@@ -74,7 +74,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ) : (
         Icon && <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
       )}
-      <span>{children}</span>
+      {/* A flex row of its own: a caller that puts its own icon in the children
+          (an svg is display:block) still sits on one line with the label. */}
+      <span className="inline-flex items-center gap-[inherit]">{children}</span>
       {loading && loadingLabel && (
         <span role="status" className="sr-only">
           {loadingLabel}

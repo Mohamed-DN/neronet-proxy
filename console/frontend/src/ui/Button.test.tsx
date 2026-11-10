@@ -8,6 +8,18 @@ import { IconButton } from './IconButton';
 import { expectAccessibleInBothThemes, renderUI } from '../test/harness';
 
 describe('Button', () => {
+  it('keeps an icon passed in the children on one line with the label', () => {
+    renderUI(
+      <Button>
+        <Trash2 data-testid="own-icon" className="h-4 w-4" />
+        Request erasure
+      </Button>
+    );
+    const wrapper = screen.getByTestId('own-icon').parentElement as HTMLElement;
+    expect(wrapper).toHaveClass('inline-flex', 'items-center');
+    expect(wrapper).toHaveTextContent('Request erasure');
+  });
+
   it.each(['primary', 'danger'] as const)(
     'preserves the %s foreground while applying a semantic text size',
     (variant) => {
