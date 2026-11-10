@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
+const RegistrationPolicy = require('../services/RegistrationPolicy');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 
@@ -36,6 +37,12 @@ async function issueUserSession(req, res, user) {
 // 1. Register User (Public)
 router.post('/register', registerLimiter, async (req, res, next) => {
   try {
+    if (!RegistrationPolicy.selfRegistrationAllowed()) {
+      return res.status(403).json({
+        error: 'registration_disabled',
+        message: 'Accounts on this installation are created by an administrator.'
+      });
+    }
     // A role in the body is ignored. This endpoint is public; letting it choose the
     // role handed platform super-admin to anyone who asked.
     const { username, password, email } = req.body || {};
