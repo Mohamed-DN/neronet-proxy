@@ -13,7 +13,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { resolveUserOrg } = require('../middleware/rbac');
 const { getPgPool } = require('../db/index');
 const { logAuditEvent } = require('../utils/audit');
-const { allocateNextVip } = require('../utils/crypto');
+const { allocateNextVip, normalisePublicKeyHex } = require('../utils/crypto');
 const EnrollmentService = require('../services/EnrollmentService');
 const AclEngine = require('../services/AclEngine');
 
@@ -29,6 +29,14 @@ function isKey(value) {
   if (typeof value !== 'string') return false;
   const raw = Buffer.from(value, 'base64');
   return raw.length === 32 && raw.toString('base64') === value;
+}
+
+// A node enrolled over the control plane stores its key in hex; a WireGuard
+// configuration takes base64. The profile is built from this answer, so it carries the
+// form every WireGuard app reads.
+function wireguardKey(stored) {
+  const hex = normalisePublicKeyHex(stored);
+  return hex ? Buffer.from(hex, 'hex').toString('base64') : null;
 }
 
 function validEndpoint(value) {
@@ -92,7 +100,7 @@ router.put('/gateway', requireAdmin, async (req, res, next) => {
       ipAddress: req.ip,
       metadata: { after: { node_id: node.id, endpoint } }
     });
-    return res.status(200).json({ gateway: { node_id: node.id, public_key: node.public_key, endpoint } });
+    return res.status(200).json({ gateway: { node_id: node.id, public_key: wireguardKey(node.public_key), endpoint } });
   } catch (err) {
     next(err);
   }
@@ -156,7 +164,7 @@ router.post('/profile', async (req, res, next) => {
       name: label,
       overlay_ipv4: vips.overlayIpv4,
       overlay_ipv6: vips.overlayIpv6,
-      gateway: { public_key: gateway.public_key, endpoint: gateway.profile_gateway_endpoint },
+      gateway: { public_key: wireguardKey(gateway.public_key), endpoint: gateway.profile_gateway_endpoint },
       allowed_ips: OVERLAY,
       dns: [],
       console_url: `https://${req.get('host')}/me`

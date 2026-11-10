@@ -376,6 +376,16 @@ describe('ADR 0029 A5: the gateway relays under each device own policy', () => {
       [id, src, dst, port, org]
     );
 
+  it('answers the gateway key in the base64 form every WireGuard app reads', async () => {
+    const dev = await registerDevice();
+    assert.strictEqual(dev.gateway.public_key, Buffer.from(gwKey, 'hex').toString('base64'));
+    const named = await request(app)
+      .put('/api/devices/gateway')
+      .set(auth())
+      .send({ node_id: 'node-a5-gw', endpoint: 'gw.example:51820' });
+    assert.strictEqual(named.body.gateway.public_key, Buffer.from(gwKey, 'hex').toString('base64'));
+  });
+
   it("sends the gateway the device's own compiled policy", async () => {
     const dev = await registerDevice();
     await allow('acl-a5-dev-srv', `${dev.overlay_ipv4}/32`, '100.64.50.2/32', 9999);
