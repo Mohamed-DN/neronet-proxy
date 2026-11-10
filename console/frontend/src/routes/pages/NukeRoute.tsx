@@ -39,6 +39,38 @@ import { PageFrame } from '../PageFrame';
 export default function NukeRoute() {
   const { t } = useTranslation(['nuke', 'ui']);
 
+  // A value the server did not send reads "Not measured"; a value this page does not know reads "Unknown".
+  const keysLabel = (status?: string) => {
+    if (!status) return t('stats.notMeasured');
+    if (status === 'destroyed') return t('stats.shredded');
+    if (status === 'frozen') return t('stats.frozen');
+    if (status === 'active') return t('stats.activeEpoch');
+    return t('stats.unknown');
+  };
+  const dmsLabel = (armed?: boolean) => {
+    if (armed === undefined) return t('stats.notMeasured');
+    return armed ? t('stats.armed') : t('stats.disarmed');
+  };
+  const scopeLabel = (type: string) => (type === 'global' ? t('scope.global') : t('scope.organization'));
+  const authStatusLabel = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return t('dualAuth.status.pending');
+      case 'approved':
+        return t('dualAuth.status.approved');
+      case 'executed':
+        return t('dualAuth.status.executed');
+      case 'rejected':
+        return t('dualAuth.status.rejected');
+      case 'cancelled':
+        return t('dualAuth.status.cancelled');
+      case 'expired':
+        return t('dualAuth.status.expired');
+      default:
+        return t('stats.unknown');
+    }
+  };
+
   // Queries
   const { data: overview, refetch: refetchOverview } = useNukeOverview();
   const { data: legalHolds = [], isLoading: holdsLoading, refetch: refetchHolds } = useLegalHolds();
@@ -144,9 +176,7 @@ export default function NukeRoute() {
       header: t('dualAuth.columns.target'),
       cell: (r) => (
         <div className="flex items-center gap-2">
-          <Badge tone={r.target_type === 'global' ? 'danger' : 'accent'} mono>
-            {r.target_type.toUpperCase()}
-          </Badge>
+          <Badge tone={r.target_type === 'global' ? 'danger' : 'accent'}>{scopeLabel(r.target_type)}</Badge>
           <CodeText>{r.target_id}</CodeText>
         </div>
       )
@@ -169,16 +199,11 @@ export default function NukeRoute() {
       id: 'status',
       header: t('dualAuth.columns.status'),
       cell: (r) => {
-        if (r.status === 'pending') {
-          return <StatusBadge status="warning" label={t('dualAuth.status.pending')} />;
-        }
-        if (r.status === 'executed') {
-          return <StatusBadge status="critical" label={t('dualAuth.status.executed')} />;
-        }
-        if (r.status === 'rejected') {
-          return <StatusBadge status="unknown" label={t('dualAuth.status.rejected')} />;
-        }
-        return <StatusBadge status="not-measured" label={t('dualAuth.status.expired')} />;
+        const label = authStatusLabel(r.status);
+        if (r.status === 'pending' || r.status === 'approved') return <StatusBadge status="warning" label={label} />;
+        if (r.status === 'executed') return <StatusBadge status="critical" label={label} />;
+        if (r.status === 'rejected' || r.status === 'cancelled') return <StatusBadge status="unknown" label={label} />;
+        return <StatusBadge status="not-measured" label={label} />;
       }
     },
     {
@@ -284,12 +309,12 @@ export default function NukeRoute() {
     setReqError(null);
 
     if (reqConfirmation.trim() !== 'CONFIRM DESTRUCTION') {
-      setReqError("You must type exactly 'CONFIRM DESTRUCTION'");
+      setReqError(t('errors.phraseMismatch'));
       return;
     }
 
     if (!reqTargetId.trim()) {
-      setReqError('Target identifier is required');
+      setReqError(t('errors.targetRequired'));
       return;
     }
 
@@ -303,7 +328,7 @@ export default function NukeRoute() {
       setReqTargetId('');
       setReqComment('');
       setReqConfirmation('');
-    } catch (err: any) {
+    } catch {
       setReqError(t('errors.request'));
     }
   };
@@ -314,7 +339,7 @@ export default function NukeRoute() {
     setApproveError(null);
 
     if (!approveCertified) {
-      setApproveError('You must check the confirmation checkbox to authorize destruction');
+      setApproveError(t('errors.certifyRequired'));
       return;
     }
 
@@ -324,7 +349,7 @@ export default function NukeRoute() {
         comment: approveComment.trim()
       });
       setApproveTarget(null);
-    } catch (err: any) {
+    } catch {
       setApproveError(t('errors.approve'));
     }
   };
@@ -334,11 +359,11 @@ export default function NukeRoute() {
     setImposeError(null);
 
     if (!imposeOrgId.trim()) {
-      setImposeError('Organization ID is required');
+      setImposeError(t('errors.targetRequired'));
       return;
     }
     if (!imposeReason.trim()) {
-      setImposeError('Reason / legal reference is required');
+      setImposeError(t('errors.reasonRequired'));
       return;
     }
 
@@ -350,7 +375,7 @@ export default function NukeRoute() {
       setImposeModalOpen(false);
       setImposeOrgId('');
       setImposeReason('');
-    } catch (err: any) {
+    } catch {
       setImposeError(t('errors.impose'));
     }
   };
@@ -367,7 +392,7 @@ export default function NukeRoute() {
     try {
       await rejectDestructionMutation.mutateAsync({
         id: rejectTarget.id,
-        comment: 'Rejected by administrator via console'
+        comment: t('dualAuth.rejectDefaultReason')
       });
       setRejectTarget(null);
     } catch {
@@ -392,8 +417,8 @@ export default function NukeRoute() {
     try {
       await heartbeatMutation.mutateAsync(dmsPassphrase);
       setDmsPassphrase('');
-      setDmsMsg({ text: 'Heartbeat confirmed. Global wipe timer reset successfully.', ok: true });
-    } catch (err: any) {
+      setDmsMsg({ text: t('dms.heartbeatDone'), ok: true });
+    } catch {
       setDmsMsg({ text: t('errors.passphrase'), ok: false });
     }
   };
@@ -418,7 +443,7 @@ export default function NukeRoute() {
       });
       setPurgeModalOpen(false);
       notify(t('purge.done'), { tone: 'success' });
-    } catch (err: any) {
+    } catch {
       setPurgeError(t('errors.purge'));
     }
   };
@@ -439,8 +464,8 @@ export default function NukeRoute() {
           title={t('title')}
           description={t('description')}
           meta={
-            <Badge tone={overview?.keys_status === 'destroyed' ? 'danger' : 'accent'} mono>
-              {overview?.keys_status === 'destroyed' ? t('stats.shredded') : t('stats.activeEpoch')}
+            <Badge tone={overview?.keys_status === 'destroyed' ? 'danger' : 'accent'}>
+              {keysLabel(overview?.keys_status)}
             </Badge>
           }
           actions={
@@ -467,7 +492,13 @@ export default function NukeRoute() {
                 <ShieldAlert className="h-4 w-4 mr-1.5 shrink-0" />
                 {t('legalHolds.imposeBtn')}
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleRefreshAll} title={t('common.refresh')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRefreshAll}
+                title={t('refresh')}
+                aria-label={t('refresh')}
+              >
                 <RefreshCw className="h-4 w-4 shrink-0" />
               </Button>
             </>
@@ -477,11 +508,7 @@ export default function NukeRoute() {
         {/* Top 4 Stat Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
-            <Stat
-              label={t('stats.keysStatus')}
-              value={overview?.keys_status?.toUpperCase() || 'ACTIVE'}
-              hint="AES-256-GCM Envelope"
-            />
+            <Stat label={t('stats.keysStatus')} value={keysLabel(overview?.keys_status)} hint={t('stats.keysHint')} />
           </Card>
           <Card>
             <Stat
@@ -500,8 +527,8 @@ export default function NukeRoute() {
           <Card>
             <Stat
               label={t('stats.deadManSwitch')}
-              value={overview?.owner_dms_armed ? t('stats.armed') : t('stats.disarmed')}
-              hint="Owner DMS Fail-Safe"
+              value={dmsLabel(overview?.owner_dms_armed)}
+              hint={t('stats.dmsHint')}
             />
           </Card>
         </div>
@@ -510,7 +537,7 @@ export default function NukeRoute() {
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
-          label="NeroNuke Governance Sections"
+          label={t('tabs.label')}
           items={[
             {
               value: 'dualAuth',
@@ -546,21 +573,21 @@ export default function NukeRoute() {
                       </div>
                       <div className="w-48">
                         <Select
-                          label="Filter by Status"
+                          label={t('filter.label')}
                           value={dualAuthStatusFilter}
                           onValueChange={setDualAuthStatusFilter}
                           options={[
-                            { value: 'ALL', label: 'All Statuses' },
-                            { value: 'pending', label: 'Pending Approval' },
-                            { value: 'executed', label: 'Executed' },
-                            { value: 'rejected', label: 'Rejected' },
-                            { value: 'expired', label: 'Expired' }
+                            { value: 'ALL', label: t('filter.allStatuses') },
+                            { value: 'pending', label: t('dualAuth.status.pending') },
+                            { value: 'executed', label: t('dualAuth.status.executed') },
+                            { value: 'rejected', label: t('dualAuth.status.rejected') },
+                            { value: 'expired', label: t('dualAuth.status.expired') }
                           ]}
                         />
                       </div>
                     </div>
                     <Table
-                      caption="Dual Authorization Destruction Requests"
+                      caption={t('dualAuth.caption')}
                       columns={dualAuthColumns}
                       rows={filteredDualAuth}
                       rowKey={(r) => r.id}
@@ -604,19 +631,19 @@ export default function NukeRoute() {
                       </div>
                       <div className="w-48">
                         <Select
-                          label="Filter by Status"
+                          label={t('filter.label')}
                           value={holdStatusFilter}
                           onValueChange={setHoldStatusFilter}
                           options={[
-                            { value: 'ALL', label: 'All Holds' },
-                            { value: 'ACTIVE', label: 'Active Holds' },
-                            { value: 'RELEASED', label: 'Released Holds' }
+                            { value: 'ALL', label: t('filter.allHolds') },
+                            { value: 'ACTIVE', label: t('filter.activeHolds') },
+                            { value: 'RELEASED', label: t('filter.releasedHolds') }
                           ]}
                         />
                       </div>
                     </div>
                     <Table
-                      caption="Legal Holds and Compliance Orders"
+                      caption={t('legalHolds.caption')}
                       columns={holdColumns}
                       rows={filteredHolds}
                       rowKey={(h) => h.id}
@@ -636,7 +663,7 @@ export default function NukeRoute() {
                     <Card>
                       <CardHeader title={t('dms.heartbeatReset')} description={t('dms.heartbeatDesc')} />
                       <form onSubmit={handleHeartbeatSubmit} className="flex flex-col gap-4">
-                        <FormField label="Owner Master Passphrase" required>
+                        <FormField label={t('dms.passphraseLabel')} required>
                           <Input
                             type="password"
                             placeholder={t('dms.passphrasePlaceholder')}
@@ -656,7 +683,7 @@ export default function NukeRoute() {
                             {dmsMsg.text}
                           </p>
                         )}
-                        <Button type="submit" variant="primary" disabled={!dmsPassphrase}>
+                        <Button type="submit" variant="secondary" disabled={!dmsPassphrase}>
                           <Clock className="h-4 w-4 mr-2" />
                           {t('dms.resetBtn')}
                         </Button>
@@ -668,11 +695,7 @@ export default function NukeRoute() {
                       <CardHeader
                         title={t('dms.canaryTitle')}
                         description={t('dms.canaryUpdated')}
-                        actions={
-                          <Badge tone="success" mono>
-                            {t('dms.canaryValid')}
-                          </Badge>
-                        }
+                        actions={<Badge tone="success">{t('dms.canaryValid')}</Badge>}
                       />
                       <div className="p-3 bg-surface-sunken rounded border border-border text-micro font-mono whitespace-pre-wrap leading-relaxed">
                         {`-----BEGIN NERONET WARRANT CANARY-----
@@ -742,19 +765,19 @@ FISA court orders, or requests demanding backdoors.
           <form onSubmit={handleRequestSubmit} className="flex flex-col gap-4 py-2">
             <FormField label={t('dualAuth.requestModal.targetType')} required>
               <Select
-                label="Target Scope"
+                label={t('dualAuth.requestModal.targetType')}
                 value={reqTargetType}
                 onValueChange={(v) => setReqTargetType(v as any)}
                 options={[
-                  { value: 'organization', label: 'Organization-Level Data Keys' },
-                  { value: 'global', label: 'Global Sovereign Mesh Data Keys' }
+                  { value: 'organization', label: t('scope.organization') },
+                  { value: 'global', label: t('scope.global') }
                 ]}
               />
             </FormField>
 
             <FormField label={t('dualAuth.requestModal.targetId')} required>
               <Input
-                placeholder="e.g. org-target-1"
+                placeholder={t('dualAuth.requestModal.targetIdPlaceholder')}
                 value={reqTargetId}
                 onChange={(e) => setReqTargetId(e.target.value)}
                 required
@@ -764,7 +787,7 @@ FISA court orders, or requests demanding backdoors.
 
             <FormField label={t('dualAuth.requestModal.comment')}>
               <Input
-                placeholder="Administrative reason or ticket reference..."
+                placeholder={t('dualAuth.requestModal.commentPlaceholder')}
                 value={reqComment}
                 onChange={(e) => setReqComment(e.target.value)}
               />
@@ -772,7 +795,7 @@ FISA court orders, or requests demanding backdoors.
 
             <FormField
               label={t('dualAuth.requestModal.confirmation')}
-              hint="Type CONFIRM DESTRUCTION in all caps"
+              hint={t('dualAuth.requestModal.confirmationHint')}
               error={reqError}
               required
             >
@@ -829,14 +852,14 @@ FISA court orders, or requests demanding backdoors.
               <div>
                 <span className="text-subtle block">{t('dualAuth.approveModal.targetLabel')}</span>
                 <span className="font-mono text-content font-semibold">
-                  {approveTarget?.target_id} ({approveTarget?.target_type})
+                  {approveTarget?.target_id} ({approveTarget ? scopeLabel(approveTarget.target_type) : ''})
                 </span>
               </div>
             </div>
 
             <FormField label={t('dualAuth.approveModal.commentLabel')}>
               <Input
-                placeholder="Approval rationale..."
+                placeholder={t('dualAuth.approveModal.commentPlaceholder')}
                 value={approveComment}
                 onChange={(e) => setApproveComment(e.target.value)}
               />
@@ -860,49 +883,51 @@ FISA court orders, or requests demanding backdoors.
         <Dialog
           open={Boolean(inspectTarget)}
           onOpenChange={(open) => !open && setInspectTarget(null)}
-          title="Destruction Request Inspection"
+          title={t('dualAuth.inspect.title')}
           footer={
             <Button variant="secondary" onClick={() => setInspectTarget(null)}>
-              Close
+              {t('dualAuth.inspect.close')}
             </Button>
           }
         >
           {inspectTarget && (
             <div className="flex flex-col gap-3 py-2 text-caption">
               <div className="flex justify-between py-1.5 border-b border-border">
-                <span className="text-subtle">Authorization ID</span>
+                <span className="text-subtle">{t('dualAuth.inspect.id')}</span>
                 <CodeText>{inspectTarget.id}</CodeText>
               </div>
               <div className="flex justify-between py-1.5 border-b border-border">
-                <span className="text-subtle">Target</span>
+                <span className="text-subtle">{t('dualAuth.inspect.target')}</span>
                 <span className="font-mono font-semibold text-content">
-                  {inspectTarget.target_type}: {inspectTarget.target_id}
+                  {scopeLabel(inspectTarget.target_type)}: {inspectTarget.target_id}
                 </span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-border">
-                <span className="text-subtle">Initiator</span>
+                <span className="text-subtle">{t('dualAuth.inspect.initiator')}</span>
                 <span className="font-mono text-content">{inspectTarget.initiator_user_id}</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-border">
-                <span className="text-subtle">Initiator Comment</span>
-                <span className="text-content">{inspectTarget.initiator_comment || 'None'}</span>
+                <span className="text-subtle">{t('dualAuth.inspect.initiatorComment')}</span>
+                <span className="text-content">{inspectTarget.initiator_comment || t('dualAuth.inspect.none')}</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-border">
-                <span className="text-subtle">Approver</span>
-                <span className="font-mono text-content">{inspectTarget.approver_user_id || 'Pending'}</span>
+                <span className="text-subtle">{t('dualAuth.inspect.approver')}</span>
+                <span className="font-mono text-content">
+                  {inspectTarget.approver_user_id || t('dualAuth.inspect.pending')}
+                </span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-border">
-                <span className="text-subtle">Approver Comment</span>
-                <span className="text-content">{inspectTarget.approver_comment || 'None'}</span>
+                <span className="text-subtle">{t('dualAuth.inspect.approverComment')}</span>
+                <span className="text-content">{inspectTarget.approver_comment || t('dualAuth.inspect.none')}</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-border">
-                <span className="text-subtle">Status</span>
+                <span className="text-subtle">{t('dualAuth.inspect.status')}</span>
                 <Badge tone={inspectTarget.status === 'executed' ? 'danger' : 'warning'}>
-                  {inspectTarget.status.toUpperCase()}
+                  {authStatusLabel(inspectTarget.status)}
                 </Badge>
               </div>
               <div className="flex justify-between py-1.5 border-b border-border">
-                <span className="text-subtle">Expires At</span>
+                <span className="text-subtle">{t('dualAuth.inspect.expiresAt')}</span>
                 <span className="font-mono text-content">{new Date(inspectTarget.expires_at).toLocaleString()}</span>
               </div>
             </div>
@@ -921,7 +946,7 @@ FISA court orders, or requests demanding backdoors.
                 {t('legalHolds.imposeModal.cancel')}
               </Button>
               <Button
-                variant="primary"
+                variant="secondary"
                 onClick={handleImposeSubmit}
                 disabled={!imposeOrgId.trim() || !imposeReason.trim()}
               >
@@ -933,7 +958,7 @@ FISA court orders, or requests demanding backdoors.
           <form onSubmit={handleImposeSubmit} className="flex flex-col gap-4 py-2">
             <FormField label={t('legalHolds.imposeModal.organizationId')} required>
               <Input
-                placeholder="e.g. org-enterprise-target"
+                placeholder={t('legalHolds.imposeModal.organizationIdPlaceholder')}
                 value={imposeOrgId}
                 onChange={(e) => setImposeOrgId(e.target.value)}
                 required
@@ -1045,11 +1070,7 @@ FISA court orders, or requests demanding backdoors.
               {t('dms.emergencyModal.warning')}
             </div>
 
-            <FormField
-              label={t('dms.emergencyModal.phrasePrompt')}
-              hint="Type DESTROY EVERYTHING PERMANENTLY in all caps"
-              required
-            >
+            <FormField label={t('dms.emergencyModal.phrasePrompt')} hint={t('dms.emergencyModal.phraseHint')} required>
               <Input
                 placeholder="DESTROY EVERYTHING PERMANENTLY"
                 value={purgePhrase}
@@ -1061,7 +1082,7 @@ FISA court orders, or requests demanding backdoors.
             <FormField label={t('dms.emergencyModal.passwordPrompt')} error={purgeError} required>
               <Input
                 type="password"
-                placeholder="Super-admin password..."
+                placeholder={t('dms.emergencyModal.passwordPlaceholder')}
                 value={purgePassword}
                 onChange={(e) => setPurgePassword(e.target.value)}
                 required

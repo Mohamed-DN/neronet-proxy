@@ -9,6 +9,7 @@ import NukeRoute from './NukeRoute';
 import { ShellProvider } from '../shell';
 import { createQueryClient } from '../../services/queries/client';
 import type { DualAuthRequest, LegalHold, NukeGovernanceOverview } from '../../services/types';
+import type { ThemeName } from '../../ui/tokens';
 import i18n from '../../i18n';
 
 const mockOverview: NukeGovernanceOverview = {
@@ -75,7 +76,7 @@ function jsonResponse(data: unknown, status = 200) {
   );
 }
 
-function renderNuke(initialEntries = ['/nuke']) {
+function renderNuke(initialEntries = ['/nuke'], theme: ThemeName = 'light') {
   const queryClient = createQueryClient();
   queryClient.setDefaultOptions({
     queries: { retry: false, refetchOnWindowFocus: false }
@@ -90,7 +91,18 @@ function renderNuke(initialEntries = ['/nuke']) {
           </Routes>
         </MemoryRouter>
       </ShellProvider>
-    </QueryClientProvider>
+    </QueryClientProvider>,
+    { theme }
+  );
+}
+
+/** Each text node on its own, so adjacent labels are not glued into one word. */
+function expectNoUpperCaseStatusWords(container: HTMLElement) {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const texts: string[] = [];
+  while (walker.nextNode()) texts.push((walker.currentNode.textContent ?? '').trim());
+  expect(texts.filter((text) => /^(ORGANIZATION|GLOBAL|PENDING|EXECUTED|REJECTED|EXPIRED|ACTIVE)$/.test(text))).toEqual(
+    []
   );
 }
 
@@ -130,21 +142,22 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
 
     // Verify Title & Stats
     await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-        /Cryptographic Shredding & NeroNuke Governance/i
-      );
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/Permanent data erasure/i);
     });
 
     // Check Stat cards
-    expect(screen.getByText(/Encryption Keys Status/i)).toBeInTheDocument();
+    expect(screen.getByText(/Data status/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Active Legal Holds/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Dual-Auth Requests/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pending requests/i)).toBeInTheDocument();
 
     // Check dual-auth rows in table
     await waitFor(() => {
       expect(screen.getByText('org-shred-target')).toBeInTheDocument();
       expect(screen.getByText('Compliance GDPR Art. 17 Right to be Forgotten')).toBeInTheDocument();
     });
+
+    // Status words are sentence case, never upper-cased copy
+    expectNoUpperCaseStatusWords(container);
 
     // Verify 0 accessibility violations in axe-core
     await expectNoAxeViolations(container);
@@ -189,17 +202,17 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     await user.click(reqBtn);
 
     // Fill form
-    const targetInput = screen.getByPlaceholderText('e.g. org-target-1');
+    const targetInput = screen.getByPlaceholderText('For example org-123');
     await user.type(targetInput, 'org-finance-corrupted');
 
-    const commentInput = screen.getByPlaceholderText(/Administrative reason or ticket reference/i);
+    const commentInput = screen.getByPlaceholderText(/Reason or ticket number/i);
     await user.type(commentInput, 'Ransomware threat mitigation');
 
     const confirmInput = screen.getByPlaceholderText('CONFIRM DESTRUCTION');
     await user.type(confirmInput, 'CONFIRM DESTRUCTION');
 
     // Submit
-    const submitBtn = screen.getByRole('button', { name: /Submit Destruction Request/i });
+    const submitBtn = screen.getByRole('button', { name: /Send the erasure request/i });
     await user.click(submitBtn);
 
     // Modal closes and new request appears in table
@@ -236,23 +249,23 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     });
 
     // Click Approve & Shred on the pending request
-    const approveBtn = screen.getByRole('button', { name: /Approve & Shred/i });
+    const approveBtn = screen.getByRole('button', { name: /Approve and erase the data/i });
     await user.click(approveBtn);
 
     // Modal opens
-    expect(screen.getByRole('heading', { name: /Approve & Execute Irreversible Destruction/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Approve and erase the data for good/i })).toBeInTheDocument();
 
     // Check confirmation certification checkbox
     const checkbox = screen.getByRole('checkbox');
     await user.click(checkbox);
 
     // Execute button
-    const executeBtn = screen.getByRole('button', { name: /Permanently Execute Shredding/i });
+    const executeBtn = screen.getByRole('button', { name: /Erase the data for good/i });
     await user.click(executeBtn);
 
     // Modal closes and status changes to Executed
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /Permanently Execute Shredding/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Erase the data for good/i })).not.toBeInTheDocument();
     });
   });
 
@@ -327,7 +340,7 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     renderNuke();
 
     // Switch to Legal Holds tab
-    const holdsTab = screen.getByRole('tab', { name: /Legal Holds & Preservation/i });
+    const holdsTab = screen.getByRole('tab', { name: /Legal holds/i });
     await user.click(holdsTab);
 
     // Verify existing hold row
@@ -336,17 +349,17 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     });
 
     // Click Impose Legal Hold
-    const imposeBtn = screen.getByRole('button', { name: /Impose Legal Hold/i });
+    const imposeBtn = screen.getByRole('button', { name: /Apply a legal hold/i });
     await user.click(imposeBtn);
 
     // Fill form
-    const orgInput = screen.getByPlaceholderText('e.g. org-enterprise-target');
+    const orgInput = screen.getByPlaceholderText('For example org-123');
     await user.type(orgInput, 'org-preservation-bank');
 
-    const reasonInput = screen.getByPlaceholderText(/Court Order #2026-CV-9824 Preservation Order/i);
+    const reasonInput = screen.getByPlaceholderText(/court order no. 2026-CV-9824/i);
     await user.type(reasonInput, 'Bank of Italy Preservation Directive #882');
 
-    const submitBtn = screen.getByRole('button', { name: /Enforce Legal Hold/i });
+    const submitBtn = screen.getByRole('button', { name: /Apply the legal hold/i });
     await user.click(submitBtn);
 
     // Verify new hold added
@@ -392,22 +405,22 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     renderNuke();
 
     // Switch to DMS & Canary tab
-    const dmsTab = screen.getByRole('tab', { name: /Dead Man's Switch & Canary/i });
+    const dmsTab = screen.getByRole('tab', { name: /Presence check and signals/i });
     await user.click(dmsTab);
 
     // Verify Canary text and DMS form
-    expect(screen.getByText(/Warrant Canary Signed Signal/i)).toBeInTheDocument();
-    expect(screen.getByText(/VALID ED25519 SIGNATURE/i)).toBeInTheDocument();
+    expect(screen.getByText(/Transparency signal/i)).toBeInTheDocument();
+    expect(screen.getByText(/Valid signature/i)).toBeInTheDocument();
 
     // Fill passphrase and submit heartbeat
-    const passInput = screen.getByPlaceholderText(/Owner passphrase/i);
+    const passInput = screen.getByPlaceholderText(/Owner's main password/i);
     await user.type(passInput, 'owner-secret-passphrase-2026');
 
-    const resetBtn = screen.getByRole('button', { name: /Reset Global Wipe Timer/i });
+    const resetBtn = screen.getByRole('button', { name: /Restart the countdown/i });
     await user.click(resetBtn);
 
     await waitFor(() => {
-      expect(screen.getByText(/Heartbeat confirmed. Global wipe timer reset successfully./i)).toBeInTheDocument();
+      expect(screen.getByText(/Heartbeat confirmed. The countdown has restarted./i)).toBeInTheDocument();
     });
   });
 
@@ -448,7 +461,7 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     });
 
     renderNuke();
-    await user.click(await screen.findByRole('tab', { name: /Legal Holds & Preservation/i }));
+    await user.click(await screen.findByRole('tab', { name: /Legal holds/i }));
     const releaseButton = (await screen.findAllByRole('button', { name: /remove the legal hold/i }))[0];
     if (!releaseButton) throw new Error('expected a release button');
     await user.click(releaseButton);
@@ -477,5 +490,65 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     } finally {
       await i18n.changeLanguage('en');
     }
+  });
+  it('15. A started global erasure is a toast, and window.alert is never called', async () => {
+    const user = userEvent.setup();
+    const alertSpy = vi.fn();
+    vi.stubGlobal('alert', alertSpy);
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input);
+      const method = init?.method || 'GET';
+      if (url.includes('/nuke/owner-dms/trigger') && method === 'POST') return jsonResponse({ success: true });
+      if (url.includes('/nuke/status')) return jsonResponse(mockOverview);
+      if (url.includes('/nuke/legal-hold')) return jsonResponse({ legal_holds: holdsState });
+      if (url.includes('/nuke/dual-auth')) return jsonResponse({ authorizations: authState });
+      return jsonResponse({});
+    });
+
+    renderNuke();
+    await user.click(await screen.findByRole('tab', { name: /Presence check and signals/i }));
+    await user.click(screen.getByRole('button', { name: /Erase all data now/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    await user.type(
+      within(dialog).getByPlaceholderText('DESTROY EVERYTHING PERMANENTLY'),
+      'DESTROY EVERYTHING PERMANENTLY'
+    );
+    await user.type(within(dialog).getByPlaceholderText('Super-admin password...'), 'super-secret-2026');
+    await user.click(within(dialog).getByRole('button', { name: /Erase everything now/i }));
+
+    expect(await screen.findByText('Global erasure started.')).toBeInTheDocument();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('16. A missing key status reads Not measured, never ACTIVE', async () => {
+    const withoutKeys: Record<string, unknown> = { ...mockOverview };
+    delete withoutKeys.keys_status;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/nuke/status')) return jsonResponse(withoutKeys);
+      if (url.includes('/nuke/legal-hold')) return jsonResponse({ legal_holds: holdsState });
+      if (url.includes('/nuke/dual-auth')) return jsonResponse({ authorizations: authState });
+      return jsonResponse({});
+    });
+
+    const { container } = renderNuke();
+    await waitFor(() => expect(screen.getAllByText('Not measured').length).toBeGreaterThan(0));
+    expectNoUpperCaseStatusWords(container);
+  });
+
+  it('17. The page passes axe-core in dark theme with no upper-cased status words', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/nuke/status')) return jsonResponse(mockOverview);
+      if (url.includes('/nuke/legal-hold')) return jsonResponse({ legal_holds: holdsState });
+      if (url.includes('/nuke/dual-auth')) return jsonResponse({ authorizations: authState });
+      return jsonResponse({});
+    });
+
+    const { container } = renderNuke(['/nuke'], 'dark');
+    await waitFor(() => expect(screen.getByText('org-shred-target')).toBeInTheDocument());
+    expectNoUpperCaseStatusWords(container);
+    await expectNoAxeViolations(container, 'dark');
   });
 });

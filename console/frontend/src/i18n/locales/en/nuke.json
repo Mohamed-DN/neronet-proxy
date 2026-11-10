@@ -1,137 +1,180 @@
 {
-  "title": "Cryptographic Shredding & NeroNuke Governance",
-  "description": "Fail-closed cryptographic data obliteration, 4-Eyes dual authorization workflows, legal hold preservation compliance, and Dead Man's Switch controls.",
+  "title": "Permanent data erasure",
+  "description": "Permanently erase an organisation's data; every erasure needs two administrators and cannot be undone.",
+  "refresh": "Refresh",
   "tabs": {
-    "dualAuth": "Dual-Authorization Workflows",
-    "legalHolds": "Legal Holds & Preservation",
-    "deadManSwitch": "Dead Man's Switch & Canary"
+    "label": "Erasure and governance sections",
+    "dualAuth": "Requests to approve",
+    "legalHolds": "Legal holds",
+    "deadManSwitch": "Presence check and signals"
   },
   "stats": {
-    "keysStatus": "Encryption Keys Status",
-    "activeEpoch": "Active (AES-256-GCM Envelope)",
-    "shredded": "Permanently Shredded",
-    "frozen": "Cryptographically Frozen",
-    "legalHolds": "Active Legal Holds",
-    "holdsBlocked": "Shredding Blocked by Law",
-    "noHolds": "Zero Holds Active",
-    "dualAuthGate": "Dual-Auth Requests",
-    "pendingAuth": "Awaiting Second Admin",
-    "allClear": "All Clear",
-    "deadManSwitch": "Emergency DMS",
-    "armed": "Armed & Monitored",
-    "disarmed": "Standby"
+    "keysStatus": "Data status",
+    "keysHint": "AES-256-GCM encryption",
+    "activeEpoch": "Protected and readable data",
+    "shredded": "Erased for good",
+    "frozen": "Locked",
+    "notMeasured": "Not measured",
+    "unknown": "Unknown",
+    "legalHolds": "Active legal holds",
+    "holdsBlocked": "Erasures blocked by law",
+    "noHolds": "No active hold",
+    "dualAuthGate": "Pending requests",
+    "pendingAuth": "Waiting for the second administrator",
+    "allClear": "Nothing needs action",
+    "deadManSwitch": "Emergency switch",
+    "dmsHint": "Network owner check",
+    "armed": "Active and monitored",
+    "disarmed": "Inactive"
+  },
+  "scope": {
+    "organization": "One organisation's data",
+    "global": "All network data"
+  },
+  "filter": {
+    "label": "Filter by status",
+    "allStatuses": "All statuses",
+    "allHolds": "All holds",
+    "activeHolds": "Active holds",
+    "releasedHolds": "Removed holds"
   },
   "dualAuth": {
-    "bannerTitle": "4-Eyes Principle Enforced",
-    "bannerText": "Destruction operations require two distinct administrators. The initiator cannot approve their own request, and active legal holds unconditionally abort any shredding action.",
+    "bannerTitle": "A second administrator is always required",
+    "bannerText": "Every erasure requires two different administrators. The person who requests it cannot approve it. An active legal hold blocks any erasure.",
     "requestBtn": "Request erasure",
-    "searchPlaceholder": "Filter destruction requests by target, initiator, status...",
+    "searchPlaceholder": "Search by organisation, who requested it, status...",
+    "caption": "Erasure requests",
     "columns": {
-      "target": "Destruction Target",
-      "initiator": "Initiator (1st Admin)",
-      "comment": "Reason / Justification",
-      "status": "Workflow Status",
-      "expiresAt": "Validity Expiration",
+      "target": "What to erase",
+      "initiator": "Requested by",
+      "comment": "Reason",
+      "status": "Status",
+      "expiresAt": "Expires on",
       "actions": "Actions"
     },
     "status": {
-      "pending": "Pending Second Approval",
-      "approved": "Approved",
-      "executed": "Executed (Shredded)",
+      "pending": "Waiting for approval",
+      "approved": "Approved, to be carried out",
+      "executed": "Done: data erased",
       "rejected": "Rejected",
       "cancelled": "Cancelled",
-      "expired": "Expired"
+      "expired": "Expired: it must be requested again"
     },
     "actions": {
-      "approve": "Approve & Shred",
+      "approve": "Approve and erase the data",
       "reject": "Reject the request",
-      "details": "Inspect Request"
+      "details": "Show details"
     },
     "requestModal": {
-      "title": "Request Cryptographic Destruction",
-      "description": "Propose an irreversible crypto-shredding operation. A second administrator must approve before execution.",
-      "targetType": "Target Scope",
-      "targetId": "Target Identifier (Org ID)",
-      "comment": "Administrative Justification",
+      "title": "Request permanent erasure",
+      "description": "Propose erasing the data. It becomes permanent only if a second administrator approves it.",
+      "targetType": "What to erase",
+      "targetId": "Organisation ID",
+      "targetIdPlaceholder": "For example org-123",
+      "comment": "Reason (kept in the log)",
+      "commentPlaceholder": "Reason or ticket number...",
       "confirmation": "Type CONFIRM DESTRUCTION to confirm the request",
+      "confirmationHint": "Type exactly as shown: CONFIRM DESTRUCTION",
       "cancel": "Cancel",
-      "submit": "Submit Destruction Request"
+      "submit": "Send the erasure request"
     },
     "approveModal": {
-      "title": "Approve & Execute Irreversible Destruction",
-      "warning": "CRITICAL WARNING: This action permanently overwrites organization data encryption keys with random cryptographic noise. Decryption of all tenant data and audit records will become physically impossible.",
-      "holdBlocked": "DESTRUCTION BLOCKED: An active legal hold is currently imposed on this target.",
-      "initiatorLabel": "Initiated By",
-      "targetLabel": "Destruction Target",
-      "commentLabel": "Second Approver Comment",
-      "confirmationPrompt": "I certify that I am a distinct administrator and authorize permanent cryptographic obliteration.",
-      "cancel": "Abort",
-      "execute": "Permanently Execute Shredding"
+      "title": "Approve and erase the data for good",
+      "warning": "Warning: this organisation's data and audit records will become unreadable forever. This cannot be undone.",
+      "holdBlocked": "Blocked: an active legal hold applies to this organisation. Remove it first.",
+      "initiatorLabel": "Requested by",
+      "targetLabel": "What to erase",
+      "commentLabel": "Reason for your approval",
+      "commentPlaceholder": "Reason for approval...",
+      "confirmationPrompt": "I confirm I am a different administrator from the requester and authorise permanent erasure.",
+      "cancel": "Close without approving",
+      "execute": "Erase the data for good"
+    },
+    "inspect": {
+      "title": "Erasure request details",
+      "id": "Authorisation ID",
+      "target": "What to erase",
+      "initiator": "Requested by",
+      "initiatorComment": "Reason for request",
+      "approver": "Approved by",
+      "approverComment": "Reason for approval",
+      "status": "Status",
+      "expiresAt": "Expires on",
+      "none": "None",
+      "pending": "Waiting",
+      "close": "Close"
     },
     "rejectTitle": "Reject this erasure request?",
-    "rejectDesc": "The request is closed and nothing is erased."
+    "rejectDesc": "The request is closed and nothing is erased.",
+    "rejectDefaultReason": "Rejected by an administrator in the console."
   },
   "legalHolds": {
-    "bannerTitle": "Legal Hold & Compliance Preservation",
-    "bannerText": "Imposing a legal hold unconditionally blocks all cryptographic shredding and dead man's switch executions across the specified organization. Holds can only be released by authorized compliance officers.",
-    "imposeBtn": "Impose Legal Hold",
-    "searchPlaceholder": "Filter legal holds by organization, reason, hold ID...",
+    "bannerTitle": "Legal holds: data cannot be erased",
+    "bannerText": "A legal hold prevents any erasure of the organisation's data, including automatic erasure. Only authorised compliance staff can remove it.",
+    "imposeBtn": "Apply a legal hold",
+    "searchPlaceholder": "Search by organisation, reason, hold number...",
+    "caption": "Legal holds",
     "columns": {
-      "id": "Hold ID",
-      "organization": "Organization",
-      "reason": "Legal Reference / Preservation Order",
-      "imposedBy": "Imposed By",
-      "createdAt": "Imposed Date",
+      "id": "Hold number",
+      "organization": "Organisation",
+      "reason": "Legal reason (order or case)",
+      "imposedBy": "Applied by",
+      "createdAt": "Applied on",
       "status": "Status",
       "actions": "Actions"
     },
     "status": {
-      "active": "Active Hold (Destruction Blocked)",
-      "released": "Released"
+      "active": "Active: erasures blocked",
+      "released": "Removed"
     },
     "actions": {
       "release": "Remove the legal hold"
     },
     "imposeModal": {
-      "title": "Impose Compliance Legal Hold",
-      "description": "Enforce a preservation order on an organization to prevent any key shredding or automated data purge.",
-      "organizationId": "Organization ID",
-      "reason": "Legal Reason / Court Order Reference",
-      "reasonHint": "Case number, regulatory subpoena, or court order",
-      "reasonPlaceholder": "Court Order #2026-CV-9824 Preservation Order",
+      "title": "Apply a legal hold",
+      "description": "From now on no erasure of the organisation's data will be possible, automatic or manual, until the hold is removed.",
+      "organizationId": "Organisation ID",
+      "organizationIdPlaceholder": "For example org-123",
+      "reason": "Legal reason or order number",
+      "reasonHint": "For example a case number or court order",
+      "reasonPlaceholder": "For example court order no. 2026-CV-9824",
       "cancel": "Cancel",
-      "submit": "Enforce Legal Hold"
+      "submit": "Apply the legal hold"
     },
     "releaseModal": {
       "title": "Remove the legal hold?",
       "description": "Once the hold is removed, erasures for this organisation become possible again. Continue?",
       "cancel": "Cancel",
       "confirm": "Remove the legal hold",
-      "holdId": "Hold ID",
+      "holdId": "Hold number",
       "organization": "Organisation",
       "reason": "Reason"
     }
   },
   "dms": {
-    "title": "Network Owner Dead Man's Switch",
-    "description": "Automated failsafe wipe triggered if the network owner heartbeat fails to refresh within the configured grace period.",
-    "heartbeatReset": "Confirm Owner Heartbeat & Reset Timer",
-    "heartbeatDesc": "Re-enter owner master passphrase to reset the server-side global wipe clock.",
-    "passphrasePlaceholder": "Owner passphrase...",
-    "resetBtn": "Reset Global Wipe Timer",
-    "canaryTitle": "Warrant Canary Signed Signal",
-    "canaryValid": "VALID ED25519 SIGNATURE",
-    "canaryUpdated": "Updated weekly",
-    "emergencyTitle": "Emergency Manual Global Purge",
-    "emergencyDesc": "Immediately shreds all tenant data, databases, and caches across the entire global mesh.",
-    "emergencyBtn": "EXECUTE IMMEDIATE GLOBAL PURGE",
+    "title": "Automatic erasure if the owner disappears",
+    "description": "If the owner does not confirm they are still there within the set time, all network data is erased automatically. This cannot be undone.",
+    "heartbeatReset": "I'm here: stop the countdown",
+    "heartbeatDesc": "Enter the owner's main password to restart the countdown.",
+    "passphraseLabel": "Owner's main password",
+    "passphrasePlaceholder": "Owner's main password",
+    "heartbeatDone": "Heartbeat confirmed. The countdown has restarted.",
+    "resetBtn": "Restart the countdown",
+    "canaryTitle": "Transparency signal (warrant canary)",
+    "canaryValid": "Valid signature",
+    "canaryUpdated": "Updated every week",
+    "emergencyTitle": "Immediate erasure of the whole network",
+    "emergencyDesc": "Permanently erases all organisations' data, in databases and caches, right away. This cannot be undone.",
+    "emergencyBtn": "Erase all data now",
     "emergencyModal": {
-      "title": "CONFIRM GLOBAL DESTRUCTION",
-      "warning": "THIS WILL DESTROY THE ENTIRE NERONET MESH AND ALL TENANT DATA PERMANENTLY.",
-      "phrasePrompt": "Type exactly 'DESTROY EVERYTHING PERMANENTLY':",
-      "passwordPrompt": "Super-Admin Password:",
-      "cancel": "Abort",
-      "confirm": "SHRED EVERYTHING NOW"
+      "title": "Erase all network data?",
+      "warning": "All organisations' data on the network will be erased forever. This cannot be undone.",
+      "phrasePrompt": "Type exactly DESTROY EVERYTHING PERMANENTLY to confirm:",
+      "phraseHint": "Type exactly as shown: DESTROY EVERYTHING PERMANENTLY",
+      "passwordPrompt": "Super-admin password:",
+      "passwordPlaceholder": "Super-admin password...",
+      "cancel": "Close without erasing",
+      "confirm": "Erase everything now"
     }
   },
   "purge": {
@@ -146,6 +189,10 @@
     "release": "The legal hold was not removed. Try again.",
     "reject": "The request was not rejected. Try again.",
     "passphrase": "Owner password is incorrect. Try again.",
-    "purge": "The server refused the erasure. Check the password and try again."
+    "purge": "The server refused the erasure. Check the password and try again.",
+    "phraseMismatch": "The phrase does not match. Type exactly CONFIRM DESTRUCTION.",
+    "targetRequired": "Enter the organisation ID.",
+    "certifyRequired": "Tick the box to confirm you are a different administrator.",
+    "reasonRequired": "Enter the legal reason or order number."
   }
 }

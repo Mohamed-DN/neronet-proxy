@@ -1,137 +1,180 @@
 {
-  "title": "Distruzione Crittografica & Governance NeroNuke",
-  "description": "Cancellazione crittografica fail-closed irreversibile, flussi di doppia autorizzazione a 4 occhi, conformità ordini legali di conservazione (Legal Hold) e Dead Man's Switch.",
+  "title": "Cancellazione definitiva dei dati",
+  "description": "Cancella per sempre i dati di un'organizzazione; ogni cancellazione richiede due amministratori e non si può annullare.",
+  "refresh": "Aggiorna",
   "tabs": {
-    "dualAuth": "Flussi a Doppia Autorizzazione",
-    "legalHolds": "Ordini di Conservazione Legale (Legal Hold)",
-    "deadManSwitch": "Dead Man's Switch & Canary"
+    "label": "Sezioni di cancellazione e governance",
+    "dualAuth": "Richieste da approvare",
+    "legalHolds": "Blocchi legali",
+    "deadManSwitch": "Controllo di presenza e segnali"
   },
   "stats": {
-    "keysStatus": "Stato Chiavi di Cifratura",
-    "activeEpoch": "Attive (Busta AES-256-GCM)",
-    "shredded": "Distrutte Irreversibilmente",
-    "frozen": "Congelate Crittograficamente",
-    "legalHolds": "Legal Hold Attivi",
-    "holdsBlocked": "Distruzione Bloccata per Legge",
-    "noHolds": "Nessun Blocco Attivo",
-    "dualAuthGate": "Richieste Doppia Auth",
-    "pendingAuth": "In Attesa di Secondo Admin",
-    "allClear": "Tutto Regolare",
-    "deadManSwitch": "DMS di Emergenza",
-    "armed": "Armato & Monitorato",
-    "disarmed": "Standby"
+    "keysStatus": "Stato dei dati",
+    "keysHint": "Cifratura AES-256-GCM",
+    "activeEpoch": "Dati protetti e leggibili",
+    "shredded": "Cancellati per sempre",
+    "frozen": "Bloccati",
+    "notMeasured": "Non misurato",
+    "unknown": "Non noto",
+    "legalHolds": "Blocchi legali attivi",
+    "holdsBlocked": "Cancellazioni bloccate dalla legge",
+    "noHolds": "Nessun blocco attivo",
+    "dualAuthGate": "Richieste in attesa",
+    "pendingAuth": "In attesa del secondo amministratore",
+    "allClear": "Nessuna azione richiesta",
+    "deadManSwitch": "Interruttore di emergenza",
+    "dmsHint": "Controllo del proprietario della rete",
+    "armed": "Attivo e in controllo",
+    "disarmed": "Inattivo"
+  },
+  "scope": {
+    "organization": "Dati di una organizzazione",
+    "global": "Dati di tutta la rete"
+  },
+  "filter": {
+    "label": "Filtra per stato",
+    "allStatuses": "Tutti gli stati",
+    "allHolds": "Tutti i blocchi",
+    "activeHolds": "Blocchi attivi",
+    "releasedHolds": "Blocchi rimossi"
   },
   "dualAuth": {
-    "bannerTitle": "Principio dei 4 Occhi Tassativo",
-    "bannerText": "Le operazioni di distruzione richiedono due amministratori distinti. Il proponente non può approvare la propria richiesta e la presenza di un legal hold attivo blocca incondizionatamente ogni distruzione.",
+    "bannerTitle": "Serve sempre un secondo amministratore",
+    "bannerText": "Ogni cancellazione richiede due amministratori diversi. Chi la propone non può approvarla. Un blocco legale attivo impedisce qualunque cancellazione.",
     "requestBtn": "Richiedi la cancellazione",
-    "searchPlaceholder": "Filtra richieste per bersaglio, iniziatore, stato...",
+    "searchPlaceholder": "Cerca per organizzazione, chi l'ha chiesta, stato...",
+    "caption": "Richieste di cancellazione",
     "columns": {
-      "target": "Bersaglio Distruzione",
-      "initiator": "Iniziatore (1° Admin)",
-      "comment": "Motivazione / Giustificazione",
-      "status": "Stato Flusso",
-      "expiresAt": "Scadenza Validità",
+      "target": "Cosa cancellare",
+      "initiator": "Richiesta da",
+      "comment": "Motivo",
+      "status": "Stato",
+      "expiresAt": "Scade il",
       "actions": "Azioni"
     },
     "status": {
-      "pending": "In Attesa di 2° Approvatore",
-      "approved": "Approvata",
-      "executed": "Eseguita (Distrutta)",
+      "pending": "In attesa di approvazione",
+      "approved": "Approvata, da eseguire",
+      "executed": "Eseguita: dati cancellati",
       "rejected": "Rifiutata",
       "cancelled": "Annullata",
-      "expired": "Scaduta"
+      "expired": "Scaduta: va richiesta di nuovo"
     },
     "actions": {
-      "approve": "Approva & Distruggi",
+      "approve": "Approva e cancella i dati",
       "reject": "Rifiuta la richiesta",
-      "details": "Ispeziona Richiesta"
+      "details": "Mostra dettagli"
     },
     "requestModal": {
-      "title": "Richiedi Distruzione Crittografica",
-      "description": "Proponi un'operazione di crypto-shredding irreversibile. Un secondo amministratore distinto dovrà approvare la richiesta.",
-      "targetType": "Ambito Bersaglio",
-      "targetId": "Identificativo Bersaglio (Org ID)",
-      "comment": "Giustificazione Amministrativa",
+      "title": "Richiedi la cancellazione definitiva",
+      "description": "Proponi la cancellazione dei dati. Diventa definitiva solo se un secondo amministratore la approva.",
+      "targetType": "Cosa cancellare",
+      "targetId": "ID dell'organizzazione",
+      "targetIdPlaceholder": "Per esempio org-123",
+      "comment": "Motivo (resta nel registro)",
+      "commentPlaceholder": "Motivo o numero del ticket...",
       "confirmation": "Scrivi CONFIRM DESTRUCTION per confermare la richiesta",
+      "confirmationHint": "Scrivi esattamente così: CONFIRM DESTRUCTION",
       "cancel": "Annulla",
-      "submit": "Invia Richiesta di Distruzione"
+      "submit": "Invia la richiesta di cancellazione"
     },
     "approveModal": {
-      "title": "Approva ed Esegui Distruzione Irreversibile",
-      "warning": "AVVISO CRITICO: Questa azione sovrascrive permanentemente le chiavi DEK dell'organizzazione con rumore crittografico casuale. La decifratura dei dati dei tenant e dei registri audit diventerà fisicamente impossibile.",
-      "holdBlocked": "DISTRUZIONE BLOCCATA: Un legal hold attivo è attualmente imposto su questo bersaglio.",
-      "initiatorLabel": "Iniziato da",
-      "targetLabel": "Bersaglio Distruzione",
-      "commentLabel": "Commento Secondo Approvatore",
-      "confirmationPrompt": "Certifico di essere un amministratore distinto e autorizzo la distruzione crittografica permanente.",
-      "cancel": "Interrompi",
-      "execute": "Esegui Distruzione Definitiva"
+      "title": "Approva e cancella i dati per sempre",
+      "warning": "Attenzione: i dati di questa organizzazione e i registri di audit diventeranno illeggibili per sempre. Non si può tornare indietro.",
+      "holdBlocked": "Impossibile: c'è un blocco legale attivo su questa organizzazione. Rimuovilo prima.",
+      "initiatorLabel": "Richiesta da",
+      "targetLabel": "Cosa cancellare",
+      "commentLabel": "Motivo della tua approvazione",
+      "commentPlaceholder": "Motivo dell'approvazione...",
+      "confirmationPrompt": "Confermo di essere un amministratore diverso da chi ha fatto la richiesta e autorizzo la cancellazione definitiva.",
+      "cancel": "Chiudi senza approvare",
+      "execute": "Cancella i dati per sempre"
+    },
+    "inspect": {
+      "title": "Dettagli della richiesta di cancellazione",
+      "id": "ID autorizzazione",
+      "target": "Cosa cancellare",
+      "initiator": "Richiesta da",
+      "initiatorComment": "Motivo della richiesta",
+      "approver": "Approvata da",
+      "approverComment": "Motivo dell'approvazione",
+      "status": "Stato",
+      "expiresAt": "Scade il",
+      "none": "Nessuno",
+      "pending": "In attesa",
+      "close": "Chiudi"
     },
     "rejectTitle": "Rifiutare questa richiesta di cancellazione?",
-    "rejectDesc": "La richiesta viene chiusa e non viene cancellato nulla."
+    "rejectDesc": "La richiesta viene chiusa e non viene cancellato nulla.",
+    "rejectDefaultReason": "Rifiutata da un amministratore dalla console."
   },
   "legalHolds": {
-    "bannerTitle": "Legal Hold & Conservazione di Conformità",
-    "bannerText": "L'imposizione di un legal hold blocca incondizionatamente ogni distruzione crittografica o Dead Man's Switch sull'organizzazione indicata. Solo ufficiali di conformità autorizzati possono rilasciare il vincolo.",
-    "imposeBtn": "Imponi Legal Hold",
-    "searchPlaceholder": "Filtra ordini per organizzazione, motivo, ID vincolo...",
+    "bannerTitle": "Blocchi legali: i dati non si cancellano",
+    "bannerText": "Un blocco legale impedisce ogni cancellazione dei dati dell'organizzazione, anche quella automatica. Solo il personale autorizzato alla conformità può rimuoverlo.",
+    "imposeBtn": "Applica un blocco legale",
+    "searchPlaceholder": "Cerca per organizzazione, motivo, numero del blocco...",
+    "caption": "Blocchi legali",
     "columns": {
-      "id": "ID Vincolo",
+      "id": "Numero del blocco",
       "organization": "Organizzazione",
-      "reason": "Riferimento Legale / Ordine Conservazione",
-      "imposedBy": "Imposto Da",
-      "createdAt": "Data Imposizione",
+      "reason": "Motivo legale (ordine o pratica)",
+      "imposedBy": "Applicato da",
+      "createdAt": "Applicato il",
       "status": "Stato",
       "actions": "Azioni"
     },
     "status": {
-      "active": "Vincolo Attivo (Distruzione Bloccata)",
-      "released": "Rilasciato"
+      "active": "Attivo: cancellazioni bloccate",
+      "released": "Rimosso"
     },
     "actions": {
       "release": "Rimuovi il blocco legale"
     },
     "imposeModal": {
-      "title": "Imponi Legal Hold di Conformità",
-      "description": "Applica un vincolo legale di conservazione per impedire qualsiasi distruzione di chiavi o cancellazione programmata.",
-      "organizationId": "ID Organizzazione",
-      "reason": "Motivazione Giuridica / Riferimento Atto",
-      "reasonHint": "Numero di fascicolo, citazione normativa o ordine del tribunale",
-      "reasonPlaceholder": "Ordine del tribunale #2026-CV-9824 Ordine di conservazione",
+      "title": "Applica un blocco legale",
+      "description": "Da ora nessuna cancellazione dei dati dell'organizzazione sarà possibile, automatica o manuale, finché il blocco non viene rimosso.",
+      "organizationId": "ID dell'organizzazione",
+      "organizationIdPlaceholder": "Per esempio org-123",
+      "reason": "Motivo legale o numero dell'ordine",
+      "reasonHint": "Per esempio numero di fascicolo o ordine del tribunale",
+      "reasonPlaceholder": "Per esempio ordine del tribunale n. 2026-CV-9824",
       "cancel": "Annulla",
-      "submit": "Applica Legal Hold"
+      "submit": "Applica il blocco legale"
     },
     "releaseModal": {
       "title": "Rimuovere il blocco legale?",
       "description": "Rimuovendo il blocco, le cancellazioni di questa organizzazione tornano possibili. Vuoi continuare?",
       "cancel": "Annulla",
       "confirm": "Rimuovi il blocco legale",
-      "holdId": "ID del blocco",
+      "holdId": "Numero del blocco",
       "organization": "Organizzazione",
       "reason": "Motivo"
     }
   },
   "dms": {
-    "title": "Dead Man's Switch del Proprietario di Rete",
-    "description": "Cancellazione automatica totale in caso di mancata conferma del battito cardiaco entro il periodo di tolleranza configurato.",
-    "heartbeatReset": "Conferma Battito Cardiaco & Ripristina Timer",
-    "heartbeatDesc": "Reinserisci la passphrase master per azzerare il conto alla rovescia del wipe globale.",
-    "passphrasePlaceholder": "Passphrase del proprietario...",
-    "resetBtn": "Azzera Timer Wipe Globale",
-    "canaryTitle": "Segnale Firmato Warrant Canary",
-    "canaryValid": "FIRMA ED25519 VALIDA",
-    "canaryUpdated": "Aggiornato settimanalmente",
-    "emergencyTitle": "Purge Manuale Globale di Emergenza",
-    "emergencyDesc": "Distrugge immediatamente tutti i dati dei tenant, database e cache sull'intera rete globale.",
-    "emergencyBtn": "ESEGUI PURGE GLOBALE IMMEDIATO",
+    "title": "Cancellazione automatica se il proprietario sparisce",
+    "description": "Se il proprietario non conferma di essere presente entro il tempo impostato, tutti i dati della rete vengono cancellati in automatico. Non si può annullare.",
+    "heartbeatReset": "Confermo di esserci: ferma il conto alla rovescia",
+    "heartbeatDesc": "Inserisci la password principale del proprietario per riavviare il conto alla rovescia.",
+    "passphraseLabel": "Password principale del proprietario",
+    "passphrasePlaceholder": "Password principale del proprietario",
+    "heartbeatDone": "Battito confermato. Il conto alla rovescia è ripartito.",
+    "resetBtn": "Riavvia il conto alla rovescia",
+    "canaryTitle": "Segnale di trasparenza (warrant canary)",
+    "canaryValid": "Firma valida",
+    "canaryUpdated": "Aggiornato ogni settimana",
+    "emergencyTitle": "Cancellazione immediata di tutta la rete",
+    "emergencyDesc": "Cancella subito e per sempre i dati di tutte le organizzazioni, nei database e nelle cache. Non si può annullare.",
+    "emergencyBtn": "Cancella tutti i dati ora",
     "emergencyModal": {
-      "title": "CONFERMA DISTRUZIONE GLOBALE",
-      "warning": "QUESTA OPERAZIONE DISTRUGGERÀ L'INTERA MESH NERONET E TUTTI I DATI DEI TENANT IN MODO IRREVERSIBILE.",
-      "phrasePrompt": "Digita esattamente 'DESTROY EVERYTHING PERMANENTLY':",
-      "passwordPrompt": "Password di Super-Admin:",
-      "cancel": "Interrompi",
-      "confirm": "DISTRUGGI TUTTO ADESSO"
+      "title": "Cancellare tutti i dati della rete?",
+      "warning": "Verranno cancellati per sempre i dati di tutte le organizzazioni della rete. Non si può annullare.",
+      "phrasePrompt": "Scrivi esattamente DESTROY EVERYTHING PERMANENTLY per confermare:",
+      "phraseHint": "Scrivi esattamente così: DESTROY EVERYTHING PERMANENTLY",
+      "passwordPrompt": "Password del super-amministratore:",
+      "passwordPlaceholder": "Password del super-amministratore...",
+      "cancel": "Chiudi senza cancellare",
+      "confirm": "Cancella tutto adesso"
     }
   },
   "purge": {
@@ -146,6 +189,10 @@
     "release": "Il blocco legale non è stato rimosso. Riprova.",
     "reject": "La richiesta non è stata rifiutata. Riprova.",
     "passphrase": "Password del proprietario non corretta. Riprova.",
-    "purge": "Il server ha rifiutato la cancellazione. Controlla la password e riprova."
+    "purge": "Il server ha rifiutato la cancellazione. Controlla la password e riprova.",
+    "phraseMismatch": "La frase non corrisponde. Scrivi esattamente CONFIRM DESTRUCTION.",
+    "targetRequired": "Inserisci l'ID dell'organizzazione.",
+    "certifyRequired": "Spunta la casella per confermare di essere un amministratore diverso.",
+    "reasonRequired": "Inserisci il motivo legale o il numero dell'ordine."
   }
 }
