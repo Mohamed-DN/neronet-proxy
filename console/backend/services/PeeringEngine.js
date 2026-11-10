@@ -203,7 +203,7 @@ async function createPeeringRequest({
   initiator_endpoint,
   scope_mode = 'ALL',
   shared_device_ids = [],
-  shared_subnets = ['100.64.0.0/16'],
+  shared_subnets = [],
   expires_at,
   actor
 }) {
@@ -216,13 +216,27 @@ async function createPeeringRequest({
   const validScopes = ['ALL', 'SPECIFIC_DEVICES', 'SPECIFIC_SUBNETS'];
   const scope = validScopes.includes(scope_mode) ? scope_mode : 'ALL';
 
-  const subnets = Array.isArray(shared_subnets) && shared_subnets.length > 0 ? shared_subnets : ['100.64.0.0/16'];
+  // The signed scope is exactly what the caller chose. It used to fall back to
+  // 100.64.0.0/16 whenever no range was given, so an "all devices" link carried a
+  // range nobody picked, and a "specific networks" link with none silently got one.
+  const subnets = Array.isArray(shared_subnets) ? shared_subnets : [];
   for (const s of subnets) {
     if (!isValidCidr(s)) {
       const err = new Error(`Invalid CIDR format in shared_subnets: ${s}`);
       err.status = 400;
       throw err;
     }
+  }
+  const badScope = (message) => {
+    const err = new Error(message);
+    err.status = 400;
+    return err;
+  };
+  if (scope === 'SPECIFIC_SUBNETS' && subnets.length === 0) {
+    throw badScope('A link limited to specific networks must name at least one network');
+  }
+  if (scope !== 'SPECIFIC_SUBNETS' && subnets.length > 0) {
+    throw badScope('Address ranges can only be shared with scope SPECIFIC_SUBNETS');
   }
 
   const keyPair = getLocalEd25519KeyPair();
@@ -335,7 +349,7 @@ async function acceptPeeringAgreement(peeringToken, actor, expectedFingerprint =
     initiator_endpoint,
     initiator_public_key,
     scope_mode = 'ALL',
-    shared_subnets = ['100.64.0.0/16'],
+    shared_subnets = [],
     shared_device_ids = []
   } = peeringToken;
 

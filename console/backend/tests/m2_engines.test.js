@@ -625,6 +625,31 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       assert.strictEqual(badMask.status, 400);
     });
 
+    it('signs no address range for an all-devices link instead of an invented 100.64.0.0/16', async () => {
+      const res = await request(app)
+        .post('/api/peering/request')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ initiator_endpoint: 'https://all.mesh.com', scope_mode: 'ALL' });
+      assert.strictEqual(res.status, 201);
+      assert.deepStrictEqual(res.body.peering_agreement.shared_subnets, []);
+    });
+
+    it('refuses a specific-networks link that names no network', async () => {
+      const res = await request(app)
+        .post('/api/peering/request')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ initiator_endpoint: 'https://some.mesh.com', scope_mode: 'SPECIFIC_SUBNETS', shared_subnets: [] });
+      assert.strictEqual(res.status, 400);
+    });
+
+    it('refuses address ranges on an all-devices link, which would sign a scope nobody chose', async () => {
+      const res = await request(app)
+        .post('/api/peering/request')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ initiator_endpoint: 'https://mixed.mesh.com', scope_mode: 'ALL', shared_subnets: ['100.64.10.0/24'] });
+      assert.strictEqual(res.status, 400);
+    });
+
     it('should list all peering agreements and revoke agreement by ID', async () => {
       const listRes = await request(app).get('/api/peering/agreements').set('Authorization', `Bearer ${adminToken}`);
       assert.strictEqual(listRes.status, 200);
