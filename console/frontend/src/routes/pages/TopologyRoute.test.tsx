@@ -91,7 +91,7 @@ function jsonResponse(data: unknown, status = 200) {
   );
 }
 
-function renderTopology(initialEntries = ['/topology']) {
+function renderTopology(initialEntries = ['/topology'], theme: 'light' | 'dark' = 'light') {
   const queryClient = createQueryClient();
   queryClient.setDefaultOptions({
     queries: { retry: false, refetchOnWindowFocus: false }
@@ -107,7 +107,8 @@ function renderTopology(initialEntries = ['/topology']) {
           </Routes>
         </MemoryRouter>
       </ShellProvider>
-    </QueryClientProvider>
+    </QueryClientProvider>,
+    { theme }
   );
 }
 
@@ -149,7 +150,7 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
       )
     );
     const { container } = renderTopology();
-    await screen.findByRole('heading', { name: 'Communities' });
+    await screen.findByRole('heading', { name: 'Groups' });
     expect(container.querySelectorAll('[data-mesh-link]')).toHaveLength(78);
   });
 
@@ -157,11 +158,11 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
     const user = userEvent.setup();
     const { container } = renderTopology();
     await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' });
-    const communities = screen.getByRole('region', { name: 'Communities' });
+    const communities = screen.getByRole('region', { name: 'Groups' });
     expect(within(communities).getByRole('checkbox', { name: /Corporate Ops.*2/ })).toBeChecked();
     const peer = screen.getByRole('button', { name: 'Rome Gateway Alpha — RELAY' });
     const before = peer.querySelector('circle')!.getAttribute('cx');
-    const search = screen.getByRole('textbox', { name: /Search nodes by name/i });
+    const search = screen.getByRole('textbox', { name: /Search by name, ID or network address/i });
     await user.type(search, 'Rome');
     expect(search).toHaveFocus();
     expect(
@@ -177,7 +178,7 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
   it('reserves the workspace for the graph and opens details only on selection', async () => {
     const user = userEvent.setup();
     const { container } = renderTopology();
-    await screen.findByRole('heading', { name: 'Communities' });
+    await screen.findByRole('heading', { name: 'Groups' });
     expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
     (await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).focus();
     await user.keyboard('{Enter}');
@@ -236,10 +237,10 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
     renderTopology();
     (await screen.findByRole('button', { name: 'Neighbor 0 — RELAY' })).focus();
     await user.keyboard('{Enter}');
-    const neighborhood = within(screen.getByRole('group', { name: 'Policy neighborhood' }));
+    const neighborhood = within(screen.getByRole('group', { name: 'Connected devices' }));
     expect(neighborhood.getByRole('button', { name: 'Neighbor 1 RELAY' })).toBeInTheDocument();
     expect(neighborhood.queryByRole('button', { name: 'Neighbor 2 RELAY' })).not.toBeInTheDocument();
-    await user.click(neighborhood.getByRole('button', { name: '2 hops' }));
+    await user.click(neighborhood.getByRole('button', { name: 'Up to 2 steps' }));
     expect(neighborhood.getByRole('button', { name: 'Neighbor 2 RELAY' })).toBeInTheDocument();
     expect(neighborhood.queryByRole('button', { name: 'Neighbor 3 RELAY' })).not.toBeInTheDocument();
     await user.click(neighborhood.getByRole('button', { name: 'Neighbor 2 RELAY' }));
@@ -277,8 +278,8 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
       );
     expect(edgeOpacity('Hop 0 — Hop 1')).toBeGreaterThan(0.9);
     expect(edgeOpacity('Hop 1 — Hop 2')).toBeLessThan(0.5);
-    const neighborhood = within(screen.getByRole('group', { name: 'Policy neighborhood' }));
-    await user.click(neighborhood.getByRole('button', { name: '2 hops' }));
+    const neighborhood = within(screen.getByRole('group', { name: 'Connected devices' }));
+    await user.click(neighborhood.getByRole('button', { name: 'Up to 2 steps' }));
     expect(edgeOpacity('Hop 0 — Hop 1')).toBeGreaterThan(0.9);
     expect(edgeOpacity('Hop 1 — Hop 2')).toBeGreaterThan(0.9);
     expect(edgeOpacity('Hop 2 — Hop 3')).toBeLessThan(0.5);
@@ -287,9 +288,9 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
   it('keeps policy separate from observed paths without an invented central transit node', async () => {
     const user = userEvent.setup();
     const { container } = renderTopology();
-    expect(await screen.findByRole('heading', { name: 'Communities' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Observed paths' }));
-    expect(screen.getByText('Peer paths have not been measured yet.')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Groups' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Measured paths' }));
+    expect(screen.getByText('Paths between devices have not been measured yet.')).toBeInTheDocument();
     expect(container.querySelectorAll('[data-mesh-link]').length).toBe(0);
   });
 
@@ -299,14 +300,14 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
     const node = await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' });
     node.focus();
     await user.keyboard('{Enter}');
-    expect(within(screen.getByRole('complementary')).getByText('Unhealthy')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Accessible List/i }));
-    expect(screen.getByText('Unhealthy')).toBeInTheDocument();
+    expect(within(screen.getByRole('complementary')).getByText('Has problems')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^List$/i }));
+    expect(screen.getByText('Has problems')).toBeInTheDocument();
   });
 
   it('uses an organic community scene without a central coordination annotation', async () => {
     const { container } = renderTopology();
-    await screen.findByRole('heading', { name: 'Communities' });
+    await screen.findByRole('heading', { name: 'Groups' });
     expect(screen.queryByText('Control plane')).not.toBeInTheDocument();
     expect(container.querySelector('[data-node-id]')).toHaveClass('mesh-community-0');
   });
@@ -331,7 +332,7 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
       )
     );
     const { container } = renderTopology();
-    await screen.findByRole('heading', { name: 'Communities' });
+    await screen.findByRole('heading', { name: 'Groups' });
     const paths = [...container.querySelectorAll('[data-mesh-link] > path:last-child')];
     expect(paths).toHaveLength(15);
     for (const path of paths) {
@@ -354,8 +355,8 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
       )
     );
     const { container } = renderTopology();
-    await screen.findByRole('heading', { name: 'Communities' });
-    const communities = screen.getByRole('region', { name: 'Communities' });
+    await screen.findByRole('heading', { name: 'Groups' });
+    const communities = screen.getByRole('region', { name: 'Groups' });
     expect(within(communities).getAllByRole('checkbox')).toHaveLength(11);
     const peers = [...container.querySelectorAll('[data-node-id]')];
     expect(peers).toHaveLength(100);
@@ -375,8 +376,8 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
     const collapse = await screen.findByRole('button', { name: /^Collapse Corporate Ops/ });
     await user.click(collapse);
     expect(screen.queryByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Expand Corporate Ops/ })).toBeInTheDocument();
-    await user.type(screen.getByRole('textbox', { name: /Search nodes by name/i }), 'Rome');
+    expect(screen.getByRole('button', { name: /^Show Corporate Ops/ })).toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: /Search by name, ID or network address/i }), 'Rome');
     expect(screen.getByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).toBeInTheDocument();
   });
 
@@ -384,13 +385,13 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
     const user = userEvent.setup();
     renderTopology();
     const expanded = await screen.findByRole('button', { name: /^Collapse Corporate Ops/ });
-    expect(within(expanded).getByText('1 unhealthy')).toBeInTheDocument();
-    expect(within(expanded).getByText('1 quarantined')).toBeInTheDocument();
+    expect(within(expanded).getByText('With problems: 1')).toBeInTheDocument();
+    expect(within(expanded).getByText('Blocked: 1')).toBeInTheDocument();
     await user.click(expanded);
-    const group = screen.getByRole('button', { name: /^Expand Corporate Ops/ });
-    expect(within(group).getByText('1 unhealthy')).toBeInTheDocument();
-    expect(within(group).getByText('1 quarantined')).toBeInTheDocument();
-    expect(group).toHaveAccessibleName(/1 unhealthy.*1 quarantined/);
+    const group = screen.getByRole('button', { name: /^Show Corporate Ops/ });
+    expect(within(group).getByText('With problems: 1')).toBeInTheDocument();
+    expect(within(group).getByText('Blocked: 1')).toBeInTheDocument();
+    expect(group).toHaveAccessibleName(/With problems: 1.*Blocked: 1/);
   });
 
   it('zooms with the wheel after loading and after remounting the canvas', async () => {
@@ -410,7 +411,7 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
     );
     try {
       const { container } = renderTopology();
-      await screen.findByRole('heading', { name: 'Communities' });
+      await screen.findByRole('heading', { name: 'Groups' });
       const zoom = () => {
         const svg = container.querySelector('svg[role="group"]')!;
         Object.defineProperty(svg, 'getScreenCTM', { value: () => ({ inverse: () => ({}) }) });
@@ -428,8 +429,8 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
         expect(scene.getAttribute('transform')).not.toBe(before);
       };
       zoom();
-      await user.click(screen.getByRole('button', { name: /Accessible List/i }));
-      await user.click(screen.getByRole('button', { name: /Interactive Canvas/i }));
+      await user.click(screen.getByRole('button', { name: /^List$/i }));
+      await user.click(screen.getByRole('button', { name: /^Map$/i }));
       zoom();
     } finally {
       vi.stubGlobal('DOMPoint', originalPoint);
@@ -475,12 +476,12 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
     const { container } = renderTopology();
 
     // Verify Page Title and Controls
-    expect(await screen.findByRole('heading', { name: 'Mesh Topology', level: 1 })).toBeInTheDocument();
-    expect(screen.getAllByText('Ghost Vaults Inactive').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'Unlock Ghost Vaults' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Network map', level: 1 })).toBeInTheDocument();
+    expect(screen.getAllByText('Hidden groups: not shown').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Show hidden groups' })).toBeInTheDocument();
 
-    // Switch to Accessible List view to verify DOM content easily
-    const listBtn = screen.getByRole('button', { name: /Accessible List/i });
+    // Switch to ^List$ view to verify DOM content easily
+    const listBtn = screen.getByRole('button', { name: /^List$/i });
     await user.click(listBtn);
 
     // Standard nodes must be in document
@@ -492,7 +493,7 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
     expect(screen.queryByText('Black Ops Secret Vault')).not.toBeInTheDocument();
 
     // Truthfulness: unmeasured round trip on Berlin Exit Bravo renders as '—'
-    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getAllByText('Not measured').length).toBeGreaterThan(0);
 
     // Accessibility check: zero severe or critical violations
     await expectNoAxeViolations(container);
@@ -534,18 +535,18 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
     renderTopology();
 
     // Click Unlock Ghost Vaults button
-    const unlockBtn = await screen.findByRole('button', { name: 'Unlock Ghost Vaults' });
+    const unlockBtn = await screen.findByRole('button', { name: 'Show hidden groups' });
     await user.click(unlockBtn);
 
     // Dialog appears
-    expect(screen.getByRole('heading', { name: 'Unlock Ghost Vaults', level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Show hidden groups', level: 2 })).toBeInTheDocument();
 
     // Enter master password
-    const passwordInput = screen.getByPlaceholderText('Enter vault unlock password');
+    const passwordInput = screen.getByPlaceholderText('Enter the unlock password');
     await user.type(passwordInput, 'ValidMasterVaultPassword!');
 
     // Click Authorize & Unlock
-    const confirmBtn = screen.getByRole('button', { name: 'Authorize & Unlock' });
+    const confirmBtn = screen.getByRole('button', { name: 'Show hidden groups' });
     await user.click(confirmBtn);
 
     // Verify API called
@@ -558,18 +559,18 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
 
     // Badge updates to Ghost Vaults Active and button changes to Lock Ghost Vaults
     await waitFor(() => {
-      expect(screen.getAllByText('Ghost Vaults Active').length).toBeGreaterThan(0);
-      expect(screen.getByRole('button', { name: 'Lock Ghost Vaults' })).toBeInTheDocument();
+      expect(screen.getAllByText('Hidden groups: shown').length).toBeGreaterThan(0);
+      expect(screen.getByRole('button', { name: 'Hide hidden groups' })).toBeInTheDocument();
     });
 
     // Switch to List view
-    const listBtn = screen.getByRole('button', { name: /Accessible List/i });
+    const listBtn = screen.getByRole('button', { name: /^List$/i });
     await user.click(listBtn);
 
     // Ghost node and compartment now revealed!
     expect(screen.getByText('Black Ops Ghost Ingress')).toBeInTheDocument();
     expect(screen.getByText('Black Ops Secret Vault')).toBeInTheDocument();
-    expect(screen.getByText('Stealth Ghost Node')).toBeInTheDocument();
+    expect(screen.getByText('Hidden device')).toBeInTheDocument();
   });
 
   it('3. Invalid Password: shows error and preserves plausible deniability', async () => {
@@ -599,20 +600,20 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
     const user = userEvent.setup();
     renderTopology();
 
-    const unlockBtn = await screen.findByRole('button', { name: 'Unlock Ghost Vaults' });
+    const unlockBtn = await screen.findByRole('button', { name: 'Show hidden groups' });
     await user.click(unlockBtn);
 
-    const passwordInput = screen.getByPlaceholderText('Enter vault unlock password');
+    const passwordInput = screen.getByPlaceholderText('Enter the unlock password');
     await user.type(passwordInput, 'WrongPassword!');
 
-    const confirmBtn = screen.getByRole('button', { name: 'Authorize & Unlock' });
+    const confirmBtn = screen.getByRole('button', { name: 'Show hidden groups' });
     await user.click(confirmBtn);
 
     // Error is displayed
     expect(await screen.findByText('Invalid master authorization password.')).toBeInTheDocument();
 
     // Vault remains locked
-    expect(screen.getAllByText('Ghost Vaults Inactive').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Hidden groups: not shown').length).toBeGreaterThan(0);
   });
 
   it('4. Lock Ghost Vaults: immediately conceals secret nodes and reverts tier', async () => {
@@ -646,8 +647,8 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
     renderTopology();
 
     // Initially active
-    const lockBtn = await screen.findByRole('button', { name: 'Lock Ghost Vaults' });
-    expect(screen.getAllByText('Ghost Vaults Active').length).toBeGreaterThan(0);
+    const lockBtn = await screen.findByRole('button', { name: 'Hide hidden groups' });
+    expect(screen.getAllByText('Hidden groups: shown').length).toBeGreaterThan(0);
 
     // Click lock
     await user.click(lockBtn);
@@ -661,8 +662,8 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
 
     // Reverted back to Inactive
     await waitFor(() => {
-      expect(screen.getAllByText('Ghost Vaults Inactive').length).toBeGreaterThan(0);
-      expect(screen.getByRole('button', { name: 'Unlock Ghost Vaults' })).toBeInTheDocument();
+      expect(screen.getAllByText('Hidden groups: not shown').length).toBeGreaterThan(0);
+      expect(screen.getByRole('button', { name: 'Show hidden groups' })).toBeInTheDocument();
     });
   });
 
@@ -688,11 +689,11 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
     renderTopology();
 
     // Switch to List view
-    const listBtn = await screen.findByRole('button', { name: /Accessible List/i });
+    const listBtn = await screen.findByRole('button', { name: /^List$/i });
     await user.click(listBtn);
 
     // Type "Rome" in search
-    const searchInput = screen.getByPlaceholderText('Search nodes by name, ID or overlay IP...');
+    const searchInput = screen.getByPlaceholderText('Search by name, ID or network address…');
     await user.type(searchInput, 'Rome');
 
     expect(screen.getByText('Rome Gateway Alpha')).toBeInTheDocument();
@@ -719,8 +720,8 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
 
     renderTopology();
 
-    expect(await screen.findByText('No nodes found in topology')).toBeInTheDocument();
-    expect(screen.getByText('Enroll sovereign nodes to construct the overlay topology.')).toBeInTheDocument();
+    expect(await screen.findByText('No devices to show')).toBeInTheDocument();
+    expect(screen.getByText('Register your first device to see the network map.')).toBeInTheDocument();
   });
 });
 
@@ -756,7 +757,12 @@ describe('Topology canvas: cutting links and staying readable at scale', () => {
     renderTopology();
 
     await user.click(await screen.findByRole('button', { name: 'Connection: Rome Gateway Alpha — Berlin Exit Bravo' }));
-    await user.click(screen.getByRole('button', { name: 'Cut connection' }));
+    await user.click(screen.getByRole('button', { name: 'Block connection' }));
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Block this connection?' })).getByRole('button', {
+        name: 'Block connection'
+      })
+    );
 
     await waitFor(() => expect(posted).toHaveLength(2));
     expect(posted).toEqual([
@@ -820,9 +826,9 @@ describe('Topology canvas: cutting links and staying readable at scale', () => {
 
     (await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).focus();
     await user.keyboard('{Enter}');
-    expect(within(screen.getByRole('complementary')).getByText('Policy pairs: 0')).toBeInTheDocument();
+    expect(within(screen.getByRole('complementary')).getByText('Allowed connections: 0')).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Connection: Rome Gateway Alpha — Berlin Exit Bravo' }));
-    const restore = screen.getByRole('button', { name: 'Restore connection' });
+    const restore = screen.getByRole('button', { name: 'Unblock connection' });
     // Disabled until the rule list has loaded and the pair's rules are known.
     await waitFor(() => expect(restore).toBeEnabled());
     await user.click(restore);
@@ -872,16 +878,16 @@ describe('Topology canvas: cutting links and staying readable at scale', () => {
     renderTopology();
 
     // Compartment is the default; this large unassigned group starts folded.
-    expect(await screen.findByRole('button', { name: 'Expand Unassigned' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Show Unassigned' })).toBeInTheDocument();
     await user.click(screen.getByRole('combobox', { name: 'Group by' }));
-    await user.click(screen.getByRole('option', { name: 'Region' }));
+    await user.click(screen.getByRole('option', { name: 'Country' }));
     const node0 = await screen.findByRole('button', { name: 'Node 0 — CLIENT_ORIGIN' });
 
     // A bounded overview retains normal policy context and the cut exception.
     expect(screen.getAllByRole('button', { name: /^Connection:/ }).length).toBeGreaterThanOrEqual(29);
     expect(screen.getAllByRole('button', { name: /^Connection:/ }).length).toBeLessThanOrEqual(161);
     expect(screen.getByRole('button', { name: 'Connection: Node 1 — Node 2' })).toBeInTheDocument();
-    expect(screen.getByText(/Select a node to reveal its connections/)).toBeInTheDocument();
+    expect(screen.getByText(/Select a device to see its links/)).toBeInTheDocument();
 
     // Switching to region reveals two manageable clusters of fifteen.
     expect(screen.getByRole('checkbox', { name: 'DE 15' })).toBeChecked();
@@ -893,5 +899,181 @@ describe('Topology canvas: cutting links and staying readable at scale', () => {
     // Selection adds every allowed pair for Node 0 without drawing the full mesh.
     await waitFor(() => expect(screen.getAllByRole('button', { name: /^Connection: Node 0 —/ })).toHaveLength(29));
     expect(screen.getAllByRole('button', { name: /^Connection:/ }).length).toBeLessThan(200);
+  });
+});
+
+/** Serves the map and the rule list; `rules` and the write handlers are per test. */
+function serveMap(options: {
+  rules?: Array<Record<string, unknown>>;
+  links?: TopologyLink[];
+  onPost?: (body: Record<string, unknown>, index: number) => Promise<Response>;
+  onDelete?: (id: string) => Promise<Response>;
+  posted?: Array<Record<string, unknown>>;
+  deleted?: string[];
+}) {
+  const { rules = [], links = mockLinks, posted = [], deleted = [], onPost, onDelete } = options;
+  return vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes('/api/acl/rules/') && init?.method === 'DELETE') {
+      const id = decodeURIComponent(url.split('/').pop() ?? '');
+      deleted.push(id);
+      return onDelete ? onDelete(id) : jsonResponse({ deleted: id, epoch: 3, policy_is_open: true });
+    }
+    if (url.includes('/api/acl/rules') && init?.method === 'POST') {
+      const body = JSON.parse((init.body as string) || '{}');
+      posted.push(body);
+      return onPost
+        ? onPost(body, posted.length)
+        : jsonResponse({ rule: { id: `acl-${posted.length}`, ...body }, epoch: 2 });
+    }
+    if (url.includes('/api/acl/rules')) {
+      return jsonResponse({ rules, epoch: 2, policy_is_open: true, count: rules.length });
+    }
+    if (url.includes('/api/stats/topology')) {
+      return jsonResponse({ nodes: mockStandardNodes, links, total_nodes: 2, policy_is_open: true });
+    }
+    if (url.includes('/api/compartments')) {
+      return jsonResponse({ compartments: mockStandardCompartments });
+    }
+    return jsonResponse({});
+  });
+}
+
+const romeBerlin = 'Connection: Rome Gateway Alpha — Berlin Exit Bravo';
+
+describe('Network map: blocking is confirmed, atomic and honest', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('blocking asks for confirmation first and sends nothing before it', async () => {
+    const posted: Array<Record<string, unknown>> = [];
+    vi.stubGlobal('fetch', serveMap({ posted }));
+
+    const user = userEvent.setup();
+    renderTopology();
+
+    await user.click(await screen.findByRole('button', { name: romeBerlin }));
+    await user.click(screen.getByRole('button', { name: 'Block connection' }));
+
+    expect(posted).toHaveLength(0);
+    const dialog = await screen.findByRole('dialog', { name: 'Block this connection?' });
+    expect(
+      within(dialog).getByText(
+        'Two blocking rules are added, one for each direction, so the two devices cannot exchange data.'
+      )
+    ).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Block connection' }));
+    await waitFor(() => expect(posted).toHaveLength(2));
+  });
+
+  it('a second rule that fails deletes the first and says the link was not blocked', async () => {
+    const deleted: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      serveMap({
+        deleted,
+        onPost: (body, index) =>
+          index === 1
+            ? jsonResponse({ rule: { id: 'acl-1', ...body }, epoch: 2 })
+            : jsonResponse({ error: 'control plane busy' }, 500)
+      })
+    );
+
+    const user = userEvent.setup();
+    renderTopology();
+
+    await user.click(await screen.findByRole('button', { name: romeBerlin }));
+    await user.click(screen.getByRole('button', { name: 'Block connection' }));
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Block this connection?' })).getByRole('button', {
+        name: 'Block connection'
+      })
+    );
+
+    await waitFor(() => expect(deleted).toEqual(['acl-1']));
+    expect(await screen.findByRole('alert')).toHaveTextContent('The connection was not blocked. Try again shortly.');
+  });
+
+  it('a rollback that also fails names the rule that still blocks one direction', async () => {
+    vi.stubGlobal(
+      'fetch',
+      serveMap({
+        onPost: (body, index) =>
+          index === 1
+            ? jsonResponse({ rule: { id: 'acl-1', ...body }, epoch: 2 })
+            : jsonResponse({ error: 'control plane busy' }, 500),
+        onDelete: () => jsonResponse({ error: 'control plane busy' }, 500)
+      })
+    );
+
+    const user = userEvent.setup();
+    renderTopology();
+
+    await user.click(await screen.findByRole('button', { name: romeBerlin }));
+    await user.click(screen.getByRole('button', { name: 'Block connection' }));
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Block this connection?' })).getByRole('button', {
+        name: 'Block connection'
+      })
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Only one direction was blocked. Open Access rules and remove rule acl-1, or try again.'
+    );
+  });
+
+  it('unblocking names the rules still present after the refetch', async () => {
+    const rules = [
+      { id: 'acl-a', source_cidr: '10.200.0.1/32', destination_cidr: '10.200.0.2/32', action: 'DROP', protocol: 'ALL' },
+      { id: 'acl-b', source_cidr: '10.200.0.2/32', destination_cidr: '10.200.0.1/32', action: 'DROP', protocol: 'ALL' }
+    ];
+    vi.stubGlobal('fetch', serveMap({ rules, links: [{ ...(mockLinks[0] as TopologyLink), is_visible: false }] }));
+
+    const user = userEvent.setup();
+    renderTopology();
+
+    await user.click(await screen.findByRole('button', { name: romeBerlin }));
+    const unblock = screen.getByRole('button', { name: 'Unblock connection' });
+    await waitFor(() => expect(unblock).toBeEnabled());
+    await user.click(unblock);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Some blocking rules are still there: acl-a, acl-b. Try again.'
+    );
+  });
+
+  it('a connection that was never measured shows Not measured, not a number', async () => {
+    vi.stubGlobal('fetch', serveMap({}));
+
+    const user = userEvent.setup();
+    renderTopology();
+
+    (await screen.findByRole('button', { name: /^Berlin Exit Bravo —/ })).focus();
+    await user.keyboard('{Enter}');
+    const inspector = screen.getByRole('complementary');
+    expect(within(inspector).getByText('Response time')).toBeInTheDocument();
+    expect(within(inspector).getAllByText(/Not measured/).length).toBeGreaterThan(0);
+    expect(inspector.textContent).not.toMatch(/\d ms/);
+  });
+
+  it('the hidden-groups dialog makes no deniability claim', async () => {
+    vi.stubGlobal('fetch', serveMap({}));
+
+    const user = userEvent.setup();
+    renderTopology();
+
+    await user.click(await screen.findByRole('button', { name: 'Show hidden groups' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Show hidden groups' });
+    expect(dialog.textContent).not.toMatch(/deniab|negabil|plausib/i);
+  });
+
+  it.each(['light', 'dark'] as const)('has no axe violations in the %s theme', async (theme) => {
+    vi.stubGlobal('fetch', serveMap({}));
+
+    const { container, unmount } = renderTopology(['/topology'], theme);
+    await screen.findByRole('button', { name: romeBerlin });
+    await expectNoAxeViolations(container, theme);
+    unmount();
   });
 });

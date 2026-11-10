@@ -29,7 +29,8 @@ import { Dialog } from '../../ui/Dialog';
 import { FormField } from '../../ui/FormField';
 import { Input } from '../../ui/Input';
 import { Select } from '../../ui/Select';
-import { EmptyState, ErrorState, Skeleton } from '../../ui/States';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
+import { EmptyState, ErrorState, NotMeasured, Skeleton } from '../../ui/States';
 import { StatusBadge, type Status } from '../../ui/StatusBadge';
 import { Table, type TableColumn } from '../../ui/Table';
 
@@ -160,7 +161,7 @@ const EMPTY_COMPARTMENTS: Compartment[] = [];
 const EMPTY_RULES: AclRule[] = [];
 
 export function TopologyRoute() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('topology');
   const navigate = useNavigate();
 
   const topologyQuery = useTopology();
@@ -180,6 +181,8 @@ export function TopologyRoute() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedLink, setSelectedLink] = useState<SelectedLink | null>(null);
   const [linkActionError, setLinkActionError] = useState<string | null>(null);
+  const [linkNotice, setLinkNotice] = useState<string | null>(null);
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
 
   const [groupBy, setGroupBy] = useState<GroupBy>('compartment');
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
@@ -257,7 +260,7 @@ export function TopologyRoute() {
   }, [links, filteredNodes]);
 
   // The clustered seed, then the operator's per-node overrides laid on top.
-  const otherLabel = t(groupBy === 'none' ? 'topology.radial.allNodes' : 'topology.canvas.clusterOther');
+  const otherLabel = t(groupBy === 'none' ? 'radial.allNodes' : 'canvas.clusterOther');
   const { placed: basePlaced, clusters } = useMemo(
     () => communityLayout(nodes, groupBy, otherLabel, expandedGroups, Boolean(searchQuery.trim())),
     [nodes, groupBy, otherLabel, expandedGroups, searchQuery]
@@ -502,16 +505,25 @@ export function TopologyRoute() {
     setSelectedLink({ source: link.source, target: link.target });
     setSelectedNodeId(null);
     setLinkActionError(null);
+    setLinkNotice(null);
   };
 
+  /**
+   * Blocks a link as one unit: two DROP rules, one per direction. If the second
+   * rule fails, the first is deleted again so the link is never half blocked. If
+   * that delete also fails, the surviving rule id is named for the operator.
+   */
   const handleCut = async () => {
+    setBlockConfirmOpen(false);
     const a = linkSourceNode?.overlay_ipv4;
     const b = linkTargetNode?.overlay_ipv4;
     if (!a || !b) {
-      setLinkActionError(t('topology.canvas.needsOverlayIp'));
+      setLinkNotice(null);
+      setLinkActionError(t('canvas.needsOverlayIp'));
       return;
     }
     setLinkActionError(null);
+    setLinkNotice(null);
     const dropRule = (src: string, dst: string): Partial<AclRule> => ({
       priority: 50,
       source_cidr: `${src}/32`,
@@ -520,53 +532,82 @@ export function TopologyRoute() {
       action: 'DROP',
       description: 'mesh-canvas-cut'
     });
+
+    let firstRuleId: string;
     try {
-      // Two directional rules so the route is severed both ways, not just outbound.
-      await createRule.mutateAsync(dropRule(a, b));
+      const created = await createRule.mutateAsync(dropRule(a, b));
+      firstRuleId = created.rule.id;
+    } catch {
+      setLinkActionError(t('canvas.cutFailed'));
+      return;
+    }
+
+    try {
       await createRule.mutateAsync(dropRule(b, a));
     } catch {
-      setLinkActionError(t('topology.canvas.cutFailed'));
+      try {
+        await deleteRule.mutateAsync(firstRuleId);
+        setLinkActionError(t('canvas.cutFailed'));
+      } catch {
+        setLinkActionError(t('canvas.partial', { id: firstRuleId }));
+      }
+      return;
     }
+
+    setLinkNotice(t('canvas.done'));
   };
 
+  /**
+   * Unblocks a link: deletes each DROP rule of the pair, then reads the rule list
+   * again. A rule still present after the refetch is named, not reported as gone.
+   */
   const handleRestore = async () => {
     setLinkActionError(null);
-    try {
-      for (const rule of dropRulesForPair) {
-        await deleteRule.mutateAsync(rule.id);
+    setLinkNotice(null);
+    const ids = dropRulesForPair.map((rule) => rule.id);
+    for (const id of ids) {
+      try {
+        await deleteRule.mutateAsync(id);
+      } catch {
+        // The refetch below decides what survived; nothing is assumed here.
       }
-    } catch {
-      setLinkActionError(t('topology.canvas.restoreFailed'));
+    }
+    const refreshed = await aclRulesQuery.refetch();
+    const survivors = (refreshed.data?.rules ?? []).filter((rule) => ids.includes(rule.id)).map((rule) => rule.id);
+    if (survivors.length > 0) {
+      setLinkActionError(t('canvas.restorePartial', { ids: survivors.join(', ') }));
+    } else {
+      setLinkNotice(t('canvas.restoreDone'));
     }
   };
 
   const linkBusy = createRule.isPending || deleteRule.isPending;
 
   const roleOptions = [
-    { value: 'ALL', label: t('topology.filterRoleAll') },
-    { value: 'RELAY', label: t('topology.filterRoleRelay') },
-    { value: 'EXIT_BRIDGE', label: t('topology.filterRoleExit') },
-    { value: 'CLIENT_ORIGIN', label: t('topology.filterRoleClient') },
-    { value: 'HYBRID', label: t('topology.filterRoleHybrid') }
+    { value: 'ALL', label: t('filterRoleAll') },
+    { value: 'RELAY', label: t('filterRoleRelay') },
+    { value: 'EXIT_BRIDGE', label: t('filterRoleExit') },
+    { value: 'CLIENT_ORIGIN', label: t('filterRoleClient') },
+    { value: 'HYBRID', label: t('filterRoleHybrid') }
   ];
 
   const compartmentOptions = [
-    { value: 'ALL', label: t('topology.filterCompartmentAll') },
+    { value: 'ALL', label: t('filterCompartmentAll') },
     ...compartments.map((c: Compartment) => ({ value: c.id, label: c.name }))
   ];
 
   const groupOptions = [
-    { value: 'compartment', label: t('topology.canvas.groupCompartment') },
-    { value: 'country', label: t('topology.canvas.groupCountry') },
-    { value: 'role', label: t('topology.canvas.groupRole') },
-    { value: 'none', label: t('topology.canvas.groupNone') }
+    { value: 'compartment', label: t('canvas.groupCompartment') },
+    { value: 'country', label: t('canvas.groupCountry') },
+    { value: 'role', label: t('canvas.groupRole') },
+    { value: 'none', label: t('canvas.groupNone') }
   ];
 
   const edgeOptions = [
-    { value: 'auto', label: t('topology.canvas.edgesAuto') },
-    { value: 'all', label: t('topology.canvas.edgesAll') },
-    { value: 'selected', label: t('topology.canvas.edgesSelected') },
-    { value: 'none', label: t('topology.canvas.edgesNone') }
+    { value: 'auto', label: t('canvas.edgesAuto') },
+    { value: 'all', label: t('canvas.edgesAll') },
+    { value: 'selected', label: t('canvas.edgesSelected') },
+    { value: 'none', label: t('canvas.edgesNone') }
   ];
 
   const handleUnlock = async () => {
@@ -576,20 +617,20 @@ export function TopologyRoute() {
       setUnlockDialogOpen(false);
       setVaultPassword('');
     } catch (err) {
-      setUnlockError(err instanceof Error ? err.message : t('topology.vault.unlockFailed'));
+      setUnlockError(err instanceof Error ? err.message : t('vault.unlockFailed'));
     }
   };
 
   const listColumns: TableColumn<TopologyNode>[] = [
     {
       id: 'node',
-      header: t('topology.columns.node'),
+      header: t('columns.node'),
       cell: (row) => (
         <div className="flex items-center gap-2">
           <span className="font-mono text-body font-semibold text-content">{row.name || row.id}</span>
           {row.is_ghost_vault && (
             <Badge tone="warning" className="text-[10px]">
-              {t('topology.nodeDrawer.ghostVaultNode')}
+              {t('nodeDrawer.ghostVaultNode')}
             </Badge>
           )}
         </div>
@@ -597,47 +638,48 @@ export function TopologyRoute() {
     },
     {
       id: 'role',
-      header: t('topology.columns.role'),
+      header: t('columns.role'),
       cell: (row) => <Badge tone={row.role === 'RELAY' ? 'accent' : 'neutral'}>{row.role}</Badge>
     },
     {
       id: 'overlayIp',
-      header: t('topology.nodeDrawer.overlayIp'),
+      header: t('nodeDrawer.overlayIp'),
       cell: (row) =>
         row.overlay_ipv4 ? <CodeText>{row.overlay_ipv4}</CodeText> : <span className="text-muted">—</span>
     },
     {
       id: 'country',
-      header: t('topology.nodeDrawer.country'),
+      header: t('nodeDrawer.country'),
       cell: (row) => <span className="font-mono text-caption">{row.country || '—'}</span>
     },
     {
       id: 'compartment',
-      header: t('topology.nodeDrawer.compartment'),
+      header: t('nodeDrawer.compartment'),
       cell: (row) => <span className="text-caption text-muted">{row.compartment_name || '—'}</span>
     },
     {
       id: 'latency',
-      header: t('topology.nodeDrawer.latency'),
+      header: t('nodeDrawer.latency'),
       numeric: true,
-      cell: (row) => (
-        <span className="font-mono text-caption text-muted">
-          {row.latency_ms !== null && row.latency_ms !== undefined ? `${row.latency_ms} ms` : '—'}
-        </span>
-      )
+      cell: (row) =>
+        row.latency_ms === null || row.latency_ms === undefined ? (
+          <NotMeasured />
+        ) : (
+          <span className="font-mono text-caption text-muted">{`${row.latency_ms} ms`}</span>
+        )
     },
     {
       id: 'status',
-      header: t('topology.columns.status'),
+      header: t('columns.status'),
       cell: (row) => (
         <StatusBadge
           status={nodeStatus(row)}
           label={
             row.is_quarantined
-              ? t('topology.nodeDrawer.quarantined')
+              ? t('nodeDrawer.quarantined')
               : row.is_healthy
-                ? t('topology.nodeDrawer.healthy')
-                : t('topology.nodeDrawer.unhealthy')
+                ? t('nodeDrawer.healthy')
+                : t('nodeDrawer.unhealthy')
           }
         />
       )
@@ -657,8 +699,8 @@ export function TopologyRoute() {
     <PageFrame>
       <div className="mesh-route">
         <PageHeader
-          title={t('topology.title')}
-          description={t('topology.description')}
+          title={t('title')}
+          description={t('description')}
           actions={
             <div className="flex items-center gap-2">
               <Button
@@ -667,7 +709,7 @@ export function TopologyRoute() {
                 icon={Network}
                 onClick={() => setViewMode('CANVAS')}
               >
-                {t('topology.view.canvasMode')}
+                {t('view.canvasMode')}
               </Button>
               <Button
                 variant={viewMode === 'LIST' ? 'primary' : 'secondary'}
@@ -675,7 +717,7 @@ export function TopologyRoute() {
                 icon={List}
                 onClick={() => setViewMode('LIST')}
               >
-                {t('topology.view.listMode')}
+                {t('view.listMode')}
               </Button>
               {isUnlocked ? (
                 <Button
@@ -685,7 +727,7 @@ export function TopologyRoute() {
                   onClick={() => lockMutation.mutate()}
                   loading={lockMutation.isPending}
                 >
-                  {t('topology.vault.lockAction')}
+                  {t('vault.lockAction')}
                 </Button>
               ) : (
                 <Button
@@ -698,36 +740,34 @@ export function TopologyRoute() {
                     setUnlockDialogOpen(true);
                   }}
                 >
-                  {t('topology.vault.unlockAction')}
+                  {t('vault.unlockAction')}
                 </Button>
               )}
             </div>
           }
         />
 
-        <div className="mesh-summary" aria-label={t('topology.radial.summary')}>
+        <div className="mesh-summary" aria-label={t('radial.summary')}>
           <span>
-            <strong>{filteredNodes.length}</strong> {t('topology.stats.nodes')}
+            <strong>{filteredNodes.length}</strong> {t('stats.nodes')}
           </span>
           <span>
             <strong>{filteredLinks.filter((link) => link.is_visible !== false).length}</strong>{' '}
-            {t('topology.radial.allowedPairs')}
+            {t('radial.allowedPairs')}
           </span>
           <span>
-            <strong>{compartments.length}</strong> {t('topology.stats.compartments')}
+            <strong>{compartments.length}</strong> {t('stats.compartments')}
           </span>
           {topology?.policy_is_open && (
             <details className="mesh-policy-disclosure">
               <summary>
                 <ShieldAlert aria-hidden="true" size={14} />
-                {t('topology.radial.openPolicy')}
+                {t('radial.openPolicy')}
               </summary>
-              <p>{t('topology.policyOpenNotice')}</p>
+              <p>{t('policyOpenNotice')}</p>
             </details>
           )}
-          <span className="sm:ml-auto">
-            {isUnlocked ? t('topology.vault.unlockedBadge') : t('topology.vault.lockedBadge')}
-          </span>
+          <span className="sm:ml-auto">{isUnlocked ? t('vault.unlockedBadge') : t('vault.lockedBadge')}</span>
         </div>
 
         {!noNodesAtAll && (
@@ -737,9 +777,9 @@ export function TopologyRoute() {
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('topology.searchPlaceholder')}
+                placeholder={t('searchPlaceholder')}
                 className="pl-9"
-                aria-label={t('topology.searchPlaceholder')}
+                aria-label={t('searchPlaceholder')}
               />
             </div>
             <div className="w-full sm:w-48">
@@ -747,7 +787,7 @@ export function TopologyRoute() {
                 value={selectedRole}
                 onValueChange={(v) => setSelectedRole(v as RoleFilter)}
                 options={roleOptions}
-                aria-label={t('topology.filterRoleAll')}
+                aria-label={t('filterRoleAll')}
               />
             </div>
             <div className="w-full sm:w-56">
@@ -755,26 +795,26 @@ export function TopologyRoute() {
                 value={selectedCompartment}
                 onValueChange={setSelectedCompartment}
                 options={compartmentOptions}
-                aria-label={t('topology.filterCompartmentAll')}
+                aria-label={t('filterCompartmentAll')}
               />
             </div>
             {hiddenGroups.size > 0 && (
               <Button variant="ghost" size="sm" onClick={() => setHiddenGroups(new Set())}>
-                {t('topology.graph.resetFilters')}
+                {t('graph.resetFilters')}
               </Button>
             )}
           </div>
         )}
 
         {topologyQuery.isPending ? (
-          <div role="status" aria-label={t('topology.radial.loading')} className="p-6">
+          <div role="status" aria-label={t('radial.loading')} className="p-6">
             <Skeleton lines={8} />
           </div>
         ) : topologyQuery.isError ? (
           <ErrorState onRetry={() => void topologyQuery.refetch()} />
         ) : noNodesAtAll ? (
           <Card>
-            <EmptyState title={t('topology.empty.title')} body={t('topology.empty.enrollFirst')} />
+            <EmptyState title={t('empty.title')} body={t('empty.enrollFirst')} />
           </Card>
         ) : viewMode === 'CANVAS' ? (
           <Card flush className="mesh-surface overflow-hidden">
@@ -784,13 +824,13 @@ export function TopologyRoute() {
                   id="mesh-communities"
                   className="mesh-communities"
                   hidden={!communitiesOpen}
-                  aria-label={t('topology.graph.communities')}
+                  aria-label={t('graph.communities')}
                 >
                   <div className="mesh-community-heading">
-                    <h2>{t('topology.graph.communities')}</h2>
+                    <h2>{t('graph.communities')}</h2>
                     <span>{clusters.length}</span>
                   </div>
-                  <p className="mesh-community-caption">{t('topology.graph.inventoryGroups')}</p>
+                  <p className="mesh-community-caption">{t('graph.inventoryGroups')}</p>
                   <label className="mesh-community-all">
                     <input
                       type="checkbox"
@@ -803,7 +843,7 @@ export function TopologyRoute() {
                         setHiddenGroups(event.target.checked ? new Set() : new Set(clusters.map((group) => group.key)))
                       }
                     />
-                    {t('topology.graph.selectAll')}
+                    {t('graph.selectAll')}
                   </label>
                   <div className="mesh-community-list">
                     {clusters.map((cluster) => (
@@ -830,13 +870,11 @@ export function TopologyRoute() {
                           className="mesh-group-control"
                           aria-expanded={cluster.expanded}
                           aria-label={[
-                            t(cluster.expanded ? 'topology.radial.collapse' : 'topology.radial.expand', {
+                            t(cluster.expanded ? 'radial.collapse' : 'radial.expand', {
                               name: cluster.label
                             }),
-                            cluster.unhealthy ? t('topology.radial.groupUnhealthy', { count: cluster.unhealthy }) : '',
-                            cluster.quarantined
-                              ? t('topology.radial.groupQuarantined', { count: cluster.quarantined })
-                              : ''
+                            cluster.unhealthy ? t('radial.groupUnhealthy', { count: cluster.unhealthy }) : '',
+                            cluster.quarantined ? t('radial.groupQuarantined', { count: cluster.quarantined }) : ''
                           ]
                             .filter(Boolean)
                             .join(' · ')}
@@ -844,32 +882,32 @@ export function TopologyRoute() {
                             setExpandedGroups((previous) => ({ ...previous, [cluster.key]: !cluster.expanded }))
                           }
                         >
-                          <span>{t(cluster.expanded ? 'topology.graph.fold' : 'topology.graph.unfold')}</span>
+                          <span>{t(cluster.expanded ? 'graph.fold' : 'graph.unfold')}</span>
                           {cluster.unhealthy > 0 && (
                             <span className="text-warning">
-                              {t('topology.radial.groupUnhealthy', { count: cluster.unhealthy })}
+                              {t('radial.groupUnhealthy', { count: cluster.unhealthy })}
                             </span>
                           )}
                           {cluster.quarantined > 0 && (
                             <span className="text-danger">
-                              {t('topology.radial.groupQuarantined', { count: cluster.quarantined })}
+                              {t('radial.groupQuarantined', { count: cluster.quarantined })}
                             </span>
                           )}
                         </button>
                       </div>
                     ))}
                   </div>
-                  <p className="mesh-community-footnote">{t('topology.graph.scopedCounts')}</p>
+                  <p className="mesh-community-footnote">{t('graph.scopedCounts')}</p>
                 </section>
                 <div className="mesh-map-panel">
                   <div className="mesh-toolbar">
-                    <div className="mesh-evidence" aria-label={t('topology.radial.evidence')}>
+                    <div className="mesh-evidence" aria-label={t('radial.evidence')}>
                       <button
                         type="button"
                         aria-pressed={evidenceView === 'policy'}
                         onClick={() => setEvidenceView('policy')}
                       >
-                        {t('topology.radial.policy')}
+                        {t('radial.policy')}
                       </button>
                       <button
                         type="button"
@@ -879,7 +917,7 @@ export function TopologyRoute() {
                           setSelectedLink(null);
                         }}
                       >
-                        {t('topology.radial.observed')}
+                        {t('radial.observed')}
                       </button>
                       <button
                         type="button"
@@ -888,12 +926,12 @@ export function TopologyRoute() {
                         aria-controls="mesh-communities"
                         onClick={() => setCommunitiesOpen((open) => !open)}
                       >
-                        {t('topology.graph.communities')} <span>{clusters.length}</span>
+                        {t('graph.communities')} <span>{clusters.length}</span>
                       </button>
                     </div>
                     <div className="mesh-options flex flex-col gap-2 sm:flex-row sm:items-center">
                       <div className="flex items-center gap-2">
-                        <span className="text-caption text-muted">{t('topology.canvas.groupByLabel')}</span>
+                        <span className="text-caption text-muted">{t('canvas.groupByLabel')}</span>
                         <div className="w-40">
                           <Select
                             value={groupBy}
@@ -902,23 +940,23 @@ export function TopologyRoute() {
                               setHiddenGroups(new Set());
                             }}
                             options={groupOptions}
-                            aria-label={t('topology.canvas.groupByLabel')}
+                            aria-label={t('canvas.groupByLabel')}
                           />
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-caption text-muted">{t('topology.canvas.edgesLabel')}</span>
+                        <span className="text-caption text-muted">{t('canvas.edgesLabel')}</span>
                         <div className="w-44">
                           <Select
                             value={edgeMode}
                             onValueChange={(v) => setEdgeMode(v as EdgeMode)}
                             options={edgeOptions}
-                            aria-label={t('topology.canvas.edgesLabel')}
+                            aria-label={t('canvas.edgesLabel')}
                           />
                         </div>
                       </div>
                       <span className="text-caption text-muted sm:ml-auto">
-                        {t('topology.canvas.nodeCountBadge', { count: nodeCount })}
+                        {t('canvas.nodeCountBadge', { count: nodeCount })}
                       </span>
                     </div>
                   </div>
@@ -930,7 +968,7 @@ export function TopologyRoute() {
                       preserveAspectRatio="xMidYMid meet"
                       role="group"
                       tabIndex={-1}
-                      aria-label={t('topology.title')}
+                      aria-label={t('title')}
                       style={{ cursor: 'grab' }}
                       onPointerDown={onBackgroundPointerDown}
                     >
@@ -952,7 +990,7 @@ export function TopologyRoute() {
                               className={`mesh-aggregate mesh-community-${cluster.color}`}
                               role="button"
                               tabIndex={0}
-                              aria-label={t('topology.graph.aggregate', { name: cluster.label, count: cluster.count })}
+                              aria-label={t('graph.aggregate', { name: cluster.label, count: cluster.count })}
                               onPointerDown={(event) => event.stopPropagation()}
                               onClick={() => setExpandedGroups((previous) => ({ ...previous, [cluster.key]: true }))}
                               onKeyDown={(event) => {
@@ -1009,7 +1047,7 @@ export function TopologyRoute() {
                               data-mesh-link="policy"
                               role="button"
                               tabIndex={0}
-                              aria-label={`${t('topology.canvas.linkTitle')}: ${positionById.get(link.source)?.node.name || link.source} — ${positionById.get(link.target)?.node.name || link.target}`}
+                              aria-label={`${t('canvas.linkTitle')}: ${positionById.get(link.source)?.node.name || link.source} — ${positionById.get(link.target)?.node.name || link.target}`}
                               className={`mesh-policy-edge ${communityClass(positionById.get(link.source)!.node)} cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus`}
                               onPointerDown={(e) => e.stopPropagation()}
                               onClick={() => selectLink(link)}
@@ -1020,7 +1058,7 @@ export function TopologyRoute() {
                                 }
                               }}
                             >
-                              <title>{isCut ? t('topology.canvas.cutBadge') : t('topology.radial.policy')}</title>
+                              <title>{isCut ? t('canvas.cutBadge') : t('radial.policy')}</title>
                               <path d={path} fill="none" stroke="transparent" strokeWidth={12} />
                               <path
                                 d={path}
@@ -1156,7 +1194,7 @@ export function TopologyRoute() {
 
                     {filteredNodes.length === 0 && (
                       <div className="mesh-no-matches" role="status">
-                        <p>{t('topology.graph.noMatches')}</p>
+                        <p>{t('graph.noMatches')}</p>
                         <button
                           type="button"
                           onClick={() => {
@@ -1166,14 +1204,14 @@ export function TopologyRoute() {
                             setHiddenGroups(new Set());
                           }}
                         >
-                          {t('topology.graph.resetFilters')}
+                          {t('graph.resetFilters')}
                         </button>
                       </div>
                     )}
                     {evidenceView === 'policy' && needsSelectionHint && (
                       <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
                         <span className="rounded-full border border-border bg-surface/90 px-3 py-1 text-caption text-muted shadow-sm backdrop-blur">
-                          {t('topology.canvas.edgesSelectHint')}
+                          {t('canvas.edgesSelectHint')}
                         </span>
                       </div>
                     )}
@@ -1183,8 +1221,8 @@ export function TopologyRoute() {
                       <button
                         type="button"
                         className={controlButtonClass}
-                        aria-label={t('topology.canvas.zoomIn')}
-                        title={t('topology.canvas.zoomIn')}
+                        aria-label={t('canvas.zoomIn')}
+                        title={t('canvas.zoomIn')}
                         onClick={() => zoomBy(ZOOM_STEP)}
                       >
                         <ZoomIn className="h-4 w-4" aria-hidden="true" />
@@ -1192,8 +1230,8 @@ export function TopologyRoute() {
                       <button
                         type="button"
                         className={controlButtonClass}
-                        aria-label={t('topology.canvas.zoomOut')}
-                        title={t('topology.canvas.zoomOut')}
+                        aria-label={t('canvas.zoomOut')}
+                        title={t('canvas.zoomOut')}
                         onClick={() => zoomBy(1 / ZOOM_STEP)}
                       >
                         <ZoomOut className="h-4 w-4" aria-hidden="true" />
@@ -1201,8 +1239,8 @@ export function TopologyRoute() {
                       <button
                         type="button"
                         className={controlButtonClass}
-                        aria-label={t('topology.canvas.resetView')}
-                        title={t('topology.canvas.resetView')}
+                        aria-label={t('canvas.resetView')}
+                        title={t('canvas.resetView')}
                         onClick={resetView}
                       >
                         <RotateCcw className="h-4 w-4" aria-hidden="true" />
@@ -1212,35 +1250,35 @@ export function TopologyRoute() {
 
                   {evidenceView === 'observed' && (
                     <p role="status" className="mesh-unmeasured">
-                      {t('topology.radial.unmeasured')}
+                      {t('radial.unmeasured')}
                     </p>
                   )}
                   {evidenceView === 'policy' && resolvedEdgeMode === 'focus' && (
                     <p className="mesh-overview-caption">
-                      {t('topology.graph.overviewSubset', { shown: visibleLinks.length, total: filteredLinks.length })}
+                      {t('graph.overviewSubset', { shown: visibleLinks.length, total: filteredLinks.length })}
                     </p>
                   )}
                   <p className="mesh-explanation text-caption text-subtle">
-                    {t(evidenceView === 'policy' ? 'topology.radial.policyExplain' : 'topology.radial.observedExplain')}{' '}
-                    {t('topology.canvas.hint')}
+                    {t(evidenceView === 'policy' ? 'radial.policyExplain' : 'radial.observedExplain')}{' '}
+                    {t('canvas.hint')}
                   </p>
 
                   <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-caption text-muted">
                     <span className="flex items-center gap-1.5">
-                      <span className="w-4 border-t border-accent" /> {t('topology.radial.policy')}
+                      <span className="w-4 border-t border-accent" /> {t('radial.policy')}
                     </span>
                     {/* Only what the view can know. Nothing measures whether a pair is
                       relayed or onion-routed, and there is no OpenVPN transport, so
                       those used to sit here describing paths the mesh never took. */}
                     <span className="flex items-center gap-1.5">
-                      <span className="w-4 border-t-2 border-dashed border-danger" /> {t('topology.canvas.cutBadge')}
+                      <span className="w-4 border-t-2 border-dashed border-danger" /> {t('canvas.cutBadge')}
                     </span>
                     <span className="flex items-center gap-1.5">
                       <span className="h-2 w-2 rounded-full border border-dashed border-warning" />{' '}
-                      {t('topology.nodeDrawer.unhealthy')}
+                      {t('nodeDrawer.unhealthy')}
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-danger" /> {t('topology.nodeDrawer.quarantined')}
+                      <span className="h-2 w-2 rounded-full bg-danger" /> {t('nodeDrawer.quarantined')}
                       <GlossaryHint
                         text={t('glossary.quarantine.body')}
                         label={t('glossary.ariaLabel', {
@@ -1250,17 +1288,17 @@ export function TopologyRoute() {
                     </span>
                     <span className="flex items-center gap-1.5">
                       <span className="h-2 w-2 rounded-full border border-dashed border-info" />{' '}
-                      {t('topology.nodeDrawer.ghostVaultNode')}
+                      {t('nodeDrawer.ghostVaultNode')}
                     </span>
                   </div>
                 </div>
 
                 {(selectedLink || selectedNode) && (
-                  <aside className="mesh-inspector" aria-label={t('topology.nodeDrawer.title')}>
+                  <aside className="mesh-inspector" aria-label={t('nodeDrawer.title')}>
                     <button
                       type="button"
                       className="mesh-inspector-close"
-                      aria-label={t('topology.radial.closeDetails')}
+                      aria-label={t('radial.closeDetails')}
                       onClick={() => {
                         setSelectedNodeId(null);
                         setSelectedLink(null);
@@ -1272,9 +1310,9 @@ export function TopologyRoute() {
                     {selectedLink ? (
                       <div className="flex flex-col gap-3">
                         <div className="flex items-start justify-between gap-2">
-                          <h2 className="text-body font-semibold text-content">{t('topology.canvas.linkTitle')}</h2>
+                          <h2 className="text-body font-semibold text-content">{t('canvas.linkTitle')}</h2>
                           <Badge tone={isLinkCut ? 'danger' : 'accent'}>
-                            {isLinkCut ? t('topology.canvas.cutBadge') : t('topology.radial.allowed')}
+                            {isLinkCut ? t('canvas.cutBadge') : t('radial.allowed')}
                           </Badge>
                         </div>
 
@@ -1285,13 +1323,22 @@ export function TopologyRoute() {
                         </div>
 
                         <div className="text-caption">
-                          <span className="text-subtle">{t('topology.radial.transport')}: </span>
+                          <span className="text-subtle">{t('radial.transport')}: </span>
                           <span>{t('state.notMeasured')}</span>
                         </div>
 
-                        <p className="text-caption text-muted">{t('topology.canvas.cutExplain')}</p>
+                        <p className="text-caption text-muted">{t('canvas.cutExplain')}</p>
 
-                        {linkActionError && <p className="text-caption text-danger">{linkActionError}</p>}
+                        {linkActionError && (
+                          <p role="alert" className="text-caption text-danger">
+                            {linkActionError}
+                          </p>
+                        )}
+                        {linkNotice && (
+                          <p role="status" className="text-caption text-success">
+                            {linkNotice}
+                          </p>
+                        )}
 
                         {isLinkCut ? (
                           <Button
@@ -1302,11 +1349,17 @@ export function TopologyRoute() {
                             loading={linkBusy}
                             disabled={dropRulesForPair.length === 0}
                           >
-                            {t('topology.canvas.restoreAction')}
+                            {t('canvas.restoreAction')}
                           </Button>
                         ) : (
-                          <Button variant="danger" size="sm" icon={Scissors} onClick={handleCut} loading={linkBusy}>
-                            {t('topology.canvas.cutAction')}
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            icon={Scissors}
+                            onClick={() => setBlockConfirmOpen(true)}
+                            loading={linkBusy}
+                          >
+                            {t('canvas.cutAction')}
                           </Button>
                         )}
                       </div>
@@ -1333,29 +1386,27 @@ export function TopologyRoute() {
                             status={nodeStatus(selectedNode)}
                             label={
                               selectedNode.is_quarantined
-                                ? t('topology.nodeDrawer.quarantined')
+                                ? t('nodeDrawer.quarantined')
                                 : selectedNode.is_healthy
-                                  ? t('topology.nodeDrawer.healthy')
-                                  : t('topology.nodeDrawer.unhealthy')
+                                  ? t('nodeDrawer.healthy')
+                                  : t('nodeDrawer.unhealthy')
                             }
                           />
                         </div>
 
-                        {selectedNode.is_ghost_vault && (
-                          <Badge tone="warning">{t('topology.nodeDrawer.ghostVaultNode')}</Badge>
-                        )}
+                        {selectedNode.is_ghost_vault && <Badge tone="warning">{t('nodeDrawer.ghostVaultNode')}</Badge>}
 
                         <dl className="grid grid-cols-2 gap-2 text-caption">
                           <div>
-                            <dt className="text-muted">{t('topology.nodeDrawer.role')}</dt>
+                            <dt className="text-muted">{t('nodeDrawer.role')}</dt>
                             <dd className="font-medium text-content">{selectedNode.role}</dd>
                           </div>
                           <div>
-                            <dt className="text-muted">{t('topology.nodeDrawer.country')}</dt>
+                            <dt className="text-muted">{t('nodeDrawer.country')}</dt>
                             <dd className="font-medium text-content">{selectedNode.country || '—'}</dd>
                           </div>
                           <div>
-                            <dt className="text-muted">{t('topology.nodeDrawer.latency')}</dt>
+                            <dt className="text-muted">{t('nodeDrawer.latency')}</dt>
                             <dd className="font-medium text-content">
                               {selectedNode.latency_ms !== null && selectedNode.latency_ms !== undefined
                                 ? `${selectedNode.latency_ms} ms`
@@ -1363,20 +1414,20 @@ export function TopologyRoute() {
                             </dd>
                           </div>
                           <div>
-                            <dt className="text-muted">{t('topology.nodeDrawer.compartment')}</dt>
+                            <dt className="text-muted">{t('nodeDrawer.compartment')}</dt>
                             <dd className="font-medium text-content">{selectedNode.compartment_name || '—'}</dd>
                           </div>
                         </dl>
 
                         <div className="text-caption text-subtle">
-                          {t('topology.radial.transport')}: {t('state.notMeasured')}
+                          {t('radial.transport')}: {t('state.notMeasured')}
                         </div>
                         <div className="text-caption text-muted">
-                          {t('topology.radial.allowedPairs')}: {selectedNodeLinks.length}
+                          {t('radial.allowedPairs')}: {selectedNodeLinks.length}
                         </div>
-                        <div className="mesh-neighborhood" role="group" aria-label={t('topology.graph.neighborhood')}>
+                        <div className="mesh-neighborhood" role="group" aria-label={t('graph.neighborhood')}>
                           <div className="mesh-neighborhood-heading">
-                            <h3>{t('topology.graph.neighborhood')}</h3>
+                            <h3>{t('graph.neighborhood')}</h3>
                             <span className="mesh-community-count" data-neighbour-count>
                               {neighbourIds ? Math.max(0, neighbourIds.size - 1) : 0}
                             </span>
@@ -1389,11 +1440,11 @@ export function TopologyRoute() {
                                 aria-pressed={neighborhoodHops === hops}
                                 onClick={() => setNeighborhoodHops(hops)}
                               >
-                                {t('topology.graph.hops', { count: hops })}
+                                {t('graph.hops', { count: hops })}
                               </button>
                             ))}
                           </div>
-                          <p>{t('topology.graph.policyOnly')}</p>
+                          <p>{t('graph.policyOnly')}</p>
                           <ul>
                             {filteredNodes
                               .filter((node) => node.id !== selectedNode.id && neighbourIds?.has(node.id))
@@ -1416,7 +1467,7 @@ export function TopologyRoute() {
                                 </li>
                               ))}
                           </ul>
-                          {neighbourIds && neighbourIds.size > 51 && <p>{t('topology.graph.neighborLimit')}</p>}
+                          {neighbourIds && neighbourIds.size > 51 && <p>{t('graph.neighborLimit')}</p>}
                         </div>
 
                         <Button
@@ -1425,11 +1476,11 @@ export function TopologyRoute() {
                           icon={ExternalLink}
                           onClick={() => navigate(nodePath(selectedNode.id))}
                         >
-                          {t('topology.nodeDrawer.viewDetails')}
+                          {t('nodeDrawer.viewDetails')}
                         </Button>
                       </div>
                     ) : (
-                      <EmptyState title={t('topology.nodeDrawer.title')} body={t('topology.canvas.selectPrompt')} />
+                      <EmptyState title={t('nodeDrawer.title')} body={t('canvas.selectPrompt')} />
                     )}
                   </aside>
                 )}
@@ -1439,14 +1490,25 @@ export function TopologyRoute() {
         ) : (
           <Card flush>
             <Table<TopologyNode>
-              caption={t('topology.title')}
+              caption={t('title')}
               columns={listColumns}
               rows={filteredNodes}
               rowKey={(row) => row.id}
-              empty={<EmptyState title={t('topology.empty.title')} body={t('topology.empty.desc')} />}
+              empty={<EmptyState title={t('empty.title')} body={t('empty.desc')} />}
             />
           </Card>
         )}
+
+        <ConfirmDialog
+          open={blockConfirmOpen}
+          onOpenChange={setBlockConfirmOpen}
+          title={t('canvas.confirmTitle')}
+          description={t('canvas.confirmBody')}
+          confirmLabel={t('canvas.cutAction')}
+          tone="danger"
+          onConfirm={() => void handleCut()}
+          busy={linkBusy}
+        />
 
         <Dialog
           open={unlockDialogOpen}
@@ -1454,25 +1516,25 @@ export function TopologyRoute() {
             setUnlockDialogOpen(open);
             if (!open) setUnlockError(null);
           }}
-          title={t('topology.vault.dialogTitle')}
-          description={t('topology.vault.dialogDesc')}
+          title={t('vault.dialogTitle')}
+          description={t('vault.dialogDesc')}
           footer={
             <>
               <Button variant="secondary" onClick={() => setUnlockDialogOpen(false)}>
-                {t('topology.vault.cancel')}
+                {t('vault.cancel')}
               </Button>
               <Button variant="primary" onClick={handleUnlock} loading={unlockMutation.isPending}>
-                {t('topology.vault.confirmUnlock')}
+                {t('vault.confirmUnlock')}
               </Button>
             </>
           }
         >
-          <FormField label={t('topology.vault.passwordLabel')} error={unlockError}>
+          <FormField label={t('vault.passwordLabel')} error={unlockError}>
             <Input
               type="password"
               value={vaultPassword}
               onChange={(e) => setVaultPassword(e.target.value)}
-              placeholder={t('topology.vault.passwordPlaceholder')}
+              placeholder={t('vault.passwordPlaceholder')}
             />
           </FormField>
         </Dialog>
