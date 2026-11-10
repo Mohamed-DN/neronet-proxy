@@ -56,3 +56,24 @@ if [ -f "$APK" ]; then
   echo "APK: $APK"
   ls -l "$APK" | awk '{ printf "Size: %.1f MB (%d bytes)\n", $5/1048576, $5 }'
 fi
+
+# APK budgets from the v1 plan: debug at most 24.0 MB, release (R8, unsigned) at most 14.0 MB.
+DEBUG_BUDGET_BYTES=25165824
+RELEASE_BUDGET_BYTES=14680064
+RELEASE_APK="$APP_DIR/build/outputs/apk/release/app-release-unsigned.apk"
+budget_failed=0
+check_budget() {
+  local file="$1" budget="$2" label="$3" size
+  [ -f "$file" ] || return 0
+  size=$(wc -c < "$file")
+  echo "Budget $label: $size bytes of $budget allowed"
+  if [ "$size" -gt "$budget" ]; then
+    echo "BUDGET EXCEEDED: the $label APK is $size bytes, over $budget. Stop and report; do not remove features." >&2
+    budget_failed=1
+  fi
+}
+check_budget "$APK" "$DEBUG_BUDGET_BYTES" debug
+check_budget "$RELEASE_APK" "$RELEASE_BUDGET_BYTES" release
+if [ "$budget_failed" -ne 0 ]; then
+  exit 1
+fi
