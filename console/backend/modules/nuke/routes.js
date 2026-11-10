@@ -527,8 +527,9 @@ router.get('/status', authenticateToken, async (req, res, next) => {
       })
     );
 
-    // Key status
-    let keyStatus = 'active';
+    // Key status: null when the server holds no key record, so the console says "not
+    // measured" instead of claiming an active key it has never seen.
+    let keyStatus = null;
     if (orgId) {
       const kRes = await pool.query('SELECT status FROM organization_keys WHERE organization_id = $1', [orgId]);
       if (kRes.rows.length > 0) {

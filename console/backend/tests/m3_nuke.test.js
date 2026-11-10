@@ -517,6 +517,19 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
   // ===========================================================================
   // TIER 3: Warrant Canary Tests (Ed25519 Cryptographic Verification)
   // ===========================================================================
+  describe('Status without invented key state', () => {
+    it('reports keys_status null when no key row exists, not "active"', async () => {
+      // The erasure page showed the organisation key as active when the server had no
+      // record of it at all.
+      await dbHelper.pool.query(
+        "DELETE FROM organization_keys WHERE organization_id = (SELECT organization_id FROM users WHERE username = 'alice_homelab')"
+      );
+      const res = await request(app).get('/api/nuke/status').set('Authorization', `Bearer ${userToken}`);
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.body.keys_status, null);
+    });
+  });
+
   describe('Tier 3: Warrant Canary (Ed25519 Transparency Declaration)', () => {
     it('should serve cryptographically signed canary at /.well-known/canary.txt', async () => {
       const res = await request(app).get('/.well-known/canary.txt');
