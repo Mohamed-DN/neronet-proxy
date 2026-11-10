@@ -1,1 +1,145 @@
-{}
+{
+  "title": "Registro delle attività, protetto da modifiche",
+  "description": "Ogni voce è collegata a quella precedente con una firma crittografica. Puoi controllare il registro e inviarne gli eventi a sistemi di sicurezza esterni.",
+  "captionEntries": "Voci del registro attività",
+  "actions": {
+    "verifyChain": "Controlla il registro",
+    "createCheckpoint": "Salva uno snapshot firmato del registro",
+    "siemTargets": "Invia gli eventi a un sistema esterno",
+    "exportLog": "Scarica il registro",
+    "inspect": "Mostra dettagli",
+    "copyHash": "Copia l'impronta",
+    "close": "Chiudi"
+  },
+  "stats": {
+    "totalEvents": "Eventi registrati",
+    "chainStatus": "Il registro è integro?",
+    "checkpoints": "Snapshot firmati",
+    "siemForwarders": "Destinazioni di invio",
+    "validBadge": "Ogni voce corrisponde alla precedente",
+    "validStatus": "Integro",
+    "partialStatus": "Verificato in parte",
+    "unknownStatus": "Non verificabile",
+    "emptyStatus": "Vuoto",
+    "partialBadge": "Le voci più vecchie non coprono tutti i campi",
+    "unknownBadge": "Non si sa quali campi sono protetti",
+    "emptyBadge": "Non c'è ancora nulla da controllare",
+    "tamperedBadge": "Possibile manomissione",
+    "eventsHint": "Le modifiche si rilevano: ogni voce è legata alla precedente",
+    "checkpointsHint": "Firmati con la chiave del sistema",
+    "siemHint": "Sistemi che ricevono gli eventi",
+    "adminOnlyHint": "Verifica disponibile solo all'amministratore della piattaforma",
+    "checkingHint": "Controllo in corso...",
+    "brokenAtHint": "Alterato alla voce n. {{sequence}}"
+  },
+  "filters": {
+    "searchPlaceholder": "Cerca per testo, tipo di evento, utente, indirizzo IP...",
+    "severityAll": "Tutte le Gravità",
+    "severityInfo": "Informativo",
+    "severityWarn": "Avviso",
+    "severityCritical": "Critico",
+    "severityError": "Errore",
+    "clear": "Azzera i filtri"
+  },
+  "columns": {
+    "seq": "N.",
+    "timestamp": "Data e ora",
+    "eventType": "Tipo di evento",
+    "severity": "Gravità",
+    "actor": "Chi",
+    "target": "Oggetto",
+    "message": "Messaggio",
+    "chainHash": "Impronta della voce",
+    "actions": "Azioni"
+  },
+  "verifyModal": {
+    "title": "Esito del controllo di integrità",
+    "subtitle": "Il controllo ricalcola ogni impronta e la confronta con quella salvata, su tutto il registro.",
+    "validHeadline": "Registro integro: nessuna modifica trovata",
+    "validDesc": "Le voci corrispondono alle impronte salvate. L'attribuzione alle organizzazioni è riportata sotto.",
+    "partialHeadline": "Registro integro, ma le voci più vecchie sono verificate solo in parte",
+    "partialDesc": "Il collegamento tra le voci è corretto. Le voci precedenti non proteggono tutti i campi: una modifica a quei campi non sarebbe rilevata.",
+    "unknownHeadline": "Collegamento corretto, ma non si sa quali campi sono protetti",
+    "unknownDesc": "Il server non dice quali campi sono protetti: il report non può confermare che ogni dato sia al sicuro.",
+    "emptyHeadline": "Il registro è vuoto",
+    "emptyDesc": "Non c'è ancora nulla da controllare.",
+    "legacyCount": "Eventi nel formato precedente: {{count}}",
+    "canonicalCount": "Eventi senza ambito firmato: {{count}}",
+    "signedScopeCount": "Eventi con ambito firmato: {{count}}",
+    "attributedCount": "Attribuiti a un'organizzazione: {{count}}",
+    "unattributedCount": "Eventi globali o non attribuiti: {{count}}",
+    "attributionUnavailable": "L'attribuzione alle organizzazioni è assente o incompleta nel report di questo server.",
+    "tamperedHeadline": "Possibile manomissione: il registro non torna",
+    "tamperedDesc": "Il controllo ha trovato una voce che non corrisponde alla sua impronta. Non usare questo registro come prova finché non è chiarito. Avvisa il responsabile della sicurezza.",
+    "eventsCount": "Voci controllate: {{count}}",
+    "range": "Dalla voce n. {{first}} alla n. {{last}}",
+    "brokenSeq": "Prima voce non corrispondente: n. {{seq}}",
+    "reason": "Motivo: {{reason}}",
+    "close": "Chiudi",
+    "defaultReason": "Sequenza interrotta o impronta non corrispondente"
+  },
+  "checkpointModal": {
+    "title": "Salva uno snapshot firmato del registro",
+    "description": "Firma l'ultima voce con la chiave del sistema. Serve a dimostrare, più avanti, com'era il registro in questo momento.",
+    "confirmAction": "Firma e salva lo snapshot",
+    "cancelAction": "Annulla",
+    "listTitle": "Snapshot recenti",
+    "signature": "Firma (chiave del sistema)",
+    "publicKey": "Chiave per verificare la firma",
+    "empty": "Nessuno snapshot salvato finora."
+  },
+  "siemModal": {
+    "title": "Invio eventi a sistemi di sicurezza esterni",
+    "subtitle": "Copia gli eventi del registro verso strumenti di monitoraggio della sicurezza (per esempio Splunk, Elastic, IBM QRadar, Microsoft Sentinel).",
+    "addTitle": "Aggiungi una destinazione",
+    "nameLabel": "Nome",
+    "protoLabel": "Modo di trasporto",
+    "endpointLabel": "Indirizzo del ricevitore (host:porta)",
+    "formatLabel": "Formato dei messaggi",
+    "formatRfc5424": "Standard (RFC 5424)",
+    "formatCef": "ArcSight CEF",
+    "formatLeef": "IBM QRadar LEEF",
+    "formatJson": "JSON semplice",
+    "addAction": "Aggiungi destinazione",
+    "activeTargets": "Destinazioni attive",
+    "noTargets": "Nessuna destinazione configurata. Nessun evento viene inviato a sistemi esterni.",
+    "deleteAction": "Rimuovi destinazione",
+    "namePlaceholder": "Es. Splunk della sede",
+    "removeTitle": "Rimuovere la destinazione?",
+    "removeBody": "Gli eventi smettono di arrivare a quel sistema."
+  },
+  "exportModal": {
+    "title": "Scarica il registro delle attività",
+    "description": "Scarica gli eventi per analizzarli. Il pacchetto JSON contiene anche l'ultimo esito del controllo di integrità, se disponibile.",
+    "csvAction": "Scarica come tabella (CSV)",
+    "jsonAction": "Scarica con il controllo di integrità (JSON)",
+    "complianceSeal": "Prima di usare il registro esportato, leggi l'esito del controllo di integrità: le voci più vecchie potrebbero essere verificate solo in parte."
+  },
+  "detailModal": {
+    "title": "Dettagli dell'evento n. {{seq}}",
+    "prevHash": "Impronta della voce precedente",
+    "entryHash": "Impronta di questa voce",
+    "ipAddress": "Da quale indirizzo IP",
+    "userAgent": "Programma usato",
+    "metadata": "Dati tecnici dell'evento (JSON)"
+  },
+  "empty": {
+    "title": "Nessun evento registrato",
+    "desc": "Qui compariranno le azioni degli amministratori, le modifiche ai dispositivi e gli eventi di sicurezza.",
+    "noMatches": "Cambia la ricerca o la gravità per vedere altri eventi.",
+    "noMatchesTitle": "Nessun evento corrisponde"
+  },
+  "errors": {
+    "checkpoint": "Snapshot non creato. Riprova tra poco.",
+    "siem": "Destinazione non aggiunta. Controlla indirizzo e formato, poi riprova.",
+    "siemRequired": "Scrivi un nome e un indirizzo.",
+    "siemRemove": "La destinazione non è stata rimossa. Riprova."
+  },
+  "aria": {
+    "search": "Cerca eventi del registro",
+    "severity": "Filtra per gravità",
+    "inspect": "Mostra i dettagli dell'evento n. {{seq}}",
+    "copyHash": "Copia l'impronta",
+    "removeTarget": "Rimuovi la destinazione {{name}}"
+  }
+}

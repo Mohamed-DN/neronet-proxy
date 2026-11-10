@@ -1,1 +1,145 @@
-{}
+{
+  "title": "Activity log, protected from changes",
+  "description": "Each entry is linked to the one before by a cryptographic signature. You can check the log and send its events to external security systems.",
+  "captionEntries": "Activity log entries",
+  "actions": {
+    "verifyChain": "Check the log",
+    "createCheckpoint": "Save a signed snapshot of the log",
+    "siemTargets": "Send events to an external system",
+    "exportLog": "Download the log",
+    "inspect": "Show details",
+    "copyHash": "Copy the fingerprint",
+    "close": "Close"
+  },
+  "stats": {
+    "totalEvents": "Events recorded",
+    "chainStatus": "Is the log intact?",
+    "checkpoints": "Signed snapshots",
+    "siemForwarders": "Send destinations",
+    "validBadge": "Every entry matches the one before",
+    "validStatus": "Intact",
+    "partialStatus": "Partly verified",
+    "unknownStatus": "Cannot be verified",
+    "emptyStatus": "Empty",
+    "partialBadge": "Older entries do not cover every field",
+    "unknownBadge": "Unknown which fields are protected",
+    "emptyBadge": "Nothing to check yet",
+    "tamperedBadge": "Possible tampering",
+    "eventsHint": "Changes can be detected: each entry is linked to the one before",
+    "checkpointsHint": "Signed with the system key",
+    "siemHint": "Systems receiving events",
+    "adminOnlyHint": "Verification available to the super-admin only",
+    "checkingHint": "Checking...",
+    "brokenAtHint": "Altered at entry no. {{sequence}}"
+  },
+  "filters": {
+    "searchPlaceholder": "Search by text, event type, user, IP address...",
+    "severityAll": "All Severities",
+    "severityInfo": "Info",
+    "severityWarn": "Warning",
+    "severityCritical": "Critical",
+    "severityError": "Error",
+    "clear": "Clear filters"
+  },
+  "columns": {
+    "seq": "No.",
+    "timestamp": "Date and time",
+    "eventType": "Event type",
+    "severity": "Severity",
+    "actor": "Who",
+    "target": "Object",
+    "message": "Message",
+    "chainHash": "Entry fingerprint",
+    "actions": "Actions"
+  },
+  "verifyModal": {
+    "title": "Integrity check result",
+    "subtitle": "The check recalculates every fingerprint and compares it with the stored one, across the whole log.",
+    "validHeadline": "Log intact: no changes found",
+    "validDesc": "Entries match their stored fingerprints. Attribution to organisations is shown below.",
+    "partialHeadline": "Log intact, but older entries are only partly verified",
+    "partialDesc": "The links between entries are correct. Older entries do not protect every field, so a change to those fields would not be detected.",
+    "unknownHeadline": "Links are correct, but it is unknown which fields are protected",
+    "unknownDesc": "The server does not say which fields are protected, so this report cannot confirm that all data is safe.",
+    "emptyHeadline": "The log is empty",
+    "emptyDesc": "There is nothing to check yet.",
+    "legacyCount": "Older-format events: {{count}}",
+    "canonicalCount": "Events without signed scope: {{count}}",
+    "signedScopeCount": "Events with signed scope: {{count}}",
+    "attributedCount": "Attributed to an organization: {{count}}",
+    "unattributedCount": "Global or unattributed events: {{count}}",
+    "attributionUnavailable": "Organization attribution is unavailable or incomplete in this server report.",
+    "tamperedHeadline": "Possible tampering: the log does not add up",
+    "tamperedDesc": "The check found an entry that does not match its fingerprint. Do not use this log as evidence until it is explained. Tell the security lead.",
+    "eventsCount": "Entries checked: {{count}}",
+    "range": "From entry no. {{first}} to no. {{last}}",
+    "brokenSeq": "First mismatched entry: no. {{seq}}",
+    "reason": "Reason: {{reason}}",
+    "close": "Close",
+    "defaultReason": "Sequence gap or HMAC mismatch"
+  },
+  "checkpointModal": {
+    "title": "Save a signed snapshot of the log",
+    "description": "Signs the latest entry with the system key. It shows later what the log looked like at this moment.",
+    "confirmAction": "Sign and save the snapshot",
+    "cancelAction": "Cancel",
+    "listTitle": "Recent snapshots",
+    "signature": "Signature (system key)",
+    "publicKey": "Key to verify the signature",
+    "empty": "No snapshots saved yet."
+  },
+  "siemModal": {
+    "title": "Send events to external security systems",
+    "subtitle": "Copies log events to security monitoring tools (for example Splunk, Elastic, IBM QRadar, Microsoft Sentinel).",
+    "addTitle": "Add a destination",
+    "nameLabel": "Name",
+    "protoLabel": "Transport",
+    "endpointLabel": "Receiver address (host:port)",
+    "formatLabel": "Message format",
+    "formatRfc5424": "Standard (RFC 5424)",
+    "formatCef": "ArcSight CEF",
+    "formatLeef": "IBM QRadar LEEF",
+    "formatJson": "Plain JSON",
+    "addAction": "Add destination",
+    "activeTargets": "Active destinations",
+    "noTargets": "No destination set up. No events are sent to external systems.",
+    "deleteAction": "Remove destination",
+    "namePlaceholder": "E.g. head office Splunk",
+    "removeTitle": "Remove this destination?",
+    "removeBody": "Events stop reaching that system."
+  },
+  "exportModal": {
+    "title": "Download the activity log",
+    "description": "Download events to review them. The JSON package also includes the latest integrity check result, when available.",
+    "csvAction": "Download as a spreadsheet (CSV)",
+    "jsonAction": "Download with integrity check (JSON)",
+    "complianceSeal": "Before relying on the exported log, read the integrity check result: older entries may be only partly verified."
+  },
+  "detailModal": {
+    "title": "Details of event no. {{seq}}",
+    "prevHash": "Previous entry fingerprint",
+    "entryHash": "This entry's fingerprint",
+    "ipAddress": "From which IP address",
+    "userAgent": "Program used",
+    "metadata": "Technical event data (JSON)"
+  },
+  "empty": {
+    "title": "No events recorded",
+    "desc": "Administrator actions, device changes and security events will appear here.",
+    "noMatches": "Change the search or the severity to see more events.",
+    "noMatchesTitle": "No events match"
+  },
+  "errors": {
+    "checkpoint": "The snapshot was not created. Try again shortly.",
+    "siem": "The destination was not added. Check the address and format, then try again.",
+    "siemRequired": "Write a name and an address.",
+    "siemRemove": "The destination was not removed. Try again."
+  },
+  "aria": {
+    "search": "Filter audit events search",
+    "severity": "Filter by severity",
+    "inspect": "Show details of event no. {{seq}}",
+    "copyHash": "Copy the fingerprint",
+    "removeTarget": "Remove destination {{name}}"
+  }
+}

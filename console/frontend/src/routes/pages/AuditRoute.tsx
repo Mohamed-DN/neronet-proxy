@@ -17,9 +17,11 @@ import {
   Badge,
   Button,
   CodeText,
+  ConfirmDialog,
   Dialog,
   EmptyState,
   ErrorState,
+  FilteredEmptyState,
   FormField,
   Input,
   PageHeader,
@@ -32,7 +34,7 @@ import {
 } from '../../ui';
 
 export default function AuditRoute() {
-  const { t } = useTranslation('ui');
+  const { t } = useTranslation(['audit', 'ui']);
 
   // Verification, checkpoints, SIEM sinks and global export remain platform-only.
   // The server filters event listings by signed organization and admitted role.
@@ -67,6 +69,8 @@ export default function AuditRoute() {
   const [siemEndpoint, setSiemEndpoint] = useState('');
   const [siemFormat, setSiemFormat] = useState('rfc5424');
   const [siemError, setSiemError] = useState<string | null>(null);
+  const [checkpointError, setCheckpointError] = useState<string | null>(null);
+  const [siemRemoveTarget, setSiemRemoveTarget] = useState<{ id: string; name: string } | null>(null);
 
   // Copy state
   const [copiedHash, setCopiedHash] = useState(false);
@@ -174,11 +178,12 @@ export default function AuditRoute() {
 
   // Handle Create Checkpoint
   const handleCreateCheckpoint = async () => {
+    setCheckpointError(null);
     try {
       await createCheckpoint.mutateAsync();
       setCheckpointModalOpen(false);
-    } catch (err: any) {
-      alert(err?.message || 'Failed to create checkpoint');
+    } catch {
+      setCheckpointError(t('errors.checkpoint'));
     }
   };
 
@@ -187,7 +192,7 @@ export default function AuditRoute() {
     e.preventDefault();
     setSiemError(null);
     if (!siemName || !siemEndpoint) {
-      setSiemError('Name and Endpoint are required');
+      setSiemError(t('errors.siemRequired'));
       return;
     }
     try {
@@ -199,8 +204,8 @@ export default function AuditRoute() {
       });
       setSiemName('');
       setSiemEndpoint('');
-    } catch (err: any) {
-      setSiemError(err?.message || 'Failed to create SIEM destination');
+    } catch {
+      setSiemError(t('errors.siem'));
     }
   };
 
@@ -209,13 +214,13 @@ export default function AuditRoute() {
     () => [
       {
         id: 'sequence',
-        header: t('audit.columns.seq'),
+        header: t('columns.seq'),
         cell: (e) => <span className="font-mono font-bold text-accent">#{e.sequence_num}</span>,
         width: '80px'
       },
       {
         id: 'timestamp',
-        header: t('audit.columns.timestamp'),
+        header: t('columns.timestamp'),
         cell: (e) => (
           <span className="font-mono text-xs text-muted tabular-nums whitespace-nowrap">
             {new Date(e.created_at).toLocaleString()}
@@ -225,7 +230,7 @@ export default function AuditRoute() {
       },
       {
         id: 'event_type',
-        header: t('audit.columns.eventType'),
+        header: t('columns.eventType'),
         cell: (e) => (
           <Badge tone="neutral" className="font-mono text-[10px]">
             {e.event_type}
@@ -234,7 +239,7 @@ export default function AuditRoute() {
       },
       {
         id: 'severity',
-        header: t('audit.columns.severity'),
+        header: t('columns.severity'),
         cell: (e) => {
           const sev = (e.severity || 'info').toLowerCase();
           const tone = sev === 'critical' || sev === 'error' ? 'danger' : sev === 'warn' ? 'warning' : 'info';
@@ -244,19 +249,19 @@ export default function AuditRoute() {
       },
       {
         id: 'actor',
-        header: t('audit.columns.actor'),
+        header: t('columns.actor'),
         cell: (e) => (
           <span className="font-mono text-xs font-semibold text-content">{e.actor_username || 'system'}</span>
         )
       },
       {
         id: 'message',
-        header: t('audit.columns.message'),
+        header: t('columns.message'),
         cell: (e) => <span className="text-xs text-muted line-clamp-1">{e.message}</span>
       },
       {
         id: 'chain_hash',
-        header: t('audit.columns.chainHash'),
+        header: t('columns.chainHash'),
         cell: (e) => {
           const hash = e.entry_hash || e.chain_hash || '';
           if (!hash) return <span className="text-muted text-xs">—</span>;
@@ -266,16 +271,16 @@ export default function AuditRoute() {
       },
       {
         id: 'actions',
-        header: t('audit.columns.actions'),
+        header: t('columns.actions'),
         cell: (e) => (
           <Button
             size="sm"
             variant="secondary"
             onClick={() => setDetailEvent(e)}
-            aria-label={`Inspect event #${e.sequence_num}`}
+            aria-label={t('aria.inspect', { seq: e.sequence_num })}
             data-testid={`inspect-event-${e.sequence_num}`}
           >
-            {t('audit.actions.inspect')}
+            {t('actions.inspect')}
           </Button>
         ),
         numeric: true,
@@ -294,19 +299,19 @@ export default function AuditRoute() {
   }
 
   const severityOptions: SelectOption[] = [
-    { value: 'ALL', label: t('audit.filters.severityAll') },
-    { value: 'INFO', label: t('audit.filters.severityInfo') },
-    { value: 'WARN', label: t('audit.filters.severityWarn') },
-    { value: 'CRITICAL', label: t('audit.filters.severityCritical') },
-    { value: 'ERROR', label: t('audit.filters.severityError') }
+    { value: 'ALL', label: t('filters.severityAll') },
+    { value: 'INFO', label: t('filters.severityInfo') },
+    { value: 'WARN', label: t('filters.severityWarn') },
+    { value: 'CRITICAL', label: t('filters.severityCritical') },
+    { value: 'ERROR', label: t('filters.severityError') }
   ];
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <PageHeader
-        title={t('audit.title')}
-        description={t('audit.description')}
+        title={t('title')}
+        description={t('description')}
         actions={
           isPlatformAdmin ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -319,19 +324,19 @@ export default function AuditRoute() {
                 data-testid="verify-chain-button"
               >
                 <ShieldCheck className="w-4 h-4 mr-2 text-success" />
-                <span>{t('audit.actions.verifyChain')}</span>
+                <span>{t('actions.verifyChain')}</span>
               </Button>
               <Button variant="secondary" onClick={() => setCheckpointModalOpen(true)} data-testid="checkpoints-button">
                 <Lock className="w-4 h-4 mr-2" />
-                <span>{t('audit.actions.createCheckpoint')}</span>
+                <span>{t('actions.createCheckpoint')}</span>
               </Button>
               <Button variant="secondary" onClick={() => setSiemModalOpen(true)} data-testid="siem-button">
                 <Share2 className="w-4 h-4 mr-2" />
-                <span>{t('audit.actions.siemTargets')}</span>
+                <span>{t('actions.siemTargets')}</span>
               </Button>
               <Button variant="primary" onClick={() => setExportModalOpen(true)} data-testid="export-audit-button">
                 <Download className="w-4 h-4 mr-2" />
-                <span>{t('audit.actions.exportLog')}</span>
+                <span>{t('actions.exportLog')}</span>
               </Button>
             </div>
           ) : undefined
@@ -340,32 +345,28 @@ export default function AuditRoute() {
 
       {/* Stats Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label={t('audit.stats.totalEvents')} value={events.length} hint={t('audit.stats.eventsHint')} />
+        <Stat label={t('stats.totalEvents')} value={events.length} hint={t('stats.eventsHint')} />
         <Stat
-          label={t('audit.stats.chainStatus')}
+          label={t('stats.chainStatus')}
           value={
             !isPlatformAdmin || !verifyResult
               ? '—'
               : !verifyResult.valid
                 ? 'BROKEN'
-                : t(`audit.stats.${verificationCoverage}Status`)
+                : t(`stats.${verificationCoverage}Status`)
           }
           hint={
             !isPlatformAdmin
-              ? t('audit.stats.adminOnlyHint')
+              ? t('stats.adminOnlyHint')
               : !verifyResult
-                ? t('audit.stats.checkingHint')
+                ? t('stats.checkingHint')
                 : verifyResult.valid
-                  ? t(`audit.stats.${verificationCoverage}Badge`)
-                  : t('audit.stats.brokenAtHint', { sequence: verifyResult.broken_at_sequence ?? '?' })
+                  ? t(`stats.${verificationCoverage}Badge`)
+                  : t('stats.brokenAtHint', { sequence: verifyResult.broken_at_sequence ?? '?' })
           }
         />
-        <Stat label={t('audit.stats.checkpoints')} value={checkpoints.length} hint={t('audit.stats.checkpointsHint')} />
-        <Stat
-          label={t('audit.stats.siemForwarders')}
-          value={siemDestinations.length}
-          hint={t('audit.stats.siemHint')}
-        />
+        <Stat label={t('stats.checkpoints')} value={checkpoints.length} hint={t('stats.checkpointsHint')} />
+        <Stat label={t('stats.siemForwarders')} value={siemDestinations.length} hint={t('stats.siemHint')} />
       </div>
 
       {/* Filters and Search */}
@@ -375,9 +376,9 @@ export default function AuditRoute() {
           <Input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder={t('audit.filters.searchPlaceholder')}
+            placeholder={t('filters.searchPlaceholder')}
             className="pl-9"
-            aria-label="Filter audit events search"
+            aria-label={t('aria.search')}
           />
         </div>
         <div className="flex items-center space-x-3">
@@ -387,7 +388,7 @@ export default function AuditRoute() {
               onValueChange={setSeverityFilter}
               options={severityOptions}
               label="Filter by severity"
-              aria-label="Filter by severity"
+              aria-label={t('aria.severity')}
             />
           </div>
         </div>
@@ -395,15 +396,24 @@ export default function AuditRoute() {
 
       {/* Audit Table */}
       <Table<AuditEvent>
-        caption={t('audit.captionEntries')}
+        caption={t('captionEntries')}
         columns={columns}
         rows={filteredEvents}
         rowKey={(e) => String(e.id || e.sequence_num)}
         empty={
-          <EmptyState
-            title={events.length === 0 ? t('audit.empty.title') : t('audit.empty.noMatches')}
-            body={events.length === 0 ? t('audit.empty.desc') : undefined}
-          />
+          events.length === 0 ? (
+            <EmptyState title={t('empty.title')} body={t('empty.desc')} />
+          ) : (
+            <FilteredEmptyState
+              title={t('empty.noMatchesTitle')}
+              body={t('empty.noMatches')}
+              resetLabel={t('filters.clear')}
+              onReset={() => {
+                setSearchTerm('');
+                setSeverityFilter('ALL');
+              }}
+            />
+          )
         }
       />
 
@@ -411,12 +421,12 @@ export default function AuditRoute() {
       <Dialog
         open={verifyModalOpen}
         onOpenChange={setVerifyModalOpen}
-        title={t('audit.verifyModal.title')}
-        description={t('audit.verifyModal.subtitle')}
+        title={t('verifyModal.title')}
+        description={t('verifyModal.subtitle')}
         size="md"
         footer={
           <Button variant="secondary" onClick={() => setVerifyModalOpen(false)}>
-            {t('audit.verifyModal.close')}
+            {t('verifyModal.close')}
           </Button>
         }
       >
@@ -448,38 +458,36 @@ export default function AuditRoute() {
                 ) : (
                   <ShieldAlert className="w-5 h-5 flex-shrink-0" />
                 )}
-                <span>{t(`audit.verifyModal.${verificationCoverage}Headline`)}</span>
+                <span>{t(`verifyModal.${verificationCoverage}Headline`)}</span>
               </div>
-              <p className="text-xs text-muted leading-relaxed">{t(`audit.verifyModal.${verificationCoverage}Desc`)}</p>
+              <p className="text-xs text-muted leading-relaxed">{t(`verifyModal.${verificationCoverage}Desc`)}</p>
               <div className="pt-2 border-t border-border/50 text-xs font-mono text-muted space-y-1">
-                <div>{t('audit.verifyModal.eventsCount', { count: verifyResult.events_count ?? events.length })}</div>
+                <div>{t('verifyModal.eventsCount', { count: verifyResult.events_count ?? events.length })}</div>
                 {verificationCoverage !== 'empty' && (
                   <div>
-                    {t('audit.verifyModal.range', {
+                    {t('verifyModal.range', {
                       first: verifyResult.first_sequence ?? 1,
                       last: verifyResult.last_sequence ?? events.length
                     })}
                   </div>
                 )}
                 {verifyResult.legacy_canonical_events != null && (
-                  <div>{t('audit.verifyModal.legacyCount', { count: verifyResult.legacy_canonical_events })}</div>
+                  <div>{t('verifyModal.legacyCount', { count: verifyResult.legacy_canonical_events })}</div>
                 )}
                 {verifyResult.canonical_v2_events != null && (
-                  <div>{t('audit.verifyModal.canonicalCount', { count: verifyResult.canonical_v2_events })}</div>
+                  <div>{t('verifyModal.canonicalCount', { count: verifyResult.canonical_v2_events })}</div>
                 )}
                 {verifyResult.canonical_v3_events != null && (
-                  <div>{t('audit.verifyModal.signedScopeCount', { count: verifyResult.canonical_v3_events })}</div>
+                  <div>{t('verifyModal.signedScopeCount', { count: verifyResult.canonical_v3_events })}</div>
                 )}
                 {verifyResult.organization_attributed_events != null && (
-                  <div>
-                    {t('audit.verifyModal.attributedCount', { count: verifyResult.organization_attributed_events })}
-                  </div>
+                  <div>{t('verifyModal.attributedCount', { count: verifyResult.organization_attributed_events })}</div>
                 )}
                 {verifyResult.unattributed_events != null && (
-                  <div>{t('audit.verifyModal.unattributedCount', { count: verifyResult.unattributed_events })}</div>
+                  <div>{t('verifyModal.unattributedCount', { count: verifyResult.unattributed_events })}</div>
                 )}
                 {(verifyResult.organization_attributed_events == null || verifyResult.unattributed_events == null) && (
-                  <div>{t('audit.verifyModal.attributionUnavailable')}</div>
+                  <div>{t('verifyModal.attributionUnavailable')}</div>
                 )}
               </div>
             </div>
@@ -490,14 +498,12 @@ export default function AuditRoute() {
             >
               <div className="flex items-center space-x-2 text-danger font-bold text-sm">
                 <ShieldAlert className="w-5 h-5 flex-shrink-0" />
-                <span>{t('audit.verifyModal.tamperedHeadline')}</span>
+                <span>{t('verifyModal.tamperedHeadline')}</span>
               </div>
-              <p className="text-xs text-muted leading-relaxed">{t('audit.verifyModal.tamperedDesc')}</p>
+              <p className="text-xs text-muted leading-relaxed">{t('verifyModal.tamperedDesc')}</p>
               <div className="pt-2 border-t border-border/50 text-xs font-mono text-danger space-y-1">
-                <div>{t('audit.verifyModal.brokenSeq', { seq: verifyResult?.broken_at_sequence ?? 'unknown' })}</div>
-                <div>
-                  {t('audit.verifyModal.reason', { reason: verifyResult?.reason ?? 'Sequence gap or HMAC mismatch' })}
-                </div>
+                <div>{t('verifyModal.brokenSeq', { seq: verifyResult?.broken_at_sequence ?? '?' })}</div>
+                <div>{t('verifyModal.reason', { reason: verifyResult?.reason ?? t('verifyModal.defaultReason') })}</div>
               </div>
             </div>
           )}
@@ -508,13 +514,13 @@ export default function AuditRoute() {
       <Dialog
         open={checkpointModalOpen}
         onOpenChange={setCheckpointModalOpen}
-        title={t('audit.checkpointModal.title')}
-        description={t('audit.checkpointModal.description')}
+        title={t('checkpointModal.title')}
+        description={t('checkpointModal.description')}
         size="lg"
         footer={
           <div className="flex items-center justify-end space-x-3">
             <Button variant="secondary" onClick={() => setCheckpointModalOpen(false)}>
-              {t('audit.checkpointModal.cancelAction')}
+              {t('checkpointModal.cancelAction')}
             </Button>
             <Button
               variant="primary"
@@ -522,17 +528,22 @@ export default function AuditRoute() {
               loading={createCheckpoint.isPending}
               data-testid="create-checkpoint-submit"
             >
-              {t('audit.checkpointModal.confirmAction')}
+              {t('checkpointModal.confirmAction')}
             </Button>
           </div>
         }
       >
         <div className="py-2 space-y-4">
-          <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-muted">
-            {t('audit.checkpointModal.listTitle')} ({checkpoints.length})
+          {checkpointError && (
+            <p role="alert" className="text-xs text-danger">
+              {checkpointError}
+            </p>
+          )}
+          <h4 className="text-xs font-bold font-mono text-muted">
+            {t('checkpointModal.listTitle')} ({checkpoints.length})
           </h4>
           {checkpoints.length === 0 ? (
-            <p className="text-xs text-muted font-mono">No cryptographic checkpoints registered yet.</p>
+            <p className="text-xs text-muted font-mono">{t('checkpointModal.empty')}</p>
           ) : (
             <div className="max-h-56 overflow-y-auto space-y-2">
               {checkpoints.map((cp) => (
@@ -542,7 +553,7 @@ export default function AuditRoute() {
                     <span className="text-muted tabular-nums">{new Date(cp.created_at).toLocaleString()}</span>
                   </div>
                   <div className="text-[11px] text-muted truncate">
-                    {t('audit.checkpointModal.signature')}: <CodeText>{cp.signature}</CodeText>
+                    {t('checkpointModal.signature')}: <CodeText>{cp.signature}</CodeText>
                   </div>
                 </div>
               ))}
@@ -555,30 +566,30 @@ export default function AuditRoute() {
       <Dialog
         open={siemModalOpen}
         onOpenChange={setSiemModalOpen}
-        title={t('audit.siemModal.title')}
-        description={t('audit.siemModal.subtitle')}
+        title={t('siemModal.title')}
+        description={t('siemModal.subtitle')}
         size="lg"
         footer={
           <Button variant="secondary" onClick={() => setSiemModalOpen(false)}>
-            {t('audit.actions.close')}
+            {t('actions.close')}
           </Button>
         }
       >
         <div className="py-2 space-y-6">
           {/* Add SIEM Target Form */}
           <form onSubmit={handleAddSiem} className="p-4 rounded-xl bg-surface border border-border space-y-3">
-            <h4 className="text-xs font-bold font-mono text-content">{t('audit.siemModal.addTitle')}</h4>
+            <h4 className="text-xs font-bold font-mono text-content">{t('siemModal.addTitle')}</h4>
             {siemError && <div className="p-2 rounded bg-danger/10 text-danger text-xs">{siemError}</div>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label={t('audit.siemModal.nameLabel')} required>
+              <FormField label={t('siemModal.nameLabel')} required>
                 <Input
                   value={siemName}
                   onChange={(e) => setSiemName(e.target.value)}
-                  placeholder="Corporate Splunk Heavy Forwarder"
+                  placeholder={t('siemModal.namePlaceholder')}
                   required
                 />
               </FormField>
-              <FormField label={t('audit.siemModal.endpointLabel')} required>
+              <FormField label={t('siemModal.endpointLabel')} required>
                 <Input
                   value={siemEndpoint}
                   onChange={(e) => setSiemEndpoint(e.target.value)}
@@ -588,7 +599,7 @@ export default function AuditRoute() {
               </FormField>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label={t('audit.siemModal.protoLabel')} required>
+              <FormField label={t('siemModal.protoLabel')} required>
                 <Select
                   value={siemProto}
                   onValueChange={setSiemProto}
@@ -599,15 +610,15 @@ export default function AuditRoute() {
                   ]}
                 />
               </FormField>
-              <FormField label={t('audit.siemModal.formatLabel')} required>
+              <FormField label={t('siemModal.formatLabel')} required>
                 <Select
                   value={siemFormat}
                   onValueChange={setSiemFormat}
                   options={[
-                    { value: 'rfc5424', label: t('audit.siemModal.formatRfc5424') },
-                    { value: 'cef', label: t('audit.siemModal.formatCef') },
-                    { value: 'leef', label: t('audit.siemModal.formatLeef') },
-                    { value: 'json', label: t('audit.siemModal.formatJson') }
+                    { value: 'rfc5424', label: t('siemModal.formatRfc5424') },
+                    { value: 'cef', label: t('siemModal.formatCef') },
+                    { value: 'leef', label: t('siemModal.formatLeef') },
+                    { value: 'json', label: t('siemModal.formatJson') }
                   ]}
                 />
               </FormField>
@@ -619,17 +630,17 @@ export default function AuditRoute() {
               data-testid="add-siem-submit"
             >
               <Plus className="w-4 h-4 mr-2" />
-              <span>{t('audit.siemModal.addAction')}</span>
+              <span>{t('siemModal.addAction')}</span>
             </Button>
           </form>
 
           {/* Active Targets List */}
           <div className="space-y-2">
-            <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-muted">
-              {t('audit.siemModal.activeTargets')} ({siemDestinations.length})
+            <h4 className="text-xs font-bold font-mono text-muted">
+              {t('siemModal.activeTargets')} ({siemDestinations.length})
             </h4>
             {siemDestinations.length === 0 ? (
-              <p className="text-xs text-muted font-mono">{t('audit.siemModal.noTargets')}</p>
+              <p className="text-xs text-muted font-mono">{t('siemModal.noTargets')}</p>
             ) : (
               <div className="space-y-2">
                 {siemDestinations.map((dest) => (
@@ -647,8 +658,8 @@ export default function AuditRoute() {
                     <Button
                       size="sm"
                       variant="danger"
-                      onClick={() => deleteSiem.mutate(dest.id)}
-                      aria-label={`Delete SIEM target ${dest.name}`}
+                      onClick={() => setSiemRemoveTarget({ id: dest.id, name: dest.name })}
+                      aria-label={t('aria.removeTarget', { name: dest.name })}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
@@ -664,17 +675,17 @@ export default function AuditRoute() {
       <Dialog
         open={exportModalOpen}
         onOpenChange={setExportModalOpen}
-        title={t('audit.exportModal.title')}
-        description={t('audit.exportModal.description')}
+        title={t('exportModal.title')}
+        description={t('exportModal.description')}
         size="md"
         footer={
           <Button variant="secondary" onClick={() => setExportModalOpen(false)}>
-            {t('audit.actions.close')}
+            {t('actions.close')}
           </Button>
         }
       >
         <div className="py-2 space-y-4">
-          <p className="text-xs text-muted leading-relaxed">{t('audit.exportModal.complianceSeal')}</p>
+          <p className="text-xs text-muted leading-relaxed">{t('exportModal.complianceSeal')}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
             <Button
               variant="secondary"
@@ -683,7 +694,7 @@ export default function AuditRoute() {
               data-testid="export-csv-button"
             >
               <Download className="w-4 h-4 mr-2" />
-              <span>{t('audit.exportModal.csvAction')}</span>
+              <span>{t('exportModal.csvAction')}</span>
             </Button>
             <Button
               variant="primary"
@@ -692,7 +703,7 @@ export default function AuditRoute() {
               data-testid="export-json-button"
             >
               <Download className="w-4 h-4 mr-2" />
-              <span>{t('audit.exportModal.jsonAction')}</span>
+              <span>{t('exportModal.jsonAction')}</span>
             </Button>
           </div>
         </div>
@@ -703,36 +714,36 @@ export default function AuditRoute() {
         <Dialog
           open={Boolean(detailEvent)}
           onOpenChange={(open) => !open && setDetailEvent(null)}
-          title={t('audit.detailModal.title', { seq: detailEvent.sequence_num })}
+          title={t('detailModal.title', { seq: detailEvent.sequence_num })}
           size="lg"
           footer={
             <Button variant="secondary" onClick={() => setDetailEvent(null)}>
-              {t('audit.actions.close')}
+              {t('actions.close')}
             </Button>
           }
         >
           <div className="py-2 space-y-4 text-xs font-mono">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <span className="text-muted block text-[11px]">Timestamp</span>
+                <span className="text-muted block text-[11px]">{t('columns.timestamp')}</span>
                 <span className="text-content font-bold tabular-nums">
                   {new Date(detailEvent.created_at).toLocaleString()}
                 </span>
               </div>
               <div>
-                <span className="text-muted block text-[11px]">Event Type</span>
+                <span className="text-muted block text-[11px]">{t('columns.eventType')}</span>
                 <Badge tone="neutral">{detailEvent.event_type}</Badge>
               </div>
             </div>
 
             <div>
-              <span className="text-muted block text-[11px]">Message</span>
+              <span className="text-muted block text-[11px]">{t('columns.message')}</span>
               <p className="text-content font-sans text-xs mt-0.5">{detailEvent.message}</p>
             </div>
 
             <div className="space-y-2 p-3 rounded-lg bg-surface border border-border">
               <div>
-                <span className="text-muted block text-[11px]">{t('audit.detailModal.entryHash')}</span>
+                <span className="text-muted block text-[11px]">{t('detailModal.entryHash')}</span>
                 <div className="flex items-center justify-between gap-2 mt-0.5">
                   <span className="truncate text-accent font-bold">
                     {detailEvent.entry_hash || detailEvent.chain_hash || '—'}
@@ -741,7 +752,7 @@ export default function AuditRoute() {
                     size="sm"
                     variant="secondary"
                     onClick={() => handleCopy(detailEvent.entry_hash || detailEvent.chain_hash || '')}
-                    aria-label="Copy hash"
+                    aria-label={t('aria.copyHash')}
                   >
                     {copiedHash ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
                   </Button>
@@ -749,7 +760,7 @@ export default function AuditRoute() {
               </div>
               {detailEvent.prev_hash && (
                 <div>
-                  <span className="text-muted block text-[11px]">{t('audit.detailModal.prevHash')}</span>
+                  <span className="text-muted block text-[11px]">{t('detailModal.prevHash')}</span>
                   <span className="truncate text-muted block mt-0.5">{detailEvent.prev_hash}</span>
                 </div>
               )}
@@ -757,18 +768,18 @@ export default function AuditRoute() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <span className="text-muted block text-[11px]">{t('audit.detailModal.ipAddress')}</span>
+                <span className="text-muted block text-[11px]">{t('detailModal.ipAddress')}</span>
                 <span className="text-content">{detailEvent.ip_address || '—'}</span>
               </div>
               <div>
-                <span className="text-muted block text-[11px]">{t('audit.detailModal.userAgent')}</span>
+                <span className="text-muted block text-[11px]">{t('detailModal.userAgent')}</span>
                 <span className="text-content truncate block">{detailEvent.user_agent || '—'}</span>
               </div>
             </div>
 
             {detailEvent.metadata_json && (
               <div>
-                <span className="text-muted block text-[11px] mb-1">{t('audit.detailModal.metadata')}</span>
+                <span className="text-muted block text-[11px] mb-1">{t('detailModal.metadata')}</span>
                 <pre className="p-3 rounded-lg bg-surface border border-border overflow-x-auto text-[11px] text-muted">
                   {JSON.stringify(detailEvent.metadata_json, null, 2)}
                 </pre>
@@ -777,6 +788,25 @@ export default function AuditRoute() {
           </div>
         </Dialog>
       )}
+      <ConfirmDialog
+        open={Boolean(siemRemoveTarget)}
+        onOpenChange={(open) => !open && setSiemRemoveTarget(null)}
+        title={t('siemModal.removeTitle')}
+        description={t('siemModal.removeBody')}
+        confirmLabel={t('siemModal.deleteAction')}
+        tone="danger"
+        busy={deleteSiem.isPending}
+        onConfirm={async () => {
+          if (!siemRemoveTarget) return;
+          try {
+            await deleteSiem.mutateAsync(siemRemoveTarget.id);
+            setSiemRemoveTarget(null);
+          } catch {
+            setSiemRemoveTarget(null);
+            setSiemError(t('errors.siemRemove'));
+          }
+        }}
+      />
     </div>
   );
 }

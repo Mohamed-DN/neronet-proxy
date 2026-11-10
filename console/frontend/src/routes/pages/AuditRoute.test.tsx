@@ -254,7 +254,7 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
     // Modal should be open
     await waitFor(() => {
       expect(screen.getByTestId('verification-pass-card')).toBeInTheDocument();
-      expect(screen.getByText(/CHAIN INTEGRITY VERIFIED/i)).toBeInTheDocument();
+      expect(screen.getByText(/Log intact: no changes found/i)).toBeInTheDocument();
     });
     expect(screen.getByTestId('verification-pass-card')).not.toHaveTextContent('Attributed to an organization:');
     expect(screen.getByTestId('verification-pass-card')).not.toHaveTextContent('Global or unattributed events:');
@@ -267,8 +267,8 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
   });
 
   it.each([
-    ['en', 'Older records do not cover all event fields', 'PARTIAL'],
-    ['it', 'I record precedenti non coprono tutti i campi degli eventi', 'PARZIALE']
+    ['en', 'Older entries do not protect every field', 'Partly verified'],
+    ['it', 'Le voci precedenti non proteggono tutti i campi', 'Verificato in parte']
   ])('explains partial integrity coverage in %s without a full pass', async (language, explanation, status) => {
     await i18n.changeLanguage(language);
     verificationState = {
@@ -310,7 +310,7 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
       };
       vi.stubGlobal('fetch', setupFetchMock());
       renderAudit();
-      expect(await screen.findByText(language === 'en' ? 'VALID' : 'VALIDA')).toBeInTheDocument();
+      expect(await screen.findByText(language === 'en' ? 'Intact' : 'Integro')).toBeInTheDocument();
       await userEvent.setup().click(await screen.findByTestId('verify-chain-button'));
       const card = await screen.findByTestId('verification-pass-card');
       expect(card).toHaveTextContent(
@@ -331,9 +331,11 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
     delete verificationState.integrity_profile;
     vi.stubGlobal('fetch', setupFetchMock());
     renderAudit();
-    expect(await screen.findByText('UNKNOWN')).toBeInTheDocument();
+    expect(await screen.findByText('Cannot be verified')).toBeInTheDocument();
     await userEvent.setup().click(await screen.findByTestId('verify-chain-button'));
-    expect(await screen.findByTestId('verification-unknown-card')).toHaveTextContent('Field coverage is unavailable');
+    expect(await screen.findByTestId('verification-unknown-card')).toHaveTextContent(
+      'does not say which fields are protected'
+    );
     expect(screen.queryByTestId('verification-pass-card')).not.toBeInTheDocument();
   });
 
@@ -342,9 +344,9 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
     eventsState = [];
     vi.stubGlobal('fetch', setupFetchMock());
     renderAudit();
-    expect(await screen.findByText('EMPTY')).toBeInTheDocument();
+    expect(await screen.findByText('Empty')).toBeInTheDocument();
     await userEvent.setup().click(await screen.findByTestId('verify-chain-button'));
-    expect(await screen.findByTestId('verification-empty-card')).toHaveTextContent('No audit events to verify');
+    expect(await screen.findByTestId('verification-empty-card')).toHaveTextContent('The log is empty');
     expect(screen.queryByTestId('verification-pass-card')).not.toBeInTheDocument();
   });
 
@@ -369,7 +371,7 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
     );
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     renderAudit();
-    expect(await screen.findByText('PARTIAL')).toBeInTheDocument();
+    expect(await screen.findByText('Partly verified')).toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(screen.getByTestId('export-audit-button'));
     await user.click(await screen.findByTestId('export-json-button'));
@@ -440,8 +442,8 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
     await expectNoAxeViolations(container);
 
     // Add new SIEM forwarder
-    const nameInput = screen.getByLabelText(/destination name/i);
-    const endpointInput = screen.getByLabelText(/collector endpoint/i);
+    const nameInput = screen.getByLabelText(/^name/i);
+    const endpointInput = screen.getByLabelText(/receiver address/i);
     await user.type(nameInput, 'Elastic SOC');
     await user.type(endpointInput, '10.20.0.100:5044');
 
@@ -452,8 +454,9 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
     });
 
     // Delete existing target
-    const deleteBtn = screen.getByRole('button', { name: /delete siem target corporate splunk collector/i });
+    const deleteBtn = screen.getByRole('button', { name: /remove destination corporate splunk collector/i });
     await user.click(deleteBtn);
+    await user.click(await screen.findByRole('button', { name: 'Remove destination' }));
 
     await waitFor(() => {
       expect(screen.queryByText('Corporate Splunk Collector')).not.toBeInTheDocument();
@@ -472,7 +475,7 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
     await user.click(screen.getByTestId('inspect-event-1'));
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Sequence #1/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /event no. 1/i })).toBeInTheDocument();
       expect(screen.getByText('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')).toBeInTheDocument();
     });
 
@@ -495,5 +498,74 @@ describe('WP-408: AuditRoute (Tamper-Evident HMAC Ledger & SIEM Exporter UI)', (
     for (const path of ['/api/audit/verify', '/api/audit/checkpoints', '/api/audit/siem']) {
       expect(called.some((u) => u.includes(path))).toBe(false);
     }
+  });
+
+  it('8. The page never calls the log immutable, in English or Italian', async () => {
+    vi.stubGlobal('fetch', setupFetchMock());
+    const { unmount } = renderAudit();
+    await waitFor(() => expect(screen.getByTestId('verify-chain-button')).toBeInTheDocument());
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Activity log, protected from changes');
+    expect(document.body.textContent).not.toMatch(/immutab/i);
+    unmount();
+
+    await i18n.changeLanguage('it');
+    try {
+      renderAudit();
+      await waitFor(() => expect(screen.getByTestId('verify-chain-button')).toBeInTheDocument());
+      expect(document.body.textContent).not.toMatch(/immutab/i);
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('9. A failed checkpoint says so inline and never opens a native alert', async () => {
+    const base = setupFetchMock();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).includes('/api/audit/checkpoints') && init?.method === 'POST') {
+          return jsonResponse({ error: 'signing key unavailable' }, 500);
+        }
+        return base(url, init);
+      })
+    );
+    const alertSpy = vi.fn();
+    vi.stubGlobal('alert', alertSpy);
+    const user = userEvent.setup();
+    renderAudit();
+
+    await user.click(await screen.findByTestId('checkpoints-button'));
+    await user.click(await screen.findByTestId('create-checkpoint-submit'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The snapshot was not created. Try again shortly.');
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('10. Removing a destination asks first and sends nothing until the person confirms', async () => {
+    const fetchMock = setupFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAudit();
+
+    await user.click(await screen.findByTestId('siem-button'));
+    await user.click(await screen.findByRole('button', { name: /remove destination corporate splunk collector/i }));
+
+    expect(await screen.findByText('Remove this destination?')).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([u, i]) => String(u).includes('/api/audit/siem/') && i?.method === 'DELETE')
+    ).toBe(false);
+  });
+
+  it('11. A search with no match offers Clear filters and restores the list', async () => {
+    vi.stubGlobal('fetch', setupFetchMock());
+    const user = userEvent.setup();
+    renderAudit();
+    await waitFor(() => expect(screen.getByText('Sovereign node enrolled successfully')).toBeInTheDocument());
+
+    await user.type(screen.getByLabelText(/filter audit events search/i), 'no-such-event');
+    expect(await screen.findByText(/no events match/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /clear filters/i }));
+    expect(await screen.findByText('Sovereign node enrolled successfully')).toBeInTheDocument();
   });
 });
