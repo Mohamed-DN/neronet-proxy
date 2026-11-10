@@ -295,14 +295,14 @@ func TestForwardTableDecidesWithBothEndsPolicies(t *testing.T) {
 	table.AddDevice(netip.MustParseAddr(otherAddr), b)
 
 	p := Packet{Version: 4, Protocol: ProtoTCP, Src: netip.MustParseAddr(deviceAddr), Dst: netip.MustParseAddr(otherAddr), SrcPort: 40000, DstPort: 80}
-	if err := table.decide(p); err == nil {
+	if err := table.Decide(p); err == nil {
 		t.Fatal("device -> device passed although the receiving device's inbound policy does not allow port 80")
 	}
 	// A device with no policy loaded is at default deny, in both roles.
 	c := acl.NewNetstackFilter()
 	table.AddDevice(netip.MustParseAddr("100.64.0.7"), c)
 	q := Packet{Version: 4, Protocol: ProtoTCP, Src: netip.MustParseAddr("100.64.0.7"), Dst: netip.MustParseAddr(meshAddr), SrcPort: 1, DstPort: 80}
-	if err := table.decide(q); err == nil {
+	if err := table.Decide(q); err == nil {
 		t.Fatal("a device with no policy was forwarded")
 	}
 }

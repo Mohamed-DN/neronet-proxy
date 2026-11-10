@@ -90,8 +90,8 @@ func (t *ForwardTable) involves(p Packet) bool {
 	return ok
 }
 
-// decide applies the policy of every profile device at an end of p.
-func (t *ForwardTable) decide(p Packet) error {
+// Decide applies the policy of every profile device at an end of p.
+func (t *ForwardTable) Decide(p Packet) error {
 	srcFilter, fromDevice := t.devices[p.Src.Unmap()]
 	dstFilter, toDevice := t.devices[p.Dst.Unmap()]
 	if !fromDevice && !toDevice {

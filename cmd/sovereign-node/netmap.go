@@ -57,9 +57,14 @@ type netmapManager struct {
 	dev    *dataplane.Device
 	// setPeers is dev.SetPeers. A field so a test can make the data plane refuse a
 	// change and check the manager neither believes it happened nor stops trying.
-	setPeers  func([]dataplane.Peer) error
-	netfilter *acl.NetstackFilter
-	path      string
+	setPeers func([]dataplane.Peer) error
+	// setForwarding is dev.SetForwarding, a field for the same reason as setPeers.
+	setForwarding func(*dataplane.ForwardTable)
+	// profileFilters holds one filter per profile device this gateway serves, keyed by
+	// node id, so a device's conntrack survives a new document. Guarded by applyMu.
+	profileFilters map[string]*acl.NetstackFilter
+	netfilter      *acl.NetstackFilter
+	path           string
 
 	// listenPort is the local WireGuard port, reported as part of this node's
 	// candidate endpoints.
@@ -206,20 +211,23 @@ func newNetmapManager(
 ) *netmapManager {
 	var mux *transport.Mux
 	var setPeers func([]dataplane.Peer) error
+	var setForwarding func(*dataplane.ForwardTable)
 	if dev != nil {
 		mux = dev.TransportMux()
 		setPeers = dev.SetPeers
+		setForwarding = dev.SetForwarding
 	}
 	return &netmapManager{
-		client:     client,
-		dev:        dev,
-		setPeers:   setPeers,
-		netfilter:  netfilter,
-		path:       netmapPathFor(identityPath),
-		listenPort: listenPort,
-		stunServer: stunServer,
-		mux:        mux,
-		revoked:    make(map[string]uint64),
+		client:        client,
+		dev:           dev,
+		setPeers:      setPeers,
+		setForwarding: setForwarding,
+		netfilter:     netfilter,
+		path:          netmapPathFor(identityPath),
+		listenPort:    listenPort,
+		stunServer:    stunServer,
+		mux:           mux,
+		revoked:       make(map[string]uint64),
 	}
 }
 
@@ -359,6 +367,7 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 	if err := m.setPeers(peers); err != nil {
 		return err
 	}
+	m.installForwarding(netmap.Peers, peers)
 
 	// The filter is what decides whether a packet passes; the peer set only decides
 	// whether it can be carried. A netmap that named a peer the policy denies would
@@ -458,6 +467,7 @@ func (m *netmapManager) ApplyRevocations(keys []string, atVersion uint64) {
 		return
 	}
 	m.markRevocationPending(false)
+	m.installForwarding(current, peers)
 
 	log.Printf("[SOVEREIGN-NODE] %d peer key(s) revoked: %d peer(s) remain%s", newly, len(peers), droppedNote(dropped))
 }
@@ -506,6 +516,7 @@ func (m *netmapManager) EnforceStaleness(now time.Time) bool {
 		log.Printf("[SOVEREIGN-NODE] Could not remove peers after the netmap went stale, retrying at the next check: %v", err)
 		return false
 	}
+	m.installForwarding(nil, nil)
 	if m.mux != nil {
 		if err := m.dev.ReconfigureTransports(nil, nil); err != nil {
 			// No peer is left for a transport to carry; reported, not retried.
@@ -637,6 +648,50 @@ func (m *netmapManager) persist(netmap *control.NetmapResponse, fetchedAt time.T
 // Endpoints reports this node's candidate addresses for the heartbeat.
 func (m *netmapManager) Endpoints() []control.EndpointDesc {
 	return discoverEndpoints(m.listenPort, m.stunServer)
+}
+
+// installForwarding gives the data plane the gateway's forwarding table (ADR 0029):
+// every profile device the peer set just applied kept, with its own compiled policy.
+// A node that serves no profile device installs an empty table, which turns
+// forwarding off. Callers hold applyMu.
+func (m *netmapManager) installForwarding(doc []control.NetmapPeer, kept []dataplane.Peer) {
+	if m.setForwarding == nil {
+		return
+	}
+	served := make(map[string]bool, len(kept))
+	for _, p := range kept {
+		if p.Profile {
+			served[normaliseKey(p.PublicKey)] = true
+		}
+	}
+	table := dataplane.NewForwardTable()
+	filters := make(map[string]*acl.NetstackFilter, len(served))
+	for _, p := range doc {
+		if !p.Profile || !served[normaliseKey(p.PublicKeyHex)] {
+			continue
+		}
+		// One filter per device for as long as it is served: its conntrack holds the
+		// flows the device opened, and a new document must not cut their replies.
+		nf := m.profileFilters[p.NodeID]
+		if nf == nil {
+			nf = acl.NewNetstackFilter()
+		}
+		// A nil policy leaves the filter at default deny.
+		nf.UpdatePolicy(p.ACL)
+		filters[p.NodeID] = nf
+		for _, raw := range p.AllowedIPs {
+			prefix, err := netip.ParsePrefix(strings.TrimSpace(raw))
+			if err != nil || !prefix.IsSingleIP() {
+				continue
+			}
+			table.AddDevice(prefix.Addr(), nf)
+		}
+	}
+	m.profileFilters = filters
+	m.setForwarding(table)
+	if table.Len() > 0 {
+		log.Printf("[SOVEREIGN-NODE] Profile gateway: forwarding for %d device(s), each under its own compiled policy", len(filters))
+	}
 }
 
 // --- Conversion --------------------------------------------------------------

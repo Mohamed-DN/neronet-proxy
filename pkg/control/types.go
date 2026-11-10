@@ -424,6 +424,12 @@ type NetmapPeer struct {
 	// PresharedKeyHex is a profile device's static PSK, 64 lowercase hex characters.
 	// Only the gateway receives it.
 	PresharedKeyHex string `json:"preshared_key_hex,omitempty" jsonschema:"pattern=^[0-9a-f]{64}$"`
+
+	// ACL is a profile device's own compiled policy, sent to the gateway only. A stock
+	// WireGuard client enforces nothing, so the gateway applies it on the forwarded
+	// path: the device's outbound rules to what it sends, its inbound rules to what is
+	// sent to it. A profile entry without one is forwarded nothing (default deny).
+	ACL *acl.CompiledPeerPolicy `json:"acl,omitempty"`
 }
 
 // NetmapResponse is the document. When Unchanged is true the node already holds this

@@ -299,7 +299,7 @@ func (f *filteredTUN) pump(batch, bufLen, offset int) {
 // relay forwards one decrypted packet that belongs to a profile device flow and is
 // not addressed to this node.
 func (f *filteredTUN) relay(raw []byte, pkt Packet, t *ForwardTable) {
-	if err := t.decide(pkt); err != nil {
+	if err := t.Decide(pkt); err != nil {
 		f.forwardDropped.Add(1)
 		return
 	}
