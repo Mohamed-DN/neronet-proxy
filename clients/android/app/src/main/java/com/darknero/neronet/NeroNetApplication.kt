@@ -3,6 +3,7 @@ package com.darknero.neronet
 import android.app.Application
 import android.content.Context
 import java.io.File
+import com.darknero.neronet.system.ConnectionNotifier
 import com.darknero.neronet.tunnel.Clock
 import com.darknero.neronet.tunnel.GoTunnelEngine
 import com.darknero.neronet.tunnel.SystemClockSource
@@ -40,6 +41,7 @@ open class NeroNetApplication : Application() {
         super.onCreate()
         settings = SettingsStore(getSharedPreferences(SettingsStore.PREFS_NAME, Context.MODE_PRIVATE))
         profiles = ProfileRepository(ProfileStore(File(filesDir, "profiles")), settings)
+        ConnectionNotifier(this, tunnels, profiles, applicationScope).start()
     }
 
     protected open fun createEngine(): TunnelEngine =
