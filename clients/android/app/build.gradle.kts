@@ -12,14 +12,23 @@ android {
         applicationId = "com.darknero.neronet"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "1.0.0"
     }
 
-    // Debug-signed until a release key exists (see clients/android/README.md).
+    // The release APK is unsigned until our own release key exists (see clients/android/README.md).
+    // Debug stays unminified with every ABI so emulators work.
     buildTypes {
         getByName("debug") {
             applicationIdSuffix = ""
+        }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
         }
     }
 
