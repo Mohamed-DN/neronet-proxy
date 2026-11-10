@@ -19,6 +19,9 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Only variables defined in the environment are substituted, so nginx's own
 # $request_uri and friends pass through unchanged.
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
+# The template needs a value: with none the directive would keep the literal variable
+# name and nginx would not start. Loopback means "no proxy is trusted".
+ENV NERONET_TRUSTED_PROXY=127.0.0.1
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 # Where the certificate comes from (NERONET_TLS_MODE=internal|acme): writes the files the
 # template includes and, in acme mode, reloads nginx when a renewed certificate arrives.

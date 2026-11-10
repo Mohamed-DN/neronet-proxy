@@ -1,0 +1,17 @@
+# The console behind a reverse proxy you already run (Nginx Proxy Manager, Caddy,
+# Traefik): the proxy holds the public certificate and forwards to the console's own
+# HTTPS port. Use it with
+#
+#   NERONET_EXTRA_COMPOSE_FILE=docker-compose.proxy.yml
+#   NERONET_CONSOLE_ORIGIN=https://vpn.example.org   the address people type
+#   NERONET_TRUSTED_PROXY=192.0.2.10                 the proxy's address, or its subnet
+#
+# The control-plane port (8443) and WireGuard (UDP 51820) are not proxied: nodes pin
+# the control plane's certificate, and WireGuard is UDP.
+services:
+  backend:
+    environment:
+      CORS_ORIGIN: ${NERONET_CONSOLE_ORIGIN:?set NERONET_CONSOLE_ORIGIN to the public https address of the console}
+  frontend:
+    environment:
+      NERONET_TRUSTED_PROXY: ${NERONET_TRUSTED_PROXY:?set NERONET_TRUSTED_PROXY to the reverse proxy address or subnet}

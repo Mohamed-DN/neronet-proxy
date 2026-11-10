@@ -1,11 +1,16 @@
 #!/bin/sh
 # Usage: gen-env.sh [path]
+#        gen-env.sh --exposed [path]
 #        gen-env.sh --append-missing [path]
 #
 # Writes a .env file with fresh random values for every secret the compose stack
 # requires. Default path: <repo>/.env. Refuses to overwrite an existing file, so a
 # stack's database password can never be replaced by accident. The values are never
 # printed; read them from the file.
+#
+# --exposed is for a stack other people can reach: it leaves sign-in with an
+# authenticator mandatory for administrators (the production default) instead of
+# switching it off for the scenario scripts.
 #
 # --append-missing is for a .env that was written before a secret existed (the backup
 # password, for one): it adds the secrets the file lacks and touches nothing else. A
@@ -14,8 +19,12 @@ set -eu
 . "$(dirname "$0")/engine.sh"
 
 MODE=create
+EXPOSED=0
 if [ "${1:-}" = "--append-missing" ]; then
   MODE=append
+  shift
+elif [ "${1:-}" = "--exposed" ]; then
+  EXPOSED=1
   shift
 fi
 TARGET=${1:-$REPO_ROOT/.env}
@@ -71,9 +80,14 @@ fi
   echo "# Encrypts the backups (profile backup). Without it no backup can be read, and it"
   echo "# cannot be recovered from the backups themselves: keep a copy outside this host."
   echo "RESTIC_PASSWORD=$(rand_hex 32)"
-  echo "# The scenario scripts sign in as the admin with the password alone. A stack"
-  echo "# other people can reach should use 'admins' (the production default) or 'all'."
-  echo "SOVEREIGN_MFA_MANDATORY=off"
+  if [ "$EXPOSED" = 1 ]; then
+    echo "# Reachable by other people: administrators sign in with an authenticator."
+    echo "SOVEREIGN_MFA_MANDATORY=admins"
+  else
+    echo "# The scenario scripts sign in as the admin with the password alone. A stack"
+    echo "# other people can reach must be generated with --exposed instead."
+    echo "SOVEREIGN_MFA_MANDATORY=off"
+  fi
 } > "$TARGET"
 
 # No effect on filesystems without POSIX modes (NTFS through Git Bash).
