@@ -1,1 +1,15 @@
-{}
+{
+  "open": "Cerca pagine e dispositivi",
+  "trigger": "Cerca",
+  "hint": "Usa le frecce per scegliere, Invio per aprire ed Esc per chiudere.",
+  "placeholder": "Scrivi il nome di una pagina o di un dispositivo",
+  "groups": {
+    "pages": "Pagine",
+    "devices": "Dispositivi",
+    "actions": "Azioni"
+  },
+  "actions": {
+    "addDevice": "Aggiungi dispositivo"
+  },
+  "noResults": "Nessuna pagina o dispositivo corrisponde a “{{q}}”."
+}

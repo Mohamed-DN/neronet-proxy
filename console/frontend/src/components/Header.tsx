@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowDownLeft, ArrowUpRight, Bell, LogOut, PlusCircle, Zap } from 'lucide-react';
 
+import CommandMenu from '../command/CommandMenu';
 import { useAuth } from '../context/AuthContext';
 import { useStatsOverview } from '../services/queries';
 import { effectiveRole, roleTier } from '../services/roles';
@@ -70,6 +71,8 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
       </div>
 
       <div className="console-header-actions flex min-w-0 flex-wrap items-center gap-3">
+        <CommandMenu onAddDevice={onOpenEnrollModal} />
+
         {canAdd && (
           <Button variant="secondary" size="sm" onClick={onOpenEnrollModal}>
             <PlusCircle aria-hidden="true" className="h-3.5 w-3.5" />

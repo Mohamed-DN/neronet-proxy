@@ -1,1 +1,15 @@
-{}
+{
+  "open": "Search pages and devices",
+  "trigger": "Search",
+  "hint": "Use the arrow keys to choose, Enter to open, and Esc to close.",
+  "placeholder": "Type a page or a device name",
+  "groups": {
+    "pages": "Pages",
+    "devices": "Devices",
+    "actions": "Actions"
+  },
+  "actions": {
+    "addDevice": "Add device"
+  },
+  "noResults": "No page or device matches “{{q}}”."
+}
