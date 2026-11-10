@@ -209,6 +209,8 @@ services:
       # Who must sign in with TOTP: off, admins (super-admin, organisation owners and
       # admins) or all. Administrators without an authenticator enrol at sign-in.
       - SOVEREIGN_MFA_MANDATORY=${SOVEREIGN_MFA_MANDATORY:-admins}
+      # Anyone-can-register is closed in production; "true" opens it on purpose.
+      - SOVEREIGN_ALLOW_SELF_REGISTRATION=${SOVEREIGN_ALLOW_SELF_REGISTRATION:-}
       # Shared enrolment token for Go data-plane nodes. Without it the bridge refuses
       # to enrol anyone in production, since /v4/control/register writes to the node
       # table and hands out overlay addresses.
@@ -258,6 +260,9 @@ services:
       context: ./console/frontend
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      # The reverse proxy allowed to name the real client (docker-compose.proxy.yml).
+      - NERONET_TRUSTED_PROXY=${NERONET_TRUSTED_PROXY:-127.0.0.1}
     ports:
       - "${NERONET_CONSOLE_BIND:-127.0.0.1}:${NERONET_CONSOLE_PORT:-8443}:8443"
     secrets:
