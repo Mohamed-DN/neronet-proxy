@@ -1,0 +1,16 @@
+[Unit]
+Description=NeroNet single-host health check
+Documentation=file://%h/neronet/scripts/ops/HEALTH.md
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Optional overrides such as COMPOSE_PROJECT_NAME and NERONET_PUBLIC_URL. The leading "-" ignores a missing file.
+EnvironmentFile=-%h/.config/neronet/health.env
+Environment=COMPOSE_PROJECT_NAME=neronet-gw
+# Adjust the checkout path to where the repository lives on this host.
+ExecStart=/bin/sh %h/neronet/scripts/ops/neronet-health.sh
+# Log lines go to the user journal (stdout). A failing check exits 1, which marks the unit failed.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=neronet-health
