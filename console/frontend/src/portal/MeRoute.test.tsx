@@ -98,10 +98,78 @@ describe('MeRoute', () => {
     expect(within(list).getByText('Anna laptop')).toBeInTheDocument();
     expect(within(list).queryByText('Luca laptop')).toBeNull();
     expect(screen.queryByText('Luca laptop')).toBeNull();
-    expect(screen.getByText('To remove a device, ask an administrator.')).toBeInTheDocument();
+    expect(screen.queryByText('To remove a device, ask an administrator.')).toBeNull();
     expect(
       screen.getByText('Uses the WireGuard app. Its connection is not reported to the console.')
     ).toBeInTheDocument();
+  });
+
+  it('lists nothing of the organisation to a viewer who owns no device', async () => {
+    auth.user = { id: 'u9', username: 'root', role: 'super-admin', org_role: 'owner' };
+    stubApi(() => json({ nodes: [ANNA_PHONE, LUCA_LAPTOP, ANNA_LAPTOP] }));
+
+    await renderMe();
+
+    expect(await screen.findByText('No devices yet')).toBeInTheDocument();
+    expect(screen.queryByText('Luca laptop')).toBeNull();
+  });
+
+  it('removes an own device after a confirmation that names the consequence', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
+    const fetchMock = stubApi(() => json({ nodes: [ANNA_PHONE, ANNA_LAPTOP] }));
+    vi.spyOn(window, 'confirm');
+
+    await renderMe();
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove Anna laptop' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Remove Anna laptop?' });
+    expect(dialog).toHaveTextContent('loses access to the network immediately');
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove device' }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, init]) => init?.method === 'DELETE');
+      expect(String(call?.[0])).toBe('/api/nodes/a2');
+    });
+    expect(await screen.findByText('Anna laptop removed.')).toBeInTheDocument();
+    expect(window.confirm).not.toHaveBeenCalled();
+  });
+
+  it('keeps the dialog open and says so when the removal fails', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === 'DELETE') return json({ error: 'nope' }, 500);
+      if (url.includes('/nodes')) return json({ nodes: [ANNA_PHONE, ANNA_LAPTOP] });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await renderMe();
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove Anna phone' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove device' }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Anna phone was not removed');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('hides the sketch below tablet width and for a single device, where it repeats the list', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
+    stubApi(() => json({ nodes: [ANNA_PHONE, ANNA_LAPTOP] }));
+    const { container } = await renderMe();
+    await screen.findByRole('list', { name: 'Your devices' });
+    const sketch = container.querySelector('[data-me-sketch]') as HTMLElement;
+    expect(sketch).toHaveClass('hidden', 'sm:block');
+  });
+
+  it('draws no sketch for one device', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
+    stubApi(() => json({ nodes: [ANNA_LAPTOP, LUCA_LAPTOP] }));
+    const { container } = await renderMe();
+    await screen.findByRole('list', { name: 'Your devices' });
+    expect(container.querySelector('[data-me-sketch]')).toBeNull();
   });
 
   it('empty state offers Add a device', async () => {

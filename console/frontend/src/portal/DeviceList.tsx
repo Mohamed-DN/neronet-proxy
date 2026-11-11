@@ -1,8 +1,9 @@
-import { CheckCircle2, ShieldOff, Copy } from 'lucide-react';
+import { CheckCircle2, ShieldOff, Copy, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { formatRelativeTime } from '../i18n/format';
 import type { MeshNode } from '../services/types';
+import { Button } from '../ui/Button';
 import { CodeText } from '../ui/CodeText';
 import { IconButton } from '../ui/IconButton';
 import { NotMeasured } from '../ui/States';
@@ -15,6 +16,8 @@ export interface DeviceListProps {
   devices: MeshNode[];
   /** The clock used for the status sentences, passed in so the page and its tests agree. */
   now: number;
+  /** Asks to remove one device. The page owns the confirmation. */
+  onRemove?: (node: MeshNode) => void;
 }
 
 /** One line of text per status, with an icon where the status needs a sign as well as a word. */
@@ -48,7 +51,7 @@ function StatusLine({ status, node, now }: { status: DeviceStatus; node: MeshNod
  * The person's devices as hairline rows: name, address (with a copy button
  * when the server sent one), and one sentence about the connection.
  */
-export function DeviceList({ devices, now }: DeviceListProps) {
+export function DeviceList({ devices, now, onRemove }: DeviceListProps) {
   const { t } = useTranslation('portal');
   const { notify } = useToast();
 
@@ -80,14 +83,27 @@ export function DeviceList({ devices, now }: DeviceListProps) {
                 <StatusLine status={deviceStatus(node, now)} node={node} now={now} />
               </div>
             </div>
-            {address && (
-              <IconButton
-                icon={Copy}
-                label={t('me.row.copyAddress', { name })}
-                onClick={() => void copyAddress(address)}
-                className="h-11 w-11"
-              />
-            )}
+            <div className="flex items-center gap-1">
+              {address && (
+                <IconButton
+                  icon={Copy}
+                  label={t('me.row.copyAddress', { name })}
+                  onClick={() => void copyAddress(address)}
+                  className="h-11 w-11"
+                />
+              )}
+              {onRemove && (
+                <Button
+                  variant="ghost"
+                  size="lg"
+                  icon={Trash2}
+                  aria-label={t('me.row.removeLabel', { name })}
+                  onClick={() => onRemove(node)}
+                >
+                  {t('me.row.remove')}
+                </Button>
+              )}
+            </div>
           </li>
         );
       })}

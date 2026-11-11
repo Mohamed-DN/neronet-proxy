@@ -1,14 +1,17 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { NetworkSketch, type SketchSite } from '../charts/NetworkSketch';
 import { useAuth } from '../context/AuthContext';
-import { useNodes } from '../services/queries/nodes';
+import { useDeleteOwnDevice, useNodes } from '../services/queries/nodes';
+import type { MeshNode } from '../services/types';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { cn } from '../ui/cn';
 import { PageHeader } from '../ui/PageHeader';
 import { EmptyState, ErrorState, Skeleton } from '../ui/States';
+import { useToast } from '../ui/Toast';
 import { deviceStatus } from './deviceStatus';
 import { DeviceList } from './DeviceList';
 import DownloadApps from './DownloadApps';
@@ -27,6 +30,24 @@ export default function MeRoute() {
   const { user } = useAuth();
   const nodes = useNodes();
   const now = Date.now();
+  const { notify } = useToast();
+  const removeDevice = useDeleteOwnDevice();
+  const [removing, setRemoving] = useState<MeshNode | null>(null);
+  const [removeFailed, setRemoveFailed] = useState(false);
+  const removingName = removing ? (removing.name ?? removing.hostname ?? t('me.unnamed')) : '';
+
+  const confirmRemove = () => {
+    if (!removing) return;
+    const name = removingName;
+    setRemoveFailed(false);
+    removeDevice.mutate(removing.id, {
+      onSuccess: () => {
+        setRemoving(null);
+        notify(t('me.remove.done', { name }), { tone: 'success' });
+      },
+      onError: () => setRemoveFailed(true)
+    });
+  };
 
   const mine = useMemo(
     () => (user ? (nodes.data ?? []).filter((node) => node.user_id === user.id) : []),
@@ -81,22 +102,57 @@ export default function MeRoute() {
             </p>
           )}
 
-          <NetworkSketch
-            title={t('me.sketch.title')}
-            description={t('me.sketch.description', { connected, total: mine.length })}
-            centerLabel={t('me.sketch.center')}
-            sites={sites}
-            moreLabel={(hidden) => t('me.sketch.more', { count: hidden })}
-            hollowLegend={t('me.sketch.hollow')}
-          />
+          {/* The picture adds nothing for a single device, and on a phone it only
+              repeats the list below it, so it appears from tablet width and
+              from two devices. */}
+          {mine.length >= 2 && (
+            <div data-me-sketch className="mb-8 hidden sm:block">
+              <NetworkSketch
+                title={t('me.sketch.title')}
+                description={t('me.sketch.description', { connected, total: mine.length })}
+                centerLabel={t('me.sketch.center')}
+                sites={sites}
+                moreLabel={(hidden) => t('me.sketch.more', { count: hidden })}
+                hollowLegend={t('me.sketch.hollow')}
+              />
+            </div>
+          )}
 
-          <h2 className="mt-8 text-heading font-medium text-content">{t('me.listLabel')}</h2>
+          <h2 className="text-heading font-medium text-content">{t('me.listLabel')}</h2>
           <div className="mt-3">
-            <DeviceList devices={mine} now={now} />
+            <DeviceList
+              devices={mine}
+              now={now}
+              onRemove={(node) => {
+                setRemoveFailed(false);
+                setRemoving(node);
+              }}
+            />
           </div>
-          <p className="mt-3 text-caption text-muted">{t('me.removeHint')}</p>
         </>
       )}
+
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => {
+          if (!open && !removeDevice.isPending) setRemoving(null);
+        }}
+        title={t('me.remove.title', { name: removingName })}
+        description={t('me.remove.body', { name: removingName })}
+        confirmLabel={t('me.remove.confirm')}
+        tone="danger"
+        busy={removeDevice.isPending}
+        onConfirm={confirmRemove}
+      >
+        {removeFailed && (
+          <p
+            role="alert"
+            className="rounded-control border border-danger/40 bg-danger-subtle p-3 text-caption text-danger"
+          >
+            {t('me.remove.failed', { name: removingName })}
+          </p>
+        )}
+      </ConfirmDialog>
 
       <DownloadApps />
 

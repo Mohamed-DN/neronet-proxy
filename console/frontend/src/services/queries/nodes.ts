@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
-import { apiPost, apiRequest } from '../apiClient';
+import { apiDelete, apiPost, apiRequest } from '../apiClient';
 import type { MeshNode } from '../types';
 import { queryKeys } from './keys';
 
@@ -129,6 +129,21 @@ export function useRevokeNode() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.nodes });
       void queryClient.invalidateQueries({ queryKey: queryKeys.node(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.statsOverview });
+    }
+  });
+}
+
+/**
+ * Removes one of the signed-in person's own devices. The control plane revokes
+ * the key and deletes the registration, and allows it to the device's owner.
+ */
+export function useDeleteOwnDevice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => apiDelete<unknown>(`/nodes/${encodeURIComponent(id)}`),
+    onSuccess: (_, id) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.nodes });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.node(id) });
     }
   });
 }

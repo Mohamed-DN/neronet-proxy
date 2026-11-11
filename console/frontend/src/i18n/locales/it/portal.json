@@ -22,6 +22,8 @@
     "blocked_other": "{{count}} dei tuoi dispositivi sono bloccati. Chiedi il motivo a un amministratore.",
     "row": {
       "copyAddress": "Copia l'indirizzo di {{name}}",
+      "remove": "Rimuovi",
+      "removeLabel": "Rimuovi {{name}}",
       "copied": "Indirizzo copiato."
     },
     "status": {
@@ -31,7 +33,13 @@
       "lastSeen": "Visto l'ultima volta {{when}}",
       "never": "Mai collegato"
     },
-    "removeHint": "Per rimuovere un dispositivo, chiedilo a un amministratore.",
+    "remove": {
+      "title": "Rimuovere {{name}}?",
+      "body": "{{name}} perde subito l'accesso alla rete e la sua chiave viene revocata. Per usarlo di nuovo dovrai aggiungerlo come nuovo dispositivo. Non si può annullare.",
+      "confirm": "Rimuovi dispositivo",
+      "done": "{{name}} rimosso.",
+      "failed": "{{name}} non è stato rimosso. Riprova tra poco."
+    },
     "sketch": {
       "title": "I tuoi dispositivi nella rete",
       "description": "{{connected}} su {{total}} collegati in questo momento.",

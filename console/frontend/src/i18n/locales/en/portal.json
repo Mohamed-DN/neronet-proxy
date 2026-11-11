@@ -22,6 +22,8 @@
     "blocked_other": "{{count}} of your devices are blocked. Ask an administrator why.",
     "row": {
       "copyAddress": "Copy the address of {{name}}",
+      "remove": "Remove",
+      "removeLabel": "Remove {{name}}",
       "copied": "Address copied."
     },
     "status": {
@@ -31,7 +33,13 @@
       "lastSeen": "Last seen {{when}}",
       "never": "Never connected"
     },
-    "removeHint": "To remove a device, ask an administrator.",
+    "remove": {
+      "title": "Remove {{name}}?",
+      "body": "{{name}} loses access to the network immediately and its key is revoked. To use it again you will have to add it as a new device. This cannot be undone.",
+      "confirm": "Remove device",
+      "done": "{{name}} removed.",
+      "failed": "{{name}} was not removed. Try again in a moment."
+    },
     "sketch": {
       "title": "Your devices in the network",
       "description": "{{connected}} of {{total}} connected right now.",
