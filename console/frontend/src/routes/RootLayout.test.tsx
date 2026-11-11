@@ -144,13 +144,13 @@ describe('shell height', () => {
     const root = container.querySelector('[data-shell-root]') as HTMLElement;
     const sidebar = container.querySelector('[data-shell-sidebar]') as HTMLElement;
     const inner = container.querySelector('[data-shell-sidebar-inner]') as HTMLElement;
-    expect(root.className).not.toMatch(/(min-)?h-(screen|dvh|svh|lvh)/);
+    expect(root.className).not.toMatch(/\b(min-)?h-(screen|dvh|svh|lvh)\b/);
     // The column stretches with the page; only the sticky content is capped.
     expect(sidebar.className).toContain('self-stretch');
-    expect(sidebar.className).not.toMatch(/h-screen/);
+    expect(sidebar.className).not.toMatch(/\bh-screen\b/);
     expect(inner.className).toContain('sticky');
     expect(inner.className).toContain('max-h-screen');
-    expect(inner.className).not.toMatch(/(^|\s)h-screen/);
+    expect(inner.className).not.toMatch(/(^|\s)h-screen\b/);
   });
 });
 
