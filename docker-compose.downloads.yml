@@ -1,0 +1,10 @@
+# Serves the client apps people download from "I miei dispositivi" (/me). The page
+# reads /downloads/manifest.json and shows only what it lists; without this file every
+# platform reads "not published yet".
+#
+# Fill the folder with scripts/ops/publish-downloads.sh, which copies the files and
+# writes the manifest with each file's size and SHA-256. The console only reads it.
+services:
+  frontend:
+    volumes:
+      - ${NERONET_DOWNLOADS_DIR:-./downloads}:/usr/share/nginx/html/downloads:ro

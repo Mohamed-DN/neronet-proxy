@@ -94,8 +94,9 @@ case "${NERONET_TLS_MODE:-internal}" in
 esac
 
 # The ACME test adds a private Pebble CA without changing the deployment files.
+# A deployment may list several, separated by spaces (docker-compose.proxy.yml
+# docker-compose.gateway.yml docker-compose.downloads.yml); they apply in that order.
 if [ -n "${NERONET_EXTRA_COMPOSE_FILE:-}" ]; then
-  [ -f "$NERONET_EXTRA_COMPOSE_FILE" ] || die "no $NERONET_EXTRA_COMPOSE_FILE"
   # An override needs the base file before it. In internal mode nothing has named it yet,
   # and compose would treat the override as the whole project; in acme mode it is already
   # there, and naming it again after the acme file would undo that file's settings.
@@ -103,7 +104,10 @@ if [ -n "${NERONET_EXTRA_COMPOSE_FILE:-}" ]; then
     *"-f docker-compose.yml"*) ;;
     *) COMPOSE="$COMPOSE -f docker-compose.yml" ;;
   esac
-  COMPOSE="$COMPOSE -f $NERONET_EXTRA_COMPOSE_FILE"
+  for extra in $NERONET_EXTRA_COMPOSE_FILE; do
+    [ -f "$extra" ] || die "no $extra"
+    COMPOSE="$COMPOSE -f $extra"
+  done
 fi
 
 # The fleet override is generated, not committed. When it exists it joins every command,
