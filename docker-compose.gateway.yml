@@ -1,0 +1,50 @@
+# The profile gateway (ADR 0029) for a single-host installation: one mesh node on the
+# console's host that phones, laptops and other stock WireGuard apps connect to.
+#
+#   docker compose -f docker-compose.yml [-f docker-compose.proxy.yml] \
+#     -f docker-compose.gateway.yml up -d --build gateway
+#
+# Then, once, name it as the gateway in the console (Admin > Gateway, or
+# PUT /api/devices/gateway {"node_id": "<its id>", "endpoint": "<public name>:51820"}).
+#
+# The data plane is userspace (netstack): no extra capabilities, no sysctls, no
+# ip_forward. The gateway relays a device's packets inside its own tunnel wrapper and only
+# what that device's policy allows. The router forwards UDP NERONET_GATEWAY_PORT (51820 by
+# default) to this host; nothing else needs to be reachable for the devices.
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.node
+    image: ${NERONET_NODE_IMAGE:-neronet-node:dev}
+    restart: unless-stopped
+    networks:
+      - neronet-isolated-mesh
+    command: ["-control-url", "https://frontend:8443", "-country", "${NERONET_GATEWAY_COUNTRY:-IT}"]
+    environment:
+      - SOVEREIGN_REGISTRATION_TOKEN=${SOVEREIGN_REGISTRATION_TOKEN:?set SOVEREIGN_REGISTRATION_TOKEN in .env}
+      - SOVEREIGN_DATAPLANE=netstack
+      # Lets a connected device check the tunnel end to end: TCP to the gateway's overlay
+      # address on this port answers, behind the same policy filter as everything else.
+      - SOVEREIGN_OVERLAY_ECHO_PORT=${NERONET_OVERLAY_ECHO_PORT:-9999}
+      - SOVEREIGN_CONTROL_PLANE_CA=/run/secrets/control_plane_ca
+    secrets:
+      - control_plane_ca
+    ports:
+      # The WireGuard listener inside the container is always 51820.
+      - "${NERONET_GATEWAY_BIND:-0.0.0.0}:${NERONET_GATEWAY_PORT:-51820}:51820/udp"
+    volumes:
+      # The node's identity key: keep it, or every device has to be re-issued.
+      - identity-gateway:/var/lib/neronet
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    depends_on:
+      frontend:
+        condition: service_healthy
+
+volumes:
+  identity-gateway:
