@@ -19,6 +19,11 @@
   "profileRegulatedDesc": "Cancellazione d'emergenza, gruppi nascosti e percorsi a tre tappe sono spenti e non si possono accendere. Solo l'amministratore della piattaforma può cambiare questo livello.",
   "profileStandardDesc": "Ogni funzione si accende o si spegne separatamente, qui sotto.",
   "sectionModules": "Funzioni",
+  "moduleNames": {
+    "deniability": "Modalità discreta",
+    "nuke": "Cancellazione dei dati",
+    "onion": "Percorso a tre tappe"
+  },
   "moduleOn": "Attivo",
   "moduleOff": "Spento",
   "sectionTransport": "Come viaggiano i dati",

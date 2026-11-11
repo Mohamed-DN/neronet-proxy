@@ -24,10 +24,12 @@
     "policyEpoch": "Versione della policy",
     "epochHint": "Ogni dispositivo riceve la nuova versione al prossimo controllo periodico.",
     "enforcingNodes": "Dispositivi che applicano le regole",
-    "hintPermissive": "Permesso di default",
-    "hintZeroTrust": "Blocca di default",
-    "hintStrict": "Blocco rigoroso",
-    "hintPermissiveAllow": "Permesso di default",
+    "hintPermissive": "Tutto consentito finché non scrivi una regola",
+    "hintZeroTrust": "Valgono le regole che hai scritto",
+    "hintStrict": "Il traffico senza regola è bloccato",
+    "hintPermissiveAllow": "Tutto consentito finché non scrivi una regola",
+    "valueOpen": "Tutto consentito",
+    "valueDeny": "Tutto bloccato",
     "hintEnforcing": "Applica le regole su questo dispositivo"
   },
   "statusBanner": {

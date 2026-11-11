@@ -255,8 +255,10 @@ export default function SettingsRoute() {
               ) : (
                 <ul className="space-y-2">
                   {(modules.data ?? []).map((m) => (
-                    <li key={m.module_id} className="flex items-center justify-between font-mono text-caption">
-                      <span className="text-content">{m.module_id}</span>
+                    <li key={m.module_id} className="flex items-center justify-between text-caption">
+                      <span className="text-content">
+                        {t(`moduleNames.${m.module_id}`, { defaultValue: m.module_id })}
+                      </span>
                       <Badge tone={m.enabled ? 'success' : 'neutral'}>
                         {m.enabled ? t('moduleOn') : t('moduleOff')}
                       </Badge>

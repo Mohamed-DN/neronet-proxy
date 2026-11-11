@@ -73,60 +73,60 @@ export function LineChart({ title, labels, series, unit, height = 200 }: LineCha
       {/* One viewBox unit is one pixel (see useMeasuredWidth), so the text below
           keeps its fixed size at any column width. */}
       <div ref={frameRef} className="w-full">
-      <svg
-        aria-hidden="true"
-        data-chart-width={width}
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        className="block max-w-full"
-        focusable="false"
-      >
-        {ticks.map((t) => (
-          <g key={t}>
-            <line
-              x1={PAD_LEFT}
-              x2={width - PAD_RIGHT}
-              y1={y(t)}
-              y2={y(t)}
-              style={{ stroke: 'rgb(var(--color-border-subtle))' }}
-              strokeWidth={1}
+        <svg
+          aria-hidden="true"
+          data-chart-width={width}
+          width={width}
+          height={height}
+          viewBox={`0 0 ${width} ${height}`}
+          className="block max-w-full"
+          focusable="false"
+        >
+          {ticks.map((t) => (
+            <g key={t}>
+              <line
+                x1={PAD_LEFT}
+                x2={width - PAD_RIGHT}
+                y1={y(t)}
+                y2={y(t)}
+                style={{ stroke: 'rgb(var(--color-border-subtle))' }}
+                strokeWidth={1}
+              />
+              <text
+                x={PAD_LEFT - 6}
+                y={y(t) + 4}
+                textAnchor="end"
+                className="tabular-nums"
+                style={{ fill: 'rgb(var(--color-content-muted))', fontSize: TEXT_PX }}
+              >
+                {formatValue(t)}
+              </text>
+            </g>
+          ))}
+          {series.map((s) => (
+            <path
+              key={s.id}
+              data-series={s.id}
+              d={pathFor(s.values, x, y)}
+              fill="none"
+              strokeWidth={1.5}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              style={{ stroke: `rgb(var(--color-${s.tone}))` }}
             />
+          ))}
+          {xLabelIndexes.map((i) => (
             <text
-              x={PAD_LEFT - 6}
-              y={y(t) + 4}
-              textAnchor="end"
-              className="tabular-nums"
+              key={i}
+              x={x(i)}
+              y={height - 6}
+              textAnchor={i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle'}
               style={{ fill: 'rgb(var(--color-content-muted))', fontSize: TEXT_PX }}
             >
-              {formatValue(t)}
+              {labels[i]}
             </text>
-          </g>
-        ))}
-        {series.map((s) => (
-          <path
-            key={s.id}
-            data-series={s.id}
-            d={pathFor(s.values, x, y)}
-            fill="none"
-            strokeWidth={1.5}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            style={{ stroke: `rgb(var(--color-${s.tone}))` }}
-          />
-        ))}
-        {xLabelIndexes.map((i) => (
-          <text
-            key={i}
-            x={x(i)}
-            y={height - 6}
-            textAnchor={i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle'}
-            style={{ fill: 'rgb(var(--color-content-muted))', fontSize: TEXT_PX }}
-          >
-            {labels[i]}
-          </text>
-        ))}
-      </svg>
+          ))}
+        </svg>
       </div>
 
       <figcaption>

@@ -170,20 +170,20 @@
       "body": "Il metodo matematico che protegge i dati dalla lettura da parte di terzi."
     },
     "acl": {
-      "term": "ACL (zero-trust)",
+      "term": "Regole di accesso (ACL)",
       "body": "Un elenco di regole che decide quali dispositivi possono parlarsi e su quali porte. Nulla è permesso se una regola non lo consente."
     },
     "defaultDeny": {
-      "term": "Default deny",
-      "body": "Se nessuna regola copre il traffico, quel traffico viene bloccato."
+      "term": "Tutto bloccato di base",
+      "body": "Se nessuna regola copre il traffico, quel traffico viene bloccato. In inglese: default deny."
     },
     "defaultOpen": {
-      "term": "Default open",
-      "body": "Se nessuna regola copre il traffico, quel traffico viene permesso."
+      "term": "Tutto consentito di base",
+      "body": "Se nessuna regola copre il traffico, quel traffico viene permesso. In inglese: default open."
     },
     "zeroTrust": {
-      "term": "Zero-trust",
-      "body": "Modello in cui nessun dispositivo è considerato sicuro solo perché è già nella rete: ogni collegamento va verificato."
+      "term": "Nessuna fiducia automatica",
+      "body": "Modello in cui nessun dispositivo è considerato sicuro solo perché è già nella rete: ogni collegamento va verificato. In inglese: zero-trust."
     },
     "packetTest": {
       "term": "Simulazione di un pacchetto",
@@ -194,11 +194,11 @@
       "body": "Le regole già tradotte nel formato che ogni dispositivo applica."
     },
     "policyVersion": {
-      "term": "Epoch (versione della policy)",
-      "body": "Un numero che sale a ogni modifica delle regole. Dice a quale versione è arrivato ogni dispositivo."
+      "term": "Versione delle regole",
+      "body": "Un numero che sale a ogni modifica delle regole. Dice a quale versione è arrivato ogni dispositivo. Il termine tecnico è epoch."
     },
     "auditChain": {
-      "term": "Catena di audit",
+      "term": "Catena del registro",
       "body": "Ogni voce del registro contiene l'impronta di quella precedente, così una modifica si nota."
     },
     "hmac": {
@@ -206,11 +206,11 @@
       "body": "Un'impronta crittografica che prova che un dato non è stato alterato senza la chiave segreta."
     },
     "checkpoint": {
-      "term": "Checkpoint (snapshot firmato)",
-      "body": "Una fotografia firmata dello stato del registro, da confrontare più avanti."
+      "term": "Punto di controllo firmato",
+      "body": "Una fotografia firmata dello stato del registro, da confrontare più avanti. Il termine tecnico è checkpoint."
     },
     "ed25519": {
-      "term": "Ed25519",
+      "term": "Firma digitale (Ed25519)",
       "body": "Il tipo di firma usato dal sistema per firmare gli snapshot e il segnale di trasparenza."
     },
     "siem": {
@@ -238,35 +238,35 @@
       "body": "Un'azione sensibile richiede l'approvazione di due persone diverse."
     },
     "legalHold": {
-      "term": "Legal hold (blocco legale)",
-      "body": "Un vincolo legale che impedisce di cancellare i dati di un'organizzazione finché non viene rimosso."
+      "term": "Blocco legale",
+      "body": "Un vincolo legale che impedisce di cancellare i dati di un'organizzazione finché non viene rimosso. In inglese: legal hold."
     },
     "deadMansSwitch": {
-      "term": "Dead Man's Switch",
-      "body": "Un controllo che esegue un'azione (qui: la cancellazione) se il proprietario non conferma di essere presente entro un tempo stabilito."
+      "term": "Controllo di presenza",
+      "body": "Un controllo che esegue un'azione (qui: la cancellazione) se il proprietario non conferma di essere presente entro un tempo stabilito. In inglese: dead man's switch."
     },
     "warrantCanary": {
-      "term": "Warrant canary",
-      "body": "Un segnale firmato e aggiornato periodicamente: se smette di essere aggiornato, può voler dire che qualcosa è successo."
+      "term": "Segnale di trasparenza",
+      "body": "Un segnale firmato e aggiornato periodicamente: se smette di essere aggiornato, può voler dire che qualcosa è successo. In inglese: warrant canary."
     },
     "splitTunneling": {
-      "term": "Split tunneling",
-      "body": "Alcune app escluse dal tunnel protetto e collegate direttamente a Internet."
+      "term": "App fuori dal tunnel",
+      "body": "Alcune app escluse dal tunnel protetto e collegate direttamente a Internet. In inglese: split tunneling."
     },
     "netmap": {
-      "term": "Netmap / limite di validità",
-      "body": "La lista dei dispositivi e delle regole che un dispositivo conserva. Il limite dice per quanto tempo la usa senza contattare la rete."
+      "term": "Elenco dei dispositivi e limite di validità",
+      "body": "La lista dei dispositivi e delle regole che un dispositivo conserva. Il limite dice per quanto tempo la usa senza contattare la rete. Il termine tecnico è netmap."
     },
     "heartbeat": {
-      "term": "Heartbeat (controllo periodico)",
-      "body": "Il controllo regolare con cui ogni dispositivo conferma alla rete di essere attivo."
+      "term": "Controllo periodico",
+      "body": "Il controllo regolare con cui ogni dispositivo conferma alla rete di essere attivo. Il termine tecnico è heartbeat."
     },
     "tenant": {
-      "term": "Tenant",
-      "body": "Un'organizzazione isolata all'interno della rete, con i propri dispositivi e utenti."
+      "term": "Organizzazione isolata",
+      "body": "Un'organizzazione isolata all'interno della rete, con i propri dispositivi e utenti. In inglese: tenant."
     },
     "sso": {
-      "term": "SSO / OIDC",
+      "term": "Login unico aziendale (SSO / OIDC)",
       "body": "Il login unico aziendale: l'utente accede con l'account di lavoro, senza una password separata per la console."
     },
     "pkce": {

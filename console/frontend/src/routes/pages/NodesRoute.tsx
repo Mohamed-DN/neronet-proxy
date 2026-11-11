@@ -80,6 +80,10 @@ export default function NodesRoute() {
 
   const counts = useMemo(() => fleetCounts(nodes), [nodes]);
 
+  const allUnverified = useMemo(
+    () => nodes.length > 0 && nodes.every((n) => !n.posture_status || n.posture_status === 'unverified'),
+    [nodes]
+  );
   const unverifiedCount = useMemo(
     () => nodes.filter((n) => !n.posture_status || n.posture_status === 'unverified').length,
     [nodes]
@@ -220,6 +224,16 @@ export default function NodesRoute() {
         if (n.posture_status === 'non_compliant') {
           return <StatusBadge status="critical" label={t('posture.failed')} />;
         }
+        // When no device has reported, the page says so once above the table and
+        // the rows stay quiet; the word is still there for a screen reader.
+        if (allUnverified) {
+          return (
+            <span data-state="not-measured" className="text-muted">
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">{t('posture.unverified')}</span>
+            </span>
+          );
+        }
         return (
           <span data-state="not-measured">
             <StatusBadge status="not-measured" label={t('posture.unverified')} />
@@ -313,6 +327,12 @@ export default function NodesRoute() {
             <GlossaryHint className="absolute right-0 top-0" term="posture" />
           </div>
         </div>
+
+        {allUnverified && (
+          <p data-testid="all-unverified-note" className="text-caption text-muted">
+            {t('posture.allUnverified')}
+          </p>
+        )}
 
         <Card className="p-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">

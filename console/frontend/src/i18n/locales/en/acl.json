@@ -28,6 +28,8 @@
     "hintZeroTrust": "Blocked by default",
     "hintStrict": "Strict block",
     "hintPermissiveAllow": "Allowed by default",
+    "valueOpen": "Everything allowed",
+    "valueDeny": "Everything blocked",
     "hintEnforcing": "Enforces the rules on this device"
   },
   "statusBanner": {

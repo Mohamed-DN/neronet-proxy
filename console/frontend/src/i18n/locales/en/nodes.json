@@ -29,6 +29,7 @@
     "openDetails": "Open details"
   },
   "posture": {
+    "allUnverified": "No device has reported its security checks yet, so all of them show as unverified.",
     "passed": "Checks passed",
     "failed": "Checks failed",
     "unverified": "Not confirmed"

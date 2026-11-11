@@ -529,7 +529,7 @@ export default function AclsRoute() {
         />
         <Stat
           label={t('stats.defaultPolicy')}
-          value={defaultPolicy.toUpperCase()}
+          value={defaultPolicy === 'deny' ? t('stats.valueDeny') : t('stats.valueOpen')}
           hint={defaultPolicy === 'deny' ? t('stats.hintStrict') : t('stats.hintPermissiveAllow')}
         />
         <Stat label={t('stats.policyEpoch')} value={`#${epoch}`} hint={t('stats.epochHint')} />

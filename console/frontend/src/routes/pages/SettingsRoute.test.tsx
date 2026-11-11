@@ -104,7 +104,7 @@ describe('SettingsRoute', () => {
     const { container } = render();
     expect(await screen.findByDisplayValue('300')).toBeInTheDocument();
     expect(screen.getByText('Strict (for regulated sectors)')).toBeInTheDocument();
-    expect(screen.getByText('nuke')).toBeInTheDocument();
+    expect(screen.getByText('Data erasure')).toBeInTheDocument();
     expect(screen.queryByText(/VLESS Reality|ShadowTLS|QUIC MASQUE/)).not.toBeInTheDocument();
     await expectNoAxeViolations(container);
   });

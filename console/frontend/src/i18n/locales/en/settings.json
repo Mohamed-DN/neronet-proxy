@@ -18,6 +18,11 @@
   "profileRegulated": "Strict (for regulated sectors)",
   "profileRegulatedDesc": "Emergency erasure, hidden groups and three-stop routes are off and cannot be turned on. Only the platform administrator can change this level.",
   "profileStandardDesc": "Each feature is switched on or off separately, below.",
+  "moduleNames": {
+    "deniability": "Discreet mode",
+    "nuke": "Data erasure",
+    "onion": "Three-hop routing"
+  },
   "sectionModules": "Features",
   "moduleOn": "On",
   "moduleOff": "Off",
