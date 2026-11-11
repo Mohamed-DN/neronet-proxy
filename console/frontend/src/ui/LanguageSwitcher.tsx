@@ -10,9 +10,40 @@ import { LANGUAGES, isLanguage, setLanguage, type Language } from '../i18n';
  * A native select: it is one control in the tab order, it works on a phone, and
  * there is nothing here that a listbox would do better.
  */
-export function LanguageSwitcher({ className }: { className?: string }) {
+export function LanguageSwitcher({
+  className,
+  variant = 'select'
+}: {
+  className?: string;
+  /** `buttons` shows every language at once, for the sign-in page where there is room and nothing else to open. */
+  variant?: 'select' | 'buttons';
+}) {
   const { t, i18n } = useTranslation('ui');
   const current = (isLanguage(i18n.language) ? i18n.language : 'en') as Language;
+
+  if (variant === 'buttons') {
+    return (
+      <div role="group" aria-label={t('language.label')} className={cn('inline-flex items-center gap-1', className)}>
+        {LANGUAGES.map((language) => (
+          <button
+            key={language}
+            type="button"
+            lang={language}
+            aria-pressed={language === current}
+            onClick={() => void setLanguage(language)}
+            className={cn(
+              'inline-flex h-7 items-center rounded-control px-2.5 text-caption focus-visible:outline-focus',
+              language === current
+                ? 'bg-surface-hover font-medium text-content'
+                : 'text-muted hover:bg-surface-hover hover:text-content'
+            )}
+          >
+            {t(`language.${language}`, { lng: language })}
+          </button>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <label className={cn('inline-flex items-center gap-2', className)}>

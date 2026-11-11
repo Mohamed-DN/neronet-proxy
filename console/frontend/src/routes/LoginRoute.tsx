@@ -135,7 +135,7 @@ export default function LoginRoute() {
     <div className="flex min-h-screen items-center justify-center bg-surface px-4 font-sans">
       <div className="w-full max-w-md space-y-6 rounded-card border border-border bg-surface-raised p-8">
         <div className="flex justify-end gap-2">
-          <LanguageSwitcher />
+          <LanguageSwitcher variant="buttons" />
           <ThemeToggle />
         </div>
 

@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -179,5 +179,37 @@ describe('sign-in errors in plain words', () => {
     await submitPassword();
     expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('login.failed', { ns: 'chrome' }));
     expect(screen.queryByText('Invalid username or password')).not.toBeInTheDocument();
+  });
+});
+
+describe('language on the sign-in page', () => {
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
+  it('switches the whole page when English or Italiano is chosen', async () => {
+    await i18n.changeLanguage('it');
+    renderLogin();
+    await waitFor(() =>
+      expect(screen.getByText(i18n.t('login.subtitle', { ns: 'chrome', lng: 'it' }))).toBeInTheDocument()
+    );
+    expect(screen.getByRole('button', { name: 'Italiano' })).toHaveAttribute('aria-pressed', 'true');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'English' }));
+
+    expect(
+      await screen.findByRole('button', { name: i18n.t('login.submit', { ns: 'chrome', lng: 'en' }) })
+    ).toBeInTheDocument();
+    expect(screen.getByText(i18n.t('login.subtitle', { ns: 'chrome', lng: 'en' }))).toBeInTheDocument();
+    expect(screen.queryByText(i18n.t('login.subtitle', { ns: 'chrome', lng: 'it' }))).toBeNull();
+    expect(screen.getByRole('button', { name: 'English' })).toHaveAttribute('aria-pressed', 'true');
+    expect(document.documentElement.lang).toBe('en');
+
+    await user.click(screen.getByRole('button', { name: 'Italiano' }));
+    expect(
+      await screen.findByRole('button', { name: i18n.t('login.submit', { ns: 'chrome', lng: 'it' }) })
+    ).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('it');
   });
 });
