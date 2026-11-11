@@ -140,7 +140,7 @@ router.delete('/:id', requireOrgRole('owner'), async (req, res, next) => {
 });
 
 // 6. List Organization Members
-router.get('/:id/members', async (req, res, next) => {
+router.get('/:id/members', requireOrgRole('owner', 'admin', 'network_admin', 'auditor'), async (req, res, next) => {
   try {
     if (req.user.role !== 'super-admin' && req.user.organization_id !== req.params.id) {
       return res.status(404).json({ error: 'Organization not found' });

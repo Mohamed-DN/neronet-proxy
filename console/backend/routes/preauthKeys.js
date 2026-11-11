@@ -9,7 +9,7 @@
 
 const express = require('express');
 const { authenticateToken } = require('../middleware/auth');
-const { resolveUserOrg, requireNotAuditor } = require('../middleware/rbac');
+const { resolveUserOrg, requireNotAuditor, requireOrgRole } = require('../middleware/rbac');
 const { createPreAuthKey, listPreAuthKeys, revokePreAuthKey } = require('../services/PreAuthKeyService');
 const { getControlPlaneFingerprint } = require('../services/ControlPlaneKeyService');
 const { logAuditEvent } = require('../utils/audit');
@@ -20,6 +20,9 @@ const router = express.Router();
 router.use(authenticateToken);
 router.use(resolveUserOrg);
 router.use(requireNotAuditor);
+// A pre-auth key enrols a node into the organisation: minting, listing and revoking them
+// belongs to the people who run it, not to every member.
+router.use(requireOrgRole('owner', 'admin', 'network_admin'));
 
 // 1. Create Pre-Auth Key
 router.post('/', async (req, res) => {
@@ -57,7 +60,7 @@ router.post('/', async (req, res) => {
     });
   } catch (err) {
     logger.error(`Failed to create pre-auth key: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -69,7 +72,7 @@ router.get('/', async (req, res) => {
     return res.json({ keys });
   } catch (err) {
     logger.error(`Failed to list pre-auth keys: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -100,7 +103,7 @@ router.delete('/:id', async (req, res) => {
     return res.json({ success: true, id: req.params.id });
   } catch (err) {
     logger.error(`Failed to revoke pre-auth key: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 

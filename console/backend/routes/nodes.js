@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { getPgPool } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
 const { logAuditEvent } = require('../utils/audit');
-const { allocateNextVip, generateCurve25519Keypair } = require('../utils/crypto');
+const { allocateNextVip, generateCurve25519Keypair, publicKeyForms } = require('../utils/crypto');
 const { broadcastNodeEvent } = require('../services/TopologySync');
 const { derivePostureStatus } = require('../utils/posture');
 const { bumpNetmap } = require('../services/AclEngine');
@@ -15,6 +15,24 @@ const { resolveUserOrg } = require('../middleware/rbac');
 const EnrollmentService = require('../services/EnrollmentService');
 const NativeTelemetry = require('../services/NativeTelemetry');
 const { resolveMetricsScope, nodeVisibility } = require('../services/FleetVisibility');
+const { validateEndpoints } = require('../services/NetmapService');
+
+const VALID_ROLES = ['CLIENT_ORIGIN', 'EXIT_BRIDGE', 'HYBRID', 'RELAY'];
+// Organisation roles that decide what a node is for the rest of the mesh.
+const NODE_ADMIN_ROLES = ['owner', 'admin', 'network_admin'];
+
+/**
+ * A node's role, latency, health and status decide whether other nodes route
+ * their traffic through it and whether it is quarantined. Only the people who
+ * run the organisation may change them; the platform super-admin always may.
+ */
+function canAdministerNodes(user, orgRole = user.org_role || user.role) {
+  return user.role === 'super-admin' || NODE_ADMIN_ROLES.includes(orgRole);
+}
+
+function refusePrivileged(res) {
+  return res.status(403).json({ error: 'Forbidden: only an organisation administrator can change this' });
+}
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -214,16 +232,30 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Missing node name' });
     }
 
+    if (role !== undefined && role !== null && !VALID_ROLES.includes(role)) {
+      return res.status(400).json({ error: `role must be one of ${VALID_ROLES.join(', ')}` });
+    }
+    if (endpoints !== undefined && !Array.isArray(endpoints)) {
+      return res.status(400).json({ error: 'endpoints must be a list of ip:port' });
+    }
+    if (validateEndpoints(endpoints).rejected.length > 0) {
+      return res.status(400).json({ error: 'endpoints must be public ip:port addresses' });
+    }
+    const wantsPrivileged =
+      (role !== undefined && role !== null && role !== 'CLIENT_ORIGIN') ||
+      ['latency_ms', 'is_healthy', 'status', 'is_quarantined'].some((field) => req.body[field] !== undefined);
+
     let finalPubKey = public_key;
     if (!finalPubKey) {
       const kp = generateCurve25519Keypair();
       finalPubKey = kp.publicKeyBase64;
+    } else if (typeof finalPubKey !== 'string' || publicKeyForms(finalPubKey).length === 0) {
+      return res.status(400).json({ error: 'public_key must be a 32-byte key in hex or base64' });
     }
 
-    const VALID_ROLES = ['CLIENT_ORIGIN', 'EXIT_BRIDGE', 'HYBRID', 'RELAY'];
     const VALID_IP_CLASSES = ['RESIDENTIAL', 'MOBILE_5G', 'DATACENTER', 'UNKNOWN'];
 
-    const nodeRole = role && VALID_ROLES.includes(role) ? role : 'CLIENT_ORIGIN';
+    const nodeRole = role === undefined || role === null ? 'CLIENT_ORIGIN' : role;
     const nodeIpClass = ip_class && VALID_IP_CLASSES.includes(ip_class) ? ip_class : 'UNKNOWN';
     const nodeCountry = country_code || 'US';
     const onionRouting = onion_routing_enabled !== undefined ? Boolean(onion_routing_enabled) : Number(onion_hops) > 0;
@@ -238,7 +270,14 @@ router.post('/', async (req, res, next) => {
         req.sessionAuthority.organizationIdAtIssue
       );
       const orgId = actor.organization_id;
-      const existingKey = await client.query('SELECT id FROM nodes WHERE public_key = $1', [finalPubKey]);
+      if (wantsPrivileged && !canAdministerNodes(actor, actor.org_role)) {
+        throw EnrollmentService.denied(403, 'Forbidden: only an organisation administrator can change this');
+      }
+      // The same key in another spelling is the same key: one node's key must not be
+      // registrable twice, or the netmap would carry it twice.
+      const existingKey = await client.query('SELECT id FROM nodes WHERE public_key = ANY($1::text[])', [
+        publicKeyForms(finalPubKey)
+      ]);
       if (existingKey.rows.length > 0) {
         throw EnrollmentService.denied(409, 'Public key already registered');
       }
@@ -351,6 +390,16 @@ router.put('/:id', async (req, res, next) => {
       return res.status(access.error).json({ error: access.message });
     }
 
+    if (req.body.role !== undefined && !VALID_ROLES.includes(req.body.role)) {
+      return res.status(400).json({ error: `role must be one of ${VALID_ROLES.join(', ')}` });
+    }
+    const touchesPrivileged =
+      (req.body.role !== undefined && req.body.role !== 'CLIENT_ORIGIN') ||
+      ['latency_ms', 'is_healthy', 'status'].some((field) => req.body[field] !== undefined);
+    if (touchesPrivileged && !canAdministerNodes(req.user)) {
+      return refusePrivileged(res);
+    }
+
     const updates = [];
     const params = [];
     let pIdx = 1;
@@ -367,7 +416,7 @@ router.put('/:id', async (req, res, next) => {
       updates.push(`is_healthy = $${pIdx++}`);
       params.push(Boolean(req.body.is_healthy));
     }
-    if (req.body.role) {
+    if (req.body.role !== undefined) {
       updates.push(`role = $${pIdx++}`);
       params.push(req.body.role);
     }
@@ -565,6 +614,8 @@ router.post('/:id/unquarantine', async (req, res, next) => {
     if (!access.ok) {
       return res.status(access.error).json({ error: access.message });
     }
+    // A quarantined node's owner must not lift the quarantine from the node's own account.
+    if (!canAdministerNodes(req.user)) return refusePrivileged(res);
 
     await pool.query(
       'UPDATE nodes SET is_quarantined = FALSE, is_healthy = TRUE, quarantine_reason = NULL, updated_at = NOW() WHERE id = $1',
@@ -643,6 +694,10 @@ router.post('/:id/action', async (req, res, next) => {
           status: node.is_quarantined ? 'quarantined' : 'active'
         }
       });
+    }
+
+    if ((action === 'set_exit' || action === 'lift_quarantine') && !canAdministerNodes(req.user)) {
+      return refusePrivileged(res);
     }
 
     if (action === 'set_exit') {

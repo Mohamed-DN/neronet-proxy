@@ -249,6 +249,18 @@ function normalisePublicKeyHex(value) {
   return null;
 }
 
+/**
+ * Every spelling under which a stored key can equal this one: lower-case hex,
+ * upper-case hex and standard base64. Compared with `public_key = ANY($1)`, which the
+ * UNIQUE index serves, so a duplicate check needs no scan of the table.
+ * Returns an empty array for a key that does not decode to 32 bytes.
+ */
+function publicKeyForms(value) {
+  const hex = normalisePublicKeyHex(value);
+  if (!hex) return [];
+  return [hex, hex.toUpperCase(), Buffer.from(hex, 'hex').toString('base64')];
+}
+
 /** Map an allocation offset onto the overlay address pair it represents. */
 function vipFromOffset(offset) {
   const o2 = 64 + Math.floor(offset / 65536);
@@ -349,6 +361,7 @@ async function allocateNextVip(dbOrPool) {
 
 module.exports = {
   normalisePublicKeyHex,
+  publicKeyForms,
   vipFromOffset,
   generateCurve25519Keypair,
   buildWireGuardConfig,

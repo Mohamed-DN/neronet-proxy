@@ -110,6 +110,11 @@ async function validateAndConsumePreAuthKey(
       return { ok: false, status: 401, error: 'single-use pre-auth key has already been consumed' };
     }
 
+    if (key.is_reusable && key.max_uses != null && key.used_count >= key.max_uses) {
+      if (!transactionClient) await client.query('ROLLBACK');
+      return { ok: false, status: 401, error: 'pre-auth key has reached its maximum number of uses' };
+    }
+
     if (key.allowed_role && requestedRole && key.allowed_role !== requestedRole) {
       if (!transactionClient) await client.query('ROLLBACK');
       return {

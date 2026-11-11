@@ -17,6 +17,7 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
 
   let superAdminToken;
   let standardToken;
+  let orgAdminToken;
   let testNodeId = 'node-acl-preview-1';
   let createdRuleId;
 
@@ -37,9 +38,16 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
       INSERT INTO users (id, username, email, password_hash, role, organization_id)
       VALUES
         ('${superAdminId}', 'aclsuperadmin', 'admin@enterprise.local', 'fakehash', 'super-admin', '${orgId}'),
-        ('${standardUserId}', 'aclregular', 'user@enterprise.local', 'fakehash', 'user', '${orgId}')
+        ('${standardUserId}', 'aclregular', 'user@enterprise.local', 'fakehash', 'user', '${orgId}'),
+        ('usr-acl-orgadmin', 'aclorgadmin', 'orgadmin@enterprise.local', 'fakehash', 'user', '${orgId}')
       ON CONFLICT (id) DO NOTHING;
     `);
+    // The policy reads are for the people who run the organisation, not for plain members.
+    await pool.query(
+      `INSERT INTO memberships (id, user_id, organization_id, role)
+       VALUES ('mem-acl-orgadmin', 'usr-acl-orgadmin', $1, 'admin') ON CONFLICT (id) DO NOTHING`,
+      [orgId]
+    );
 
     // 3. Create Node for compilation preview testing
     await pool.query(`
@@ -65,14 +73,33 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
       role: 'user',
       organization_id: orgId
     });
+
+    orgAdminToken = await issueConsoleTestToken({
+      sub: 'usr-acl-orgadmin',
+      id: 'usr-acl-orgadmin',
+      username: 'aclorgadmin',
+      role: 'user',
+      organization_id: orgId
+    });
   });
 
   after(async () => {
     if (dbHelper) await dbHelper.cleanup();
   });
 
+  it('0. a plain member is refused the policy reads', async () => {
+    for (const [method, path] of [
+      ['get', '/api/acl/rules'],
+      ['get', '/api/acl/default-policy'],
+      ['get', '/api/acl/tests']
+    ]) {
+      const res = await request(app)[method](path).set('Authorization', `Bearer ${standardToken}`);
+      assert.strictEqual(res.status, 403, path);
+    }
+  });
+
   it('1. GET /api/acl/rules returns empty rules list and reports mesh is open', async () => {
-    const res = await request(app).get('/api/acl/rules').set('Authorization', `Bearer ${standardToken}`);
+    const res = await request(app).get('/api/acl/rules').set('Authorization', `Bearer ${orgAdminToken}`);
 
     assert.strictEqual(res.status, 200);
     assert.ok(Array.isArray(res.body.rules));
@@ -133,7 +160,7 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
   });
 
   it('5. GET /api/acl/default-policy retrieves organization default policy', async () => {
-    const res = await request(app).get('/api/acl/default-policy').set('Authorization', `Bearer ${standardToken}`);
+    const res = await request(app).get('/api/acl/default-policy').set('Authorization', `Bearer ${orgAdminToken}`);
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.organization_id, orgId);
@@ -149,12 +176,12 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.default_policy, 'deny');
 
-    const verify = await request(app).get('/api/acl/default-policy').set('Authorization', `Bearer ${standardToken}`);
+    const verify = await request(app).get('/api/acl/default-policy').set('Authorization', `Bearer ${orgAdminToken}`);
     assert.strictEqual(verify.body.default_policy, 'deny');
   });
 
   it('7. POST /api/acl/simulate evaluates packet against active rule and returns DROP verdict', async () => {
-    const res = await request(app).post('/api/acl/simulate').set('Authorization', `Bearer ${standardToken}`).send({
+    const res = await request(app).post('/api/acl/simulate').set('Authorization', `Bearer ${orgAdminToken}`).send({
       source_ip: '100.64.10.1',
       destination_ip: '100.64.10.2',
       protocol: 'TCP',
@@ -168,7 +195,7 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
   });
 
   it('8. POST /api/acl/simulate evaluates unmatched packet against default deny policy', async () => {
-    const res = await request(app).post('/api/acl/simulate').set('Authorization', `Bearer ${standardToken}`).send({
+    const res = await request(app).post('/api/acl/simulate').set('Authorization', `Bearer ${orgAdminToken}`).send({
       source_ip: '10.0.0.1',
       destination_ip: '10.0.0.2',
       protocol: 'UDP',
@@ -216,7 +243,7 @@ describe('WP-407: Visual ACL Rule Editor, Policy Routing & Organization Default 
     // default decides, and deny is not open.
     assert.strictEqual(res.body.policy_is_open, false);
 
-    const listRes = await request(app).get('/api/acl/rules').set('Authorization', `Bearer ${standardToken}`);
+    const listRes = await request(app).get('/api/acl/rules').set('Authorization', `Bearer ${orgAdminToken}`);
     assert.strictEqual(listRes.body.rules.length, 0);
   });
 });

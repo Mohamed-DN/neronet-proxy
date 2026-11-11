@@ -13,7 +13,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { resolveUserOrg } = require('../middleware/rbac');
 const { getPgPool } = require('../db/index');
 const { logAuditEvent } = require('../utils/audit');
-const { allocateNextVip, normalisePublicKeyHex } = require('../utils/crypto');
+const { allocateNextVip, normalisePublicKeyHex, publicKeyForms } = require('../utils/crypto');
 const EnrollmentService = require('../services/EnrollmentService');
 const AclEngine = require('../services/AclEngine');
 
@@ -123,7 +123,9 @@ router.post('/profile', async (req, res, next) => {
       });
     }
 
-    const taken = await getPgPool().query('SELECT 1 FROM nodes WHERE public_key = $1', [public_key]);
+    const taken = await getPgPool().query('SELECT 1 FROM nodes WHERE public_key = ANY($1::text[])', [
+      publicKeyForms(public_key)
+    ]);
     if (taken.rows.length > 0) return res.status(409).json({ error: 'public_key is already in use' });
 
     const id = `dev-${crypto.randomBytes(6).toString('hex')}`;
