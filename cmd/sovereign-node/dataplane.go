@@ -360,10 +360,12 @@ func reportDrops(ctx context.Context, dev *dataplane.Device, interval time.Durat
 			if current == previous {
 				continue
 			}
-			log.Printf("[SOVEREIGN-NODE] Data plane drops since start: outbound %d (+%d), inbound %d (+%d), malformed %d (+%d)",
+			log.Printf("[SOVEREIGN-NODE] Data plane drops since start: outbound %d (+%d), inbound %d (+%d), malformed %d (+%d), forward-dropped %d (+%d); forwarded %d (+%d)",
 				current.OutboundDropped, current.OutboundDropped-previous.OutboundDropped,
 				current.InboundDropped, current.InboundDropped-previous.InboundDropped,
-				current.MalformedDropped, current.MalformedDropped-previous.MalformedDropped)
+				current.MalformedDropped, current.MalformedDropped-previous.MalformedDropped,
+				current.ForwardDropped, current.ForwardDropped-previous.ForwardDropped,
+				current.Forwarded, current.Forwarded-previous.Forwarded)
 			previous = current
 		}
 	}

@@ -179,6 +179,9 @@
         "preshared_key_hex": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
+        },
+        "acl": {
+          "$ref": "#/$defs/CompiledPeerPolicy"
         }
       },
       "additionalProperties": false,

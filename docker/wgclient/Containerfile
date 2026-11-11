@@ -1,0 +1,12 @@
+# A stock WireGuard client for the overlay scenarios only, never part of a deployment.
+# scripts/dev/scenarios/overlay.sh (scenario "profile") runs it as a profile device
+# (ADR 0029): wg-quick from wireguard-tools, on the host kernel's WireGuard, speaks the
+# same protocol as the official iOS and Android WireGuard apps, and nothing
+# NeroNet-specific is installed. The keys are generated inside the container and the
+# private key never leaves it.
+#
+# socat and tcpdump are the measuring instruments: a real TCP exchange and a capture
+# of what crossed each interface. coreutils is there for date's nanoseconds.
+FROM docker.io/library/alpine:3.20
+RUN apk add --no-cache wireguard-tools iproute2 socat tcpdump coreutils
+ENTRYPOINT ["/bin/sh", "-c"]

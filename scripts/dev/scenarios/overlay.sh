@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static|derp]
+# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static|derp|profile]
 #
 # Measures the overlay between the fleet nodes of a running stack. Every cell of the
 # matrix is a real TCP exchange: node A dials node B's overlay address through node
@@ -20,6 +20,10 @@
 #                 network namespace, and measure DERP allowed, withdrawn, restored,
 #                 both relays stopped and restarted, and UDP restored; needs a backend
 #                 started with NERONET_TRANSPORT_CEILING=udp,derp
+#   profile       ADR 0029: name a relay as gateway, register a stock wg-quick device
+#                 through the API, and measure real TCP to two nodes, an ACL DROP at
+#                 the gateway, roaming, a second device spoofing the first's address,
+#                 and the cut after deleting the device (image docker/wgclient)
 #
 # The stack must be running with the data plane on:
 #
@@ -153,8 +157,16 @@ build_inventory() {
   : > "$WORK/fleet"
   for svc in $NODE_SERVICES; do
     [ -n "$svc" ] || continue
-    vip=$(node_logs "$svc" 2>/dev/null \
-      | sed -n 's/.*Assigned Overlay VIP: \([0-9.]*\) .*/\1/p' | tail -1)
+    # Up to three reads: on a loaded Podman machine one `logs` call can come back
+    # empty (a dropped connection to the machine), and a node left out of the fleet
+    # for that reason looks exactly like a node that never enrolled.
+    vip=
+    for attempt in 1 2 3; do
+      vip=$(node_logs "$svc" 2>/dev/null \
+        | sed -n 's/.*Assigned Overlay VIP: \([0-9.]*\) .*/\1/p' | tail -1)
+      [ -n "$vip" ] && break
+      sleep 2
+    done
     if [ -z "$vip" ]; then
       echo "warning: $svc has not reported an overlay address; it is left out of the matrix" >&2
       continue
@@ -760,8 +772,270 @@ case "$SCENARIO" in
     org_policy '["udp"]'
     ;;
 
+  profile)
+    # ADR 0029 A5: a stock WireGuard client (wg-quick, the protocol of the official
+    # iOS and Android apps) joins through the organisation's gateway and exchanges
+    # real TCP with mesh nodes. Every claim below is a measurement: a payload whose
+    # hash comes back intact, a capture of what crossed each interface, and the
+    # gateway's own forwarding counters. Nothing is read from a database and called
+    # reachability.
+    [ -n "${COMPOSE_PROJECT_NAME:-}" ] && [ "$COMPOSE_PROJECT_NAME" != neronet ] \
+      || die "profile requires a dedicated stack (COMPOSE_PROJECT_NAME other than neronet)"
+
+    WG_IMAGE=${NERONET_WGCLIENT_IMAGE:-localhost/neronet-wgclient:dev}
+    $ENGINE image inspect "$WG_IMAGE" > /dev/null 2>&1 ||
+      $ENGINE build -t "$WG_IMAGE" -f docker/wgclient/Containerfile docker/wgclient ||
+      die "building $WG_IMAGE failed"
+
+    GW=${NERONET_PROFILE_GATEWAY:-relay-de}
+    T1=${NERONET_PROFILE_TARGET1:-relay-fr}
+    T2=${NERONET_PROFILE_TARGET2:-client-it}
+    for svc in "$GW" "$T1" "$T2"; do
+      [ -n "$(vip_of "$svc")" ] || die "$svc is not in the fleet"
+    done
+    GW_ID=$(node_id_of "$GW")
+    T1_VIP=$(vip_of "$T1")
+    T2_VIP=$(vip_of "$T2")
+    DEV1="${COMPOSE_PROJECT_NAME}-a5-dev1"
+    DEV2="${COMPOSE_PROJECT_NAME}-a5-dev2"
+    DEV1_ID=
+    DEV2_ID=
+    DROP_ID=
+
+    container_of() { $COMPOSE --profile nodes ps -q "$1" | head -1; }
+    GW_CID=$(container_of "$GW")
+    NET=$($ENGINE inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$GW_CID" | awk '{print $1}')
+    GW_IP=$($ENGINE inspect -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}" "$GW_CID")
+    [ -n "$NET" ] && [ -n "$GW_IP" ] || die "cannot read the gateway's network address"
+
+    profile_cleanup() {
+      for c in "$DEV1" "$DEV2"; do $ENGINE rm -f -t 0 "$c" > /dev/null 2>&1 || true; done
+      [ -n "$DROP_ID" ] && api DELETE "/api/acl/rules/$DROP_ID" > /dev/null 2>&1 || true
+      for id in $DEV1_ID $DEV2_ID; do api DELETE "/api/nodes/$id" > /dev/null 2>&1 || true; done
+      rm -rf "$WORK"
+    }
+    trap profile_cleanup EXIT INT TERM
+
+    # api_secret <method> <path>: the JSON body comes on stdin, so a PSK never reaches
+    # a process argument list.
+    api_secret() {
+      curl -sS -X "$1" "$API$2" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+        --data-binary @-
+    }
+    json_field() { sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p" | head -1; }
+
+    # gw_counters -> "forwarded forward_dropped" from the gateway's latest drop report.
+    # The report is written every 15s and only when a counter moved, so the caller waits
+    # past one interval before reading it.
+    gw_counters() {
+      node_logs_since "$GW" 30m 2>/dev/null < /dev/null | grep 'Data plane drops since start' | tail -1 \
+        | sed -n 's/.*forward-dropped \([0-9]*\) .*forwarded \([0-9]*\) .*/\2 \1/p'
+    }
+    inbound_drops() {
+      node_logs_since "$1" 30m 2>/dev/null < /dev/null | grep 'Data plane drops since start' | tail -1 \
+        | sed -n 's/.*inbound \([0-9]*\) .*/\1/p'
+    }
+
+    # start_device <container> <name> -> sets REG to the API's answer. The key pair and
+    # the PSK are generated inside the container; the private key never leaves it.
+    start_device() {
+      $ENGINE rm -f "$1" > /dev/null 2>&1 || true
+      $ENGINE run -d --name "$1" --network "$NET" --cap-add NET_ADMIN --cap-add NET_RAW \
+        "$WG_IMAGE" 'sleep infinity' > /dev/null ||
+        die "starting $1 failed"
+      pub=$($ENGINE exec "$1" sh -c 'umask 077; wg genkey > /etc/wireguard/private &&
+        wg genpsk > /etc/wireguard/psk && wg pubkey < /etc/wireguard/private')
+      [ -n "$pub" ] || die "no key pair in $1"
+      REG=$( { printf '{"name":"%s","public_key":"%s","preshared_key":"' "$2" "$pub";
+               $ENGINE exec "$1" cat /etc/wireguard/psk | tr -d '\n'; printf '"}'; } | api_secret POST /api/devices/profile)
+      printf '%s' "$REG" | grep -q '"device_id"' || die "registering $2 failed: $(printf '%s' "$REG" | sed 's/"preshared[^,]*,//')"
+    }
+
+    # wg_up <container> <overlay address> <gateway public key> <endpoint>: the profile
+    # exactly as ADR 0029 defines it, from the API's answer.
+    wg_up() {
+      $ENGINE exec -e ADDR="$2" -e GWPUB="$3" -e EP="$4" "$1" sh -c 'umask 077; cat > /etc/wireguard/wg0.conf <<EOF
+[Interface]
+PrivateKey = $(cat /etc/wireguard/private)
+Address = $ADDR/32
+
+[Peer]
+PublicKey = $GWPUB
+PresharedKey = $(cat /etc/wireguard/psk)
+Endpoint = $EP
+AllowedIPs = 100.64.0.0/10
+PersistentKeepalive = 25
+EOF
+wg-quick up wg0 > /tmp/wg-quick.log 2>&1 || { grep -v -i key /tmp/wg-quick.log; exit 1; }
+grep -i "userspace" /tmp/wg-quick.log || echo "  wg-quick up on the kernel WireGuard"' || die "wg-quick up failed in $1"
+    }
+
+    # dev_tcp <container> <vip> -> "ok <ms> <bytes>" or "fail <reason>". 64 KiB of random
+    # bytes go to the node's echo and must come back with the same SHA-256.
+    dev_tcp() {
+      $ENGINE exec "$1" sh -c '
+        head -c 65536 /dev/urandom > /tmp/payload
+        want=$(sha256sum < /tmp/payload | cut -d" " -f1)
+        t0=$(date +%s%N)
+        { printf E; cat /tmp/payload; } | timeout 8 socat -t 4 - TCP:'"$2"':'"$ECHO_PORT"',connect-timeout=4 > /tmp/back 2>/dev/null
+        t1=$(date +%s%N)
+        got=$(sha256sum < /tmp/back | cut -d" " -f1)
+        bytes=$(wc -c < /tmp/back)
+        if [ "$got" = "$want" ]; then echo "ok $(( (t1 - t0) / 1000000 )) $bytes"; else echo "fail got-$bytes-bytes"; fi' < /dev/null
+    }
+
+    expect_tcp() { # <want ok|fail> <container> <vip> <label>
+      r=$(dev_tcp "$2" "$3")
+      echo "  $4: $r"
+      [ "${r%% *}" = "$1" ] || { echo "unexpected: $4 is '$r', expected $1" >&2; rc=1; }
+    }
+
+    # wait_tcp <want> <container> <vip> <limit seconds> -> echoes the elapsed seconds
+    wait_tcp() {
+      w_start=$(date +%s)
+      while :; do
+        r=$(dev_tcp "$2" "$3")
+        [ "${r%% *}" = "$1" ] && { echo "$(($(date +%s) - w_start))"; return 0; }
+        [ "$(($(date +%s) - w_start))" -ge "$4" ] && { echo "timeout"; return 1; }
+        sleep 1
+      done
+    }
+
+    echo "== profile gateway: $GW ($GW_ID) at $GW_IP:51820; targets $T1 ($T1_VIP) and $T2 ($T2_VIP)"
+    api PUT /api/devices/gateway "{\"node_id\":\"$GW_ID\",\"endpoint\":\"$GW_IP:51820\"}" > "$WORK/gw.json"
+    grep -q '"gateway"' "$WORK/gw.json" || die "naming the gateway failed: $(cat "$WORK/gw.json")"
+
+    start_device "$DEV1" a5-phone
+    DEV1_ID=$(printf '%s' "$REG" | json_field device_id)
+    DEV1_VIP=$(printf '%s' "$REG" | json_field overlay_ipv4)
+    GW_PUB=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{"public_key":"\([^"]*\)".*/\1/p')
+    GW_EP=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{[^}]*"endpoint":"\([^"]*\)".*/\1/p')
+    echo "registered $DEV1_ID at $DEV1_VIP; the answer names gateway endpoint $GW_EP"
+    printf '%s' "$REG" | grep -qi private && { echo "the API answer contains a private key field" >&2; rc=1; }
+
+    echo "waiting for $GW to serve the device..."
+    i=0
+    until node_logs_since "$GW" 5m 2>/dev/null < /dev/null | grep -q 'Profile gateway: forwarding for'; do
+      i=$((i + 2)); [ "$i" -le 60 ] || die "$GW never switched forwarding on"
+      sleep 2
+    done
+    echo "$GW forwards after ${i}s: $(node_logs_since "$GW" 5m 2>/dev/null < /dev/null | grep 'Profile gateway' | tail -1 | sed 's/.*Profile gateway: //')"
+    # The mesh nodes learn the route to the device on their own next fetch.
+    converge
+
+    wg_up "$DEV1" "$DEV1_VIP" "$GW_PUB" "$GW_EP"
+
+    echo
+    echo "== (a) real TCP from the device to two mesh nodes and back, captured on both interfaces"
+    $ENGINE exec -d "$DEV1" sh -c 'tcpdump -i eth0 -n -U -w /tmp/eth0.pcap ip 2>/tmp/eth0.err' > /dev/null
+    $ENGINE exec -d "$DEV1" sh -c 'tcpdump -i wg0 -n -U -w /tmp/wg0.pcap 2>/tmp/wg0.err' > /dev/null
+    sleep 2
+    t=$(wait_tcp ok "$DEV1" "$T1_VIP" 60) || true
+    echo "  first exchange with $T1 succeeded after ${t}s (handshake included)"
+    expect_tcp ok "$DEV1" "$T1_VIP" "device -> $T1 ($T1_VIP)"
+    expect_tcp ok "$DEV1" "$T2_VIP" "device -> $T2 ($T2_VIP)"
+    sleep 1
+    $ENGINE exec "$DEV1" sh -c 'pkill tcpdump; sleep 1' || true
+    $ENGINE exec -e GW_IP="$GW_IP" -e T1="$T1_VIP" -e T2="$T2_VIP" -e P="$ECHO_PORT" "$DEV1" sh -c '
+      tcpdump -n -r /tmp/eth0.pcap 2>/dev/null > /tmp/eth0.txt
+      total=$(wc -l < /tmp/eth0.txt)
+      wgudp=$(grep -c -E "IP [0-9.]+ > $GW_IP\.51820: |IP $GW_IP\.51820 > [0-9.]+: " /tmp/eth0.txt)
+      plain=$(grep -c -E "100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\." /tmp/eth0.txt)
+      echo "  eth0 capture (IPv4): $total packets, $wgudp of them WireGuard UDP with $GW_IP:51820, $plain carrying an overlay address in clear"
+      tcpdump -n -r /tmp/wg0.pcap 2>/dev/null > /tmp/wg0.txt
+      for n in $T1 $T2; do
+        out=$(grep -c "> $n\.$P:" /tmp/wg0.txt); back=$(grep -c "IP $n\.$P >" /tmp/wg0.txt)
+        syn=$(grep "> $n\.$P: Flags \[S\]" /tmp/wg0.txt | head -1 | cut -c1-90)
+        echo "  wg0 capture, $n:$P: $out packets out, $back back; first SYN: $syn"
+        [ "$out" -gt 0 ] && [ "$back" -gt 0 ] || { echo "  no plaintext exchange with $n captured on wg0: $(cat /tmp/wg0.err)"; exit 1; }
+      done
+      [ "$total" -gt 0 ] || { echo "  nothing captured on eth0: $(cat /tmp/eth0.err)"; exit 1; }
+      [ "$plain" = 0 ] && [ "$wgudp" = "$total" ]' || { echo "unexpected: the captures do not show plaintext only inside wg0 and WireGuard only on eth0" >&2; rc=1; }
+    $ENGINE exec "$DEV1" wg show wg0 transfer | sed 's/^[^\t]*\t/  device wg counters (rx tx bytes): /'
+    echo "  waiting 16s for the gateway's counter report..."
+    sleep 16
+    set -- $(gw_counters)
+    FWD_A=${1:-0}; FDROP_A=${2:-0}
+    echo "  gateway counters: forwarded $FWD_A, forward-dropped $FDROP_A"
+    [ "$FWD_A" -gt 100 ] || { echo "unexpected: the gateway reports $FWD_A forwarded packets for two 64 KiB exchanges" >&2; rc=1; }
+
+    echo
+    echo "== (b) an ACL DROP for the device, enforced at the gateway"
+    T1_IN_BEFORE=$(inbound_drops "$T1"); T1_IN_BEFORE=${T1_IN_BEFORE:-0}
+    DROP_ID=$(api POST /api/acl/rules "{\"priority\":5,\"source_cidr\":\"$DEV1_VIP/32\",\"destination_cidr\":\"100.64.0.0/10\",\"action\":\"DROP\",\"description\":\"A5 profile scenario\"}" \
+      | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+    [ -n "$DROP_ID" ] || die "creating the DROP rule failed"
+    t=$(wait_tcp fail "$DEV1" "$T1_VIP" 60) || rc=1
+    echo "  device -> $T1 blocked ${t}s after the rule was written"
+    expect_tcp fail "$DEV1" "$T2_VIP" "device -> $T2 with the DROP"
+    sleep 16
+    set -- $(gw_counters)
+    T1_IN_AFTER=$(inbound_drops "$T1")
+    echo "  gateway forward-dropped: $FDROP_A -> ${2:-0}; $T1 inbound drops: $T1_IN_BEFORE -> ${T1_IN_AFTER:-0}"
+    [ "${2:-0}" -gt "$FDROP_A" ] || { echo "unexpected: the gateway dropped nothing; the DROP was not enforced on the forwarded path" >&2; rc=1; }
+    api DELETE "/api/acl/rules/$DROP_ID" > /dev/null
+    DROP_ID=
+    t=$(wait_tcp ok "$DEV1" "$T1_VIP" 60) || rc=1
+    echo "  rule deleted: device -> $T1 restored after ${t}s"
+    expect_tcp ok "$DEV1" "$T2_VIP" "device -> $T2 after the rule"
+
+    echo
+    echo "== (d) roaming: the device's network address changes under the tunnel"
+    OLD_IP=$($ENGINE inspect -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}" "$DEV1")
+    NEW_IP=$(echo "$OLD_IP" | awk -F. '{ last = ($4 == 250) ? 249 : 250; print $1"."$2"."$3"."last }')
+    $ENGINE network disconnect "$NET" "$DEV1" > /dev/null
+    $ENGINE network connect --ip "$NEW_IP" "$NET" "$DEV1" > /dev/null || die "reconnecting $DEV1 at $NEW_IP failed"
+    echo "  $DEV1 moved from $OLD_IP to $($ENGINE inspect -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}" "$DEV1")"
+    t=$(wait_tcp ok "$DEV1" "$T1_VIP" 120) || rc=1
+    echo "  traffic resumed after ${t}s (a stock client re-handshakes when replies stop)"
+    expect_tcp ok "$DEV1" "$T2_VIP" "device -> $T2 after roaming"
+
+    echo
+    echo "== (e) a second profile device sourcing the first device's address"
+    start_device "$DEV2" a5-spoofer
+    DEV2_ID=$(printf '%s' "$REG" | json_field device_id)
+    DEV2_VIP=$(printf '%s' "$REG" | json_field overlay_ipv4)
+    echo "  registered $DEV2_ID at $DEV2_VIP; its interface is given $DEV1_VIP instead"
+    converge
+    SPOOF_SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    sleep 16
+    set -- $(gw_counters)
+    FWD_E=${1:-0}
+    wg_up "$DEV2" "$DEV1_VIP" "$GW_PUB" "$GW_EP"
+    expect_tcp fail "$DEV2" "$T1_VIP" "spoofer -> $T1 with source $DEV1_VIP"
+    expect_tcp fail "$DEV2" "$T2_VIP" "spoofer -> $T2 with source $DEV1_VIP"
+    hs=$($ENGINE exec "$DEV2" wg show wg0 latest-handshakes | awk '{print $2}')
+    tx=$($ENGINE exec "$DEV2" wg show wg0 transfer | awk '{print $3}')
+    echo "  spoofer's WireGuard session: latest handshake $hs, $tx bytes sent"
+    [ "${hs:-0}" -gt 0 ] && [ "${tx:-0}" -gt 0 ] || { echo "unexpected: the spoofer never reached the gateway; this proves nothing" >&2; rc=1; }
+    sleep 16
+    set -- $(gw_counters)
+    disallowed=$(node_logs_since "$GW" "$SPOOF_SINCE" 2>/dev/null < /dev/null | grep -c 'disallowed source address' || true)
+    echo "  gateway: forwarded $FWD_E -> ${1:-0}; 'disallowed source address' lines since the attempt: $disallowed"
+    [ "${1:-0}" = "$FWD_E" ] || { echo "unexpected: the gateway forwarded packets while only the spoofer was sending" >&2; rc=1; }
+    [ "$disallowed" -gt 0 ] || { echo "unexpected: the gateway logged no source-check drop" >&2; rc=1; }
+    expect_tcp ok "$DEV1" "$T1_VIP" "the real device -> $T1 meanwhile"
+    $ENGINE rm -f "$DEV2" > /dev/null
+    api DELETE "/api/nodes/$DEV2_ID" > /dev/null
+    DEV2_ID=
+
+    echo
+    echo "== (c) deleting the device cuts it within one netmap fetch"
+    expect_tcp ok "$DEV1" "$T1_VIP" "device -> $T1 before"
+    api DELETE "/api/nodes/$DEV1_ID" > "$WORK/delete.json"
+    grep -q '"success":true\|revoked\|deleted' "$WORK/delete.json" || echo "  (delete answered: $(head -c 200 "$WORK/delete.json"))"
+    DEV1_ID=
+    t=$(wait_tcp fail "$DEV1" "$T1_VIP" 60) || rc=1
+    echo "  device cut ${t}s after the delete (heartbeat and fetch every 15s)"
+    case "$t" in ''|timeout) rc=1 ;; *) [ "$t" -le 25 ] || { echo "unexpected: the cut took ${t}s, more than one fetch" >&2; rc=1; } ;; esac
+    node_logs_since "$GW" 2m 2>/dev/null < /dev/null | grep -E 'revoked|Netmap version [0-9]+ applied' | tail -2 | sed 's/^/  gateway: /'
+    sleep 20
+    expect_tcp fail "$DEV1" "$T1_VIP" "device -> $T1 20s later"
+    expect_tcp fail "$DEV1" "$T2_VIP" "device -> $T2 20s later"
+    ;;
+
   *)
-    sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac

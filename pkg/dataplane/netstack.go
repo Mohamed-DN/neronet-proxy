@@ -57,6 +57,16 @@ func (b *netstackBackend) listen(network, address string) (net.Listener, error) 
 	}
 }
 
+func (b *netstackBackend) wake(dst netip.AddrPort, payload []byte) error {
+	c, err := b.tnet.DialUDPAddrPort(netip.AddrPort{}, dst)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	_, err = c.Write(payload)
+	return err
+}
+
 func (b *netstackBackend) close() error {
 	return b.dev.Close()
 }
