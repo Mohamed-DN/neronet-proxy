@@ -60,7 +60,7 @@ router.post('/', async (req, res) => {
     });
   } catch (err) {
     logger.error(`Failed to create pre-auth key: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -72,7 +72,7 @@ router.get('/', async (req, res) => {
     return res.json({ keys });
   } catch (err) {
     logger.error(`Failed to list pre-auth keys: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -103,7 +103,7 @@ router.delete('/:id', async (req, res) => {
     return res.json({ success: true, id: req.params.id });
   } catch (err) {
     logger.error(`Failed to revoke pre-auth key: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 

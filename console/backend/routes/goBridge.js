@@ -44,6 +44,12 @@ const { validateRequest, responseValidationInterceptor } = require('../middlewar
 
 const router = express.Router();
 
+// A deliberate client error (status < 500) carries a message written for the client; anything
+// else answers a fixed text and the detail stays in the log.
+function publicMessage(err) {
+  return err.status && err.status < 500 ? err.message : 'Internal Server Error';
+}
+
 router.use(
   responseValidationInterceptor({
     '/challenge': 'ChallengeResponse',
@@ -129,7 +135,7 @@ router.post('/challenge', validateRequest('ChallengeRequest'), async (req, res) 
     });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Challenge generation failed: ${err.message}`);
-    return res.status(err.status || 500).json({ error: err.message });
+    return res.status(err.status || 500).json({ error: publicMessage(err) });
   }
 });
 
@@ -446,7 +452,7 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       );
     }
     logger.error(`[GO-BRIDGE] Registration failed: ${err.message}`);
-    return res.status(err.status || 500).json({ error: err.message });
+    return res.status(err.status || 500).json({ error: publicMessage(err) });
   }
 });
 
@@ -635,7 +641,7 @@ router.post('/heartbeat', normalizeRegisterBody, validateRequest('HeartbeatReque
     return res.json(responsePayload);
   } catch (err) {
     logger.error(`[GO-BRIDGE] Heartbeat failed: ${err.message}`);
-    return res.status(err.status || 500).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+    return res.status(err.status || 500).json({ error: publicMessage(err), ...(err.code ? { code: err.code } : {}) });
   }
 });
 
@@ -747,7 +753,7 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
     return res.json({ bridges });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Discovery failed: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -789,7 +795,7 @@ router.post('/sync-acls', validateRequest('ACLSyncRequest'), async (req, res) =>
     return res.json({ new_policy_epoch: policy.epoch, policy });
   } catch (err) {
     logger.error(`[GO-BRIDGE] ACL sync failed: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -830,7 +836,7 @@ router.post('/sync-routes', validateRequest('RouteSyncRequest'), async (req, res
     return res.json({ new_route_epoch: epoch, routes: await RouteEngine.routesFor(nodeId) });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Route sync failed: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -881,7 +887,7 @@ router.post('/netmap', validateRequest('NetmapRequest'), async (req, res) => {
     return res.json(netmap);
   } catch (err) {
     logger.error(`[GO-BRIDGE] Netmap build failed: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
