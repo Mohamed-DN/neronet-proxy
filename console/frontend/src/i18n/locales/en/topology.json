@@ -2,12 +2,6 @@
   "title": "Network map",
   "description": "A map of your devices and the links the access rules allow; a line does not mean data is flowing.",
   "searchPlaceholder": "Search by name, ID or network address…",
-  "filterRoleAll": "All types",
-  "filterRoleRelay": "Forwards traffic",
-  "filterRoleExit": "Internet exit",
-  "filterRoleClient": "User devices",
-  "filterRoleHybrid": "Mixed (user and relay)",
-  "filterCompartmentAll": "All sub-networks",
   "columns": {
     "node": "Device",
     "role": "Type",
@@ -41,11 +35,9 @@
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
     "resetView": "Back to the starting view",
-    "hint": "Drag a device to move it. Drag the background to pan; use the scroll wheel to zoom. Click a line to block or unblock it.",
-    "selectPrompt": "Select a device or a line to see its details.",
+    "hint": "Drag the background to move and scroll to zoom. Select a device or a line to see its details; drag a device to move it.",
     "linkTitle": "Connection",
     "cutBadge": "Blocked",
-    "activeBadge": "Open",
     "cutAction": "Block connection",
     "restoreAction": "Unblock connection",
     "cutExplain": "Blocking creates a rule that stops the two devices exchanging data, in both directions.",
@@ -64,13 +56,7 @@
     "groupRole": "Type",
     "groupNone": "No grouping",
     "clusterOther": "Unassigned",
-    "edgesLabel": "Lines to show",
-    "edgesAuto": "Automatic",
-    "edgesAll": "All links",
-    "edgesSelected": "Selected device only",
-    "edgesNone": "None",
-    "edgesSelectHint": "With many devices, we show only blocked lines. Select a device to see its links.",
-    "nodeCountBadge": "{{count}} devices"
+    "relayout": "Rearrange the map"
   },
   "nodeDrawer": {
     "title": "Device details",
@@ -88,46 +74,99 @@
   },
   "policyOpenNotice": "The rules allow links between all devices, except blocked ones. Communication also needs an available path.",
   "empty": {
-    "title": "No devices to show",
+    "title": "No devices yet",
+    "filteredTitle": "No devices to show",
     "desc": "No devices match the chosen sub-network or filters. Try changing them.",
-    "enrollFirst": "Register your first device to see the network map."
+    "enrollFirst": "Connect your first device from My devices and it will appear here.",
+    "action": "Connect a device"
   },
   "radial": {
     "summary": "Visible network",
     "allowedPairs": "Allowed connections",
     "loading": "Loading the network map",
-    "evidence": "How to read the map",
-    "policy": "Permissions",
-    "observed": "Measured paths",
-    "policyExplain": "Lines show connections the rules allow. They do not mean data is flowing.",
-    "observedExplain": "Real measurements between devices will appear here. Permission lines do not prove a path exists.",
-    "unmeasured": "Paths between devices have not been measured yet.",
     "collapse": "Collapse {{name}}",
     "expand": "Show {{name}}",
     "groupUnhealthy": "With problems: {{count}}",
-    "groupQuarantined": "Blocked: {{count}}",
-    "controlPlane": "Control server",
+    "groupQuarantined": "Isolated: {{count}}",
     "transport": "How data travels",
-    "allowed": "Allowed",
     "allNodes": "All devices",
     "closeDetails": "Close details",
     "openPolicy": "Open rules"
   },
   "graph": {
     "communities": "Groups",
-    "inventoryGroups": "Color devices by group",
     "selectAll": "Show all groups",
-    "fold": "Collapse to one point",
+    "fold": "Show as one bubble",
     "unfold": "Show devices",
     "scopedCounts": "Counts include only the devices your account can see.",
-    "aggregate": "Show the {{count}} devices in {{name}}",
     "noMatches": "No devices match these filters.",
     "resetFilters": "Show all",
     "neighborhood": "Connected devices",
     "hops_one": "Direct",
     "hops_other": "Up to {{count}} steps",
     "policyOnly": "Shows allowed links, not the paths actually used.",
-    "neighborLimit": "Showing the first 50 connected devices. Use search or the list to see all.",
-    "overviewSubset": "Showing {{shown}} of {{total}} allowed links. Select a device to see all of its links."
+    "neighborLimit": "Showing the first 50 connected devices. Use search or the list to see all."
+  },
+  "single": {
+    "title": "Only one device so far",
+    "body": "Connect another one to see how your devices reach each other."
+  },
+  "kind": {
+    "device": "Device",
+    "profile": "Profile device",
+    "gateway": "Gateway or exit"
+  },
+  "nodeState": {
+    "online": "Working well",
+    "degraded": "Has problems",
+    "offline": "Switched off",
+    "quarantined": "Isolated",
+    "unmeasured": "Not measured"
+  },
+  "linkState": {
+    "unmeasured": "Allowed, not measured",
+    "direct": "Direct",
+    "relayed": "Through a relay",
+    "offline": "A device is switched off",
+    "quarantined": "A device is isolated",
+    "blocked": "Blocked by a rule"
+  },
+  "legend": {
+    "toggle": "Legend and filters",
+    "kinds": "Devices",
+    "links": "Connections",
+    "kindNote": "A profile device is a phone or computer with a WireGuard profile; it reaches the network through a gateway.",
+    "notMeasured": "Direct and relayed paths are not measured yet, so they show “—”."
+  },
+  "notice": {
+    "dense": "The rules allow almost every connection, so the map shows only the exceptions.",
+    "showAll_one": "Show the allowed connection",
+    "showAll_other": "Show all {{count}} allowed connections"
+  },
+  "search": {
+    "results": "Matching devices",
+    "none": "No device matches this search.",
+    "count_one": "{{count}} device found",
+    "count_other": "{{count}} devices found"
+  },
+  "mirror": {
+    "label": "Devices on the map",
+    "help": "Use the arrow keys to move between devices, Enter to open the details and Escape to close them.",
+    "connections_one": "{{count}} connection",
+    "connections_other": "{{count}} connections"
+  },
+  "bubble": {
+    "label_one": "{{name}}: {{count}} device",
+    "label_other": "{{name}}: {{count}} devices"
+  },
+  "inspector": {
+    "lastSeen": "Last seen",
+    "lastHandshake": "Last handshake",
+    "path": "Path",
+    "pathGateway": "Through the gateway {{name}}",
+    "pathGatewayUnknown": "Through the profile gateway",
+    "pathMeasured": "Direct: {{direct}}, through a relay: {{relayed}}",
+    "secondHop": "Through another device",
+    "openConnection": "Connection details"
   }
 }

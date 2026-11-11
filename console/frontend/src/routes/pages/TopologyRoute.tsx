@@ -2,25 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
-  ExternalLink,
   KeyRound,
-  Link2,
   List,
   Lock,
   Network,
+  Plus,
   RotateCcw,
-  Scissors,
   Search,
+  Shuffle,
   ShieldAlert,
-  X,
   ZoomIn,
   ZoomOut
 } from 'lucide-react';
 
 import { PageFrame } from '../PageFrame';
 import { PageHeader } from '../../ui/PageHeader';
-import { GlossaryHint } from '../GlossaryHint';
-import { nodePath } from '../paths';
+import { ROUTES, nodePath } from '../paths';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
@@ -31,7 +28,7 @@ import { Input } from '../../ui/Input';
 import { Select } from '../../ui/Select';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { EmptyState, ErrorState, NotMeasured, Skeleton } from '../../ui/States';
-import { StatusBadge, type Status } from '../../ui/StatusBadge';
+import { StatusBadge } from '../../ui/StatusBadge';
 import { Table, type TableColumn } from '../../ui/Table';
 
 import {
@@ -45,94 +42,51 @@ import {
 } from '../../services/queries';
 import type { AclRule, Compartment, TopologyLink, TopologyNode } from '../../services/types';
 import {
-  communityLayout,
+  SPACING,
+  centerOn,
+  cullLabels,
+  denseByDefault,
+  groupFolded,
   groupValue,
+  layoutMesh,
+  linkState,
+  nodeKind,
+  nodeState,
   policyNeighborhood,
-  policyOverview,
-  type PlacedNode,
-  type GroupBy
+  searchNodes,
+  type GroupBy,
+  type LinkState,
+  type NodeKind,
+  type Point,
+  type ViewTransform,
+  LINK_STATES,
+  NODE_KINDS,
+  UNFOLD_SCALE
 } from './topologyGraph';
+import {
+  MeshMap,
+  ZOOM_STEP,
+  zoomAt,
+  type DrawnGroup,
+  type DrawnLink,
+  type DrawnNode,
+  type Frame
+} from './mesh/MeshMap';
+import { MeshLegend } from './mesh/MeshLegend';
+import { MeshMirror, type MirrorGroup } from './mesh/MeshMirror';
+import { DeviceDetails, InspectorFrame, LinkDetails, stateLabelKey, type PeerRow } from './mesh/MeshInspector';
 import './TopologyRoute.css';
 
-export type RoleFilter = 'ALL' | 'RELAY' | 'EXIT_BRIDGE' | 'CLIENT_ORIGIN' | 'HYBRID';
 export type ViewMode = 'CANVAS' | 'LIST';
 export type { GroupBy } from './topologyGraph';
-export type EdgeMode = 'auto' | 'all' | 'selected' | 'none';
 
-const GRAPH_WIDTH = 1200;
-const GRAPH_HEIGHT = 640;
-const BASE_NODE_RADIUS = 9;
-
-const MIN_SCALE = 0.3;
-const MAX_SCALE = 6;
-const ZOOM_STEP = 1.2;
-// Pointer travel, in scene units, past which a press is a drag rather than a click.
-const MOVE_EPS = 3;
-// A moderate mesh opens connected. Above this budget automatic mode retains a
-// deterministic overview plus cut exceptions and the selected peer's policy pairs.
-const EDGE_AUTO_LINK_LIMIT = 160;
-const LABEL_LIMIT = 20;
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-/** The pan/zoom of the whole scene. Nodes keep their own coordinates; this only
- *  moves and scales the camera over them. */
-interface ViewTransform {
-  scale: number;
-  tx: number;
-  ty: number;
-}
-
-type Interaction =
-  | { kind: 'pan'; startVB: Point; startTx: number; startTy: number; moved: boolean }
-  | { kind: 'node'; nodeId: string; grabDX: number; grabDY: number; moved: boolean }
-  | null;
+const HULL_PAD = SPACING * 0.6;
+const PEER_LIMIT = 50;
+const SEARCH_LIMIT = 8;
 
 interface SelectedLink {
   source: string;
   target: string;
-}
-
-function nodeRadiusFor(count: number): number {
-  if (count <= 30) return BASE_NODE_RADIUS;
-  if (count <= 120) return 9;
-  return 6;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-/** A modest curve carries one policy pair, never intermediate hops. */
-function peerPath(a: Point, b: Point, radius: number): string {
-  const dx = b.x - a.x,
-    dy = b.y - a.y;
-  const length = Math.hypot(dx, dy);
-  if (length <= 2 * (radius + 2)) return '';
-  const inset = (radius + 2) / length;
-  const bend = Math.min(24, length * 0.08);
-  return `M ${a.x + dx * inset} ${a.y + dy * inset} Q ${(a.x + b.x) / 2 - (dy / length) * bend} ${(a.y + b.y) / 2 + (dx / length) * bend} ${b.x - dx * inset} ${b.y - dy * inset}`;
-}
-
-/** Scale the view by `factor` while keeping the scene point under `center`
- *  (in viewBox coordinates) pinned, so a wheel zooms toward the cursor. */
-function zoomAt(view: ViewTransform, center: Point, factor: number): ViewTransform {
-  const scale = clamp(view.scale * factor, MIN_SCALE, MAX_SCALE);
-  const applied = scale / view.scale;
-  return {
-    scale,
-    tx: center.x - applied * (center.x - view.tx),
-    ty: center.y - applied * (center.y - view.ty)
-  };
-}
-
-function nodeStatus(node: TopologyNode): Status {
-  if (node.is_quarantined) return 'critical';
-  if (node.is_healthy) return 'ok';
-  return 'warning';
 }
 
 function vipOf(rule: AclRule, field: 'source' | 'destination'): string {
@@ -153,6 +107,8 @@ function usePrefersMotion(): boolean {
   return motion;
 }
 
+const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
 // Stable references so a query still loading its first page does not hand
 // every dependent useMemo a fresh empty array on every render.
 const EMPTY_NODES: TopologyNode[] = [];
@@ -172,203 +128,371 @@ export function TopologyRoute() {
   const createRule = useCreateAclRule();
   const deleteRule = useDeleteAclRule();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedRole, setSelectedRole] = useState<RoleFilter>('ALL');
-  const [selectedCompartment, setSelectedCompartment] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
     window.matchMedia?.('(max-width: 640px)').matches ? 'LIST' : 'CANVAS'
   );
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [activeResult, setActiveResult] = useState(0);
+  const [groupBy, setGroupBy] = useState<GroupBy>('compartment');
+  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
+  const [hiddenKinds, setHiddenKinds] = useState<Set<NodeKind>>(new Set());
+  const [linkOverrides, setLinkOverrides] = useState<Partial<Record<LinkState, boolean>>>({});
+  const [foldOverrides, setFoldOverrides] = useState<Record<string, boolean>>({});
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedLink, setSelectedLink] = useState<SelectedLink | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [neighborhoodHops, setNeighborhoodHops] = useState<1 | 2>(1);
+  const [legendOpen, setLegendOpen] = useState(() => !window.matchMedia?.('(max-width: 1100px)').matches);
+
   const [linkActionError, setLinkActionError] = useState<string | null>(null);
   const [linkNotice, setLinkNotice] = useState<string | null>(null);
   const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
-
-  const [groupBy, setGroupBy] = useState<GroupBy>('compartment');
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
-  const [evidenceView, setEvidenceView] = useState<'policy' | 'observed'>('policy');
-  const [edgeMode, setEdgeMode] = useState<EdgeMode>('auto');
-  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
-  const [neighborhoodHops, setNeighborhoodHops] = useState<1 | 2>(1);
-  const [communitiesOpen, setCommunitiesOpen] = useState(() => !window.matchMedia?.('(max-width: 1280px)').matches);
-
-  // Camera and dragged-node positions. The camera starts centred; node overrides
-  // start empty and fill in as the operator drags.
-  const [view, setView] = useState<ViewTransform>({ scale: 1, tx: 0, ty: 0 });
-  const [positions, setPositions] = useState<Record<string, Point>>({});
-  const [animateView, setAnimateView] = useState(false);
-
   const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
   const [vaultPassword, setVaultPassword] = useState('');
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const [canvasWidth, setCanvasWidth] = useState(GRAPH_WIDTH);
-  const [canvasHeight, setCanvasHeight] = useState(GRAPH_HEIGHT);
+  const [view, setView] = useState<ViewTransform>({ scale: 1, tx: 0, ty: 0 });
+  const [animateView, setAnimateView] = useState(false);
+  const [dragged, setDragged] = useState<Record<string, Point>>({});
+  const [layoutEpoch, setLayoutEpoch] = useState(0);
+  const prefersMotion = usePrefersMotion();
+
+  const [canvasSize, setCanvasSize] = useState({ width: 1000, height: 560 });
   const [canvasElement, setCanvasElement] = useState<SVGSVGElement | null>(null);
-  const bindCanvas = useCallback((element: SVGSVGElement | null) => {
-    svgRef.current = element;
-    setCanvasElement(element);
-  }, []);
+  const bindCanvas = useCallback((element: SVGSVGElement | null) => setCanvasElement(element), []);
   useEffect(() => {
-    if (!canvasElement || typeof ResizeObserver === 'undefined') return;
+    if (!canvasElement || typeof ResizeObserver === 'undefined') return undefined;
     const measure = () => {
       const box = canvasElement.getBoundingClientRect();
-      setCanvasWidth(box.width || GRAPH_WIDTH);
-      setCanvasHeight(box.height || GRAPH_HEIGHT);
+      if (box.width && box.height) setCanvasSize({ width: box.width, height: box.height });
     };
     const observer = new ResizeObserver(measure);
     measure();
     observer.observe(canvasElement);
     return () => observer.disconnect();
   }, [canvasElement]);
-  const sceneRef = useRef<SVGGElement | null>(null);
-  const interactionRef = useRef<Interaction>(null);
-
-  const prefersMotion = usePrefersMotion();
 
   const topology = topologyQuery.data;
   const nodes = topology?.nodes ?? EMPTY_NODES;
   const links = topology?.links ?? EMPTY_LINKS;
   const compartments = compartmentsQuery.data ?? EMPTY_COMPARTMENTS;
   const aclRules = aclRulesQuery.data?.rules ?? EMPTY_RULES;
+  // "Now" is when the data arrived, so ages and states do not tick between refreshes.
+  const now = topologyQuery.dataUpdatedAt || 0;
 
   const isUnlocked = useMemo(
     () => nodes.some((n) => n.is_ghost_vault) || compartments.some((c) => c.is_hidden),
     [nodes, compartments]
   );
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
-  const filteredNodes = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return nodes.filter((n) => {
-      if (q) {
-        const name = (n.name ?? '').toLowerCase();
-        const id = (n.id ?? '').toLowerCase();
-        const ip = (n.overlay_ipv4 ?? '').toLowerCase();
-        if (!name.includes(q) && !id.includes(q) && !ip.includes(q)) return false;
-      }
-      if (hiddenGroups.has(groupValue(n, groupBy).key)) return false;
-      if (selectedRole !== 'ALL' && n.role !== selectedRole) return false;
-      if (selectedCompartment !== 'ALL' && n.compartment_id !== selectedCompartment) return false;
-      return true;
-    });
-  }, [nodes, searchQuery, selectedRole, selectedCompartment, hiddenGroups, groupBy]);
-
-  const filteredLinks = useMemo(() => {
-    const visibleIds = new Set(filteredNodes.map((n) => n.id));
-    return links.filter((l) => visibleIds.has(l.source) && visibleIds.has(l.target));
-  }, [links, filteredNodes]);
-
-  // The clustered seed, then the operator's per-node overrides laid on top.
+  // --- Layout: computed once per inventory, remembered per grouping ---------
+  const memory = useRef<Partial<Record<GroupBy, Map<string, Point>>>>({});
   const otherLabel = t(groupBy === 'none' ? 'radial.allNodes' : 'canvas.clusterOther');
-  const { placed: basePlaced, clusters } = useMemo(
-    () => communityLayout(nodes, groupBy, otherLabel, expandedGroups, Boolean(searchQuery.trim())),
-    [nodes, groupBy, otherLabel, expandedGroups, searchQuery]
+  const layout = useMemo(
+    () => layoutMesh(nodes, links, groupBy, { otherLabel, previous: memory.current[groupBy] }),
+    // layoutEpoch forces a fresh arrangement after "Rearrange" cleared the memory.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nodes, links, groupBy, otherLabel, layoutEpoch]
   );
-  const placedNodes = useMemo<PlacedNode[]>(
-    () =>
-      basePlaced
-        .filter((p) => filteredNodes.some((node) => node.id === p.node.id))
-        .map((p) => {
-          const override = positions[p.node.id];
-          return override ? { node: p.node, x: override.x, y: override.y } : p;
-        }),
-    [basePlaced, positions, filteredNodes]
+  useEffect(() => {
+    memory.current[groupBy] = layout.positions;
+  }, [layout, groupBy]);
+  const positionOf = useCallback(
+    (id: string): Point | undefined => dragged[id] ?? layout.positions.get(id),
+    [dragged, layout]
   );
-  const positionById = useMemo(() => {
-    const map = new Map<string, PlacedNode>();
-    placedNodes.forEach((p) => map.set(p.node.id, p));
-    return map;
-  }, [placedNodes]);
 
-  // Fit the stable inventory envelope to the actual plot aspect ratio. Filters,
-  // metric refreshes and dragging do not silently refit the operator's camera.
-  const sceneFrame = useMemo(() => {
-    const single = clusters.length === 1;
-    const left = Math.min(...clusters.map((group) => group.cx - group.r * (single ? 1.6 : 1)), 600) - 70;
-    const right = Math.max(...clusters.map((group) => group.cx + group.r * (single ? 1.6 : 1)), 600) + 70;
-    const top = Math.min(...clusters.map((group) => group.cy - group.r), 320) - 55;
-    const bottom = Math.max(...clusters.map((group) => group.cy + group.r), 320) + 65;
-    const aspect = canvasWidth / Math.max(1, canvasHeight);
-    const width = Math.max(right - left, (bottom - top) * aspect);
+  // Fit the whole inventory once; filters, refreshes and folding never refit the camera.
+  const frame = useMemo<Frame>(() => {
+    const points = [...layout.positions.values()];
+    const xs = points.map((point) => point.x),
+      ys = points.map((point) => point.y);
+    const pad = HULL_PAD + SPACING;
+    const left = Math.min(0, ...xs) - pad,
+      right = Math.max(0, ...xs) + pad;
+    const top = Math.min(0, ...ys) - pad - 20,
+      bottom = Math.max(0, ...ys) + pad + 20;
+    const aspect = canvasSize.width / Math.max(1, canvasSize.height);
+    // A floor so three devices are not blown up to fill the screen.
+    const width = Math.max(right - left, (bottom - top) * aspect, 560);
     const height = width / aspect;
-    return {
-      x: (left + right - width) / 2,
-      y: (top + bottom - height) / 2,
-      width,
-      height,
-      cx: (left + right) / 2,
-      cy: (top + bottom) / 2
-    };
-  }, [clusters, canvasWidth, canvasHeight]);
-  const labelUnit = sceneFrame.width / Math.max(1, canvasWidth);
+    const cx = (left + right) / 2,
+      cy = (top + bottom) / 2;
+    return { x: cx - width / 2, y: cy - height / 2, width, height, cx, cy };
+  }, [layout, canvasSize]);
+  const unit = frame.width / Math.max(1, canvasSize.width) / view.scale;
 
-  const nodeCount = filteredNodes.length;
-  const nodeRadius = nodeRadiusFor(nodeCount);
-  const showLabels = nodeCount <= LABEL_LIMIT || view.scale >= 1.8;
-  // Stable positions make updates comparable and honour reduced motion.
-  const renderPos = useMemo(() => new Map(placedNodes.map(({ node, x, y }) => [node.id, { x, y }])), [placedNodes]);
+  // --- Search -----------------------------------------------------------------
+  const query = searchQuery.trim();
+  const results = useMemo(() => searchNodes(nodes, query, SEARCH_LIMIT), [nodes, query]);
+  const matchIds = useMemo(
+    () => new Set(query ? searchNodes(nodes, query, Number.POSITIVE_INFINITY).map((node) => node.id) : []),
+    [nodes, query]
+  );
 
-  // Busy meshes retain a bounded connected overview, plus exceptions and selection.
-  const resolvedEdgeMode: 'all' | 'focus' | 'selected' | 'none' =
-    edgeMode === 'auto' ? (filteredLinks.length > EDGE_AUTO_LINK_LIMIT ? 'focus' : 'all') : edgeMode;
+  // --- What is shown ----------------------------------------------------------
+  const kindOf = useMemo(() => new Map(nodes.map((node) => [node.id, nodeKind(node)])), [nodes]);
+  const stateOf = useMemo(() => new Map(nodes.map((node) => [node.id, nodeState(node, now)])), [nodes, now]);
+  const groupKeyOf = useMemo(
+    () => new Map(nodes.map((node) => [node.id, groupValue(node, groupBy).key])),
+    [nodes, groupBy]
+  );
+  const shownNodes = useMemo(
+    () => nodes.filter((node) => !hiddenGroups.has(groupKeyOf.get(node.id)!) && !hiddenKinds.has(kindOf.get(node.id)!)),
+    [nodes, hiddenGroups, hiddenKinds, groupKeyOf, kindOf]
+  );
+  const shownIds = useMemo(() => new Set(shownNodes.map((node) => node.id)), [shownNodes]);
+  const shownLinks = useMemo(
+    () => links.filter((link) => shownIds.has(link.source) && shownIds.has(link.target)),
+    [links, shownIds]
+  );
+  const linkStates = useMemo(
+    () =>
+      new Map(
+        shownLinks.map((link) => [
+          pairKey(link.source, link.target),
+          linkState(link, nodeById.get(link.source), nodeById.get(link.target), now)
+        ])
+      ),
+    [shownLinks, nodeById, now]
+  );
+  const stateOfLink = (link: TopologyLink) => linkStates.get(pairKey(link.source, link.target)) ?? 'unmeasured';
+  const linkCounts = useMemo(() => {
+    const counts = Object.fromEntries(LINK_STATES.map((state) => [state, 0])) as Record<LinkState, number>;
+    for (const state of linkStates.values()) counts[state] += 1;
+    return counts;
+  }, [linkStates]);
+  const measured = links.some((link) => typeof link.transport === 'string' && link.transport !== '');
+  const permittedCount = links.filter((link) => link.is_visible !== false).length;
+  const dense = denseByDefault(nodes.length, permittedCount);
+  const linkShown = (state: LinkState) => linkOverrides[state] ?? !(dense && state === 'unmeasured');
 
-  const visibleLinks = useMemo(() => {
-    // The current API exposes policy pairs, never authenticated peer-path evidence.
-    // Keep observed paths explicitly unmeasured until the transport contract exists.
-    if (evidenceView === 'observed' || resolvedEdgeMode === 'none') return EMPTY_LINKS;
-    if (resolvedEdgeMode === 'all') return filteredLinks;
-    const overview = resolvedEdgeMode === 'focus' ? policyOverview(filteredLinks, EDGE_AUTO_LINK_LIMIT) : null;
-    return filteredLinks.filter((l) => {
-      const touchesNode = selectedNodeId && (l.source === selectedNodeId || l.target === selectedNodeId);
-      const isSelected =
-        selectedLink &&
-        ((l.source === selectedLink.source && l.target === selectedLink.target) ||
-          (l.source === selectedLink.target && l.target === selectedLink.source));
-      const isException = l.is_visible === false;
-      return Boolean(touchesNode || isSelected || (resolvedEdgeMode === 'focus' && (isException || overview?.has(l))));
-    });
-  }, [evidenceView, resolvedEdgeMode, filteredLinks, selectedNodeId, selectedLink]);
+  const kindCounts = useMemo(() => {
+    const counts = Object.fromEntries(NODE_KINDS.map((kind) => [kind, 0])) as Record<NodeKind, number>;
+    for (const kind of kindOf.values()) counts[kind] += 1;
+    return counts;
+  }, [kindOf]);
+
+  const revealed = useMemo(() => {
+    const keys = new Set<string>();
+    for (const id of [...matchIds, selectedNodeId, focusedId, selectedLink?.source, selectedLink?.target])
+      if (id && groupKeyOf.has(id)) keys.add(groupKeyOf.get(id)!);
+    return keys;
+  }, [matchIds, selectedNodeId, focusedId, selectedLink, groupKeyOf]);
+  const legendGroups = layout.groups.map((group) => ({
+    ...group,
+    folded: groupFolded(group.count, view.scale, foldOverrides[group.key], revealed.has(group.key))
+  }));
+  const foldedKeys = new Set(legendGroups.filter((group) => group.folded).map((group) => group.key));
 
   const neighbourIds = useMemo(
-    () => (selectedNodeId ? policyNeighborhood(selectedNodeId, filteredLinks, neighborhoodHops) : null),
-    [selectedNodeId, filteredLinks, neighborhoodHops]
+    () => (selectedNodeId ? policyNeighborhood(selectedNodeId, shownLinks, neighborhoodHops) : null),
+    [selectedNodeId, shownLinks, neighborhoodHops]
   );
-  // Peers one hop away. In two-hop mode their edges to second-hop peers are the
-  // visible path to the selection, so they keep full weight instead of fading.
   const firstHopIds = useMemo(
-    () => (selectedNodeId && neighborhoodHops === 2 ? policyNeighborhood(selectedNodeId, filteredLinks, 1) : null),
-    [selectedNodeId, filteredLinks, neighborhoodHops]
+    () => (selectedNodeId ? policyNeighborhood(selectedNodeId, shownLinks, 1) : null),
+    [selectedNodeId, shownLinks]
   );
-  const communityByKey = useMemo(() => new Map(clusters.map((group) => [group.key, group])), [clusters]);
-  const communityClass = (node: TopologyNode) =>
-    `mesh-community-${communityByKey.get(groupValue(node, groupBy).key)?.color ?? 0}`;
 
-  const selectedNode = selectedNodeId ? (nodes.find((n) => n.id === selectedNodeId) ?? null) : null;
-  const selectedNodeLinks = useMemo(() => {
-    if (!selectedNode) return [];
-    return filteredLinks.filter(
-      (l) => l.is_visible !== false && (l.source === selectedNode.id || l.target === selectedNode.id)
+  const selectedNode = selectedNodeId ? (nodeById.get(selectedNodeId) ?? null) : null;
+  const isSelectedLink = (link: TopologyLink) =>
+    Boolean(
+      selectedLink &&
+        ((link.source === selectedLink.source && link.target === selectedLink.target) ||
+          (link.source === selectedLink.target && link.target === selectedLink.source))
     );
-  }, [selectedNode, filteredLinks]);
 
-  const linkSourceNode = selectedLink ? (nodes.find((n) => n.id === selectedLink.source) ?? null) : null;
-  const linkTargetNode = selectedLink ? (nodes.find((n) => n.id === selectedLink.target) ?? null) : null;
+  // --- Drawing ----------------------------------------------------------------
+  const drawnNodes: DrawnNode[] = shownNodes
+    .filter((node) => !foldedKeys.has(groupKeyOf.get(node.id)!))
+    .map((node) => {
+      const point = positionOf(node.id)!;
+      return {
+        node,
+        x: point.x,
+        y: point.y,
+        kind: kindOf.get(node.id)!,
+        state: stateOf.get(node.id)!,
+        match: matchIds.has(node.id),
+        selected: node.id === selectedNodeId,
+        focused: node.id === focusedId,
+        dimmed: (query !== '' && !matchIds.has(node.id)) || (neighbourIds !== null && !neighbourIds.has(node.id)),
+        showLabel: false,
+        groupColor: 0
+      };
+    });
+  const labelPriority = (drawn: DrawnNode) =>
+    drawn.selected || drawn.focused
+      ? 4
+      : drawn.match
+        ? 3
+        : drawn.kind === 'gateway'
+          ? 2
+          : drawn.state !== 'online'
+            ? 1
+            : 0;
+  // On-screen distance between neighbours. Ordinary names only appear when there is
+  // room for them; selected, found and gateway names need less, and selection always shows.
+  const screenSpacing = SPACING / unit;
+  const labelRoom = (priority: number) => (priority >= 3 ? 0 : priority >= 1 ? 34 : 56);
+  const keptLabels = cullLabels(
+    drawnNodes
+      .filter((drawn) => (!drawn.dimmed || drawn.focused) && screenSpacing >= labelRoom(labelPriority(drawn)))
+      .map((drawn) => {
+        const width = Math.min(28, (drawn.node.name || drawn.node.id).length) * 6.6 * unit;
+        return {
+          id: drawn.node.id,
+          x: drawn.x,
+          y: drawn.y + 10 * unit,
+          width: width + 6 * unit,
+          height: 18 * unit,
+          priority: labelPriority(drawn)
+        };
+      })
+  );
+  for (const drawn of drawnNodes) drawn.showLabel = keptLabels.has(drawn.node.id);
+  const drawnIds = new Set(drawnNodes.map((drawn) => drawn.node.id));
 
-  const selectedLinkData = useMemo(() => {
-    if (!selectedLink) return null;
-    return (
-      filteredLinks.find(
-        (l) =>
-          (l.source === selectedLink.source && l.target === selectedLink.target) ||
-          (l.source === selectedLink.target && l.target === selectedLink.source)
-      ) ?? null
-    );
-  }, [selectedLink, filteredLinks]);
+  const drawnLinks: DrawnLink[] = shownLinks
+    .filter((link) => drawnIds.has(link.source) && drawnIds.has(link.target))
+    .flatMap((link) => {
+      const state = stateOfLink(link);
+      const touches = selectedNodeId !== null && (link.source === selectedNodeId || link.target === selectedNodeId);
+      const selected = isSelectedLink(link);
+      if (!linkShown(state) && !touches && !selected) return [];
+      // In two-hop mode the edges from first-hop peers onward are the path to the
+      // selection, so they keep full weight instead of fading.
+      const onPath =
+        touches ||
+        (neighborhoodHops === 2 &&
+          neighbourIds !== null &&
+          firstHopIds !== null &&
+          neighbourIds.has(link.source) &&
+          neighbourIds.has(link.target) &&
+          (firstHopIds.has(link.source) || firstHopIds.has(link.target)));
+      const a = positionOf(link.source)!,
+        b = positionOf(link.target)!;
+      const name = (id: string) => nodeById.get(id)?.name || id;
+      return [
+        {
+          key: pairKey(link.source, link.target),
+          link,
+          state,
+          a,
+          b,
+          label: `${name(link.source)} — ${name(link.target)}`,
+          strong: onPath,
+          faded:
+            (selectedNodeId !== null && !onPath) ||
+            (query !== '' && !matchIds.has(link.source) && !matchIds.has(link.target)),
+          selected
+        }
+      ];
+    });
+
+  const drawnGroups: DrawnGroup[] = legendGroups
+    .filter((group) => !hiddenGroups.has(group.key))
+    .map((group) => {
+      const problems = [
+        group.unhealthy ? t('radial.groupUnhealthy', { count: group.unhealthy }) : '',
+        group.quarantined ? t('radial.groupQuarantined', { count: group.quarantined }) : ''
+      ]
+        .filter(Boolean)
+        .join(', ');
+      return {
+        geometry: group,
+        folded: group.folded,
+        label: group.label,
+        bubbleLabel: t('bubble.label', { name: group.label, count: group.count }),
+        problems
+      };
+    });
+
+  const selectedDrawn = drawnNodes.find((drawn) => drawn.selected);
+  const selectedLabel = selectedDrawn
+    ? {
+        x: selectedDrawn.x,
+        y: selectedDrawn.y,
+        name: (selectedDrawn.node.name || selectedDrawn.node.id).slice(0, 28),
+        detail: selectedDrawn.node.overlay_ipv4 || '—'
+      }
+    : null;
+
+  // --- Camera -----------------------------------------------------------------
+  const onView = useCallback((update: (current: ViewTransform) => ViewTransform, animate: boolean) => {
+    setAnimateView(animate);
+    setView(update);
+  }, []);
+  const focusPoint = (point: Point, minScale = 1.8) => {
+    setAnimateView(prefersMotion);
+    setView((current) => centerOn(point, frame, Math.max(current.scale, minScale)));
+  };
+  /** Pans only when the device is outside the middle of the view, so arrow keys do not jolt it. */
+  const keepInView = (id: string) => {
+    const point = positionOf(id);
+    if (!point) return;
+    const sx = point.x * view.scale + view.tx,
+      sy = point.y * view.scale + view.ty;
+    const marginX = frame.width * 0.15,
+      marginY = frame.height * 0.15;
+    if (
+      sx < frame.x + marginX ||
+      sx > frame.x + frame.width - marginX ||
+      sy < frame.y + marginY ||
+      sy > frame.y + frame.height - marginY
+    ) {
+      setAnimateView(prefersMotion);
+      setView((current) => centerOn(point, frame, current.scale));
+    }
+  };
+
+  // --- Selection --------------------------------------------------------------
+  const selectNode = useCallback((id: string) => {
+    setSelectedNodeId(id);
+    setSelectedLink(null);
+    setLinkActionError(null);
+    setLinkNotice(null);
+  }, []);
+  const goToNode = (id: string) => {
+    selectNode(id);
+    const point = positionOf(id);
+    if (point) focusPoint(point);
+  };
+  const selectLink = useCallback((link: TopologyLink) => {
+    setSelectedLink({ source: link.source, target: link.target });
+    setSelectedNodeId(null);
+    setLinkActionError(null);
+    setLinkNotice(null);
+  }, []);
+  const clearSelection = useCallback(() => {
+    setSelectedNodeId(null);
+    setSelectedLink(null);
+  }, []);
+  const closeInspector = () => {
+    const returnTo = selectedNodeId;
+    clearSelection();
+    const buttons = document.querySelectorAll<HTMLButtonElement>('[data-mirror-id]');
+    ([...buttons].find((button) => button.dataset.mirrorId === returnTo) ?? buttons[0])?.focus();
+  };
+  const onMoveNode = useCallback((id: string, point: Point) => setDragged((prev) => ({ ...prev, [id]: point })), []);
+  const openGroup = (key: string) => {
+    const group = layout.groups.find((candidate) => candidate.key === key);
+    if (!group) return;
+    const fit = Math.min(frame.width, frame.height) / (group.r * 2.4);
+    setAnimateView(prefersMotion);
+    setView(centerOn({ x: group.cx, y: group.cy }, frame, Math.max(UNFOLD_SCALE, Math.min(4, fit))));
+  };
+
+  // --- Link actions -----------------------------------------------------------
+  const linkSourceNode = selectedLink ? (nodeById.get(selectedLink.source) ?? null) : null;
+  const linkTargetNode = selectedLink ? (nodeById.get(selectedLink.target) ?? null) : null;
+  const selectedLinkData = selectedLink ? (shownLinks.find(isSelectedLink) ?? null) : null;
 
   // The DROP rules that actually sever this pair, matched on overlay VIP in either
-  // direction. Their presence -- not a local flag -- is what "cut" means, and their
-  // ids are what a restore deletes.
+  // direction. Their presence -- not a local flag -- is what "blocked" means, and
+  // their ids are what an unblock deletes.
   const dropRulesForPair = useMemo(() => {
     if (!linkSourceNode?.overlay_ipv4 || !linkTargetNode?.overlay_ipv4) return [];
     const a = linkSourceNode.overlay_ipv4;
@@ -380,133 +504,7 @@ export function TopologyRoute() {
       return (s === a && d === b) || (s === b && d === a);
     });
   }, [aclRules, linkSourceNode, linkTargetNode]);
-
   const isLinkCut = selectedLinkData?.is_visible === false || dropRulesForPair.length > 0;
-
-  // --- Camera and drag interaction ------------------------------------------
-
-  const clientToVB = useCallback((clientX: number, clientY: number): Point | null => {
-    const svg = svgRef.current;
-    const ctm = svg?.getScreenCTM();
-    if (!svg || !ctm) return null;
-    const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
-    return { x: p.x, y: p.y };
-  }, []);
-
-  const clientToScene = useCallback((clientX: number, clientY: number): Point | null => {
-    const g = sceneRef.current;
-    const ctm = g?.getScreenCTM();
-    if (!g || !ctm) return null;
-    const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
-    return { x: p.x, y: p.y };
-  }, []);
-
-  const handleMove = useCallback(
-    (e: PointerEvent) => {
-      const it = interactionRef.current;
-      if (!it) return;
-      if (it.kind === 'pan') {
-        const vb = clientToVB(e.clientX, e.clientY);
-        if (!vb) return;
-        const dx = vb.x - it.startVB.x;
-        const dy = vb.y - it.startVB.y;
-        if (Math.abs(dx) > MOVE_EPS || Math.abs(dy) > MOVE_EPS) it.moved = true;
-        setView((v) => ({ ...v, tx: it.startTx + dx, ty: it.startTy + dy }));
-      } else {
-        const scene = clientToScene(e.clientX, e.clientY);
-        if (!scene) return;
-        const nx = scene.x - it.grabDX;
-        const ny = scene.y - it.grabDY;
-        it.moved = true;
-        setPositions((prev) => ({ ...prev, [it.nodeId]: { x: nx, y: ny } }));
-      }
-    },
-    [clientToVB, clientToScene]
-  );
-
-  const handleUp = useCallback(() => {
-    const it = interactionRef.current;
-    interactionRef.current = null;
-    window.removeEventListener('pointermove', handleMove);
-    window.removeEventListener('pointerup', handleUp);
-    if (!it) return;
-    if (!it.moved) {
-      if (it.kind === 'node') {
-        setSelectedNodeId(it.nodeId);
-        setSelectedLink(null);
-        setLinkActionError(null);
-      } else {
-        setSelectedNodeId(null);
-        setSelectedLink(null);
-      }
-    }
-  }, [handleMove]);
-
-  const beginInteraction = useCallback(() => {
-    setAnimateView(false);
-    window.addEventListener('pointermove', handleMove);
-    window.addEventListener('pointerup', handleUp);
-  }, [handleMove, handleUp]);
-
-  // Native, non-passive wheel handler so zooming does not scroll the page.
-  useEffect(() => {
-    const svg = canvasElement;
-    if (!svg) return undefined;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const vb = clientToVB(e.clientX, e.clientY);
-      if (!vb) return;
-      setAnimateView(false);
-      setView((v) => zoomAt(v, vb, e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP));
-    };
-    svg.addEventListener('wheel', onWheel, { passive: false });
-    return () => svg.removeEventListener('wheel', onWheel);
-  }, [canvasElement, clientToVB]);
-
-  useEffect(
-    () => () => {
-      window.removeEventListener('pointermove', handleMove);
-      window.removeEventListener('pointerup', handleUp);
-    },
-    [handleMove, handleUp]
-  );
-
-  const onBackgroundPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (e.button !== 0) return;
-    const vb = clientToVB(e.clientX, e.clientY);
-    if (!vb) return;
-    interactionRef.current = { kind: 'pan', startVB: vb, startTx: view.tx, startTy: view.ty, moved: false };
-    beginInteraction();
-  };
-
-  const onNodePointerDown = (e: React.PointerEvent<SVGGElement>, nodeId: string) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    const placed = renderPos.get(nodeId);
-    const scene = clientToScene(e.clientX, e.clientY);
-    const grabDX = placed && scene ? scene.x - placed.x : 0;
-    const grabDY = placed && scene ? scene.y - placed.y : 0;
-    interactionRef.current = { kind: 'node', nodeId, grabDX, grabDY, moved: false };
-    beginInteraction();
-  };
-
-  const zoomBy = (factor: number) => {
-    setAnimateView(true);
-    setView((v) => zoomAt(v, { x: sceneFrame.cx, y: sceneFrame.cy }, factor));
-  };
-
-  const resetView = () => {
-    setAnimateView(true);
-    setView({ scale: 1, tx: 0, ty: 0 });
-    setPositions({});
-  };
-
-  const selectLink = (link: TopologyLink) => {
-    setSelectedLink({ source: link.source, target: link.target });
-    setSelectedNodeId(null);
-    setLinkActionError(null);
-    setLinkNotice(null);
-  };
 
   /**
    * Blocks a link as one unit: two DROP rules, one per direction. If the second
@@ -532,7 +530,6 @@ export function TopologyRoute() {
       action: 'DROP',
       description: 'mesh-canvas-cut'
     });
-
     let firstRuleId: string;
     try {
       const created = await createRule.mutateAsync(dropRule(a, b));
@@ -541,7 +538,6 @@ export function TopologyRoute() {
       setLinkActionError(t('canvas.cutFailed'));
       return;
     }
-
     try {
       await createRule.mutateAsync(dropRule(b, a));
     } catch {
@@ -553,7 +549,6 @@ export function TopologyRoute() {
       }
       return;
     }
-
     setLinkNotice(t('canvas.done'));
   };
 
@@ -574,41 +569,10 @@ export function TopologyRoute() {
     }
     const refreshed = await aclRulesQuery.refetch();
     const survivors = (refreshed.data?.rules ?? []).filter((rule) => ids.includes(rule.id)).map((rule) => rule.id);
-    if (survivors.length > 0) {
-      setLinkActionError(t('canvas.restorePartial', { ids: survivors.join(', ') }));
-    } else {
-      setLinkNotice(t('canvas.restoreDone'));
-    }
+    if (survivors.length > 0) setLinkActionError(t('canvas.restorePartial', { ids: survivors.join(', ') }));
+    else setLinkNotice(t('canvas.restoreDone'));
   };
-
   const linkBusy = createRule.isPending || deleteRule.isPending;
-
-  const roleOptions = [
-    { value: 'ALL', label: t('filterRoleAll') },
-    { value: 'RELAY', label: t('filterRoleRelay') },
-    { value: 'EXIT_BRIDGE', label: t('filterRoleExit') },
-    { value: 'CLIENT_ORIGIN', label: t('filterRoleClient') },
-    { value: 'HYBRID', label: t('filterRoleHybrid') }
-  ];
-
-  const compartmentOptions = [
-    { value: 'ALL', label: t('filterCompartmentAll') },
-    ...compartments.map((c: Compartment) => ({ value: c.id, label: c.name }))
-  ];
-
-  const groupOptions = [
-    { value: 'compartment', label: t('canvas.groupCompartment') },
-    { value: 'country', label: t('canvas.groupCountry') },
-    { value: 'role', label: t('canvas.groupRole') },
-    { value: 'none', label: t('canvas.groupNone') }
-  ];
-
-  const edgeOptions = [
-    { value: 'auto', label: t('canvas.edgesAuto') },
-    { value: 'all', label: t('canvas.edgesAll') },
-    { value: 'selected', label: t('canvas.edgesSelected') },
-    { value: 'none', label: t('canvas.edgesNone') }
-  ];
 
   const handleUnlock = async () => {
     setUnlockError(null);
@@ -621,13 +585,74 @@ export function TopologyRoute() {
     }
   };
 
+  // --- Inspector data ---------------------------------------------------------
+  const selectedLinks = selectedNode
+    ? shownLinks.filter(
+        (link) => link.is_visible !== false && (link.source === selectedNode.id || link.target === selectedNode.id)
+      )
+    : [];
+  // Blocked pairs are listed too, so a keyboard can reach the link to unblock it.
+  const directLinkTo = new Map(
+    shownLinks
+      .filter((link) => selectedNodeId !== null && (link.source === selectedNodeId || link.target === selectedNodeId))
+      .map((link) => [link.source === selectedNodeId ? link.target : link.source, link])
+  );
+  const peerNodes = selectedNode
+    ? shownNodes.filter(
+        (node) =>
+          node.id !== selectedNode.id && (neighbourIds?.has(node.id) || directLinkTo.get(node.id)?.is_visible === false)
+      )
+    : [];
+  const peers: PeerRow[] = peerNodes.slice(0, PEER_LIMIT).map((node) => {
+    const link = directLinkTo.get(node.id) ?? null;
+    return { node, kind: kindOf.get(node.id)!, link, state: link ? stateOfLink(link) : null };
+  });
+  const gatewayNode = nodes.find((node) => node.is_profile_gateway === true) ?? null;
+  const measuredSummary = (() => {
+    const direct = selectedLinks.filter((link) => stateOfLink(link) === 'direct').length;
+    const relayed = selectedLinks.filter((link) => stateOfLink(link) === 'relayed').length;
+    if (direct + relayed === 0) return null;
+    return t('inspector.pathMeasured', { direct, relayed });
+  })();
+
+  // --- Mirror -----------------------------------------------------------------
+  const connectionCount = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const link of shownLinks) {
+      if (link.is_visible === false) continue;
+      counts.set(link.source, (counts.get(link.source) ?? 0) + 1);
+      counts.set(link.target, (counts.get(link.target) ?? 0) + 1);
+    }
+    return counts;
+  }, [shownLinks]);
+  const mirrorGroups: MirrorGroup[] = layout.groups
+    .filter((group) => !hiddenGroups.has(group.key))
+    .map((group) => ({
+      key: group.key,
+      label: group.label,
+      items: shownNodes
+        .filter((node) => groupKeyOf.get(node.id) === group.key)
+        .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id))
+        .map((node) => ({
+          node,
+          kind: kindOf.get(node.id)!,
+          state: stateOf.get(node.id)!,
+          connections: connectionCount.get(node.id) ?? 0
+        }))
+    }))
+    .filter((group) => group.items.length > 0);
+
+  // --- List view --------------------------------------------------------------
+  const listRows = query
+    ? shownNodes.filter((node) => matchIds.has(node.id) || (node.id ?? '').toLowerCase().includes(query.toLowerCase()))
+    : shownNodes;
   const listColumns: TableColumn<TopologyNode>[] = [
     {
       id: 'node',
       header: t('columns.node'),
       cell: (row) => (
         <div className="flex items-center gap-2">
-          <span className="font-mono text-body font-semibold text-content">{row.name || row.id}</span>
+          <span className="text-body font-semibold text-content">{row.name || row.id}</span>
           {row.is_ghost_vault && (
             <Badge tone="warning" className="text-[10px]">
               {t('nodeDrawer.ghostVaultNode')}
@@ -639,18 +664,13 @@ export function TopologyRoute() {
     {
       id: 'role',
       header: t('columns.role'),
-      cell: (row) => <Badge tone={row.role === 'RELAY' ? 'accent' : 'neutral'}>{row.role}</Badge>
+      cell: (row) => <span>{t(`kind.${kindOf.get(row.id) ?? 'device'}`)}</span>
     },
     {
       id: 'overlayIp',
       header: t('nodeDrawer.overlayIp'),
       cell: (row) =>
         row.overlay_ipv4 ? <CodeText>{row.overlay_ipv4}</CodeText> : <span className="text-muted">—</span>
-    },
-    {
-      id: 'country',
-      header: t('nodeDrawer.country'),
-      cell: (row) => <span className="font-mono text-caption">{row.country || '—'}</span>
     },
     {
       id: 'compartment',
@@ -665,35 +685,105 @@ export function TopologyRoute() {
         row.latency_ms === null || row.latency_ms === undefined ? (
           <NotMeasured />
         ) : (
-          <span className="font-mono text-caption text-muted">{`${row.latency_ms} ms`}</span>
+          <span className="text-caption text-muted">{`${row.latency_ms} ms`}</span>
         )
     },
     {
       id: 'status',
       header: t('columns.status'),
-      cell: (row) => (
-        <StatusBadge
-          status={nodeStatus(row)}
-          label={
-            row.is_quarantined
-              ? t('nodeDrawer.quarantined')
-              : row.is_healthy
-                ? t('nodeDrawer.healthy')
-                : t('nodeDrawer.unhealthy')
-          }
-        />
-      )
+      cell: (row) => {
+        const state = stateOf.get(row.id) ?? 'unmeasured';
+        const status =
+          state === 'online'
+            ? 'ok'
+            : state === 'degraded'
+              ? 'warning'
+              : state === 'quarantined'
+                ? 'critical'
+                : 'not-measured';
+        return <StatusBadge status={status} label={t(stateLabelKey(state))} />;
+      }
     }
   ];
 
-  const totalNodes = nodes.length;
-  const noNodesAtAll = totalNodes === 0;
+  const noNodesAtAll = nodes.length === 0;
+  const single = nodes.length === 1;
+  const groupOptions = [
+    { value: 'compartment', label: t('canvas.groupCompartment') },
+    { value: 'country', label: t('canvas.groupCountry') },
+    { value: 'role', label: t('canvas.groupRole') },
+    { value: 'none', label: t('canvas.groupNone') }
+  ];
+  const controlButtonClass = 'mesh-camera-button';
 
-  const controlButtonClass =
-    'inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-content transition-colors hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus';
-
-  const needsSelectionHint =
-    (resolvedEdgeMode === 'selected' || resolvedEdgeMode === 'focus') && !selectedNodeId && !selectedLink;
+  const searchBox = (
+    <div className="mesh-search">
+      <Search className="mesh-search-icon" aria-hidden="true" />
+      <Input
+        value={searchQuery}
+        onChange={(event) => {
+          setSearchQuery(event.target.value);
+          setSearchOpen(true);
+          setActiveResult(0);
+        }}
+        onFocus={() => setSearchOpen(true)}
+        onBlur={() => setSearchOpen(false)}
+        onKeyDown={(event) => {
+          if (viewMode !== 'CANVAS' || results.length === 0) return;
+          if (event.key === 'ArrowDown') setActiveResult((index) => Math.min(results.length - 1, index + 1));
+          else if (event.key === 'ArrowUp') setActiveResult((index) => Math.max(0, index - 1));
+          else if (event.key === 'Enter') {
+            goToNode(results[activeResult]!.id);
+            setSearchOpen(false);
+          } else if (event.key === 'Escape') setSearchOpen(false);
+          else return;
+          event.preventDefault();
+        }}
+        placeholder={t('searchPlaceholder')}
+        aria-label={t('searchPlaceholder')}
+        role={viewMode === 'CANVAS' ? 'combobox' : undefined}
+        aria-expanded={viewMode === 'CANVAS' ? searchOpen && query !== '' : undefined}
+        aria-controls={viewMode === 'CANVAS' ? 'mesh-search-results' : undefined}
+        aria-activedescendant={
+          viewMode === 'CANVAS' && searchOpen && results[activeResult] ? `mesh-result-${activeResult}` : undefined
+        }
+        aria-autocomplete={viewMode === 'CANVAS' ? 'list' : undefined}
+        className="pl-9"
+      />
+      {viewMode === 'CANVAS' && searchOpen && query !== '' && (
+        <div id="mesh-search-results" role="listbox" aria-label={t('search.results')} className="mesh-search-results">
+          {results.length === 0 ? (
+            <div role="option" aria-selected="false" aria-disabled="true" className="mesh-search-empty">
+              {t('search.none')}
+            </div>
+          ) : (
+            results.map((node, index) => (
+              <div
+                key={node.id}
+                id={`mesh-result-${index}`}
+                role="option"
+                tabIndex={-1}
+                aria-selected={index === activeResult}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  goToNode(node.id);
+                  setSearchOpen(false);
+                }}
+              >
+                <span>{node.name || node.id}</span>
+                <span className="mesh-search-meta">{node.overlay_ipv4 || t(`kind.${kindOf.get(node.id)}`)}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+      {viewMode === 'CANVAS' && query !== '' && (
+        <p className="sr-only" role="status">
+          {t('search.count', { count: matchIds.size })}
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <PageFrame>
@@ -703,22 +793,28 @@ export function TopologyRoute() {
           description={t('description')}
           actions={
             <div className="flex items-center gap-2">
-              <Button
-                variant={viewMode === 'CANVAS' ? 'primary' : 'secondary'}
-                size="sm"
-                icon={Network}
-                onClick={() => setViewMode('CANVAS')}
-              >
-                {t('view.canvasMode')}
-              </Button>
-              <Button
-                variant={viewMode === 'LIST' ? 'primary' : 'secondary'}
-                size="sm"
-                icon={List}
-                onClick={() => setViewMode('LIST')}
-              >
-                {t('view.listMode')}
-              </Button>
+              {!(topologyQuery.isSuccess && noNodesAtAll) && (
+                <>
+                  <Button
+                    variant={viewMode === 'CANVAS' ? 'primary' : 'secondary'}
+                    size="sm"
+                    icon={Network}
+                    aria-pressed={viewMode === 'CANVAS'}
+                    onClick={() => setViewMode('CANVAS')}
+                  >
+                    {t('view.canvasMode')}
+                  </Button>
+                  <Button
+                    variant={viewMode === 'LIST' ? 'primary' : 'secondary'}
+                    size="sm"
+                    icon={List}
+                    aria-pressed={viewMode === 'LIST'}
+                    onClick={() => setViewMode('LIST')}
+                  >
+                    {t('view.listMode')}
+                  </Button>
+                </>
+              )}
               {isUnlocked ? (
                 <Button
                   variant="danger"
@@ -749,14 +845,13 @@ export function TopologyRoute() {
 
         <div className="mesh-summary" aria-label={t('radial.summary')}>
           <span>
-            <strong>{filteredNodes.length}</strong> {t('stats.nodes')}
+            <strong>{shownNodes.length}</strong> {t('stats.nodes')}
           </span>
           <span>
-            <strong>{filteredLinks.filter((link) => link.is_visible !== false).length}</strong>{' '}
-            {t('radial.allowedPairs')}
+            <strong>{shownLinks.filter((link) => link.is_visible !== false).length}</strong> {t('radial.allowedPairs')}
           </span>
           <span>
-            <strong>{compartments.length}</strong> {t('stats.compartments')}
+            <strong>{layout.groups.length}</strong> {t('stats.compartments')}
           </span>
           {topology?.policy_is_open && (
             <details className="mesh-policy-disclosure">
@@ -767,44 +862,8 @@ export function TopologyRoute() {
               <p>{t('policyOpenNotice')}</p>
             </details>
           )}
-          <span className="sm:ml-auto">{isUnlocked ? t('vault.unlockedBadge') : t('vault.lockedBadge')}</span>
+          <span className="mesh-summary-end">{isUnlocked ? t('vault.unlockedBadge') : t('vault.lockedBadge')}</span>
         </div>
-
-        {!noNodesAtAll && (
-          <div className="mesh-filters flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative max-w-md flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('searchPlaceholder')}
-                className="pl-9"
-                aria-label={t('searchPlaceholder')}
-              />
-            </div>
-            <div className="w-full sm:w-48">
-              <Select
-                value={selectedRole}
-                onValueChange={(v) => setSelectedRole(v as RoleFilter)}
-                options={roleOptions}
-                aria-label={t('filterRoleAll')}
-              />
-            </div>
-            <div className="w-full sm:w-56">
-              <Select
-                value={selectedCompartment}
-                onValueChange={setSelectedCompartment}
-                options={compartmentOptions}
-                aria-label={t('filterCompartmentAll')}
-              />
-            </div>
-            {hiddenGroups.size > 0 && (
-              <Button variant="ghost" size="sm" onClick={() => setHiddenGroups(new Set())}>
-                {t('graph.resetFilters')}
-              </Button>
-            )}
-          </div>
-        )}
 
         {topologyQuery.isPending ? (
           <div role="status" aria-label={t('radial.loading')} className="p-6">
@@ -814,688 +873,250 @@ export function TopologyRoute() {
           <ErrorState onRetry={() => void topologyQuery.refetch()} />
         ) : noNodesAtAll ? (
           <Card>
-            <EmptyState title={t('empty.title')} body={t('empty.enrollFirst')} />
+            <EmptyState
+              title={t('empty.title')}
+              body={t('empty.enrollFirst')}
+              action={
+                <Button variant="primary" icon={Plus} onClick={() => navigate(ROUTES.meAdd)}>
+                  {t('empty.action')}
+                </Button>
+              }
+            />
           </Card>
-        ) : viewMode === 'CANVAS' ? (
-          <Card flush className="mesh-surface overflow-hidden">
-            {
-              <div className="mesh-workspace">
-                <section
-                  id="mesh-communities"
-                  className="mesh-communities"
-                  hidden={!communitiesOpen}
-                  aria-label={t('graph.communities')}
-                >
-                  <div className="mesh-community-heading">
-                    <h2>{t('graph.communities')}</h2>
-                    <span>{clusters.length}</span>
-                  </div>
-                  <p className="mesh-community-caption">{t('graph.inventoryGroups')}</p>
-                  <label className="mesh-community-all">
-                    <input
-                      type="checkbox"
-                      checked={hiddenGroups.size === 0}
-                      ref={(element) => {
-                        if (element)
-                          element.indeterminate = hiddenGroups.size > 0 && hiddenGroups.size < clusters.length;
-                      }}
-                      onChange={(event) =>
-                        setHiddenGroups(event.target.checked ? new Set() : new Set(clusters.map((group) => group.key)))
-                      }
-                    />
-                    {t('graph.selectAll')}
-                  </label>
-                  <div className="mesh-community-list">
-                    {clusters.map((cluster) => (
-                      <div key={cluster.key} className={`mesh-community-row mesh-community-${cluster.color}`}>
-                        <label className="mesh-community-filter">
-                          <input
-                            type="checkbox"
-                            checked={!hiddenGroups.has(cluster.key)}
-                            onChange={() =>
-                              setHiddenGroups((previous) => {
-                                const next = new Set(previous);
-                                if (next.has(cluster.key)) next.delete(cluster.key);
-                                else next.add(cluster.key);
-                                return next;
-                              })
-                            }
-                          />
-                          <span className="mesh-community-dot" aria-hidden="true" />
-                          <span className="mesh-community-name">{cluster.label}</span>
-                          <span className="mesh-community-count">{cluster.count}</span>
-                        </label>
-                        <button
-                          type="button"
-                          className="mesh-group-control"
-                          aria-expanded={cluster.expanded}
-                          aria-label={[
-                            t(cluster.expanded ? 'radial.collapse' : 'radial.expand', {
-                              name: cluster.label
-                            }),
-                            cluster.unhealthy ? t('radial.groupUnhealthy', { count: cluster.unhealthy }) : '',
-                            cluster.quarantined ? t('radial.groupQuarantined', { count: cluster.quarantined }) : ''
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                          onClick={() =>
-                            setExpandedGroups((previous) => ({ ...previous, [cluster.key]: !cluster.expanded }))
-                          }
-                        >
-                          <span>{t(cluster.expanded ? 'graph.fold' : 'graph.unfold')}</span>
-                          {cluster.unhealthy > 0 && (
-                            <span className="text-warning">
-                              {t('radial.groupUnhealthy', { count: cluster.unhealthy })}
-                            </span>
-                          )}
-                          {cluster.quarantined > 0 && (
-                            <span className="text-danger">
-                              {t('radial.groupQuarantined', { count: cluster.quarantined })}
-                            </span>
-                          )}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mesh-community-footnote">{t('graph.scopedCounts')}</p>
-                </section>
-                <div className="mesh-map-panel">
-                  <div className="mesh-toolbar">
-                    <div className="mesh-evidence" aria-label={t('radial.evidence')}>
-                      <button
-                        type="button"
-                        aria-pressed={evidenceView === 'policy'}
-                        onClick={() => setEvidenceView('policy')}
-                      >
-                        {t('radial.policy')}
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={evidenceView === 'observed'}
-                        onClick={() => {
-                          setEvidenceView('observed');
-                          setSelectedLink(null);
-                        }}
-                      >
-                        {t('radial.observed')}
-                      </button>
-                      <button
-                        type="button"
-                        className="mesh-community-toggle"
-                        aria-expanded={communitiesOpen}
-                        aria-controls="mesh-communities"
-                        onClick={() => setCommunitiesOpen((open) => !open)}
-                      >
-                        {t('graph.communities')} <span>{clusters.length}</span>
-                      </button>
-                    </div>
-                    <div className="mesh-options flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <div className="flex items-center gap-2">
-                        <span className="text-caption text-muted">{t('canvas.groupByLabel')}</span>
-                        <div className="w-40">
-                          <Select
-                            value={groupBy}
-                            onValueChange={(v) => {
-                              setGroupBy(v as GroupBy);
-                              setHiddenGroups(new Set());
-                            }}
-                            options={groupOptions}
-                            aria-label={t('canvas.groupByLabel')}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-caption text-muted">{t('canvas.edgesLabel')}</span>
-                        <div className="w-44">
-                          <Select
-                            value={edgeMode}
-                            onValueChange={(v) => setEdgeMode(v as EdgeMode)}
-                            options={edgeOptions}
-                            aria-label={t('canvas.edgesLabel')}
-                          />
-                        </div>
-                      </div>
-                      <span className="text-caption text-muted sm:ml-auto">
-                        {t('canvas.nodeCountBadge', { count: nodeCount })}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <svg
-                      ref={bindCanvas}
-                      viewBox={`${sceneFrame.x} ${sceneFrame.y} ${sceneFrame.width} ${sceneFrame.height}`}
-                      className="mesh-canvas w-full touch-none select-none"
-                      preserveAspectRatio="xMidYMid meet"
-                      role="group"
-                      tabIndex={-1}
-                      aria-label={t('title')}
-                      style={{ cursor: 'grab' }}
-                      onPointerDown={onBackgroundPointerDown}
-                    >
-                      <g
-                        ref={sceneRef}
-                        transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}
-                        style={{ transition: animateView && prefersMotion ? 'transform 180ms ease-out' : 'none' }}
-                      >
-                        {clusters
-                          .filter(
-                            (cluster) =>
-                              !cluster.expanded &&
-                              !hiddenGroups.has(cluster.key) &&
-                              filteredNodes.some((node) => groupValue(node, groupBy).key === cluster.key)
-                          )
-                          .map((cluster) => (
-                            <g
-                              key={cluster.key}
-                              className={`mesh-aggregate mesh-community-${cluster.color}`}
-                              role="button"
-                              tabIndex={0}
-                              aria-label={t('graph.aggregate', { name: cluster.label, count: cluster.count })}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={() => setExpandedGroups((previous) => ({ ...previous, [cluster.key]: true }))}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault();
-                                  setExpandedGroups((previous) => ({ ...previous, [cluster.key]: true }));
-                                }
-                              }}
-                            >
-                              <circle cx={cluster.cx} cy={cluster.cy} r={24 * labelUnit} />
-                              <text
-                                x={cluster.cx}
-                                y={cluster.cy + 5}
-                                textAnchor="middle"
-                                className="mesh-aggregate-count"
-                                style={{ fontSize: 18 * labelUnit }}
-                              >
-                                {cluster.count}
-                              </text>
-                              <text
-                                x={cluster.cx}
-                                y={cluster.cy + 48 * labelUnit}
-                                textAnchor="middle"
-                                className="fill-content"
-                                style={{ fontSize: 13 * labelUnit }}
-                              >
-                                {cluster.label} · {cluster.count}
-                              </text>
-                            </g>
-                          ))}
-
-                        {visibleLinks.map((link) => {
-                          const u = renderPos.get(link.source);
-                          const v = renderPos.get(link.target);
-                          if (!u || !v) return null;
-                          const isCut = link.is_visible === false;
-                          const path = peerPath(u, v, nodeRadius);
-                          const isSelectedLink =
-                            selectedLink &&
-                            ((selectedLink.source === link.source && selectedLink.target === link.target) ||
-                              (selectedLink.source === link.target && selectedLink.target === link.source));
-                          const isNeighbourLink =
-                            selectedNodeId === link.source ||
-                            selectedNodeId === link.target ||
-                            (firstHopIds !== null &&
-                              neighbourIds !== null &&
-                              neighbourIds.has(link.source) &&
-                              neighbourIds.has(link.target) &&
-                              (firstHopIds.has(link.source) || firstHopIds.has(link.target)));
-                          const modeClass = isCut ? 'stroke-danger' : 'mesh-community-stroke';
-                          return (
-                            <g
-                              key={`${link.source}-${link.target}`}
-                              data-mesh-link="policy"
-                              role="button"
-                              tabIndex={0}
-                              aria-label={`${t('canvas.linkTitle')}: ${positionById.get(link.source)?.node.name || link.source} — ${positionById.get(link.target)?.node.name || link.target}`}
-                              className={`mesh-policy-edge ${communityClass(positionById.get(link.source)!.node)} cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus`}
-                              onPointerDown={(e) => e.stopPropagation()}
-                              onClick={() => selectLink(link)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  selectLink(link);
-                                }
-                              }}
-                            >
-                              <title>{isCut ? t('canvas.cutBadge') : t('radial.policy')}</title>
-                              <path d={path} fill="none" stroke="transparent" strokeWidth={12} />
-                              <path
-                                d={path}
-                                fill="none"
-                                strokeWidth={isSelectedLink || isNeighbourLink ? 2 : 1.5}
-                                vectorEffect="non-scaling-stroke"
-                                opacity={selectedNodeId && !isNeighbourLink ? 0.12 : 0.95}
-                                strokeDasharray={isCut ? '4 4' : undefined}
-                                className={isSelectedLink ? 'stroke-content' : modeClass}
-                              />
-                            </g>
-                          );
-                        })}
-
-                        {placedNodes.map(({ node }) => {
-                          const pos = renderPos.get(node.id);
-                          if (!pos) return null;
-                          const { x, y } = pos;
-                          const isSelected = selectedNode?.id === node.id;
-                          const isQuarantined = node.is_quarantined;
-                          const fillClass = isQuarantined
-                            ? 'fill-danger-subtle'
-                            : node.is_healthy
-                              ? 'mesh-community-fill'
-                              : 'fill-warning-subtle';
-                          const strokeClass = isQuarantined
-                            ? 'stroke-danger'
-                            : node.is_healthy
-                              ? 'mesh-community-stroke'
-                              : 'stroke-warning';
-                          const faded = neighbourIds !== null && !neighbourIds.has(node.id);
-                          return (
-                            <g
-                              key={node.id}
-                              role="button"
-                              tabIndex={0}
-                              aria-label={`${node.name || node.id} — ${node.role}`}
-                              aria-pressed={isSelected}
-                              data-node-id={node.id}
-                              className={`${communityClass(node)} focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus`}
-                              style={{ cursor: 'grab', opacity: faded ? 0.3 : 1 }}
-                              data-neighbour={faded ? 'false' : 'true'}
-                              onPointerDown={(e) => onNodePointerDown(e, node.id)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  setSelectedNodeId(node.id);
-                                  setSelectedLink(null);
-                                }
-                              }}
-                            >
-                              <title>{`${node.name || node.id} — ${node.role}`}</title>
-                              {node.is_ghost_vault && (
-                                <circle
-                                  cx={x}
-                                  cy={y}
-                                  r={nodeRadius + 5}
-                                  className="fill-none stroke-info"
-                                  strokeDasharray="3 3"
-                                  strokeWidth={1.5}
-                                />
-                              )}
-                              <circle
-                                cx={x}
-                                cy={y}
-                                r={nodeRadius}
-                                strokeWidth={isSelected ? 3 : 2}
-                                strokeDasharray={!node.is_healthy && !isQuarantined ? '4 3' : undefined}
-                                className={`${fillClass} ${isSelected ? 'stroke-content' : strokeClass}`}
-                              />
-                              <circle cx={x} cy={y} r={Math.max(22 * labelUnit, nodeRadius)} fill="transparent" />
-                              {/* The selected label is painted in an overlay after every peer (below). */}
-                              {showLabels && !isSelected && (
-                                <g className="pointer-events-none mesh-node-label">
-                                  <text
-                                    x={x}
-                                    y={y + nodeRadius + 20 * labelUnit}
-                                    textAnchor="middle"
-                                    className="fill-content font-semibold"
-                                    style={{ fontSize: 13 * labelUnit }}
-                                  >
-                                    {(node.name || node.id).slice(0, 28)}
-                                  </text>
-                                  {view.scale >= 1.8 && (
-                                    <text
-                                      x={x}
-                                      y={y + nodeRadius + 38 * labelUnit}
-                                      textAnchor="middle"
-                                      className="fill-subtle font-mono"
-                                      style={{ fontSize: 11 * labelUnit }}
-                                    >
-                                      {node.overlay_ipv4 || '—'} · {node.country || '—'}
-                                    </text>
-                                  )}
-                                </g>
-                              )}
-                            </g>
-                          );
-                        })}
-
-                        {(() => {
-                          // Painted last so neighbouring peers never cover it; DOM order of the
-                          // focusable peers (and therefore keyboard order) stays unchanged.
-                          if (!selectedNode || !placedNodes.some(({ node }) => node.id === selectedNode.id))
-                            return null;
-                          const pos = renderPos.get(selectedNode.id);
-                          if (!pos) return null;
-                          return (
-                            <g aria-hidden="true" data-selected-label className="pointer-events-none mesh-node-label">
-                              <text
-                                x={pos.x}
-                                y={pos.y + nodeRadius + 20 * labelUnit}
-                                textAnchor="middle"
-                                className="fill-content font-semibold"
-                                style={{ fontSize: 13 * labelUnit }}
-                              >
-                                {(selectedNode.name || selectedNode.id).slice(0, 28)}
-                              </text>
-                              <text
-                                x={pos.x}
-                                y={pos.y + nodeRadius + 38 * labelUnit}
-                                textAnchor="middle"
-                                className="fill-subtle font-mono"
-                                style={{ fontSize: 11 * labelUnit }}
-                              >
-                                {selectedNode.overlay_ipv4 || '—'} · {selectedNode.country || '—'}
-                              </text>
-                            </g>
-                          );
-                        })()}
-                      </g>
-                    </svg>
-
-                    {filteredNodes.length === 0 && (
-                      <div className="mesh-no-matches" role="status">
-                        <p>{t('graph.noMatches')}</p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSearchQuery('');
-                            setSelectedRole('ALL');
-                            setSelectedCompartment('ALL');
-                            setHiddenGroups(new Set());
-                          }}
-                        >
-                          {t('graph.resetFilters')}
-                        </button>
-                      </div>
-                    )}
-                    {evidenceView === 'policy' && needsSelectionHint && (
-                      <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
-                        <span className="rounded-full border border-border bg-surface/90 px-3 py-1 text-caption text-muted shadow-sm backdrop-blur">
-                          {t('canvas.edgesSelectHint')}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Camera controls, floated over the canvas. */}
-                    <div className="absolute left-4 bottom-4 flex gap-1.5">
-                      <button
-                        type="button"
-                        className={controlButtonClass}
-                        aria-label={t('canvas.zoomIn')}
-                        title={t('canvas.zoomIn')}
-                        onClick={() => zoomBy(ZOOM_STEP)}
-                      >
-                        <ZoomIn className="h-4 w-4" aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        className={controlButtonClass}
-                        aria-label={t('canvas.zoomOut')}
-                        title={t('canvas.zoomOut')}
-                        onClick={() => zoomBy(1 / ZOOM_STEP)}
-                      >
-                        <ZoomOut className="h-4 w-4" aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        className={controlButtonClass}
-                        aria-label={t('canvas.resetView')}
-                        title={t('canvas.resetView')}
-                        onClick={resetView}
-                      >
-                        <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {evidenceView === 'observed' && (
-                    <p role="status" className="mesh-unmeasured">
-                      {t('radial.unmeasured')}
-                    </p>
-                  )}
-                  {evidenceView === 'policy' && resolvedEdgeMode === 'focus' && (
-                    <p className="mesh-overview-caption">
-                      {t('graph.overviewSubset', { shown: visibleLinks.length, total: filteredLinks.length })}
-                    </p>
-                  )}
-                  <p className="mesh-explanation text-caption text-subtle">
-                    {t(evidenceView === 'policy' ? 'radial.policyExplain' : 'radial.observedExplain')}{' '}
-                    {t('canvas.hint')}
-                  </p>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-caption text-muted">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-4 border-t border-accent" /> {t('radial.policy')}
-                    </span>
-                    {/* Only what the view can know. Nothing measures whether a pair is
-                      relayed or onion-routed, and there is no OpenVPN transport, so
-                      those used to sit here describing paths the mesh never took. */}
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-4 border-t-2 border-dashed border-danger" /> {t('canvas.cutBadge')}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full border border-dashed border-warning" />{' '}
-                      {t('nodeDrawer.unhealthy')}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-danger" /> {t('nodeDrawer.quarantined')}
-                      <GlossaryHint
-                        text={t('glossary:terms.quarantine.body')}
-                        label={t('glossary:ariaLabel', {
-                          term: t('glossary:terms.quarantine.term')
-                        })}
-                      />
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full border border-dashed border-info" />{' '}
-                      {t('nodeDrawer.ghostVaultNode')}
-                    </span>
-                  </div>
+        ) : viewMode === 'LIST' ? (
+          <>
+            <div className="mesh-toolbar mesh-toolbar--list">{searchBox}</div>
+            <Card flush>
+              <Table<TopologyNode>
+                caption={t('title')}
+                columns={listColumns}
+                rows={listRows}
+                rowKey={(row) => row.id}
+                empty={<EmptyState title={t('empty.filteredTitle')} body={t('empty.desc')} />}
+              />
+            </Card>
+          </>
+        ) : (
+          <Card flush className="mesh-surface">
+            <div className="mesh-toolbar">
+              {searchBox}
+              <div className="mesh-toolbar-group">
+                <span className="mesh-toolbar-label">{t('canvas.groupByLabel')}</span>
+                <div className="w-40">
+                  <Select
+                    value={groupBy}
+                    onValueChange={(value) => {
+                      setGroupBy(value as GroupBy);
+                      setHiddenGroups(new Set());
+                      setFoldOverrides({});
+                    }}
+                    options={groupOptions}
+                    aria-label={t('canvas.groupByLabel')}
+                  />
                 </div>
-
-                {(selectedLink || selectedNode) && (
-                  <aside className="mesh-inspector" aria-label={t('nodeDrawer.title')}>
+              </div>
+              <button
+                type="button"
+                className="mesh-legend-toggle"
+                aria-expanded={legendOpen}
+                aria-controls="mesh-legend"
+                onClick={() => setLegendOpen((open) => !open)}
+              >
+                {t('legend.toggle')}
+              </button>
+            </div>
+            <div className={legendOpen ? 'mesh-workspace mesh-workspace--legend' : 'mesh-workspace'}>
+              {legendOpen && (
+                <MeshLegend
+                  groups={legendGroups}
+                  hiddenGroups={hiddenGroups}
+                  onToggleGroup={(key) =>
+                    setHiddenGroups((previous) => {
+                      const next = new Set(previous);
+                      if (next.has(key)) next.delete(key);
+                      else next.add(key);
+                      return next;
+                    })
+                  }
+                  onShowAllGroups={(show) =>
+                    setHiddenGroups(show ? new Set() : new Set(layout.groups.map((group) => group.key)))
+                  }
+                  onFoldGroup={(key, folded) => setFoldOverrides((previous) => ({ ...previous, [key]: folded }))}
+                  kindCounts={kindCounts}
+                  hiddenKinds={hiddenKinds}
+                  onToggleKind={(kind) =>
+                    setHiddenKinds((previous) => {
+                      const next = new Set(previous);
+                      if (next.has(kind)) next.delete(kind);
+                      else next.add(kind);
+                      return next;
+                    })
+                  }
+                  linkCounts={linkCounts}
+                  measured={measured}
+                  linkShown={linkShown}
+                  onToggleLink={(state) =>
+                    setLinkOverrides((previous) => ({ ...previous, [state]: !linkShown(state) }))
+                  }
+                />
+              )}
+              <div className="mesh-map-panel">
+                {dense && !linkShown('unmeasured') && !single && (
+                  <p className="mesh-notice" role="note">
+                    <span>{t('notice.dense')}</span>
                     <button
                       type="button"
-                      className="mesh-inspector-close"
-                      aria-label={t('radial.closeDetails')}
+                      onClick={() => setLinkOverrides((previous) => ({ ...previous, unmeasured: true }))}
+                    >
+                      {t('notice.showAll', { count: linkCounts.unmeasured })}
+                    </button>
+                  </p>
+                )}
+                <div className="mesh-stage">
+                  <MeshMap
+                    frame={frame}
+                    view={view}
+                    animate={animateView && prefersMotion}
+                    unit={unit}
+                    hullPad={HULL_PAD}
+                    groups={drawnGroups}
+                    links={drawnLinks}
+                    nodes={drawnNodes}
+                    selectedLabel={selectedLabel}
+                    bindCanvas={bindCanvas}
+                    onView={onView}
+                    onSelectNode={selectNode}
+                    onSelectLink={selectLink}
+                    onClear={clearSelection}
+                    onMoveNode={onMoveNode}
+                    onOpenGroup={openGroup}
+                  />
+                  <MeshMirror
+                    groups={mirrorGroups}
+                    activeId={focusedId}
+                    selectedId={selectedNodeId}
+                    onFocusItem={(id) => {
+                      setFocusedId(id);
+                      if (id) keepInView(id);
+                    }}
+                    onOpen={(id) => {
+                      selectNode(id);
+                      keepInView(id);
+                    }}
+                    onClose={clearSelection}
+                  />
+                  {shownNodes.length === 0 && (
+                    <div className="mesh-no-matches" role="status">
+                      <p>{t('graph.noMatches')}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHiddenGroups(new Set());
+                          setHiddenKinds(new Set());
+                        }}
+                      >
+                        {t('graph.resetFilters')}
+                      </button>
+                    </div>
+                  )}
+                  {single && (
+                    <div className="mesh-single" role="note">
+                      <p className="mesh-single-title">{t('single.title')}</p>
+                      <p>{t('single.body')}</p>
+                      <Button variant="secondary" size="sm" icon={Plus} onClick={() => navigate(ROUTES.meAdd)}>
+                        {t('empty.action')}
+                      </Button>
+                    </div>
+                  )}
+                  <div className="mesh-camera">
+                    <button
+                      type="button"
+                      className={controlButtonClass}
+                      aria-label={t('canvas.zoomIn')}
+                      title={t('canvas.zoomIn')}
+                      onClick={() =>
+                        onView((current) => zoomAt(current, { x: frame.cx, y: frame.cy }, ZOOM_STEP), true)
+                      }
+                    >
+                      <ZoomIn className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className={controlButtonClass}
+                      aria-label={t('canvas.zoomOut')}
+                      title={t('canvas.zoomOut')}
+                      onClick={() =>
+                        onView((current) => zoomAt(current, { x: frame.cx, y: frame.cy }, 1 / ZOOM_STEP), true)
+                      }
+                    >
+                      <ZoomOut className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className={controlButtonClass}
+                      aria-label={t('canvas.resetView')}
+                      title={t('canvas.resetView')}
+                      onClick={() => onView(() => ({ scale: 1, tx: 0, ty: 0 }), true)}
+                    >
+                      <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className={controlButtonClass}
+                      aria-label={t('canvas.relayout')}
+                      title={t('canvas.relayout')}
                       onClick={() => {
-                        setSelectedNodeId(null);
-                        setSelectedLink(null);
-                        svgRef.current?.focus();
+                        memory.current = {};
+                        setDragged({});
+                        setLayoutEpoch((epoch) => epoch + 1);
+                        onView(() => ({ scale: 1, tx: 0, ty: 0 }), true);
                       }}
                     >
-                      <X size={18} aria-hidden="true" />
+                      <Shuffle className="h-4 w-4" aria-hidden="true" />
                     </button>
-                    {selectedLink ? (
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <h2 className="text-body font-semibold text-content">{t('canvas.linkTitle')}</h2>
-                          <Badge tone={isLinkCut ? 'danger' : 'accent'}>
-                            {isLinkCut ? t('canvas.cutBadge') : t('radial.allowed')}
-                          </Badge>
-                        </div>
-
-                        <div className="flex flex-col gap-1 text-caption">
-                          <span className="font-mono text-content">{linkSourceNode?.name || selectedLink.source}</span>
-                          <span className="text-muted">↕</span>
-                          <span className="font-mono text-content">{linkTargetNode?.name || selectedLink.target}</span>
-                        </div>
-
-                        <div className="text-caption">
-                          <span className="text-subtle">{t('radial.transport')}: </span>
-                          <span>{t('state.notMeasured')}</span>
-                        </div>
-
-                        <p className="text-caption text-muted">{t('canvas.cutExplain')}</p>
-
-                        {linkActionError && (
-                          <p role="alert" className="text-caption text-danger">
-                            {linkActionError}
-                          </p>
-                        )}
-                        {linkNotice && (
-                          <p role="status" className="text-caption text-success">
-                            {linkNotice}
-                          </p>
-                        )}
-
-                        {isLinkCut ? (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            icon={Link2}
-                            onClick={handleRestore}
-                            loading={linkBusy}
-                            disabled={dropRulesForPair.length === 0}
-                          >
-                            {t('canvas.restoreAction')}
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            icon={Scissors}
-                            onClick={() => setBlockConfirmOpen(true)}
-                            loading={linkBusy}
-                          >
-                            {t('canvas.cutAction')}
-                          </Button>
-                        )}
-                      </div>
-                    ) : selectedNode ? (
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <h2 className="font-mono text-body font-semibold text-content">
-                              {selectedNode.name || selectedNode.id}
-                            </h2>
-                            {selectedNode.overlay_ipv4 && (
-                              <span className="mt-0.5 flex items-center gap-1">
-                                <CodeText>{selectedNode.overlay_ipv4}</CodeText>
-                                <GlossaryHint
-                                  text={t('glossary:terms.overlayAddress.body')}
-                                  label={t('glossary:ariaLabel', {
-                                    term: t('glossary:terms.overlayAddress.term')
-                                  })}
-                                />
-                              </span>
-                            )}
-                          </div>
-                          <StatusBadge
-                            status={nodeStatus(selectedNode)}
-                            label={
-                              selectedNode.is_quarantined
-                                ? t('nodeDrawer.quarantined')
-                                : selectedNode.is_healthy
-                                  ? t('nodeDrawer.healthy')
-                                  : t('nodeDrawer.unhealthy')
-                            }
-                          />
-                        </div>
-
-                        {selectedNode.is_ghost_vault && <Badge tone="warning">{t('nodeDrawer.ghostVaultNode')}</Badge>}
-
-                        <dl className="grid grid-cols-2 gap-2 text-caption">
-                          <div>
-                            <dt className="text-muted">{t('nodeDrawer.role')}</dt>
-                            <dd className="font-medium text-content">{selectedNode.role}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-muted">{t('nodeDrawer.country')}</dt>
-                            <dd className="font-medium text-content">{selectedNode.country || '—'}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-muted">{t('nodeDrawer.latency')}</dt>
-                            <dd className="font-medium text-content">
-                              {selectedNode.latency_ms !== null && selectedNode.latency_ms !== undefined
-                                ? `${selectedNode.latency_ms} ms`
-                                : t('state.notMeasured')}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="text-muted">{t('nodeDrawer.compartment')}</dt>
-                            <dd className="font-medium text-content">{selectedNode.compartment_name || '—'}</dd>
-                          </div>
-                        </dl>
-
-                        <div className="text-caption text-subtle">
-                          {t('radial.transport')}: {t('state.notMeasured')}
-                        </div>
-                        <div className="text-caption text-muted">
-                          {t('radial.allowedPairs')}: {selectedNodeLinks.length}
-                        </div>
-                        <div className="mesh-neighborhood" role="group" aria-label={t('graph.neighborhood')}>
-                          <div className="mesh-neighborhood-heading">
-                            <h3>{t('graph.neighborhood')}</h3>
-                            <span className="mesh-community-count" data-neighbour-count>
-                              {neighbourIds ? Math.max(0, neighbourIds.size - 1) : 0}
-                            </span>
-                          </div>
-                          <div className="mesh-hop-controls">
-                            {([1, 2] as const).map((hops) => (
-                              <button
-                                key={hops}
-                                type="button"
-                                aria-pressed={neighborhoodHops === hops}
-                                onClick={() => setNeighborhoodHops(hops)}
-                              >
-                                {t('graph.hops', { count: hops })}
-                              </button>
-                            ))}
-                          </div>
-                          <p>{t('graph.policyOnly')}</p>
-                          <ul>
-                            {filteredNodes
-                              .filter((node) => node.id !== selectedNode.id && neighbourIds?.has(node.id))
-                              .slice(0, 50)
-                              .map((node) => (
-                                <li key={node.id}>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedNodeId(node.id);
-                                      setExpandedGroups((previous) => ({
-                                        ...previous,
-                                        [groupValue(node, groupBy).key]: true
-                                      }));
-                                    }}
-                                  >
-                                    {node.name || node.id}
-                                    <span>{node.role}</span>
-                                  </button>
-                                </li>
-                              ))}
-                          </ul>
-                          {neighbourIds && neighbourIds.size > 51 && <p>{t('graph.neighborLimit')}</p>}
-                        </div>
-
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          icon={ExternalLink}
-                          onClick={() => navigate(nodePath(selectedNode.id))}
-                        >
-                          {t('nodeDrawer.viewDetails')}
-                        </Button>
-                      </div>
-                    ) : (
-                      <EmptyState title={t('nodeDrawer.title')} body={t('canvas.selectPrompt')} />
-                    )}
-                  </aside>
-                )}
+                  </div>
+                </div>
+                <p className="mesh-explanation">{t('canvas.hint')}</p>
               </div>
-            }
-          </Card>
-        ) : (
-          <Card flush>
-            <Table<TopologyNode>
-              caption={t('title')}
-              columns={listColumns}
-              rows={filteredNodes}
-              rowKey={(row) => row.id}
-              empty={<EmptyState title={t('empty.title')} body={t('empty.desc')} />}
-            />
+
+              {(selectedLink && selectedLinkData) || selectedNode ? (
+                <InspectorFrame onClose={closeInspector}>
+                  {selectedLink && selectedLinkData ? (
+                    <LinkDetails
+                      source={linkSourceNode}
+                      target={linkTargetNode}
+                      link={selectedLinkData}
+                      state={stateOfLink(selectedLinkData)}
+                      cut={isLinkCut}
+                      error={linkActionError}
+                      notice={linkNotice}
+                      busy={linkBusy}
+                      canRestore={dropRulesForPair.length > 0}
+                      onPeer={goToNode}
+                      onBlock={() => setBlockConfirmOpen(true)}
+                      onRestore={() => void handleRestore()}
+                    />
+                  ) : selectedNode ? (
+                    <DeviceDetails
+                      node={selectedNode}
+                      kind={kindOf.get(selectedNode.id)!}
+                      state={stateOf.get(selectedNode.id)!}
+                      now={now}
+                      gateway={gatewayNode}
+                      allowedCount={selectedLinks.length}
+                      measuredSummary={measuredSummary}
+                      peers={peers}
+                      peerTotal={peerNodes.length}
+                      hops={neighborhoodHops}
+                      onHops={setNeighborhoodHops}
+                      onPeer={goToNode}
+                      onLink={selectLink}
+                      onOpenDevice={() => navigate(nodePath(selectedNode.id))}
+                    />
+                  ) : null}
+                </InspectorFrame>
+              ) : null}
+            </div>
           </Card>
         )}
 

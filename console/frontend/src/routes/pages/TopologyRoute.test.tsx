@@ -112,7 +112,26 @@ function renderTopology(initialEntries = ['/topology'], theme: 'light' | 'dark' 
   );
 }
 
-describe('Community mesh uses policy and observations as distinct evidence', () => {
+/** The device list that mirrors the map for keyboards; its buttons start with the device name. */
+function mirrorButton(name: string) {
+  return screen.findByRole('button', { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s?,`) });
+}
+
+async function openDevice(user: ReturnType<typeof userEvent.setup>, name: string) {
+  (await mirrorButton(name)).focus();
+  await user.keyboard('{Enter}');
+  return screen.getByRole('complementary');
+}
+
+async function openConnection(user: ReturnType<typeof userEvent.setup>, from: string, to: string) {
+  const inspector = await openDevice(user, from);
+  await user.click(within(inspector).getByRole('button', { name: `Connection: ${from} — ${to}` }));
+}
+
+const shapeOf = (container: HTMLElement, id: string) =>
+  container.querySelector(`[data-node-id="${id}"] .mesh-node-shape`)?.getAttribute('d');
+
+describe('Network map: readable, honest and keyboard-first', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
@@ -134,7 +153,7 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it('opens a thirteen-peer full policy mesh with its connections visible by default', async () => {
+  it('opens a dense thirteen-device mesh with the exceptions only, and every allowed line on request', async () => {
     const nodes = Array.from({ length: 13 }, (_, index) => ({
       ...mockStandardNodes[0]!,
       id: `overview-${index}`,
@@ -149,70 +168,91 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
         url.includes('/api/stats/topology') ? jsonResponse({ nodes, links }) : jsonResponse({})
       )
     );
-    const { container } = renderTopology();
-    await screen.findByRole('heading', { name: 'Groups' });
-    expect(container.querySelectorAll('[data-mesh-link]')).toHaveLength(78);
-  });
-
-  it('offers counted community filters without moving remaining peers or losing search focus', async () => {
     const user = userEvent.setup();
     const { container } = renderTopology();
-    await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' });
-    const communities = screen.getByRole('region', { name: 'Groups' });
-    expect(within(communities).getByRole('checkbox', { name: /Corporate Ops.*2/ })).toBeChecked();
-    const peer = screen.getByRole('button', { name: 'Rome Gateway Alpha — RELAY' });
-    const before = peer.querySelector('circle')!.getAttribute('cx');
-    const search = screen.getByRole('textbox', { name: /Search by name, ID or network address/i });
+    await screen.findByRole('heading', { name: 'Groups' });
+    expect(container.querySelectorAll('[data-mesh-link]')).toHaveLength(0);
+    expect(
+      screen.getByText('The rules allow almost every connection, so the map shows only the exceptions.')
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show all 78 allowed connections' }));
+    expect(container.querySelectorAll('[data-mesh-link]')).toHaveLength(78);
+    expect(screen.getByRole('button', { name: /Allowed, not measured/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('offers counted group filters without moving the remaining devices or losing search focus', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTopology();
+    await mirrorButton('Rome Gateway Alpha');
+    const legend = screen.getByRole('region', { name: 'Groups' });
+    expect(within(legend).getByRole('checkbox', { name: /Corporate Ops.*2/ })).toBeChecked();
+    const before = shapeOf(container, 'svrn-node-rome');
+    const search = screen.getByRole('combobox', { name: /Search by name, ID or network address/i });
     await user.type(search, 'Rome');
     expect(search).toHaveFocus();
-    expect(
-      screen.getByRole('button', { name: 'Rome Gateway Alpha — RELAY' }).querySelector('circle')!.getAttribute('cx')
-    ).toBe(before);
-    await user.click(within(communities).getByRole('checkbox', { name: /Corporate Ops.*2/ }));
+    expect(shapeOf(container, 'svrn-node-rome')).toBe(before);
+    await user.click(within(legend).getByRole('checkbox', { name: /Corporate Ops.*2/ }));
     expect(container.querySelector('[data-node-id]')).not.toBeInTheDocument();
-    expect(within(communities).getByRole('checkbox', { name: /Corporate Ops.*2/ })).not.toBeChecked();
-    await user.click(within(communities).getByRole('checkbox', { name: /Corporate Ops.*2/ }));
-    expect(screen.getByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).toBeInTheDocument();
+    await user.click(within(legend).getByRole('checkbox', { name: /Corporate Ops.*2/ }));
+    expect(shapeOf(container, 'svrn-node-rome')).toBe(before);
   });
 
-  it('reserves the workspace for the graph and opens details only on selection', async () => {
+  it('keeps the drawing out of the tab order and opens details from the device list', async () => {
     const user = userEvent.setup();
     const { container } = renderTopology();
     await screen.findByRole('heading', { name: 'Groups' });
+    expect(container.querySelector('[data-mesh-canvas]')).toHaveAttribute('aria-hidden', 'true');
+    expect(container.querySelectorAll('[data-mesh-canvas] [tabindex]')).toHaveLength(0);
     expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
-    (await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).focus();
-    await user.keyboard('{Enter}');
-    expect(screen.getByRole('complementary')).toBeInTheDocument();
+    await openDevice(user, 'Rome Gateway Alpha');
     await user.click(screen.getByRole('button', { name: 'Close details' }));
     expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
-    expect(container.querySelector('svg[role="group"]')).toHaveFocus();
+    expect(await mirrorButton('Rome Gateway Alpha')).toHaveFocus();
   });
 
-  it('paints the selected label above every peer without changing keyboard order', async () => {
+  it('moves through devices with the arrow keys and rings the focused device on the map', async () => {
     const user = userEvent.setup();
     const { container } = renderTopology();
-    const peer = await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' });
+    const first = await mirrorButton('Berlin Exit Bravo');
+    first.focus();
+    await waitFor(() =>
+      expect(container.querySelector('[data-node-id="svrn-node-berlin"] .mesh-ring--focus')).toBeInTheDocument()
+    );
+    await user.keyboard('{ArrowDown}');
+    expect(await mirrorButton('Rome Gateway Alpha')).toHaveFocus();
+    expect(container.querySelector('[data-node-id="svrn-node-rome"] .mesh-ring--focus')).toBeInTheDocument();
+    expect(container.querySelector('[data-node-id="svrn-node-berlin"] .mesh-ring--focus')).not.toBeInTheDocument();
+    await user.keyboard('{Enter}');
+    expect(
+      within(screen.getByRole('complementary')).getByRole('heading', { name: 'Rome Gateway Alpha' })
+    ).toBeVisible();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+  });
+
+  it('paints the selected label above every device without changing the order of the list', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTopology();
+    await mirrorButton('Rome Gateway Alpha');
     const orderBefore = [...container.querySelectorAll('[data-node-id]')].map((node) =>
       node.getAttribute('data-node-id')
     );
-    peer.focus();
-    await user.keyboard('{Enter}');
+    await openDevice(user, 'Rome Gateway Alpha');
     const orderAfter = [...container.querySelectorAll('[data-node-id]')].map((node) =>
       node.getAttribute('data-node-id')
     );
     expect(orderAfter).toEqual(orderBefore);
     const overlay = container.querySelector('[data-selected-label]');
-    expect(overlay).toBeInTheDocument();
-    expect(overlay).toHaveAttribute('aria-hidden', 'true');
     expect(overlay).toHaveTextContent('Rome Gateway Alpha');
     const groups = [...container.querySelectorAll('[data-node-id]')];
-    const lastPeer = groups[groups.length - 1]!;
-    expect(lastPeer.compareDocumentPosition(overlay!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const selectedGroup = container.querySelector('[data-node-id][aria-pressed="true"]')!;
-    expect(selectedGroup.querySelector('.mesh-node-label')).not.toBeInTheDocument();
+    expect(
+      groups[groups.length - 1]!.compareDocumentPosition(overlay!) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    const selected = container.querySelector('[data-node-id][data-selected="true"]')!;
+    expect(selected.querySelector('.mesh-node-label')).not.toBeInTheDocument();
   });
 
-  it('explores one and two policy hops in the inspector while denied peers stay outside the neighborhood', async () => {
+  it('explores one and two policy hops in the details while denied devices stay outside', async () => {
     const nodes = Array.from({ length: 4 }, (_, index) => ({
       ...mockStandardNodes[0]!,
       id: `neighbor-${index}`,
@@ -235,19 +275,19 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
     );
     const user = userEvent.setup();
     renderTopology();
-    (await screen.findByRole('button', { name: 'Neighbor 0 — RELAY' })).focus();
-    await user.keyboard('{Enter}');
+    await openDevice(user, 'Neighbor 0');
     const neighborhood = within(screen.getByRole('group', { name: 'Connected devices' }));
-    expect(neighborhood.getByRole('button', { name: 'Neighbor 1 RELAY' })).toBeInTheDocument();
-    expect(neighborhood.queryByRole('button', { name: 'Neighbor 2 RELAY' })).not.toBeInTheDocument();
+    expect(neighborhood.getByRole('button', { name: /^Neighbor 1 Allowed, not measured/ })).toBeInTheDocument();
+    expect(neighborhood.queryByRole('button', { name: /^Neighbor 2/ })).not.toBeInTheDocument();
     await user.click(neighborhood.getByRole('button', { name: 'Up to 2 steps' }));
-    expect(neighborhood.getByRole('button', { name: 'Neighbor 2 RELAY' })).toBeInTheDocument();
-    expect(neighborhood.queryByRole('button', { name: 'Neighbor 3 RELAY' })).not.toBeInTheDocument();
-    await user.click(neighborhood.getByRole('button', { name: 'Neighbor 2 RELAY' }));
+    expect(neighborhood.getByRole('button', { name: /^Neighbor 2 Through another device/ })).toBeInTheDocument();
+    // A denied pair is never a step on a path; it is listed as blocked so it can be unblocked.
+    expect(neighborhood.getByRole('button', { name: /^Neighbor 3 Blocked by a rule/ })).toBeInTheDocument();
+    await user.click(neighborhood.getByRole('button', { name: /^Neighbor 2/ }));
     expect(within(screen.getByRole('complementary')).getByRole('heading', { name: 'Neighbor 2' })).toBeInTheDocument();
   });
 
-  it('keeps the path to a second-hop peer emphasised instead of fading its connecting edge', async () => {
+  it('keeps the path to a second-hop device emphasised instead of fading its connecting line', async () => {
     const nodes = Array.from({ length: 4 }, (_, index) => ({
       ...mockStandardNodes[0]!,
       id: `hop-${index}`,
@@ -270,49 +310,100 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
     );
     const user = userEvent.setup();
     const { container } = renderTopology();
-    (await screen.findByRole('button', { name: 'Hop 0 — RELAY' })).focus();
-    await user.keyboard('{Enter}');
-    const edgeOpacity = (label: string) =>
-      Number(
-        container.querySelector(`[data-mesh-link][aria-label$="${label}"] path[opacity]`)!.getAttribute('opacity')
-      );
-    expect(edgeOpacity('Hop 0 — Hop 1')).toBeGreaterThan(0.9);
-    expect(edgeOpacity('Hop 1 — Hop 2')).toBeLessThan(0.5);
-    const neighborhood = within(screen.getByRole('group', { name: 'Connected devices' }));
-    await user.click(neighborhood.getByRole('button', { name: 'Up to 2 steps' }));
-    expect(edgeOpacity('Hop 0 — Hop 1')).toBeGreaterThan(0.9);
-    expect(edgeOpacity('Hop 1 — Hop 2')).toBeGreaterThan(0.9);
-    expect(edgeOpacity('Hop 2 — Hop 3')).toBeLessThan(0.5);
+    await openDevice(user, 'Hop 0');
+    const opacity = (label: string) =>
+      Number(container.querySelector(`[data-mesh-link][data-label="${label}"] path[opacity]`)!.getAttribute('opacity'));
+    expect(opacity('Hop 0 — Hop 1')).toBeGreaterThan(0.9);
+    expect(opacity('Hop 1 — Hop 2')).toBeLessThan(0.5);
+    await user.click(
+      within(screen.getByRole('group', { name: 'Connected devices' })).getByRole('button', { name: 'Up to 2 steps' })
+    );
+    expect(opacity('Hop 0 — Hop 1')).toBeGreaterThan(0.9);
+    expect(opacity('Hop 1 — Hop 2')).toBeGreaterThan(0.9);
+    expect(opacity('Hop 2 — Hop 3')).toBeLessThan(0.5);
   });
 
-  it('keeps policy separate from observed paths without an invented central transit node', async () => {
+  it('never shows a configured mode as a measured path, and says so with a dash rather than 0', async () => {
+    const { container } = renderTopology();
+    await screen.findByRole('heading', { name: 'Groups' });
+    // mode: 'derp' is a preference nothing measures; an isolated end decides the line.
+    expect(container.querySelector('[data-mesh-link]')).toHaveAttribute('data-mesh-link', 'quarantined');
+    expect(container.querySelector('[data-mesh-link="relayed"]')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Through a relay —' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Direct —' })).toBeInTheDocument();
+    expect(screen.getByText('Direct and relayed paths are not measured yet, so they show “—”.')).toBeInTheDocument();
+    expect(screen.queryByText('Control server')).not.toBeInTheDocument();
+  });
+
+  it('draws relayed, direct and blocked lines with different dashes and marks once measured', async () => {
+    const nodes = Array.from({ length: 4 }, (_, index) => ({
+      ...mockStandardNodes[0]!,
+      id: `t-${index}`,
+      name: `T ${index}`,
+      is_healthy: true,
+      is_quarantined: false
+    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/api/stats/topology')
+          ? jsonResponse({
+              nodes,
+              links: [
+                { source: 't-0', target: 't-1', transport: 'direct' },
+                { source: 't-1', target: 't-2', transport: 'derp' },
+                { source: 't-2', target: 't-3', is_visible: false }
+              ]
+            })
+          : jsonResponse({})
+      )
+    );
+    const { container } = renderTopology();
+    await screen.findByRole('heading', { name: 'Groups' });
+    const line = (state: string) => container.querySelector(`[data-mesh-link="${state}"] .mesh-link-line`)!;
+    expect(line('direct').getAttribute('stroke-dasharray')).toBeNull();
+    expect(line('relayed').getAttribute('stroke-dasharray')).toBe('7 4');
+    expect(line('blocked').getAttribute('stroke-dasharray')).toBe('5 4');
+    expect(container.querySelector('[data-mesh-link="relayed"] .mesh-link-mark--relayed')).toBeInTheDocument();
+    expect(container.querySelector('[data-mesh-link="blocked"] .mesh-link-mark--blocked')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Through a relay 1' })).toBeInTheDocument();
+  });
+
+  it('gives gateways, profile devices and ordinary devices their own shape and filter', async () => {
+    const nodes = [
+      { ...mockStandardNodes[0]!, id: 'gw', name: 'Gateway', role: 'CLIENT_ORIGIN', is_profile_gateway: true },
+      { ...mockStandardNodes[0]!, id: 'phone', name: 'Phone', role: 'CLIENT_ORIGIN', device_kind: 'profile' },
+      { ...mockStandardNodes[0]!, id: 'laptop', name: 'Laptop', role: 'CLIENT_ORIGIN' }
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/api/stats/topology') ? jsonResponse({ nodes, links: [] }) : jsonResponse({})
+      )
+    );
     const user = userEvent.setup();
     const { container } = renderTopology();
-    expect(await screen.findByRole('heading', { name: 'Groups' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Measured paths' }));
-    expect(screen.getByText('Paths between devices have not been measured yet.')).toBeInTheDocument();
-    expect(container.querySelectorAll('[data-mesh-link]').length).toBe(0);
+    expect(await mirrorButton('Gateway')).toHaveAccessibleName(/Gateway or exit/);
+    expect(await mirrorButton('Phone')).toHaveAccessibleName(/Profile device, Not measured/);
+    expect(await mirrorButton('Laptop')).toHaveAccessibleName(/, Device, Working well/);
+    expect(shapeOf(container, 'gw')).toMatch(/^M [-\d.e]+ [-\d.e]+ L /);
+    expect(shapeOf(container, 'phone')).toMatch(/ H /);
+    expect(shapeOf(container, 'laptop')).toMatch(/ A /);
+    await user.click(screen.getByRole('button', { name: 'Profile device 1' }));
+    expect(screen.getByRole('button', { name: 'Profile device 1' })).toHaveAttribute('aria-pressed', 'false');
+    expect(container.querySelector('[data-node-id="phone"]')).not.toBeInTheDocument();
   });
 
-  it('reports an unhealthy node accurately in the inspector and accessible list', async () => {
+  it('reports a device with problems accurately in the details and in the list view', async () => {
     const user = userEvent.setup();
     renderTopology();
-    const node = await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' });
-    node.focus();
-    await user.keyboard('{Enter}');
-    expect(within(screen.getByRole('complementary')).getByText('Has problems')).toBeInTheDocument();
+    const inspector = await openDevice(user, 'Rome Gateway Alpha');
+    expect(within(inspector).getByText('Has problems')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^List$/i }));
     expect(screen.getByText('Has problems')).toBeInTheDocument();
   });
 
-  it('uses an organic community scene without a central coordination annotation', async () => {
-    const { container } = renderTopology();
-    await screen.findByRole('heading', { name: 'Groups' });
-    expect(screen.queryByText('Control plane')).not.toBeInTheDocument();
-    expect(container.querySelector('[data-node-id]')).toHaveClass('mesh-community-0');
-  });
-
-  it('draws each six-node policy pair once with a modest community-colored curve', async () => {
+  it('draws each six-device pair once with a modest curve', async () => {
     const nodes = Array.from({ length: 6 }, (_, index) => ({
       ...mockStandardNodes[0],
       id: `peer-${index}`,
@@ -333,15 +424,12 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
     );
     const { container } = renderTopology();
     await screen.findByRole('heading', { name: 'Groups' });
-    const paths = [...container.querySelectorAll('[data-mesh-link] > path:last-child')];
+    const paths = [...container.querySelectorAll('[data-mesh-link] .mesh-link-line')];
     expect(paths).toHaveLength(15);
-    for (const path of paths) {
-      expect(path.getAttribute('d')).toMatch(/^M [\d. -]+ Q [\d. -]+$/);
-      expect(path.parentElement).toHaveClass('mesh-community-0');
-    }
+    for (const path of paths) expect(path.getAttribute('d')).toMatch(/^M [-\d.e ]+ Q [-\d.e ]+$/);
   });
 
-  it('renders counted communities and stable distinct positions in the hundred-node fixture', async () => {
+  it('renders counted groups and distinct positions in the hundred-device fixture', async () => {
     const nodes = Array.from({ length: 100 }, (_, index) => ({
       ...mockStandardNodes[0],
       id: `peer-${index}`,
@@ -356,42 +444,54 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
     );
     const { container } = renderTopology();
     await screen.findByRole('heading', { name: 'Groups' });
-    const communities = screen.getByRole('region', { name: 'Groups' });
-    expect(within(communities).getAllByRole('checkbox')).toHaveLength(11);
-    const peers = [...container.querySelectorAll('[data-node-id]')];
-    expect(peers).toHaveLength(100);
-    expect(
-      new Set(
-        peers.map((peer) => {
-          const circle = peer.querySelector('circle')!;
-          return `${circle.getAttribute('cx')}:${circle.getAttribute('cy')}`;
-        })
-      ).size
-    ).toBe(100);
+    const legend = screen.getByRole('region', { name: 'Groups' });
+    expect(within(legend).getAllByRole('checkbox')).toHaveLength(11);
+    const devices = [...container.querySelectorAll('[data-node-id]')];
+    expect(devices).toHaveLength(100);
+    expect(new Set(devices.map((device) => device.querySelector('.mesh-node-shape')!.getAttribute('d'))).size).toBe(
+      100
+    );
+    expect(container.querySelectorAll('.mesh-hull')).toHaveLength(10);
   });
 
-  it('collapses a group without losing its count and search expands matching nodes', async () => {
+  it('folds a group into a bubble without losing its count, and a search opens it again', async () => {
     const user = userEvent.setup();
-    renderTopology();
-    const collapse = await screen.findByRole('button', { name: /^Collapse Corporate Ops/ });
-    await user.click(collapse);
-    expect(screen.queryByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).not.toBeInTheDocument();
+    const { container } = renderTopology();
+    await user.click(await screen.findByRole('button', { name: /^Collapse Corporate Ops/ }));
+    expect(container.querySelector('[data-node-id="svrn-node-rome"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-mesh-bubble="cmp-standard"]')).toHaveTextContent('2');
     expect(screen.getByRole('button', { name: /^Show Corporate Ops/ })).toBeInTheDocument();
-    await user.type(screen.getByRole('textbox', { name: /Search by name, ID or network address/i }), 'Rome');
-    expect(screen.getByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).toBeInTheDocument();
+    await user.type(screen.getByRole('combobox', { name: /Search by name, ID or network address/i }), 'Rome');
+    expect(container.querySelector('[data-node-id="svrn-node-rome"]')).toHaveAttribute('data-match', 'true');
   });
 
-  it('keeps health warnings visible and accessible before and after folding a group', async () => {
+  it('keeps health warnings visible and named before and after folding a group', async () => {
     const user = userEvent.setup();
-    renderTopology();
+    const { container } = renderTopology();
     const expanded = await screen.findByRole('button', { name: /^Collapse Corporate Ops/ });
     expect(within(expanded).getByText('With problems: 1')).toBeInTheDocument();
-    expect(within(expanded).getByText('Blocked: 1')).toBeInTheDocument();
+    expect(within(expanded).getByText('Isolated: 1')).toBeInTheDocument();
     await user.click(expanded);
     const group = screen.getByRole('button', { name: /^Show Corporate Ops/ });
-    expect(within(group).getByText('With problems: 1')).toBeInTheDocument();
-    expect(within(group).getByText('Blocked: 1')).toBeInTheDocument();
-    expect(group).toHaveAccessibleName(/With problems: 1.*Blocked: 1/);
+    expect(group).toHaveAccessibleName(/With problems: 1.*Isolated: 1/);
+    expect(container.querySelector('[data-mesh-bubble]')).toHaveTextContent('With problems: 1, Isolated: 1');
+  });
+
+  it('finds a device, centres the map on it and opens its details', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTopology();
+    await mirrorButton('Berlin Exit Bravo');
+    const scene = container.querySelector('[data-mesh-canvas] > g[transform]')!;
+    const before = scene.getAttribute('transform');
+    const search = screen.getByRole('combobox', { name: /Search by name, ID or network address/i });
+    await user.type(search, 'berl');
+    expect(screen.getByRole('option', { name: /Berlin Exit Bravo/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('1 device found')).toBeInTheDocument();
+    expect(container.querySelector('[data-node-id="svrn-node-rome"]')).toHaveClass('mesh-node--dimmed');
+    await user.keyboard('{Enter}');
+    expect(within(screen.getByRole('complementary')).getByRole('heading', { name: 'Berlin Exit Bravo' })).toBeVisible();
+    expect(scene.getAttribute('transform')).not.toBe(before);
+    expect(scene.getAttribute('transform')).toMatch(/scale\(1\.8\)/);
   });
 
   it('zooms with the wheel after loading and after remounting the canvas', async () => {
@@ -413,7 +513,7 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
       const { container } = renderTopology();
       await screen.findByRole('heading', { name: 'Groups' });
       const zoom = () => {
-        const svg = container.querySelector('svg[role="group"]')!;
+        const svg = container.querySelector('[data-mesh-canvas]')!;
         Object.defineProperty(svg, 'getScreenCTM', { value: () => ({ inverse: () => ({}) }) });
         const scene = svg.querySelector(':scope > g[transform]')!;
         const before = scene.getAttribute('transform');
@@ -435,6 +535,21 @@ describe('Community mesh uses policy and observations as distinct evidence', () 
     } finally {
       vi.stubGlobal('DOMPoint', originalPoint);
     }
+  });
+
+  it('tells a lone device what to do next', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/api/stats/topology')
+          ? jsonResponse({ nodes: [mockStandardNodes[0]], links: [] })
+          : jsonResponse({})
+      )
+    );
+    renderTopology();
+    expect(await screen.findByText('Only one device so far')).toBeInTheDocument();
+    expect(screen.getByText('Connect another one to see how your devices reach each other.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Connect a device' })).toBeInTheDocument();
   });
 });
 
@@ -720,8 +835,10 @@ describe('WP-406: TopologyRoute (Interactive Topology & Ghost Vaults Dynamic Unl
 
     renderTopology();
 
-    expect(await screen.findByText('No devices to show')).toBeInTheDocument();
-    expect(screen.getByText('Register your first device to see the network map.')).toBeInTheDocument();
+    expect(await screen.findByText('No devices yet')).toBeInTheDocument();
+    expect(screen.getByText('Connect your first device from My devices and it will appear here.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Connect a device' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Map$/ })).not.toBeInTheDocument();
   });
 });
 
@@ -756,7 +873,7 @@ describe('Topology canvas: cutting links and staying readable at scale', () => {
     const user = userEvent.setup();
     renderTopology();
 
-    await user.click(await screen.findByRole('button', { name: 'Connection: Rome Gateway Alpha — Berlin Exit Bravo' }));
+    await openConnection(user, 'Rome Gateway Alpha', 'Berlin Exit Bravo');
     await user.click(screen.getByRole('button', { name: 'Block connection' }));
     await user.click(
       within(await screen.findByRole('dialog', { name: 'Block this connection?' })).getByRole('button', {
@@ -824,8 +941,7 @@ describe('Topology canvas: cutting links and staying readable at scale', () => {
     const user = userEvent.setup();
     renderTopology();
 
-    (await screen.findByRole('button', { name: 'Rome Gateway Alpha — RELAY' })).focus();
-    await user.keyboard('{Enter}');
+    await openDevice(user, 'Rome Gateway Alpha');
     expect(within(screen.getByRole('complementary')).getByText('Allowed connections: 0')).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Connection: Rome Gateway Alpha — Berlin Exit Bravo' }));
     const restore = screen.getByRole('button', { name: 'Unblock connection' });
@@ -875,30 +991,26 @@ describe('Topology canvas: cutting links and staying readable at scale', () => {
     );
 
     const user = userEvent.setup();
-    renderTopology();
+    const { container } = renderTopology();
 
-    // Compartment is the default; this large unassigned group starts folded.
+    // Compartment is the default; this large unassigned group starts as one bubble.
     expect(await screen.findByRole('button', { name: 'Show Unassigned' })).toBeInTheDocument();
+    expect(container.querySelector('[data-mesh-bubble]')).toHaveTextContent('30');
+    expect(container.querySelector('[data-node-id]')).not.toBeInTheDocument();
     await user.click(screen.getByRole('combobox', { name: 'Group by' }));
     await user.click(screen.getByRole('option', { name: 'Country' }));
-    const node0 = await screen.findByRole('button', { name: 'Node 0 — CLIENT_ORIGIN' });
-
-    // A bounded overview retains normal policy context and the cut exception.
-    expect(screen.getAllByRole('button', { name: /^Connection:/ }).length).toBeGreaterThanOrEqual(29);
-    expect(screen.getAllByRole('button', { name: /^Connection:/ }).length).toBeLessThanOrEqual(161);
-    expect(screen.getByRole('button', { name: 'Connection: Node 1 — Node 2' })).toBeInTheDocument();
-    expect(screen.getByText(/Select a device to see its links/)).toBeInTheDocument();
-
-    // Switching to region reveals two manageable clusters of fifteen.
     expect(screen.getByRole('checkbox', { name: 'DE 15' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'IT 15' })).toBeChecked();
 
-    node0.focus();
-    await user.keyboard('{Enter}');
+    // A dense mesh opens with its exceptions only: the one blocked pair.
+    const drawn = () =>
+      [...container.querySelectorAll('[data-mesh-link]')].map((link) => link.getAttribute('data-label'));
+    expect(drawn()).toEqual(['Node 1 — Node 2']);
 
-    // Selection adds every allowed pair for Node 0 without drawing the full mesh.
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Connection: Node 0 —/ })).toHaveLength(29));
-    expect(screen.getAllByRole('button', { name: /^Connection:/ }).length).toBeLessThan(200);
+    // Selection adds every allowed pair of Node 0 without drawing the full mesh.
+    await openDevice(user, 'Node 0');
+    await waitFor(() => expect(drawn().filter((label) => label!.startsWith('Node 0 —'))).toHaveLength(29));
+    expect(drawn().length).toBeLessThan(40);
   });
 });
 
@@ -938,8 +1050,6 @@ function serveMap(options: {
   });
 }
 
-const romeBerlin = 'Connection: Rome Gateway Alpha — Berlin Exit Bravo';
-
 describe('Network map: blocking is confirmed, atomic and honest', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -952,7 +1062,7 @@ describe('Network map: blocking is confirmed, atomic and honest', () => {
     const user = userEvent.setup();
     renderTopology();
 
-    await user.click(await screen.findByRole('button', { name: romeBerlin }));
+    await openConnection(user, 'Rome Gateway Alpha', 'Berlin Exit Bravo');
     await user.click(screen.getByRole('button', { name: 'Block connection' }));
 
     expect(posted).toHaveLength(0);
@@ -983,7 +1093,7 @@ describe('Network map: blocking is confirmed, atomic and honest', () => {
     const user = userEvent.setup();
     renderTopology();
 
-    await user.click(await screen.findByRole('button', { name: romeBerlin }));
+    await openConnection(user, 'Rome Gateway Alpha', 'Berlin Exit Bravo');
     await user.click(screen.getByRole('button', { name: 'Block connection' }));
     await user.click(
       within(await screen.findByRole('dialog', { name: 'Block this connection?' })).getByRole('button', {
@@ -1010,7 +1120,7 @@ describe('Network map: blocking is confirmed, atomic and honest', () => {
     const user = userEvent.setup();
     renderTopology();
 
-    await user.click(await screen.findByRole('button', { name: romeBerlin }));
+    await openConnection(user, 'Rome Gateway Alpha', 'Berlin Exit Bravo');
     await user.click(screen.getByRole('button', { name: 'Block connection' }));
     await user.click(
       within(await screen.findByRole('dialog', { name: 'Block this connection?' })).getByRole('button', {
@@ -1033,7 +1143,7 @@ describe('Network map: blocking is confirmed, atomic and honest', () => {
     const user = userEvent.setup();
     renderTopology();
 
-    await user.click(await screen.findByRole('button', { name: romeBerlin }));
+    await openConnection(user, 'Rome Gateway Alpha', 'Berlin Exit Bravo');
     const unblock = screen.getByRole('button', { name: 'Unblock connection' });
     await waitFor(() => expect(unblock).toBeEnabled());
     await user.click(unblock);
@@ -1049,9 +1159,7 @@ describe('Network map: blocking is confirmed, atomic and honest', () => {
     const user = userEvent.setup();
     renderTopology();
 
-    (await screen.findByRole('button', { name: /^Berlin Exit Bravo —/ })).focus();
-    await user.keyboard('{Enter}');
-    const inspector = screen.getByRole('complementary');
+    const inspector = await openDevice(user, 'Berlin Exit Bravo');
     expect(within(inspector).getByText('Response time')).toBeInTheDocument();
     expect(within(inspector).getAllByText(/Not measured/).length).toBeGreaterThan(0);
     expect(inspector.textContent).not.toMatch(/\d ms/);
@@ -1072,7 +1180,7 @@ describe('Network map: blocking is confirmed, atomic and honest', () => {
     vi.stubGlobal('fetch', serveMap({}));
 
     const { container, unmount } = renderTopology(['/topology'], theme);
-    await screen.findByRole('button', { name: romeBerlin });
+    await mirrorButton('Rome Gateway Alpha');
     await expectNoAxeViolations(container, theme);
     unmount();
   });

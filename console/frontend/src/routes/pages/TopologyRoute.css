@@ -1,13 +1,20 @@
+/*
+ * Network map. "Chart paper, one signal": ink on a dotted sheet, groups as faint
+ * tinted hulls, and colour kept for state (warning, danger) and the one accent
+ * that means "selected" or "found". Every state also has a shape, dash or mark.
+ */
 main:has(.mesh-route) {
   max-width: none;
 }
 .mesh-route {
   min-width: 0;
   --mesh-canvas: 247 249 245;
+  --mesh-hull-opacity: 0.09;
 }
 .dark .mesh-route,
 [data-theme='dark'] .mesh-route {
   --mesh-canvas: 16 20 19;
+  --mesh-hull-opacity: 0.16;
 }
 .mesh-route > header {
   padding-bottom: 0.5rem;
@@ -26,133 +33,193 @@ main:has(.mesh-route) {
   color: rgb(var(--color-content));
   font-variant-numeric: tabular-nums;
 }
-.mesh-filters {
-  margin-bottom: 1rem;
+.mesh-summary-end {
+  margin-left: auto;
 }
+
+/* Toolbar: find, group, legend */
+.mesh-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgb(var(--color-border));
+}
+.mesh-toolbar--list {
+  border-bottom: 0;
+  padding: 0 0 1rem;
+}
+.mesh-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.mesh-toolbar-label {
+  font-size: 0.75rem;
+  color: rgb(var(--color-content-subtle));
+}
+.mesh-legend-toggle {
+  margin-left: auto;
+  font-size: 0.8125rem;
+  color: rgb(var(--color-content-subtle));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.mesh-legend-toggle:hover {
+  color: rgb(var(--color-content));
+}
+.mesh-search {
+  position: relative;
+  flex: 1 1 18rem;
+  max-width: 28rem;
+}
+.mesh-search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  width: 1rem;
+  height: 1rem;
+  transform: translateY(-50%);
+  color: rgb(var(--color-content-subtle));
+  pointer-events: none;
+}
+.mesh-search-results {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 20rem;
+  overflow: auto;
+  padding: 0.25rem;
+  border: 1px solid rgb(var(--color-border-strong));
+  border-radius: 6px;
+  background: rgb(var(--color-surface-raised));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+}
+.mesh-search-results [role='option'] {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.mesh-search-results [aria-selected='true'],
+.mesh-search-results [role='option']:not([aria-disabled]):hover {
+  background: rgb(var(--color-accent-subtle));
+}
+.mesh-search-meta {
+  color: rgb(var(--color-content-subtle));
+  font-variant-numeric: tabular-nums;
+}
+.mesh-search-empty {
+  color: rgb(var(--color-content-subtle));
+  cursor: default;
+}
+
+/* Workspace: legend | map | details */
 .mesh-workspace {
   display: grid;
-  grid-template-columns: 15rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   position: relative;
 }
 .mesh-workspace:has(.mesh-inspector) {
-  grid-template-columns: 14rem minmax(0, 1fr) 18rem;
+  grid-template-columns: minmax(0, 1fr) 19rem;
 }
-.mesh-workspace:has(.mesh-communities[hidden]) {
-  grid-template-columns: minmax(0, 1fr);
+.mesh-workspace--legend {
+  grid-template-columns: 15rem minmax(0, 1fr);
 }
-.mesh-workspace:has(.mesh-communities[hidden]):has(.mesh-inspector) {
-  grid-template-columns: minmax(0, 1fr) 18rem;
-}
-.mesh-communities[hidden] {
-  display: none;
-}
-.mesh-community-toggle {
-  margin-left: auto;
-}
-.mesh-community-toggle span {
-  font-variant-numeric: tabular-nums;
-  margin-left: 0.25rem;
-  color: rgb(var(--color-content-subtle));
-}
-.mesh-overview-caption {
-  padding: 0.75rem 1rem 0;
-  font-size: 0.75rem;
-  color: rgb(var(--color-content-subtle));
-  line-height: 1.6;
+.mesh-workspace--legend:has(.mesh-inspector) {
+  grid-template-columns: 14rem minmax(0, 1fr) 19rem;
 }
 .mesh-map-panel {
   min-width: 0;
 }
-.mesh-communities {
-  background: rgb(var(--color-surface));
-  border-right: 1px solid rgb(var(--color-border));
+
+/* Legend, which is also the filter */
+.mesh-legend {
   display: flex;
   flex-direction: column;
-  padding: 1.25rem 1rem;
   min-width: 0;
-  /* The rail takes the workspace height set by the graph instead of growing it,
-     so its list can use all of that height and scroll only when it truly overflows. */
+  padding: 1.125rem 1rem;
+  border-right: 1px solid rgb(var(--color-border));
+  background: rgb(var(--color-surface));
+  overflow: auto;
+  scrollbar-width: thin;
+  /* Takes the height the map sets instead of growing it. */
   contain: size;
 }
-.mesh-community-heading {
+.mesh-legend-heading {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 1rem;
 }
-.mesh-community-heading h2 {
+.mesh-legend h2 {
   font-weight: 600;
-  font-size: 0.9375rem;
-  letter-spacing: -0.015em;
+  font-size: 0.875rem;
 }
-.mesh-community-heading > span,
-.mesh-community-count {
+.mesh-legend-heading > span,
+.mesh-legend-count {
+  margin-left: auto;
   font-variant-numeric: tabular-nums;
-  color: rgb(var(--color-content-subtle));
   font-size: 0.75rem;
-}
-.mesh-community-caption,
-.mesh-community-footnote {
-  font-size: 0.75rem;
-  line-height: 1.6;
   color: rgb(var(--color-content-subtle));
 }
-.mesh-community-caption {
-  margin: 0.25rem 0 1.25rem;
+.mesh-legend-subheading {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgb(var(--color-border));
 }
-.mesh-community-footnote {
-  margin-top: auto;
-  padding-top: 1.5rem;
-}
-.mesh-community-all {
+.mesh-legend-all {
   display: flex;
   align-items: center;
   gap: 0.625rem;
+  margin-top: 0.75rem;
+  padding-bottom: 0.625rem;
   font-size: 0.75rem;
-  padding-bottom: 0.875rem;
-  border-bottom: 1px solid rgb(var(--color-border));
+  border-bottom: 1px solid rgb(var(--color-border-subtle));
 }
-.mesh-community-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  margin: 0.5rem -0.375rem 0;
-  scrollbar-width: thin;
-  scrollbar-color: rgb(var(--color-border-strong)) transparent;
+.mesh-legend-groups {
+  margin: 0.25rem -0.375rem 0;
 }
-.mesh-community-row {
-  padding: 0.625rem 0.375rem;
+.mesh-legend-group {
+  padding: 0.5rem 0.375rem;
   border-radius: 5px;
 }
-.mesh-community-row:hover {
+.mesh-legend-group:hover {
   background: rgb(var(--color-surface-hover));
 }
-.mesh-community-filter {
+.mesh-legend-filter {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  cursor: pointer;
   min-width: 0;
   font-size: 0.8125rem;
+  cursor: pointer;
 }
-.mesh-community-filter input,
-.mesh-community-all input {
+.mesh-legend input[type='checkbox'] {
   width: 0.875rem;
   height: 0.875rem;
   flex-shrink: 0;
   accent-color: rgb(var(--color-accent));
   cursor: pointer;
 }
-.mesh-community-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  background: var(--community);
-  border-radius: 50%;
+.mesh-legend-swatch {
+  width: 0.75rem;
+  height: 0.75rem;
   flex-shrink: 0;
+  border-radius: 3px;
+  background: var(--community);
+  opacity: 0.55;
 }
-.mesh-community-name {
+.mesh-legend-name {
   flex: 1;
+  min-width: 0;
   overflow-wrap: anywhere;
+  text-align: left;
 }
 .mesh-group-control {
   display: flex;
@@ -168,6 +235,52 @@ main:has(.mesh-route) {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+.mesh-legend-warning {
+  color: rgb(var(--color-warning));
+}
+.mesh-legend-danger {
+  color: rgb(var(--color-danger));
+}
+.mesh-legend-toggles {
+  margin: 0.5rem -0.375rem 0;
+}
+.mesh-legend-toggles button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 1.75rem;
+  padding: 0.25rem 0.375rem;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+}
+.mesh-legend-toggles button:hover {
+  background: rgb(var(--color-surface-hover));
+}
+/* Hidden entries are struck through and faded: not only a colour change. */
+.mesh-legend-toggles button[aria-pressed='false'] .mesh-legend-name {
+  text-decoration: line-through;
+  color: rgb(var(--color-content-subtle));
+}
+.mesh-legend-toggles button[aria-pressed='false'] .mesh-sample {
+  opacity: 0.35;
+}
+.mesh-legend-note {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: rgb(var(--color-content-subtle));
+}
+.mesh-legend-footnote {
+  margin-top: auto;
+  padding-top: 1.25rem;
+}
+.mesh-sample {
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+/* Group tints: the only categorical colour on the page, used at low opacity */
 .mesh-community-0 {
   --community: #3979b4;
 }
@@ -224,83 +337,251 @@ main:has(.mesh-route) {
 [data-theme='dark'] .mesh-community-7 {
   --community: #e5a0b5;
 }
-.mesh-community-fill {
-  fill: var(--community);
-}
-.mesh-community-stroke {
-  stroke: var(--community);
-}
-.mesh-aggregate {
-  cursor: pointer;
-}
-.mesh-aggregate > circle {
-  fill: rgb(var(--mesh-canvas));
-  stroke: var(--community);
-  stroke-width: 2;
-}
-.mesh-aggregate-count {
-  fill: var(--community);
-  font-size: 18px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.mesh-toolbar {
+
+/* Notices above the map */
+.mesh-notice {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.625rem 1rem;
   border-bottom: 1px solid rgb(var(--color-border));
-}
-.mesh-evidence {
-  display: flex;
-  gap: 1.25rem;
-  padding: 0 1rem;
-  flex-shrink: 0;
-}
-.mesh-evidence button {
-  padding: 0.875rem 0;
-  border-bottom: 2px solid transparent;
-  color: rgb(var(--color-content-subtle));
   font-size: 0.8125rem;
-  font-weight: 500;
+  color: rgb(var(--color-content-subtle));
 }
-.mesh-evidence button[aria-pressed='true'] {
-  border-bottom-color: rgb(var(--color-accent));
-  color: rgb(var(--color-content));
+.mesh-notice button {
+  color: rgb(var(--color-accent));
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
-.mesh-evidence button:hover {
-  color: rgb(var(--color-content));
-}
-.mesh-options {
-  padding: 0.5rem 1rem;
-  flex-wrap: wrap;
+
+/* The sheet */
+.mesh-stage {
+  position: relative;
 }
 .mesh-canvas {
   display: block;
-  height: clamp(31rem, calc(100dvh - 23rem), 52rem);
+  width: 100%;
+  height: clamp(30rem, calc(100dvh - 22rem), 52rem);
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  background-color: rgb(var(--mesh-canvas));
+  background-image: radial-gradient(rgb(var(--color-border-strong) / 0.55) 1px, transparent 1.2px);
+  background-size: 24px 24px;
   border-bottom: 1px solid rgb(var(--color-border));
-  background: rgb(var(--mesh-canvas));
 }
-.mesh-node-label text {
+.mesh-scene--animate {
+  transition: transform 200ms ease-out;
+}
+.mesh-hull {
+  fill: var(--community);
+  stroke: var(--community);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: var(--mesh-hull-opacity);
+}
+.mesh-group-label {
+  fill: rgb(var(--color-content-subtle));
+  font-weight: 600;
   paint-order: stroke;
   stroke: rgb(var(--mesh-canvas));
   stroke-width: 4px;
   stroke-linejoin: round;
 }
-.mesh-explanation {
-  padding: 0.75rem 1rem 0;
-  max-width: 85ch;
-  line-height: 1.6;
+
+/* Devices: shape = kind, fill and outline = state */
+.mesh-node {
+  cursor: pointer;
 }
-.mesh-map-panel > div:last-child {
-  padding: 0.75rem 1rem 1rem;
+.mesh-node--dimmed {
+  opacity: 0.22;
 }
-.mesh-unmeasured {
-  margin: 0.75rem 1rem 0;
-  padding: 0.75rem;
-  background: rgb(var(--color-surface-sunken));
+.mesh-node-hit {
+  fill: transparent;
+}
+.mesh-node-shape {
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+.mesh-node--online {
+  fill: rgb(var(--color-content));
+  stroke: rgb(var(--color-content));
+}
+.mesh-node--unmeasured {
+  fill: rgb(var(--mesh-canvas));
+  stroke: rgb(var(--color-content));
+}
+.mesh-node--degraded {
+  fill: rgb(var(--color-warning-subtle));
+  stroke: rgb(var(--color-warning));
+  stroke-width: 2px;
+  stroke-dasharray: 3 2;
+}
+.mesh-node--offline {
+  fill: rgb(var(--mesh-canvas));
+  stroke: rgb(var(--color-content-subtle));
+  stroke-dasharray: 1 2.5;
+  stroke-width: 2px;
+}
+.mesh-node--quarantined {
+  fill: rgb(var(--color-danger-subtle));
+  stroke: rgb(var(--color-danger));
+  stroke-width: 2px;
+}
+.mesh-node-bar {
+  stroke: rgb(var(--color-danger));
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+.mesh-ring {
+  fill: none;
+}
+.mesh-ring--selected {
+  stroke: rgb(var(--color-accent));
+  stroke-width: 2.5px;
+}
+.mesh-ring--match {
+  stroke: rgb(var(--color-accent));
+  stroke-width: 1.5px;
+  stroke-dasharray: 3 2;
+}
+.mesh-ring--focus {
+  stroke: rgb(var(--color-focus));
+  stroke-width: 2px;
+  stroke-dasharray: 4 3;
+}
+.mesh-node-label {
+  fill: rgb(var(--color-content));
+  font-weight: 500;
+  paint-order: stroke;
+  stroke: rgb(var(--mesh-canvas));
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.mesh-node-label--strong {
+  font-weight: 650;
+}
+.mesh-node-label--detail {
+  fill: rgb(var(--color-content-subtle));
+  font-variant-numeric: tabular-nums;
+}
+.mesh-node-label-group {
+  pointer-events: none;
+}
+
+/* Links: weight and dash = state */
+.mesh-link {
+  cursor: pointer;
+}
+.mesh-link-hit {
+  fill: none;
+  stroke: transparent;
+}
+.mesh-link-line {
+  fill: none;
+  stroke-linecap: round;
+}
+.mesh-link--unmeasured {
+  stroke: rgb(var(--color-content-subtle));
+  stroke-opacity: 0.6;
+}
+.mesh-link--direct,
+.mesh-link--relayed {
+  stroke: rgb(var(--color-content));
+}
+.mesh-link--offline {
+  stroke: rgb(var(--color-content-subtle));
+}
+.mesh-link--quarantined,
+.mesh-link--blocked {
+  stroke: rgb(var(--color-danger));
+}
+.mesh-link--selected {
+  stroke: rgb(var(--color-accent));
+  stroke-opacity: 1;
+}
+.mesh-link-mark {
+  vector-effect: non-scaling-stroke;
+}
+.mesh-link-mark--relayed {
+  fill: rgb(var(--mesh-canvas));
+  stroke: rgb(var(--color-content));
+  stroke-width: 1.5px;
+}
+.mesh-link-mark--blocked path {
+  fill: none;
+  stroke: rgb(var(--color-danger));
+  stroke-width: 2px;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Folded groups */
+.mesh-bubble {
+  cursor: zoom-in;
+}
+.mesh-bubble > circle {
+  fill: rgb(var(--mesh-canvas));
+  stroke: var(--community);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+.mesh-bubble-count {
+  fill: rgb(var(--color-content));
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.mesh-bubble-problems {
+  fill: rgb(var(--color-warning));
+  paint-order: stroke;
+  stroke: rgb(var(--mesh-canvas));
+  stroke-width: 4px;
+}
+
+/* Overlays on the sheet */
+.mesh-camera {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  display: flex;
+  gap: 0.375rem;
+}
+.mesh-camera-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 6px;
+  background: rgb(var(--color-surface));
   color: rgb(var(--color-content));
+}
+.mesh-camera-button:hover {
+  border-color: rgb(var(--color-border-strong));
+}
+.mesh-single {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
+  width: min(24rem, calc(100% - 2rem));
+  padding: 1rem 1.125rem;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 8px;
+  background: rgb(var(--color-surface-raised));
   font-size: 0.8125rem;
+  line-height: 1.55;
+  color: rgb(var(--color-content-subtle));
+}
+.mesh-single-title {
+  color: rgb(var(--color-content));
+  font-weight: 600;
+  font-size: 0.875rem;
 }
 .mesh-no-matches {
   position: absolute;
@@ -317,25 +598,101 @@ main:has(.mesh-route) {
   text-underline-offset: 3px;
   color: rgb(var(--color-accent));
 }
+.mesh-explanation {
+  padding: 0.75rem 1rem 1rem;
+  max-width: 85ch;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: rgb(var(--color-content-subtle));
+}
+
+/* The keyboard list: out of sight until it holds focus */
+.mesh-mirror:not(:focus-within) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.mesh-mirror:focus-within {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 10;
+  width: min(21rem, calc(100% - 1.5rem));
+  max-height: calc(100% - 1.5rem);
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid rgb(var(--color-border-strong));
+  border-radius: 8px;
+  background: rgb(var(--color-surface-raised));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+}
+.mesh-mirror-help {
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: rgb(var(--color-content-subtle));
+}
+.mesh-mirror-heading {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgb(var(--color-content-subtle));
+}
+.mesh-mirror button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  text-align: left;
+}
+.mesh-mirror button[aria-current='true'] {
+  background: rgb(var(--color-accent-subtle));
+}
+.mesh-mirror-meta {
+  color: rgb(var(--color-content-subtle));
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Details */
 .mesh-inspector {
   position: relative;
-  padding: 3rem 1.125rem 1.25rem;
+  min-width: 0;
+  padding: 1.25rem 1.125rem;
   border-left: 1px solid rgb(var(--color-border));
   background: rgb(var(--color-surface));
-  min-width: 0;
   overflow: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgb(var(--color-border-strong)) transparent;
-  /* Bounded by the graph's height and scrolled as one panel; no nested lists. */
+  /* Bounded by the map's height and scrolled as one panel. */
   contain: size;
 }
-.mesh-inspector h2 {
+.mesh-inspector-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+.mesh-inspector-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-right: 2.25rem;
+}
+.mesh-inspector-title h2 {
+  font-size: 0.9375rem;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 .mesh-inspector-close {
   position: absolute;
   right: 0.75rem;
-  top: 0.75rem;
+  top: 0.875rem;
   display: grid;
   place-items: center;
   width: 2rem;
@@ -347,20 +704,57 @@ main:has(.mesh-route) {
   background: rgb(var(--color-surface-hover));
   color: rgb(var(--color-content));
 }
+.mesh-inspector-meta {
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: rgb(var(--color-content-subtle));
+}
+.mesh-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.625rem 1rem;
+  font-size: 0.75rem;
+}
+.mesh-facts dt {
+  color: rgb(var(--color-content-subtle));
+}
+.mesh-facts dd {
+  font-weight: 500;
+  color: rgb(var(--color-content));
+  overflow-wrap: anywhere;
+}
+.mesh-endpoints {
+  display: grid;
+  gap: 0.25rem;
+  border-left: 2px solid rgb(var(--color-border-strong));
+  padding-left: 0.75rem;
+}
 .mesh-neighborhood {
-  margin-top: 0.5rem;
-  padding-top: 1rem;
+  padding-top: 0.875rem;
   border-top: 1px solid rgb(var(--color-border));
   font-size: 0.75rem;
+}
+.mesh-neighborhood-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
 }
 .mesh-neighborhood h3 {
   font-size: 0.8125rem;
   font-weight: 600;
 }
+.mesh-neighborhood-heading span {
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--color-content-subtle));
+}
+.mesh-neighborhood > p {
+  color: rgb(var(--color-content-subtle));
+  line-height: 1.55;
+}
 .mesh-hop-controls {
   display: flex;
   gap: 0.375rem;
-  margin: 0.75rem 0;
+  margin: 0.625rem 0;
 }
 .mesh-hop-controls button {
   padding: 0.25rem 0.625rem;
@@ -372,43 +766,52 @@ main:has(.mesh-route) {
   border-color: rgb(var(--color-accent));
   background: rgb(var(--color-accent-subtle));
 }
-.mesh-neighborhood p {
-  color: rgb(var(--color-content-subtle));
-  line-height: 1.6;
-}
 .mesh-neighborhood ul {
-  margin-top: 0.75rem;
+  margin-top: 0.625rem;
 }
-.mesh-neighborhood-heading {
+.mesh-neighborhood li {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.25rem;
+  border-top: 1px solid rgb(var(--color-border-subtle));
 }
-.mesh-neighborhood li button {
-  width: 100%;
+.mesh-peer {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.125rem 0.5rem;
+  min-width: 0;
   padding: 0.5rem 0;
   text-align: left;
-  display: flex;
-  flex-direction: column;
-  overflow-wrap: anywhere;
 }
-.mesh-neighborhood li button:hover {
+.mesh-peer:hover .mesh-peer-name {
   color: rgb(var(--color-accent));
 }
-.mesh-neighborhood li span {
-  color: rgb(var(--color-content-subtle));
-  font-size: 0.6875rem;
+.mesh-peer-name {
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
 }
+.mesh-peer-state {
+  flex-basis: 100%;
+  padding-left: 1.5rem;
+  font-size: 0.6875rem;
+  color: rgb(var(--color-content-subtle));
+}
+.mesh-peer-link {
+  display: grid;
+  place-items: center;
+  min-width: 2.25rem;
+  height: 1.75rem;
+  border-radius: 4px;
+}
+.mesh-peer-link:hover {
+  background: rgb(var(--color-surface-hover));
+}
+
 .mesh-route :is(button, input, [role='button']):focus-visible {
   outline: 2px solid rgb(var(--color-focus));
-  outline-offset: 3px;
-}
-.mesh-route ::selection {
-  background: rgb(var(--color-accent) / 0.25);
-}
-.mesh-route input {
-  caret-color: rgb(var(--color-accent));
+  outline-offset: 2px;
 }
 .mesh-policy-disclosure {
   position: relative;
@@ -460,43 +863,31 @@ body:has(.mesh-route) .console-header-search input {
     justify-content: flex-end;
   }
   .mesh-workspace:has(.mesh-inspector) {
-    grid-template-columns: 12rem minmax(0, 1fr);
-  }
-  .mesh-workspace:has(.mesh-communities[hidden]):has(.mesh-inspector) {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .mesh-workspace--legend:has(.mesh-inspector) {
+    grid-template-columns: 13rem minmax(0, 1fr);
   }
   .mesh-inspector {
     grid-column: 1 / -1;
     border-left: 0;
     border-top: 1px solid rgb(var(--color-border));
-    /* On its own row it has no graph height to borrow, so it sizes to content. */
     contain: none;
   }
 }
 @media (max-width: 800px) {
-  .mesh-workspace,
-  .mesh-workspace:has(.mesh-inspector) {
+  .mesh-workspace--legend,
+  .mesh-workspace--legend:has(.mesh-inspector) {
     grid-template-columns: minmax(0, 1fr);
   }
-  .mesh-communities {
+  .mesh-legend {
     border-right: 0;
     border-bottom: 1px solid rgb(var(--color-border));
-    padding: 1rem;
     contain: none;
-  }
-  .mesh-community-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-    max-height: 12rem;
-  }
-  .mesh-community-caption {
-    margin-bottom: 0.75rem;
-  }
-  .mesh-community-footnote {
-    padding-top: 0.75rem;
+    max-height: 22rem;
   }
   .mesh-canvas {
-    height: 30rem;
+    height: 28rem;
   }
 }
 @media (prefers-reduced-motion: reduce) {
