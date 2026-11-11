@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { getPgPool } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
 const { logAuditEvent } = require('../utils/audit');
-const { allocateNextVip, generateCurve25519Keypair } = require('../utils/crypto');
+const { allocateNextVip, generateCurve25519Keypair, publicKeyForms } = require('../utils/crypto');
 const { broadcastNodeEvent } = require('../services/TopologySync');
 const { derivePostureStatus } = require('../utils/posture');
 const { bumpNetmap } = require('../services/AclEngine');
@@ -218,6 +218,8 @@ router.post('/', async (req, res, next) => {
     if (!finalPubKey) {
       const kp = generateCurve25519Keypair();
       finalPubKey = kp.publicKeyBase64;
+    } else if (typeof finalPubKey !== 'string' || publicKeyForms(finalPubKey).length === 0) {
+      return res.status(400).json({ error: 'public_key must be a 32-byte key in hex or base64' });
     }
 
     const VALID_ROLES = ['CLIENT_ORIGIN', 'EXIT_BRIDGE', 'HYBRID', 'RELAY'];
@@ -238,7 +240,11 @@ router.post('/', async (req, res, next) => {
         req.sessionAuthority.organizationIdAtIssue
       );
       const orgId = actor.organization_id;
-      const existingKey = await client.query('SELECT id FROM nodes WHERE public_key = $1', [finalPubKey]);
+      // The same key in another spelling is the same key: one node's key must not be
+      // registrable twice, or the netmap would carry it twice.
+      const existingKey = await client.query('SELECT id FROM nodes WHERE public_key = ANY($1::text[])', [
+        publicKeyForms(finalPubKey)
+      ]);
       if (existingKey.rows.length > 0) {
         throw EnrollmentService.denied(409, 'Public key already registered');
       }

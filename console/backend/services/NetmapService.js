@@ -567,6 +567,9 @@ async function buildNetmap(nodeId) {
   // to whichever peer claims it, so two peers claiming the same subnet is a silent
   // coin flip; the route's own priority order decides instead.
   const claimedSubnets = new Set();
+  // A key is listed once. Two rows holding one key in two spellings would give the node
+  // a document SetPeers refuses whole; the lowest id keeps the entry.
+  const emittedKeys = new Set();
 
   // ADR 0029: profile devices are peers of their organisation's gateway only. Every
   // other node reaches them through the gateway, so their addresses join the gateway's
@@ -581,6 +584,8 @@ async function buildNetmap(nodeId) {
       const deviceKey = normalisePublicKeyHex(row.public_key);
       const psk = Buffer.from(String(row.preshared_key || ''), 'base64');
       if (!deviceKey || revoked.has(deviceKey.toLowerCase()) || psk.length !== 32) continue;
+      if (emittedKeys.has(deviceKey)) continue;
+      emittedKeys.add(deviceKey);
       const deviceIPs = [];
       if (row.overlay_ipv4) deviceIPs.push(`${row.overlay_ipv4}/32`);
       if (row.overlay_ipv6) deviceIPs.push(`${row.overlay_ipv6}/128`);
@@ -612,6 +617,7 @@ async function buildNetmap(nodeId) {
     // set in place, which is a worse failure than one unreachable node.
     if (!keyHex) continue;
     if (revoked.has(keyHex.toLowerCase())) continue;
+    if (emittedKeys.has(keyHex)) continue;
 
     // No transport both ends may use: the peer is not reachable, and listing it would
     // hand this node a key and endpoints it is not allowed to use.
@@ -674,6 +680,7 @@ async function buildNetmap(nodeId) {
       peerEntry.relay_homes = pair.relay_homes;
     }
 
+    emittedKeys.add(keyHex);
     peers.push(peerEntry);
   }
 
