@@ -246,7 +246,10 @@ services:
       # peering token already handed to a partner.
       - backend_data:/app/data
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      # No spaces inside the script: Podman's Docker-compatible API splits an exec-form
+      # argument on whitespace, which left node with half a script and the backend
+      # marked unhealthy forever on the Debian gateway VM (11 November 2026).
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 5s
       timeout: 3s
       retries: 5
