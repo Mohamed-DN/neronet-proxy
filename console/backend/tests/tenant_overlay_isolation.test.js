@@ -161,9 +161,18 @@ describe('The overlay keeps organisations apart', () => {
       { priority: 5, source_cidr: '100.64.99.0/24', destination_cidr: '100.64.99.0/24', action: 'DROP' },
       { organizationId: 'org-iso-deny' }
     );
+    // Reading the policy is for the people who run the organisation, not for plain members.
+    await pool.query(
+      `INSERT INTO users (id, username, email, password_hash, role, organization_id)
+       VALUES ('usr-iso-admin', 'isoadmin', 'isoadmin@iso.test', 'hash', 'user', 'org-iso-open')`
+    );
+    await pool.query(
+      `INSERT INTO memberships (id, user_id, organization_id, role)
+       VALUES ('mem-iso-admin', 'usr-iso-admin', 'org-iso-open', 'admin')`
+    );
     const res = await request(app)
       .get('/api/acl/rules')
-      .set('Authorization', `Bearer ${await token('usr-iso-member', 'user', 'org-iso-open')}`);
+      .set('Authorization', `Bearer ${await token('usr-iso-admin', 'user', 'org-iso-open')}`);
     assert.strictEqual(res.status, 200);
     assert.ok(!res.body.rules.some((r) => r.organization_id === 'org-iso-deny'));
   });

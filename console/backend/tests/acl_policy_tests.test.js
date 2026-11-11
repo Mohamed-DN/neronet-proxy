@@ -54,6 +54,14 @@ describe('ADR 0028 pair 1: policy guard on ACL saves', () => {
        ON CONFLICT (id) DO NOTHING`,
       [orgA, orgB]
     );
+    // Reading the policy and its tests needs an organisation role, not just a user row.
+    await pool.query(
+      `INSERT INTO memberships (id, user_id, organization_id, role) VALUES
+         ('mem-guard-admin', 'usr-guard-admin', $1, 'admin'),
+         ('mem-guard-badmin', 'usr-guard-badmin', $2, 'admin')
+       ON CONFLICT (id) DO NOTHING`,
+      [orgA, orgB]
+    );
     await pool.query(
       `INSERT INTO nodes (id, organization_id, user_id, name, overlay_ipv4, overlay_ipv6, public_key, role, is_healthy, is_quarantined) VALUES
          ('node-guard-1', $1, 'usr-guard-admin', 'g1', '100.64.20.1', 'fd00:20::1', 'GuardKey1111111111111111111111111111111111=', 'CLIENT_ORIGIN', TRUE, FALSE),

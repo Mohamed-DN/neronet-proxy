@@ -4,11 +4,15 @@ const crypto = require('crypto');
 const AclEngine = require('../services/AclEngine');
 const AclPolicyGuard = require('../services/AclPolicyGuard');
 const { authenticateToken, requireRole } = require('../middleware/auth');
-const { resolveUserOrg } = require('../middleware/rbac');
+const { resolveUserOrg, requireOrgRole } = require('../middleware/rbac');
 const { logAuditEvent } = require('../utils/audit');
 const { isPostgres, getPgPool } = require('../db/index');
 
 const requireAclAdmin = requireRole('super-admin', 'admin');
+// The policy and its tests describe the organisation's network (CIDRs, ports, descriptions):
+// the console shows them to the people who run or audit it, not to every member. A member
+// still reads the compiled policy of a node of their own (/compiled/:nodeId).
+const requirePolicyReader = requireOrgRole('owner', 'admin', 'network_admin', 'auditor');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -143,7 +147,7 @@ function canManage(req, rule) {
  */
 
 // 1. List ACL rules & mesh status
-router.get('/rules', async (req, res, next) => {
+router.get('/rules', requirePolicyReader, async (req, res, next) => {
   try {
     const rules = await rulesVisibleTo(req);
     const epoch = await AclEngine.getEpoch('acl');
@@ -291,7 +295,7 @@ router.delete('/rules/:id', requireAclAdmin, async (req, res, next) => {
 });
 
 // 5. Get organization default policy
-router.get('/default-policy', async (req, res, next) => {
+router.get('/default-policy', requirePolicyReader, async (req, res, next) => {
   try {
     const orgId = req.user.organization_id || 'org-default';
     let defaultPolicy = 'deny';
@@ -372,7 +376,7 @@ router.put('/default-policy', requireAclAdmin, async (req, res, next) => {
 });
 
 // 7. Live packet policy simulation
-router.post('/simulate', async (req, res, next) => {
+router.post('/simulate', requirePolicyReader, async (req, res, next) => {
   try {
     const { source_ip, destination_ip, protocol, port } = req.body || {};
     if (!source_ip || !destination_ip) {
@@ -445,7 +449,7 @@ router.post('/preview', requireAclAdmin, async (req, res, next) => {
 });
 
 // 10. Policy tests (ADR 0028): assertions every ACL save is checked against.
-router.get('/tests', async (req, res, next) => {
+router.get('/tests', requirePolicyReader, async (req, res, next) => {
   try {
     return res.status(200).json({ tests: await AclPolicyGuard.listTests(orgOf(req)) });
   } catch (err) {
@@ -499,7 +503,7 @@ router.delete('/tests/:id', requireAclAdmin, async (req, res, next) => {
   }
 });
 
-router.post('/tests/run', async (req, res, next) => {
+router.post('/tests/run', requirePolicyReader, async (req, res, next) => {
   try {
     return res.status(200).json(await AclPolicyGuard.runTests(orgOf(req)));
   } catch (err) {
