@@ -267,19 +267,19 @@ async function topologyHandler(req, res, next) {
 
     if (isSuperAdmin && !req.query.org_id) {
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE 1=1 ${hiddenClause} ORDER BY n.created_at ASC`
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, n.last_heartbeat AS last_seen_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE 1=1 ${hiddenClause} ORDER BY n.created_at ASC`
       );
       visibleNodes = qRes.rows;
     } else if (isOrgPrivileged || isSuperAdmin) {
       const orgId = isSuperAdmin ? req.query.org_id : req.user.organization_id || 'org-default';
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.organization_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, n.last_heartbeat AS last_seen_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.organization_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
         [orgId]
       );
       visibleNodes = qRes.rows;
     } else {
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.user_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, n.last_heartbeat AS last_seen_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.user_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
         [req.user.id]
       );
       visibleNodes = qRes.rows;
@@ -296,7 +296,13 @@ async function topologyHandler(req, res, next) {
       latency_ms: Number(n.latency_ms) > 0 ? Number(n.latency_ms) : null,
       compartment_id: n.compartment_id || null,
       compartment_name: n.compartment_name || 'Default Mesh',
-      is_ghost_vault: Boolean(n.is_ghost_vault)
+      is_ghost_vault: Boolean(n.is_ghost_vault),
+      // What kind of device the row is, whether it serves the organisation's profile
+      // devices, and when it was last heard from (null when it never was). Never the
+      // gateway endpoint, a key or a PSK.
+      device_kind: n.device_kind || 'mesh',
+      is_profile_gateway: Boolean(n.is_profile_gateway),
+      last_seen_at: n.last_seen_at ? new Date(n.last_seen_at).toISOString() : null
     }));
 
     // Links are the paths the policy permits, compiled by the same engine that
