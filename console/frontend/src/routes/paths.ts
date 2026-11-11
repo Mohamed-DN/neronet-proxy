@@ -28,6 +28,11 @@ export const ROUTES = {
 export type RouteId = keyof typeof ROUTES;
 
 export const LOGIN_PATH = '/login';
+/**
+ * Where an invitation link opens: `/invito#<token>`. Public, like the sign-in. The
+ * token travels in the fragment, which the browser never sends to a server.
+ */
+export const INVITE_PATH = '/invito';
 export const DEFAULT_PATH = ROUTES.overview;
 
 export function nodePath(id: string): string {

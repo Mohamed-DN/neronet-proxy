@@ -6,6 +6,7 @@ import {
   canChooseGateway,
   canSee,
   effectiveRole,
+  invitableRoles,
   landingPath,
   roleTier,
   type ConsoleRole,
@@ -116,5 +117,20 @@ describe('agent keys and gateway', () => {
     expect(canChooseGateway({ role: 'user', org_role: 'owner' })).toBe(false);
     expect(canChooseGateway({ role: 'owner' })).toBe(false);
     expect(canChooseGateway(null)).toBe(false);
+  });
+});
+
+describe('invitations', () => {
+  it('owners, admins and the platform administrator invite into a role at or below their own, never owner', () => {
+    const below = ['admin', 'network_admin', 'auditor', 'member'];
+    expect(invitableRoles('super-admin')).toEqual(below);
+    expect(invitableRoles('owner')).toEqual(below);
+    expect(invitableRoles('admin')).toEqual(below);
+  });
+
+  it('every other role invites nobody', () => {
+    for (const role of ['network_admin', 'auditor', 'member', 'user', null] as const) {
+      expect(invitableRoles(role)).toEqual([]);
+    }
   });
 });

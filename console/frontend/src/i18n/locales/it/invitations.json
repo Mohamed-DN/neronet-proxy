@@ -1,0 +1,102 @@
+{
+  "panel": {
+    "title": "Inviti",
+    "description": "Manda un link a chi deve entrare. Sceglie da sé nome utente e password, da qualsiasi rete.",
+    "invite": "Invita una persona",
+    "organisation": "Organizzazione",
+    "tableCaption": "Inviti di questa organizzazione",
+    "colName": "Per",
+    "colRole": "Ruolo",
+    "colStatus": "Stato",
+    "colExpires": "Valido fino al",
+    "colCreatedBy": "Creato da",
+    "colActions": "Azioni",
+    "noName": "Senza nome",
+    "status": {
+      "pending": "In attesa",
+      "used": "Usato da {{name}}",
+      "usedUnknown": "Usato",
+      "expired": "Scaduto",
+      "revoked": "Ritirato"
+    },
+    "withdraw": "Ritira",
+    "withdrawLabel": "Ritira l'invito per {{name}}",
+    "empty": {
+      "title": "Ancora nessun invito",
+      "body": "Invita una persona per darle accesso senza scegliere tu la sua password."
+    },
+    "loadFailed": "Non è stato possibile caricare gli inviti. Riprova.",
+    "noOrganisation": "Non gestisci nessuna organizzazione, quindi non puoi invitare nessuno."
+  },
+  "withdraw": {
+    "title": "Ritirare l'invito per {{name}}?",
+    "body": "Il link e il codice smettono subito di funzionare. Chi li ha non può più entrare.",
+    "confirm": "Ritira l'invito",
+    "done": "Invito ritirato.",
+    "failed": "L'invito non è stato ritirato. Forse nel frattempo è stato usato."
+  },
+  "create": {
+    "title": "Invita una persona",
+    "description": "Ricevi un link e un codice da mandare. La persona sceglie da sé nome utente e password.",
+    "name": "Per chi è",
+    "nameHint": "Facoltativo. Lo vedi solo tu, per riconoscere l'invito nell'elenco.",
+    "role": "Ruolo",
+    "lifetime": "Valido per",
+    "days_one": "{{count}} giorno",
+    "days_other": "{{count}} giorni",
+    "submit": "Crea l'invito",
+    "working": "Creazione…",
+    "cancel": "Annulla",
+    "failed": "L'invito non è stato creato. Riprova.",
+    "forbidden": "Non puoi invitare qualcuno con questo ruolo."
+  },
+  "result": {
+    "title": "Invito pronto",
+    "warning": "Manda adesso il link o il codice: quando chiudi questa finestra non potrai più vederli.",
+    "linkLabel": "Link",
+    "codeLabel": "Codice da digitare",
+    "codeHint": "Se il link non si apre, la persona va su {{address}} e digita questo codice.",
+    "copyLink": "Copia il link",
+    "copyCode": "Copia il codice",
+    "copied": "Copiato.",
+    "qrAlt": "Codice QR del link d'invito",
+    "qrHint": "Oppure fallo inquadrare con la fotocamera del telefono.",
+    "expires": "Valido fino al {{date}}, per una sola persona.",
+    "done": "Fatto"
+  },
+  "accept": {
+    "title": "Entra in NeroNet",
+    "subtitle": "Qualcuno ti ha invitato. Scegli il nome utente e la password con cui entrerai.",
+    "fromLink": "Il tuo invito è nel link che hai aperto.",
+    "code": "Codice d'invito",
+    "codeHint": "12 lettere e numeri, per esempio 7K3M-Q9TD-X2WA. Lo trovi nel messaggio di chi ti ha invitato.",
+    "username": "Nome utente",
+    "usernameHint": "Da 3 a 64 caratteri: lettere, numeri, punto, trattino o trattino basso.",
+    "password": "Password",
+    "passwordHint": "Una frase lunga è più facile da ricordare e più difficile da indovinare.",
+    "repeat": "Ripeti la password",
+    "submit": "Crea il mio account",
+    "working": "Creazione dell'account…",
+    "errors": {
+      "codeRequired": "Digita il codice d'invito.",
+      "usernameFormat": "Usa da 3 a 64 caratteri: lettere, numeri, punto, trattino o trattino basso, iniziando con una lettera o un numero.",
+      "usernameTaken": "Questo nome utente è già preso. Scegline un altro.",
+      "passwordRequired": "Scegli una password.",
+      "mismatch": "Le due password non sono uguali.",
+      "invalid": "Questo invito non funziona: potrebbe essere scaduto, già usato o ritirato. Chiedine uno nuovo a chi te l'ha mandato.",
+      "tooMany": "Troppi tentativi da questa rete. Riprova tra 15 minuti.",
+      "unreachable": "Il server non risponde. Controlla la connessione e riprova.",
+      "generic": "L'account non è stato creato. Riprova."
+    },
+    "ready": {
+      "title": "Il tuo account è pronto",
+      "mfa": "Il tuo ruolo richiede un'app di autenticazione sul telefono. Accedi e segui i passaggi per configurarla.",
+      "plain": "Accedi con il nome utente e la password che hai appena scelto.",
+      "signIn": "Accedi"
+    },
+    "signedIn": {
+      "body": "Sei dentro come {{name}}. Per usare questo invito con un nuovo account, prima esci.",
+      "signOut": "Esci"
+    }
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "panel": {
+    "title": "Invitations",
+    "description": "Send a link to the person who should join. They choose their own username and password, from any network.",
+    "invite": "Invite a person",
+    "organisation": "Organisation",
+    "tableCaption": "Invitations of this organisation",
+    "colName": "For",
+    "colRole": "Role",
+    "colStatus": "Status",
+    "colExpires": "Valid until",
+    "colCreatedBy": "Created by",
+    "colActions": "Actions",
+    "noName": "No name",
+    "status": {
+      "pending": "Waiting",
+      "used": "Used by {{name}}",
+      "usedUnknown": "Used",
+      "expired": "Expired",
+      "revoked": "Withdrawn"
+    },
+    "withdraw": "Withdraw",
+    "withdrawLabel": "Withdraw the invitation for {{name}}",
+    "empty": {
+      "title": "No invitations yet",
+      "body": "Invite a person to give them access without choosing their password for them."
+    },
+    "loadFailed": "The invitations could not be loaded. Try again.",
+    "noOrganisation": "You do not manage any organisation, so you cannot invite anyone."
+  },
+  "withdraw": {
+    "title": "Withdraw the invitation for {{name}}?",
+    "body": "The link and the code stop working at once. Whoever has them can no longer join.",
+    "confirm": "Withdraw the invitation",
+    "done": "Invitation withdrawn.",
+    "failed": "The invitation was not withdrawn. It may have been used in the meantime."
+  },
+  "create": {
+    "title": "Invite a person",
+    "description": "You get a link and a code to send. The person chooses their own username and password.",
+    "name": "Who is it for",
+    "nameHint": "Optional. Only you see it, to recognise the invitation in the list.",
+    "role": "Role",
+    "lifetime": "Valid for",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "submit": "Create the invitation",
+    "working": "Creating…",
+    "cancel": "Cancel",
+    "failed": "The invitation was not created. Try again.",
+    "forbidden": "You cannot invite someone into this role."
+  },
+  "result": {
+    "title": "Invitation ready",
+    "warning": "Send the link or the code now: once you close this window you will not see them again.",
+    "linkLabel": "Link",
+    "codeLabel": "Code to type",
+    "codeHint": "If the link does not open, the person goes to {{address}} and types this code.",
+    "copyLink": "Copy the link",
+    "copyCode": "Copy the code",
+    "copied": "Copied.",
+    "qrAlt": "QR code of the invitation link",
+    "qrHint": "Or let the person frame this with their phone's camera.",
+    "expires": "Valid until {{date}}, for one person only.",
+    "done": "Done"
+  },
+  "accept": {
+    "title": "Join NeroNet",
+    "subtitle": "Someone has invited you. Choose the username and the password you will sign in with.",
+    "fromLink": "Your invitation is in the link you opened.",
+    "code": "Invitation code",
+    "codeHint": "12 letters and numbers, for example 7K3M-Q9TD-X2WA. It is in the message from whoever invited you.",
+    "username": "Username",
+    "usernameHint": "3 to 64 characters: letters, numbers, dot, dash or underscore.",
+    "password": "Password",
+    "passwordHint": "A long phrase is easier to remember and harder to guess.",
+    "repeat": "Repeat the password",
+    "submit": "Create my account",
+    "working": "Creating your account…",
+    "errors": {
+      "codeRequired": "Type the invitation code.",
+      "usernameFormat": "Use 3 to 64 characters: letters, numbers, dot, dash or underscore, starting with a letter or a number.",
+      "usernameTaken": "This username is already taken. Choose another one.",
+      "passwordRequired": "Choose a password.",
+      "mismatch": "The two passwords are not the same.",
+      "invalid": "This invitation does not work: it may have expired, been used already or been withdrawn. Ask whoever invited you for a new one.",
+      "tooMany": "Too many attempts from this network. Try again in 15 minutes.",
+      "unreachable": "The server cannot be reached. Check your connection and try again.",
+      "generic": "The account was not created. Try again."
+    },
+    "ready": {
+      "title": "Your account is ready",
+      "mfa": "Your role needs an authenticator app on your phone. Sign in and follow the steps to set it up.",
+      "plain": "Sign in with the username and the password you just chose.",
+      "signIn": "Sign in"
+    },
+    "signedIn": {
+      "body": "You are signed in as {{name}}. To use this invitation for a new account, sign out first.",
+      "signOut": "Sign out"
+    }
+  }
+}
