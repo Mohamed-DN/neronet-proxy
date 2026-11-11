@@ -428,6 +428,84 @@ paths:
         "200":
           description: Cryptographic keys shredded permanently
 
+  # ----------------------------------------------------------------------------
+  # Invitations (owner, admin, platform super-admin; accept is public)
+  # ----------------------------------------------------------------------------
+  /organizations/{orgId}/invitations:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Invite a person into the organisation
+      description: >
+        Returns the link token and the short code once; neither is stored. The role is at
+        or below the caller's own, and owner is never invitable.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [admin, network_admin, auditor, member], default: member }
+                display_name_hint: { type: string, maxLength: 128 }
+                expires_in_days: { type: integer, minimum: 1, maximum: 30, default: 7 }
+      responses:
+        "201":
+          description: Invitation created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invitation: { $ref: "#/components/schemas/Invitation" }
+                  token: { type: string, description: "base64url, 32 bytes; the link is <origin>/invito#<token>" }
+                  code: { type: string, example: "7K3M-Q9TD-X2WA" }
+        "400": { description: Invalid role, lifetime or hint }
+        "403": { description: Role may not invite, or the role is above the caller's own }
+        "404": { description: Organisation not found or not the caller's }
+    get:
+      summary: List the organisation's invitations (never a secret)
+      responses:
+        "200":
+          description: Invitations, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invitations: { type: array, items: { $ref: "#/components/schemas/Invitation" } }
+  /organizations/{orgId}/invitations/{invitationId}:
+    delete:
+      summary: Withdraw a pending invitation
+      parameters:
+        - { name: orgId, in: path, required: true, schema: { type: string } }
+        - { name: invitationId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Withdrawn }
+        "404": { description: Not found in this organisation }
+        "409": { description: Already used or withdrawn }
+  /invitations/accept:
+    post:
+      summary: Accept an invitation and create the account (public, rate limited per address)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              description: Exactly one of token or code.
+              properties:
+                token: { type: string }
+                code: { type: string }
+                username: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$" }
+                password: { type: string }
+      responses:
+        "201": { description: Account created; sign in normally next }
+        "400": { description: "invitation_invalid for every unusable secret, or a field error" }
+        "409": { description: username_taken; the invitation stays usable }
+        "429": { description: Too many attempts from this address }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -436,6 +514,22 @@ components:
       bearerFormat: JWT
 
   schemas:
+    Invitation:
+      type: object
+      properties:
+        id: { type: string }
+        organization_id: { type: string }
+        role: { type: string, enum: [admin, network_admin, auditor, member] }
+        display_name_hint: { type: [string, "null"] }
+        created_by: { type: [string, "null"] }
+        created_by_username: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        used_at: { type: [string, "null"], format: date-time }
+        used_by: { type: [string, "null"] }
+        used_by_username: { type: [string, "null"] }
+        revoked_at: { type: [string, "null"], format: date-time }
+        status: { type: string, enum: [pending, used, expired, revoked] }
     User:
       type: object
       properties:

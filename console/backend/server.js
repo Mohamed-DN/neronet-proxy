@@ -36,6 +36,7 @@ const cloudPcRoutes = require('./routes/cloudPc');
 const canaryRoutes = require('./routes/canary');
 const preauthKeysRoutes = require('./routes/preauthKeys');
 const organizationsRoutes = require('./routes/organizations');
+const invitationRoutes = require('./routes/invitations');
 const transportsRoutes = require('./routes/transports');
 const devicesRoutes = require('./routes/devices');
 const compartmentsRoutes = require('./routes/compartments');
@@ -101,6 +102,9 @@ function createApp() {
   app.use('/api/geofencing', geofencingRoutes);
   app.use('/api/cloud-pc', requireFeature('cloud_pc'), cloudPcRoutes);
   app.use('/api/preauth-keys', preauthKeysRoutes);
+  // Before the organizations router, which would otherwise see these paths first.
+  app.use('/api/organizations/:orgId/invitations', invitationRoutes.adminRouter);
+  app.use('/api/invitations', invitationRoutes.publicRouter);
   app.use('/api/organizations', organizationsRoutes);
   app.use('/api/transports', transportsRoutes);
   app.use('/api/devices', devicesRoutes);

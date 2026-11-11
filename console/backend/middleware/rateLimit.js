@@ -214,6 +214,18 @@ const registerLimiter = rateLimit({
   keyFn: clientIp
 });
 
+// Accepting an invitation verifies a secret and creates an account, so it is metered
+// like the sign-in: per real client address (one trusted proxy hop, server.js). There is
+// no username to add to the key: the secret, not the name, is what is being guessed.
+const invitationAcceptLimiter = rateLimit({
+  name: 'invitation-accept',
+  limit: 10,
+  windowMs: 15 * 60_000,
+  failClosed: true,
+  message: 'too many invitation attempts; wait before trying again',
+  keyFn: clientIp
+});
+
 // Node enrolment allocates an overlay address from a finite pool.
 // Enrolment: the caller holds no node credential yet, so the only thing to meter is
 // the address. This covers /challenge and /register only. Authenticated node traffic
@@ -361,6 +373,7 @@ module.exports = {
   loginLimiter,
   mfaChallengeLimiter,
   registerLimiter,
+  invitationAcceptLimiter,
   enrolmentLimiter,
   apiLimiter,
   writeLimiter,
