@@ -360,6 +360,9 @@ export interface TopologyNode {
   compartment_id: string | null;
   compartment_name: string;
   is_ghost_vault: boolean;
+  device_kind?: 'mesh' | 'profile';
+  is_profile_gateway?: boolean;
+  last_seen_at?: string | null;
   [key: string]: unknown;
 }
 
