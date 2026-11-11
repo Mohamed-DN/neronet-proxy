@@ -253,7 +253,7 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   test('POST /api/nodes/:id/action with set_exit should designate node as exit bridge', async () => {
     const res = await request(app)
       .post(`/api/nodes/${createdNodeId}/action`)
-      .set('Authorization', `Bearer ${regularUserToken}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({ action: 'set_exit' });
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.result.is_exit_node, true);

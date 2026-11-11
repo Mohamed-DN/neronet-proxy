@@ -32,6 +32,7 @@ router.post('/circuit', validateRequest('CircuitRequest'), async (req, res) => {
 
     const circuit = await CircuitEngine.buildCircuit({
       requesterNodeId: requesterId,
+      organizationId: orgId,
       targetCountry: req.body.target_country,
       hopCount: req.body.hop_count
     });

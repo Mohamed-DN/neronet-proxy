@@ -138,7 +138,12 @@ function describeDiversity(hops) {
  * and choosing it last would frequently leave no eligible exit after the other hops
  * had consumed the available operators.
  */
-async function buildCircuit({ requesterNodeId = null, targetCountry = '', hopCount = DEFAULT_HOP_COUNT } = {}) {
+async function buildCircuit({
+  requesterNodeId = null,
+  organizationId = 'org-default',
+  targetCountry = '',
+  hopCount = DEFAULT_HOP_COUNT
+} = {}) {
   const hops = Math.min(Math.max(Number(hopCount) || DEFAULT_HOP_COUNT, 2), MAX_HOP_COUNT);
   const country = String(targetCountry || '')
     .slice(0, 2)
@@ -149,14 +154,16 @@ async function buildCircuit({ requesterNodeId = null, targetCountry = '', hopCou
        FROM nodes
       WHERE role IN ('RELAY', 'EXIT_BRIDGE', 'HYBRID')
         AND is_healthy = TRUE
-        AND is_quarantined = FALSE`,
-    [],
+        AND is_quarantined = FALSE
+        AND COALESCE(organization_id, 'org-default') = $1`,
+    [organizationId || 'org-default'],
     `SELECT id, user_id, public_key, overlay_ipv4, endpoints, country_code, asn, role, latency_ms
        FROM nodes
       WHERE role IN ('RELAY', 'EXIT_BRIDGE', 'HYBRID')
         AND is_healthy = 1
-        AND is_quarantined = 0`,
-    []
+        AND is_quarantined = 0
+        AND COALESCE(organization_id, 'org-default') = ?`,
+    [organizationId || 'org-default']
   );
 
   // The requester must not be a hop in its own circuit: it already knows its own
