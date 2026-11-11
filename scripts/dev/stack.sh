@@ -96,6 +96,13 @@ esac
 # The ACME test adds a private Pebble CA without changing the deployment files.
 if [ -n "${NERONET_EXTRA_COMPOSE_FILE:-}" ]; then
   [ -f "$NERONET_EXTRA_COMPOSE_FILE" ] || die "no $NERONET_EXTRA_COMPOSE_FILE"
+  # An override needs the base file before it. In internal mode nothing has named it yet,
+  # and compose would treat the override as the whole project; in acme mode it is already
+  # there, and naming it again after the acme file would undo that file's settings.
+  case "$COMPOSE" in
+    *"-f docker-compose.yml"*) ;;
+    *) COMPOSE="$COMPOSE -f docker-compose.yml" ;;
+  esac
   COMPOSE="$COMPOSE -f $NERONET_EXTRA_COMPOSE_FILE"
 fi
 
