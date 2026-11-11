@@ -2,12 +2,6 @@
   "title": "Mappa della rete",
   "description": "La mappa dei dispositivi e dei collegamenti permessi dalle regole; una linea non significa che i dati stiano passando.",
   "searchPlaceholder": "Cerca per nome, numero o indirizzo di rete…",
-  "filterRoleAll": "Tutti i tipi",
-  "filterRoleRelay": "Inoltra traffico",
-  "filterRoleExit": "Uscita verso internet",
-  "filterRoleClient": "Dispositivi utente",
-  "filterRoleHybrid": "Misti (utente e inoltro)",
-  "filterCompartmentAll": "Tutte le sotto-reti",
   "columns": {
     "node": "Dispositivo",
     "role": "Tipo",
@@ -41,11 +35,9 @@
     "zoomIn": "Ingrandisci",
     "zoomOut": "Riduci",
     "resetView": "Torna alla vista iniziale",
-    "hint": "Trascina un dispositivo per spostarlo. Trascina lo sfondo per muoverti; usa la rotella per ingrandire. Clicca una linea per bloccarla o sbloccarla.",
-    "selectPrompt": "Seleziona un dispositivo o una linea per vederne i dettagli.",
+    "hint": "Trascina lo sfondo per muoverti e usa la rotella per ingrandire. Seleziona un dispositivo o una linea per i dettagli; trascina un dispositivo per spostarlo.",
     "linkTitle": "Collegamento",
     "cutBadge": "Bloccato",
-    "activeBadge": "Aperto",
     "cutAction": "Blocca collegamento",
     "restoreAction": "Sblocca collegamento",
     "cutExplain": "Bloccare il collegamento crea una regola che impedisce ai due dispositivi di scambiarsi dati, in entrambe le direzioni.",
@@ -64,13 +56,7 @@
     "groupRole": "Tipo",
     "groupNone": "Nessun raggruppamento",
     "clusterOther": "Non assegnati",
-    "edgesLabel": "Linee da mostrare",
-    "edgesAuto": "Automatico",
-    "edgesAll": "Tutti i collegamenti",
-    "edgesSelected": "Solo il dispositivo selezionato",
-    "edgesNone": "Nessuna",
-    "edgesSelectHint": "Con molti dispositivi mostriamo solo le linee bloccate. Seleziona un dispositivo per vedere i suoi collegamenti.",
-    "nodeCountBadge": "{{count}} dispositivi"
+    "relayout": "Ridisponi la mappa"
   },
   "nodeDrawer": {
     "title": "Dettagli del dispositivo",
@@ -88,46 +74,99 @@
   },
   "policyOpenNotice": "Le regole permettono i collegamenti tra tutti i dispositivi, tranne quelli bloccati. Per comunicare serve anche un percorso disponibile.",
   "empty": {
-    "title": "Nessun dispositivo da mostrare",
+    "title": "Nessun dispositivo ancora",
+    "filteredTitle": "Nessun dispositivo da mostrare",
     "desc": "Nessun dispositivo corrisponde alla sotto-rete o ai filtri scelti. Prova a cambiarli.",
-    "enrollFirst": "Registra il primo dispositivo per vedere la mappa della rete."
+    "enrollFirst": "Collega il primo dispositivo da I miei dispositivi e comparirà qui.",
+    "action": "Collega un dispositivo"
   },
   "radial": {
     "summary": "Rete visibile",
     "allowedPairs": "Collegamenti permessi",
     "loading": "Caricamento della mappa della rete",
-    "evidence": "Come leggere la mappa",
-    "policy": "Permessi",
-    "observed": "Percorsi misurati",
-    "policyExplain": "Le linee mostrano le connessioni permesse dalle regole. Non significano che i dati stiano passando.",
-    "observedExplain": "Qui compariranno le misure reali tra dispositivi. Le linee dei permessi non provano che esista un percorso.",
-    "unmeasured": "Non abbiamo ancora misurato i percorsi tra i dispositivi.",
     "collapse": "Riduci {{name}}",
     "expand": "Mostra {{name}}",
     "groupUnhealthy": "Con problemi: {{count}}",
-    "groupQuarantined": "Bloccati: {{count}}",
-    "controlPlane": "Server di controllo",
+    "groupQuarantined": "Isolati: {{count}}",
     "transport": "Come viaggiano i dati",
-    "allowed": "Permessa",
     "allNodes": "Tutti i dispositivi",
     "closeDetails": "Chiudi i dettagli",
     "openPolicy": "Regole aperte"
   },
   "graph": {
     "communities": "Gruppi",
-    "inventoryGroups": "Colora i dispositivi per gruppo",
     "selectAll": "Mostra tutti i gruppi",
-    "fold": "Riduci a un punto",
+    "fold": "Mostra come una bolla",
     "unfold": "Mostra i dispositivi",
     "scopedCounts": "Il conteggio include solo i dispositivi che il tuo account può vedere.",
-    "aggregate": "Mostra i {{count}} dispositivi di {{name}}",
     "noMatches": "Nessun dispositivo corrisponde a questi filtri.",
     "resetFilters": "Mostra tutto",
     "neighborhood": "Dispositivi collegati",
     "hops_one": "Diretti",
     "hops_other": "Fino a {{count}} passaggi",
     "policyOnly": "Mostra i collegamenti permessi, non i percorsi realmente usati.",
-    "neighborLimit": "Mostriamo i primi 50 dispositivi collegati. Usa la ricerca o l'elenco per vederli tutti.",
-    "overviewSubset": "Mostrati {{shown}} collegamenti permessi su {{total}}. Seleziona un dispositivo per vedere tutti i suoi."
+    "neighborLimit": "Mostriamo i primi 50 dispositivi collegati. Usa la ricerca o l'elenco per vederli tutti."
+  },
+  "single": {
+    "title": "Per ora c'è un solo dispositivo",
+    "body": "Collegane un altro per vedere come i tuoi dispositivi si raggiungono."
+  },
+  "kind": {
+    "device": "Dispositivo",
+    "profile": "Dispositivo con profilo",
+    "gateway": "Gateway o uscita"
+  },
+  "nodeState": {
+    "online": "Funziona bene",
+    "degraded": "Ha problemi",
+    "offline": "Spento",
+    "quarantined": "Isolato",
+    "unmeasured": "Non misurato"
+  },
+  "linkState": {
+    "unmeasured": "Permesso, non misurato",
+    "direct": "Diretto",
+    "relayed": "Tramite un relay",
+    "offline": "Un dispositivo è spento",
+    "quarantined": "Un dispositivo è isolato",
+    "blocked": "Bloccato da una regola"
+  },
+  "legend": {
+    "toggle": "Legenda e filtri",
+    "kinds": "Dispositivi",
+    "links": "Collegamenti",
+    "kindNote": "Un dispositivo con profilo è un telefono o un computer con un profilo WireGuard: entra nella rete tramite un gateway.",
+    "notMeasured": "I percorsi diretti e tramite relay non sono ancora misurati: per questo compare “—”."
+  },
+  "notice": {
+    "dense": "Le regole permettono quasi tutti i collegamenti: la mappa mostra solo le eccezioni.",
+    "showAll_one": "Mostra il collegamento permesso",
+    "showAll_other": "Mostra tutti i {{count}} collegamenti permessi"
+  },
+  "search": {
+    "results": "Dispositivi trovati",
+    "none": "Nessun dispositivo corrisponde alla ricerca.",
+    "count_one": "{{count}} dispositivo trovato",
+    "count_other": "{{count}} dispositivi trovati"
+  },
+  "mirror": {
+    "label": "Dispositivi sulla mappa",
+    "help": "Usa le frecce per passare da un dispositivo all'altro, Invio per aprire i dettagli ed Esc per chiuderli.",
+    "connections_one": "{{count}} collegamento",
+    "connections_other": "{{count}} collegamenti"
+  },
+  "bubble": {
+    "label_one": "{{name}}: {{count}} dispositivo",
+    "label_other": "{{name}}: {{count}} dispositivi"
+  },
+  "inspector": {
+    "lastSeen": "Ultimo contatto",
+    "lastHandshake": "Ultimo scambio di chiavi",
+    "path": "Percorso",
+    "pathGateway": "Tramite il gateway {{name}}",
+    "pathGatewayUnknown": "Tramite il gateway dei profili",
+    "pathMeasured": "Diretti: {{direct}}, tramite relay: {{relayed}}",
+    "secondHop": "Tramite un altro dispositivo",
+    "openConnection": "Dettagli del collegamento"
   }
 }
