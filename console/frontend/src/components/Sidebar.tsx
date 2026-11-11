@@ -201,186 +201,194 @@ export default function Sidebar({
 
   return (
     <aside
+      data-shell-sidebar
       className={cn(
-        'sticky top-0 z-drawer flex h-screen shrink-0 select-none flex-col justify-between',
+        // The column stretches to the height of the page (flex default), so
+        // the panel and its rule run to the bottom of a long page.
+        'z-drawer shrink-0 select-none self-stretch',
         'border-r border-border bg-surface-raised transition-[width]',
         collapsed ? 'w-16' : 'w-64'
       )}
     >
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        <div className="flex items-center justify-between gap-2 border-b border-border p-4">
-          {!collapsed && (
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/40 bg-accent/10">
-                <Radio aria-hidden="true" className="h-4 w-4 text-accent" />
+      {/* The content stays in view while the page scrolls. It is capped at the
+          window height with max-h, never sized by it, so a tall page cannot
+          feed back into its own height. */}
+      <div data-shell-sidebar-inner className="sticky top-0 flex h-full max-h-screen flex-col justify-between">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="flex items-center justify-between gap-2 border-b border-border p-4">
+            {!collapsed && (
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/40 bg-accent/10">
+                  <Radio aria-hidden="true" className="h-4 w-4 text-accent" />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-body font-bold tracking-wider text-content">{t('brand.name')}</div>
+                  <div className="truncate text-caption text-muted">{t('brand.tagline')}</div>
+                </div>
               </div>
-              <div className="min-w-0">
-                <div className="truncate text-body font-bold tracking-wider text-content">{t('brand.name')}</div>
-                <div className="truncate text-caption text-muted">{t('brand.tagline')}</div>
-              </div>
-            </div>
-          )}
-          <IconButton
-            label={collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')}
-            icon={collapsed ? PanelLeftOpen : PanelLeftClose}
-            aria-expanded={!collapsed}
-            onClick={() => setCollapsed((prev) => !prev)}
-          />
-        </div>
-
-        {(nukeArmed || nukeScheduledAt) && !collapsed && (
-          <div className="mx-3 my-2.5 space-y-2 rounded-xl border-2 border-danger bg-danger/15 p-3">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-caption font-semibold text-danger">
-                <Skull aria-hidden="true" className="h-4 w-4" />
-                {t('sidebar.armed')}
-              </span>
-              <span className="rounded-sm bg-danger px-1.5 py-0.5 text-micro font-semibold text-danger-contrast">
-                {t('sidebar.armedPinned')}
-              </span>
-            </div>
-            <div className="rounded-sm border border-danger/40 bg-surface px-2 py-1 text-center text-micro font-semibold tabular-nums text-danger">
-              {timeRemaining}
-            </div>
-            <button
-              type="button"
-              onClick={onExecuteWipe}
-              className="flex w-full items-center justify-center gap-1.5 rounded-control border border-danger bg-danger px-3 py-2 text-caption font-semibold text-danger-contrast transition-colors hover:bg-danger-strong focus-visible:outline-focus"
-            >
-              <Skull aria-hidden="true" className="h-4 w-4" />
-              <span>{t('sidebar.destroyNow')}</span>
-            </button>
-          </div>
-        )}
-
-        <nav aria-label={t('nav.landmark')} className="space-y-4 px-3 pb-4 pt-2">
-          {sections.map((section) => {
-            const isCollapsed = collapsedSections[section.key];
-            return (
-              <div key={section.key} className="space-y-1">
-                {!collapsed && (
-                  <button
-                    type="button"
-                    onClick={() => toggleSection(section.key)}
-                    aria-expanded={!isCollapsed}
-                    className="flex w-full items-center justify-between px-2 py-1 text-caption font-medium text-subtle transition-colors hover:text-content focus-visible:outline-focus"
-                  >
-                    <span>{t(`nav.sections.${section.key}`)}</span>
-                    {isCollapsed ? (
-                      <ChevronRight aria-hidden="true" className="h-3 w-3 text-subtle" />
-                    ) : (
-                      <ChevronDown aria-hidden="true" className="h-3 w-3 text-subtle" />
-                    )}
-                  </button>
-                )}
-
-                {(!isCollapsed || collapsed) && (
-                  <div className="space-y-0.5">
-                    {section.items.map((item) => {
-                      const Icon = item.icon;
-                      const label = t(`nav.items.${item.id}`);
-                      return (
-                        <NavLink
-                          key={item.id}
-                          to={ROUTES[item.id]}
-                          title={collapsed ? label : undefined}
-                          className={({ isActive }) =>
-                            cn(
-                              'relative flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-caption font-medium transition-colors focus-visible:outline-focus',
-                              isActive
-                                ? cn(
-                                    'before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full',
-                                    item.danger ? 'text-danger before:bg-danger' : 'text-accent before:bg-accent'
-                                  )
-                                : item.danger
-                                  ? 'text-danger hover:bg-danger/10'
-                                  : 'text-muted hover:bg-surface-hover hover:text-content'
-                            )
-                          }
-                        >
-                          <span className="flex min-w-0 items-center gap-2.5">
-                            <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
-                            <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
-                          </span>
-
-                          {!collapsed && (
-                            <span className="flex shrink-0 items-center gap-1">
-                              {item.count !== undefined && (
-                                <span className="rounded-sm bg-border px-1.5 text-micro tabular-nums text-muted">
-                                  {item.count}
-                                </span>
-                              )}
-                              {item.alertCount !== undefined && item.alertCount > 0 && (
-                                <span className="rounded-sm border border-danger/40 bg-danger-subtle px-1.5 text-micro font-semibold tabular-nums text-danger">
-                                  {item.alertCount}
-                                  <span className="sr-only"> {t('nav.alertCount', { count: item.alertCount })}</span>
-                                </span>
-                              )}
-                            </span>
-                          )}
-                        </NavLink>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* The bar shows the share of enrolled devices that answered inside the
-          liveness window. It used to show a constant 98.4% labelled "Security",
-          beside an "HA Ready" claim for a single-instance deployment. */}
-      {!collapsed && (
-        <div className="shrink-0 space-y-2.5 border-t border-border bg-surface/50 p-3.5">
-          <div className="flex items-center justify-between text-caption text-muted">
-            <span className="flex items-center gap-1.5">
-              <Cpu aria-hidden="true" className="h-3.5 w-3.5 text-subtle" />
-              <span className="text-micro">{t('brand.tagline')}</span>
-            </span>
-            <span className="text-micro font-semibold tabular-nums">
-              {nodeCount === 0
-                ? t('sidebar.noNodes')
-                : t('sidebar.nodesReachable', { reachable: reachableCount, total: nodeCount })}
-            </span>
-          </div>
-          <div
-            className="h-1.5 w-full overflow-hidden rounded-full bg-border"
-            role="progressbar"
-            aria-valuenow={reachablePct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label={t('sidebar.reachabilityBar')}
-          >
-            <div
-              className={cn(
-                'h-full transition-[width] duration-500',
-                reachablePct === 100 ? 'bg-success' : reachablePct >= 80 ? 'bg-warning' : 'bg-danger'
-              )}
-              style={{ width: `${reachablePct}%` }}
+            )}
+            <IconButton
+              label={collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')}
+              icon={collapsed ? PanelLeftOpen : PanelLeftClose}
+              aria-expanded={!collapsed}
+              onClick={() => setCollapsed((prev) => !prev)}
             />
           </div>
-          <div className="flex justify-between text-micro text-subtle">
-            <span>
-              {nodeCount === 0
-                ? t('sidebar.reachableUnknown')
-                : t('sidebar.reachable', { percent: `${reachablePct}%` })}
-            </span>
-            <span>
-              {quarantinedCount > 0
-                ? t('sidebar.quarantined', { count: quarantinedCount })
-                : t('sidebar.noneQuarantined')}
-            </span>
-          </div>
-          <Link
-            to={ROUTES.glossary}
-            className="inline-flex min-h-6 items-center rounded-sm text-micro text-muted underline hover:text-content focus-visible:outline-focus"
-          >
-            {t('sidebar.glossaryLink')}
-          </Link>
+
+          {(nukeArmed || nukeScheduledAt) && !collapsed && (
+            <div className="mx-3 my-2.5 space-y-2 rounded-xl border-2 border-danger bg-danger/15 p-3">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-caption font-semibold text-danger">
+                  <Skull aria-hidden="true" className="h-4 w-4" />
+                  {t('sidebar.armed')}
+                </span>
+                <span className="rounded-sm bg-danger px-1.5 py-0.5 text-micro font-semibold text-danger-contrast">
+                  {t('sidebar.armedPinned')}
+                </span>
+              </div>
+              <div className="rounded-sm border border-danger/40 bg-surface px-2 py-1 text-center text-micro font-semibold tabular-nums text-danger">
+                {timeRemaining}
+              </div>
+              <button
+                type="button"
+                onClick={onExecuteWipe}
+                className="flex w-full items-center justify-center gap-1.5 rounded-control border border-danger bg-danger px-3 py-2 text-caption font-semibold text-danger-contrast transition-colors hover:bg-danger-strong focus-visible:outline-focus"
+              >
+                <Skull aria-hidden="true" className="h-4 w-4" />
+                <span>{t('sidebar.destroyNow')}</span>
+              </button>
+            </div>
+          )}
+
+          <nav aria-label={t('nav.landmark')} className="space-y-4 px-3 pb-4 pt-2">
+            {sections.map((section) => {
+              const isCollapsed = collapsedSections[section.key];
+              return (
+                <div key={section.key} className="space-y-1">
+                  {!collapsed && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSection(section.key)}
+                      aria-expanded={!isCollapsed}
+                      className="flex w-full items-center justify-between px-2 py-1 text-caption font-medium text-subtle transition-colors hover:text-content focus-visible:outline-focus"
+                    >
+                      <span>{t(`nav.sections.${section.key}`)}</span>
+                      {isCollapsed ? (
+                        <ChevronRight aria-hidden="true" className="h-3 w-3 text-subtle" />
+                      ) : (
+                        <ChevronDown aria-hidden="true" className="h-3 w-3 text-subtle" />
+                      )}
+                    </button>
+                  )}
+
+                  {(!isCollapsed || collapsed) && (
+                    <div className="space-y-0.5">
+                      {section.items.map((item) => {
+                        const Icon = item.icon;
+                        const label = t(`nav.items.${item.id}`);
+                        return (
+                          <NavLink
+                            key={item.id}
+                            to={ROUTES[item.id]}
+                            title={collapsed ? label : undefined}
+                            className={({ isActive }) =>
+                              cn(
+                                'relative flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-caption font-medium transition-colors focus-visible:outline-focus',
+                                isActive
+                                  ? cn(
+                                      'before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full',
+                                      item.danger ? 'text-danger before:bg-danger' : 'text-accent before:bg-accent'
+                                    )
+                                  : item.danger
+                                    ? 'text-danger hover:bg-danger/10'
+                                    : 'text-muted hover:bg-surface-hover hover:text-content'
+                              )
+                            }
+                          >
+                            <span className="flex min-w-0 items-center gap-2.5">
+                              <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
+                              <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
+                            </span>
+
+                            {!collapsed && (
+                              <span className="flex shrink-0 items-center gap-1">
+                                {item.count !== undefined && (
+                                  <span className="rounded-sm bg-border px-1.5 text-micro tabular-nums text-muted">
+                                    {item.count}
+                                  </span>
+                                )}
+                                {item.alertCount !== undefined && item.alertCount > 0 && (
+                                  <span className="rounded-sm border border-danger/40 bg-danger-subtle px-1.5 text-micro font-semibold tabular-nums text-danger">
+                                    {item.alertCount}
+                                    <span className="sr-only"> {t('nav.alertCount', { count: item.alertCount })}</span>
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </NavLink>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
         </div>
-      )}
+
+        {/* The bar shows the share of enrolled devices that answered inside the
+          liveness window. It used to show a constant 98.4% labelled "Security",
+          beside an "HA Ready" claim for a single-instance deployment. */}
+        {!collapsed && (
+          <div className="shrink-0 space-y-2.5 border-t border-border bg-surface/50 p-3.5">
+            <div className="flex items-center justify-between text-caption text-muted">
+              <span className="flex items-center gap-1.5">
+                <Cpu aria-hidden="true" className="h-3.5 w-3.5 text-subtle" />
+                <span className="text-micro">{t('brand.tagline')}</span>
+              </span>
+              <span className="text-micro font-semibold tabular-nums">
+                {nodeCount === 0
+                  ? t('sidebar.noNodes')
+                  : t('sidebar.nodesReachable', { reachable: reachableCount, total: nodeCount })}
+              </span>
+            </div>
+            <div
+              className="h-1.5 w-full overflow-hidden rounded-full bg-border"
+              role="progressbar"
+              aria-valuenow={reachablePct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={t('sidebar.reachabilityBar')}
+            >
+              <div
+                className={cn(
+                  'h-full transition-[width] duration-500',
+                  reachablePct === 100 ? 'bg-success' : reachablePct >= 80 ? 'bg-warning' : 'bg-danger'
+                )}
+                style={{ width: `${reachablePct}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-micro text-subtle">
+              <span>
+                {nodeCount === 0
+                  ? t('sidebar.reachableUnknown')
+                  : t('sidebar.reachable', { percent: `${reachablePct}%` })}
+              </span>
+              <span>
+                {quarantinedCount > 0
+                  ? t('sidebar.quarantined', { count: quarantinedCount })
+                  : t('sidebar.noneQuarantined')}
+              </span>
+            </div>
+            <Link
+              to={ROUTES.glossary}
+              className="inline-flex min-h-6 items-center rounded-sm text-micro text-muted underline hover:text-content focus-visible:outline-focus"
+            >
+              {t('sidebar.glossaryLink')}
+            </Link>
+          </div>
+        )}
+      </div>
     </aside>
   );
 }

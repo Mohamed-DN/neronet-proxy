@@ -95,8 +95,8 @@
   },
   "narrow": {
     "title": "Use a wider window",
-    "body": "The admin console needs a window at least 1024 pixels wide.",
-    "portalLink": "On a phone, open My devices."
+    "body": "The admin console needs a window at least 1024 pixels wide. On a phone you can manage your own devices from your personal space.",
+    "portalLink": "Open my devices"
   },
   "page": {
     "title": "{{page}} - NeroNet console",

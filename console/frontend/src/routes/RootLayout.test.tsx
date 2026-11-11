@@ -122,3 +122,71 @@ describe('account wipe in the shell', () => {
     expect(alert).not.toHaveBeenCalled();
   });
 });
+
+describe('shell height', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetConnectionState();
+    stubEnvironment();
+    storeSession({ token: 'tok' });
+  });
+
+  afterEach(() => {
+    clearSession();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('is as tall as its content: no viewport-height size on the shell or the sidebar column', async () => {
+    const { container } = renderConsole();
+    await screen.findByRole('main');
+
+    const root = container.querySelector('[data-shell-root]') as HTMLElement;
+    const sidebar = container.querySelector('[data-shell-sidebar]') as HTMLElement;
+    const inner = container.querySelector('[data-shell-sidebar-inner]') as HTMLElement;
+    expect(root.className).not.toMatch(/(min-)?h-(screen|dvh|svh|lvh)/);
+    // The column stretches with the page; only the sticky content is capped.
+    expect(sidebar.className).toContain('self-stretch');
+    expect(sidebar.className).not.toMatch(/h-screen/);
+    expect(inner.className).toContain('sticky');
+    expect(inner.className).toContain('max-h-screen');
+    expect(inner.className).not.toMatch(/(^|\s)h-screen/);
+  });
+});
+
+describe('narrow window', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetConnectionState();
+    stubEnvironment();
+    vi.stubGlobal('matchMedia', ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false
+    })) as unknown as typeof window.matchMedia);
+    storeSession({ token: 'tok' });
+  });
+
+  afterEach(() => {
+    clearSession();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('replaces the whole shell with a clean message and a link to the personal portal', async () => {
+    renderConsole();
+
+    expect(await screen.findByRole('heading', { name: label('narrow.title') })).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: label('narrow.portalLink') });
+    expect(link).toHaveAttribute('href', '/me');
+    // No sidebar, no top bar and no page behind the message.
+    expect(screen.queryByRole('navigation')).toBeNull();
+    expect(screen.queryByRole('banner')).toBeNull();
+    expect(screen.queryByText('Overview body')).toBeNull();
+  });
+});

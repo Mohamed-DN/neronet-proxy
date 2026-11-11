@@ -73,7 +73,7 @@
     "degraded": "Aggiornamenti in tempo reale interrotti",
     "offline": "Piano di controllo irraggiungibile",
     "degradedBody": "Le richieste passano ancora, ma il canale in tempo reale e fermo. I valori cambiano solo quando una pagina li ricarica.",
-    "offlineBody": "Non passa piu nulla. Quello che vedi e l'ultima risposta ricevuta da questa console, non lo stato della mesh.",
+    "offlineBody": "Non passa più nulla. Quello che vedi è l'ultima risposta ricevuta da questa console, non lo stato della mesh.",
     "retryIn": "Nuovo tentativo fra {{seconds}} s",
     "lastFailure": "Ultimo errore"
   },
@@ -94,9 +94,9 @@
     "back": "Vai alla panoramica"
   },
   "narrow": {
-    "title": "Usa una finestra piu larga",
-    "body": "La console di amministrazione richiede una finestra larga almeno 1024 pixel.",
-    "portalLink": "Da telefono, apri I miei dispositivi."
+    "title": "Usa una finestra più larga",
+    "body": "La console di amministrazione richiede una finestra larga almeno 1024 pixel. Da telefono puoi gestire i tuoi dispositivi dal tuo spazio personale.",
+    "portalLink": "Apri i miei dispositivi"
   },
   "page": {
     "title": "{{page}} - Console NeroNet",

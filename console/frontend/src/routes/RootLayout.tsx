@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { fleetCounts, useFeatures, useLiveUpdates, useNodes } from '../services/queries';
 import { ConfirmDialog, Skeleton, SkipLink, useToast } from '../ui';
-import { NarrowWindow } from './NarrowWindow';
+import { NarrowWindow, useIsWideEnough } from './NarrowWindow';
 import { useShell } from './shell';
 
 /*
@@ -51,6 +51,7 @@ export function RootLayout() {
   const features = useFeatures();
   const nodes = useNodes();
   const shell = useShell();
+  const wide = useIsWideEnough();
   const { notify } = useToast();
   const [wipeOpen, setWipeOpen] = useState(false);
   const [wipeBusy, setWipeBusy] = useState(false);
@@ -85,8 +86,12 @@ export function RootLayout() {
     await logout();
   };
 
+  // Below 1024 px the admin pages are not offered at all: the notice replaces
+  // the whole shell so no bar or sidebar sits over it.
+  if (!wide) return <NarrowWindow />;
+
   return (
-    <div className="flex min-h-screen bg-surface font-sans text-content">
+    <div data-shell-root className="flex bg-surface font-sans text-content">
       {/* First stop in the tab order: past the whole sidebar, to the page. */}
       <SkipLink />
 
@@ -111,23 +116,21 @@ export function RootLayout() {
           tabIndex={-1}
           className="mx-auto w-full max-w-7xl flex-1 p-6 focus-visible:outline-focus"
         >
-          <NarrowWindow>
-            <div className="mb-4">
-              <ConnectionStatus />
-            </div>
-            <Suspense
-              fallback={
-                <div>
-                  <p className="sr-only" role="status">
-                    {t('page.loading')}
-                  </p>
-                  <Skeleton lines={8} />
-                </div>
-              }
-            >
-              <Outlet />
-            </Suspense>
-          </NarrowWindow>
+          <div className="mb-4">
+            <ConnectionStatus />
+          </div>
+          <Suspense
+            fallback={
+              <div>
+                <p className="sr-only" role="status">
+                  {t('page.loading')}
+                </p>
+                <Skeleton lines={8} />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

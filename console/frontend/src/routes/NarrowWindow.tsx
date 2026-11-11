@@ -34,26 +34,28 @@ export function useIsWideEnough(): boolean {
   return wide;
 }
 
-export function NarrowWindow({ children }: { children: React.ReactNode }) {
+/**
+ * Shown instead of the whole shell below 1024 px: no sidebar, no top bar, so
+ * nothing can overlap the message. The way forward is the personal portal,
+ * which is built for a phone.
+ */
+export function NarrowWindow() {
   const { t } = useTranslation('chrome');
-  const wide = useIsWideEnough();
-
-  if (wide) return <>{children}</>;
 
   return (
-    <div
-      role="status"
-      className="flex flex-col items-center justify-center gap-3 rounded-card border border-dashed border-border px-6 py-16 text-center"
+    <main
+      data-narrow-window
+      className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-surface px-6 py-12 text-center font-sans text-content"
     >
-      <MonitorX aria-hidden="true" className="h-6 w-6 text-muted" />
+      <MonitorX aria-hidden="true" className="h-8 w-8 text-muted" />
       <h1 className="text-title font-semibold text-content">{t('narrow.title')}</h1>
-      <p className="max-w-prose text-caption text-subtle">{t('narrow.body')}</p>
+      <p className="max-w-prose text-body text-subtle">{t('narrow.body')}</p>
       <Link
         to={ROUTES.me}
-        className="inline-flex min-h-11 items-center rounded-sm text-caption text-accent underline focus-visible:outline-focus"
+        className="inline-flex min-h-11 items-center justify-center rounded-control bg-accent px-5 text-body font-medium text-accent-contrast hover:bg-accent-strong focus-visible:outline-focus"
       >
         {t('narrow.portalLink')}
       </Link>
-    </div>
+    </main>
   );
 }
