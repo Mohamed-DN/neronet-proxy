@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static|derp|profile]
+# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static|derp|profile|profile-d2d]
 #
 # Measures the overlay between the fleet nodes of a running stack. Every cell of the
 # matrix is a real TCP exchange: node A dials node B's overlay address through node
@@ -24,6 +24,11 @@
 #                 through the API, and measure real TCP to two nodes, an ACL DROP at
 #                 the gateway, roaming, a second device spoofing the first's address,
 #                 and the cut after deleting the device (image docker/wgclient)
+#   profile-d2d   two stock wg-quick devices on one gateway, a phone and a laptop: real
+#                 TCP both ways between them, WireGuard only on their wire, an ACL DROP
+#                 between the two that cuts them and its deletion that restores them, an
+#                 allow-list letting the phone open the laptop's port only, the
+#                 gateway's own overlay address over TCP, and whether it answers ping
 #
 # The stack must be running with the data plane on:
 #
@@ -356,6 +361,16 @@ printf '%-12s %-16s %s\n' SERVICE OVERLAY 'NODE ID'
 while read -r svc vip id; do printf '%-12s %-16s %s\n' "$svc" "$vip" "$id"; done < "$WORK/fleet"
 
 rc=0
+
+# finish: the verdict every scenario ends with, as the exit status and one line.
+finish() {
+  if [ "$rc" -eq 0 ]; then
+    echo "scenario '$SCENARIO': every cell matched what was expected"
+  else
+    echo "scenario '$SCENARIO': at least one cell did not match; see the lines above" >&2
+  fi
+  exit "$rc"
+}
 
 metrics_probe() {
   api GET /api/stats/timeseries > "$WORK/metrics-history.json"
@@ -772,7 +787,7 @@ case "$SCENARIO" in
     org_policy '["udp"]'
     ;;
 
-  profile)
+  profile | profile-d2d)
     # ADR 0029 A5: a stock WireGuard client (wg-quick, the protocol of the official
     # iOS and Android apps) joins through the organisation's gateway and exchanges
     # real TCP with mesh nodes. Every claim below is a measurement: a payload whose
@@ -780,7 +795,7 @@ case "$SCENARIO" in
     # gateway's own forwarding counters. Nothing is read from a database and called
     # reachability.
     [ -n "${COMPOSE_PROJECT_NAME:-}" ] && [ "$COMPOSE_PROJECT_NAME" != neronet ] \
-      || die "profile requires a dedicated stack (COMPOSE_PROJECT_NAME other than neronet)"
+      || die "$SCENARIO requires a dedicated stack (COMPOSE_PROJECT_NAME other than neronet)"
 
     WG_IMAGE=${NERONET_WGCLIENT_IMAGE:-localhost/neronet-wgclient:dev}
     $ENGINE image inspect "$WG_IMAGE" > /dev/null 2>&1 ||
@@ -852,12 +867,14 @@ case "$SCENARIO" in
     }
 
     # wg_up <container> <overlay address> <gateway public key> <endpoint>: the profile
-    # exactly as ADR 0029 defines it, from the API's answer.
+    # exactly as ADR 0029 defines it, from the API's answer. An optional fifth argument
+    # sets the interface MTU, which wg-quick otherwise derives from the route.
     wg_up() {
-      $ENGINE exec -e ADDR="$2" -e GWPUB="$3" -e EP="$4" "$1" sh -c 'umask 077; cat > /etc/wireguard/wg0.conf <<EOF
+      $ENGINE exec -e ADDR="$2" -e GWPUB="$3" -e EP="$4" -e MTU="${5:-}" "$1" sh -c 'umask 077; cat > /etc/wireguard/wg0.conf <<EOF
 [Interface]
 PrivateKey = $(cat /etc/wireguard/private)
 Address = $ADDR/32
+${MTU:+MTU = $MTU}
 
 [Peer]
 PublicKey = $GWPUB
@@ -901,9 +918,167 @@ grep -i "userspace" /tmp/wg-quick.log || echo "  wg-quick up on the kernel WireG
       done
     }
 
+    # --- profile-d2d: a phone and a laptop on one gateway ----------------------------
+    #
+    # Both are stock wg-quick clients whose only peer is the gateway, so whatever one
+    # sends the other crosses the gateway: decrypted from the sender's session, checked
+    # against both devices' policies, encrypted into the receiver's. Each device serves
+    # the nodes' echo mode on its overlay address with socat (one mode byte, then every
+    # byte back), so the same 64 KiB exchange measures a device as it measures a node.
+
+    # dev_listen <container> <overlay address>: the laptop's service, bound to the tunnel.
+    dev_listen() {
+      $ENGINE exec -d "$1" sh -c "socat TCP-LISTEN:$ECHO_PORT,bind=$2,fork,reuseaddr \
+        SYSTEM:'dd bs=1 count=1 of=/dev/null 2>/dev/null; exec cat' 2>/tmp/listen.err" > /dev/null
+    }
+
+    # dev_ping <container> <address> -> busybox ping's summary on one line.
+    dev_ping() {
+      $ENGINE exec "$1" sh -c "ping -c 3 -W 2 $2 2>&1 | tail -2 | tr '\n' ' '" < /dev/null || true
+    }
+
+    # capture_start / capture_check <container> <other device's address> <label>: the
+    # device's eth0 must carry WireGuard with the gateway and nothing else, and its wg0
+    # must show the other device's connection arriving in plaintext, which only the
+    # gateway can have put there.
+    capture_start() {
+      $ENGINE exec -d "$1" sh -c 'tcpdump -i eth0 -n -U -w /tmp/eth0.pcap ip 2>/tmp/eth0.err' > /dev/null
+      $ENGINE exec -d "$1" sh -c 'tcpdump -i wg0 -n -U -w /tmp/wg0.pcap 2>/tmp/wg0.err' > /dev/null
+    }
+    capture_check() {
+      $ENGINE exec "$1" sh -c 'pkill tcpdump; sleep 1' || true
+      $ENGINE exec -e GW_IP="$GW_IP" -e PEER="$2" -e P="$ECHO_PORT" -e WHO="$3" "$1" sh -c '
+        tcpdump -n -r /tmp/eth0.pcap 2>/dev/null > /tmp/eth0.txt
+        total=$(wc -l < /tmp/eth0.txt)
+        wgudp=$(grep -c -E "IP [0-9.]+ > $GW_IP\.51820: |IP $GW_IP\.51820 > [0-9.]+: " /tmp/eth0.txt)
+        plain=$(grep -c -E "100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\." /tmp/eth0.txt)
+        echo "  $WHO eth0 (IPv4): $total packets, $wgudp of them WireGuard UDP with $GW_IP:51820, $plain carrying an overlay address in clear"
+        tcpdump -n -r /tmp/wg0.pcap 2>/dev/null > /tmp/wg0.txt
+        in=$(grep -c "IP $PEER\.[0-9]* > [0-9.]*\.$P: " /tmp/wg0.txt)
+        syn=$(grep "IP $PEER\.[0-9]* > [0-9.]*\.$P: Flags \[S\]" /tmp/wg0.txt | head -1 | cut -c1-90)
+        echo "  $WHO wg0: $in packets from $PEER to its port $P; first SYN: $syn"
+        [ "$total" -gt 0 ] || { echo "  nothing captured on eth0: $(cat /tmp/eth0.err)"; exit 1; }
+        [ "$in" -gt 0 ] || { echo "  no connection from $PEER captured on wg0: $(cat /tmp/wg0.err)"; exit 1; }
+        [ "$plain" = 0 ] && [ "$wgudp" = "$total" ]' ||
+        { echo "unexpected: the $3 does not show WireGuard only on eth0 and the other device's connection on wg0" >&2; rc=1; }
+    }
+
+    profile_d2d() {
+      PROFILE_MTU=${NERONET_PROFILE_MTU:-1420}
+      GW_VIP=$(vip_of "$GW")
+      set -- $(gw_counters)
+      FWD0=${1:-0}; FDROP0=${2:-0}
+      # A gateway log line from an earlier run must not count as serving these two.
+      D2D_SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+      start_device "$DEV1" d2d-phone
+      DEV1_ID=$(printf '%s' "$REG" | json_field device_id)
+      DEV1_VIP=$(printf '%s' "$REG" | json_field overlay_ipv4)
+      GW_PUB=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{"public_key":"\([^"]*\)".*/\1/p')
+      GW_EP=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{[^}]*"endpoint":"\([^"]*\)".*/\1/p')
+      start_device "$DEV2" d2d-laptop
+      DEV2_ID=$(printf '%s' "$REG" | json_field device_id)
+      DEV2_VIP=$(printf '%s' "$REG" | json_field overlay_ipv4)
+      echo "registered the phone $DEV1_ID at $DEV1_VIP and the laptop $DEV2_ID at $DEV2_VIP; gateway endpoint $GW_EP"
+
+      echo "waiting for $GW to serve both devices..."
+      i=0
+      until node_logs_since "$GW" "$D2D_SINCE" 2>/dev/null < /dev/null | grep -q 'Profile gateway: forwarding for 2 device'; do
+        i=$((i + 2)); [ "$i" -le 60 ] || die "$GW never served both devices"
+        sleep 2
+      done
+      echo "$GW forwards for both after ${i}s"
+      converge
+
+      # The rootless network gives the containers a 65520-byte MTU, and wg-quick would
+      # derive a tunnel that carries 64 KiB in a handful of packets. A phone or a laptop
+      # on a real network gets 1420, so every exchange crosses the gateway as the
+      # dozens of packets it would be there.
+      echo "  device eth0 MTU $($ENGINE exec "$DEV1" cat /sys/class/net/eth0/mtu); tunnel MTU set to $PROFILE_MTU"
+      wg_up "$DEV1" "$DEV1_VIP" "$GW_PUB" "$GW_EP" "$PROFILE_MTU"
+      wg_up "$DEV2" "$DEV2_VIP" "$GW_PUB" "$GW_EP" "$PROFILE_MTU"
+      dev_listen "$DEV1" "$DEV1_VIP"
+      dev_listen "$DEV2" "$DEV2_VIP"
+
+      echo
+      echo "== (a) phone <-> laptop through the gateway, real TCP both ways, captured on both devices"
+      capture_start "$DEV1"
+      capture_start "$DEV2"
+      sleep 2
+      t=$(wait_tcp ok "$DEV1" "$DEV2_VIP" 60) || true
+      echo "  first phone -> laptop exchange succeeded after ${t}s (handshakes included)"
+      expect_tcp ok "$DEV1" "$DEV2_VIP" "phone -> laptop ($DEV2_VIP:$ECHO_PORT)"
+      expect_tcp ok "$DEV2" "$DEV1_VIP" "laptop -> phone ($DEV1_VIP:$ECHO_PORT)"
+      sleep 1
+      capture_check "$DEV1" "$DEV2_VIP" phone
+      capture_check "$DEV2" "$DEV1_VIP" laptop
+      echo "  waiting 16s for the gateway's counter report..."
+      sleep 16
+      set -- $(gw_counters)
+      FWD_A=${1:-0}; FDROP_A=${2:-0}
+      echo "  gateway counters: forwarded $FWD0 -> $FWD_A, forward-dropped $FDROP0 -> $FDROP_A"
+      [ $((FWD_A - FWD0)) -gt 100 ] ||
+        { echo "unexpected: the gateway forwarded $((FWD_A - FWD0)) packets for three 64 KiB exchanges between the devices" >&2; rc=1; }
+
+      echo
+      echo "== (b) a device to the gateway's own overlay address"
+      expect_tcp ok "$DEV1" "$GW_VIP" "phone -> gateway $GW ($GW_VIP:$ECHO_PORT)"
+      expect_tcp ok "$DEV2" "$GW_VIP" "laptop -> gateway $GW ($GW_VIP:$ECHO_PORT)"
+      echo "  ICMP, reported and not judged: phone -> gateway: $(dev_ping "$DEV1" "$GW_VIP")"
+      echo "  ICMP, reported and not judged: phone -> laptop: $(dev_ping "$DEV1" "$DEV2_VIP")"
+
+      echo
+      echo "== (c) an ACL DROP from the phone to the laptop, then its deletion"
+      DROP_ID=$(api POST /api/acl/rules "{\"priority\":5,\"source_cidr\":\"$DEV1_VIP/32\",\"destination_cidr\":\"$DEV2_VIP/32\",\"action\":\"DROP\",\"description\":\"profile-d2d scenario\"}" \
+        | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+      [ -n "$DROP_ID" ] || die "creating the DROP rule failed"
+      t=$(wait_tcp fail "$DEV1" "$DEV2_VIP" 60) || rc=1
+      echo "  phone -> laptop blocked ${t}s after the rule was written"
+      expect_tcp fail "$DEV1" "$DEV2_VIP" "phone -> laptop with the DROP"
+      expect_tcp fail "$DEV2" "$DEV1_VIP" "laptop -> phone with the DROP (the phone's answers are phone -> laptop traffic)"
+      expect_tcp ok "$DEV1" "$T1_VIP" "phone -> $T1 with the DROP (the rule names the laptop only)"
+      sleep 16
+      set -- $(gw_counters)
+      echo "  gateway forward-dropped: $FDROP_A -> ${2:-0}"
+      [ "${2:-0}" -gt "$FDROP_A" ] ||
+        { echo "unexpected: the gateway dropped nothing; the DROP was not enforced between the devices" >&2; rc=1; }
+      api DELETE "/api/acl/rules/$DROP_ID" > /dev/null
+      DROP_ID=
+      t=$(wait_tcp ok "$DEV1" "$DEV2_VIP" 60) || rc=1
+      echo "  rule deleted: phone -> laptop restored after ${t}s"
+      expect_tcp ok "$DEV1" "$DEV2_VIP" "phone -> laptop after the rule"
+      expect_tcp ok "$DEV2" "$DEV1_VIP" "laptop -> phone after the rule"
+
+      echo
+      echo "== (d) an allow-list: the phone may open the laptop's port $ECHO_PORT and nothing else"
+      # The first ACCEPT turns the organisation into an allow-list, so the whole fleet
+      # loses what the rule does not name until it is deleted. Compiled, the rule names
+      # the laptop in the phone's outbound rules and the phone in the laptop's inbound
+      # rules only: the laptop's answers pass because they answer a flow the gateway let
+      # in. DROP_ID holds the rule so the cleanup deletes it on any exit.
+      DROP_ID=$(api POST /api/acl/rules "{\"priority\":5,\"source_cidr\":\"$DEV1_VIP/32\",\"destination_cidr\":\"$DEV2_VIP/32\",\"protocol\":\"TCP\",\"port_start\":$ECHO_PORT,\"port_end\":$ECHO_PORT,\"action\":\"ACCEPT\",\"description\":\"profile-d2d scenario\"}" \
+        | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+      [ -n "$DROP_ID" ] || die "creating the ACCEPT rule failed"
+      t=$(wait_tcp fail "$DEV2" "$DEV1_VIP" 60) || rc=1
+      echo "  laptop -> phone refused ${t}s after the rule was written: the allow-list is on the gateway"
+      expect_tcp ok "$DEV1" "$DEV2_VIP" "phone -> laptop:$ECHO_PORT, which the rule allows"
+      expect_tcp fail "$DEV2" "$DEV1_VIP" "laptop -> phone, which no rule allows"
+      expect_tcp fail "$DEV1" "$T1_VIP" "phone -> $T1, which no rule allows"
+      api DELETE "/api/acl/rules/$DROP_ID" > /dev/null
+      DROP_ID=
+      t=$(wait_tcp ok "$DEV2" "$DEV1_VIP" 60) || rc=1
+      echo "  rule deleted: laptop -> phone restored after ${t}s"
+      t=$(wait_tcp ok "$DEV1" "$T1_VIP" 90) || rc=1
+      echo "  phone -> $T1 restored after ${t}s"
+    }
+
     echo "== profile gateway: $GW ($GW_ID) at $GW_IP:51820; targets $T1 ($T1_VIP) and $T2 ($T2_VIP)"
     api PUT /api/devices/gateway "{\"node_id\":\"$GW_ID\",\"endpoint\":\"$GW_IP:51820\"}" > "$WORK/gw.json"
     grep -q '"gateway"' "$WORK/gw.json" || die "naming the gateway failed: $(cat "$WORK/gw.json")"
+    if [ "$SCENARIO" = profile-d2d ]; then
+      profile_d2d
+      finish
+    fi
 
     start_device "$DEV1" a5-phone
     DEV1_ID=$(printf '%s' "$REG" | json_field device_id)
@@ -1035,14 +1210,9 @@ grep -i "userspace" /tmp/wg-quick.log || echo "  wg-quick up on the kernel WireG
     ;;
 
   *)
-    sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac
 
-if [ "$rc" -eq 0 ]; then
-  echo "scenario '$SCENARIO': every cell matched what was expected"
-else
-  echo "scenario '$SCENARIO': at least one cell did not match; see the lines above" >&2
-fi
-exit "$rc"
+finish
