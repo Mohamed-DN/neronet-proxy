@@ -8,8 +8,8 @@
  *
  *   - which nodes of an organisation may be chosen as an exit (exitCandidates);
  *   - who may choose (mayChooseExit, the IAM hook);
- *   - for one organisation, where each device's traffic leaves and which mesh exit the
- *     gateway routes 0.0.0.0/0 to (plan).
+ *   - for one organisation, where each device's traffic leaves and which mesh exit each
+ *     of its gateways routes 0.0.0.0/0 to (plan).
  *
  * A node is an exit only with its operator's consent: it registers as EXIT_BRIDGE or
  * HYBRID when started with -enable-exit, and the node itself refuses to dial for anyone
@@ -17,6 +17,7 @@
  */
 const { getPgPool } = require('../db/index');
 const AclEngine = require('./AclEngine');
+const ProfileGatewayService = require('./ProfileGatewayService');
 const { normalisePublicKeyHex } = require('../utils/crypto');
 
 const EXIT_ROLES = ['EXIT_BRIDGE', 'HYBRID'];
@@ -100,22 +101,23 @@ function internetRulesFrom(rules, deviceVip) {
 /**
  * Where each device of an organisation leaves.
  *
- * Returns { gatewayId, meshExitId, devices: Map(deviceId -> assignment) }. meshExitId is
- * the one mesh exit the gateway routes 0.0.0.0/0 and ::/0 to: the lowest id among usable
- * mesh exits some device chose. WireGuard routes by destination only, so a gateway holds
- * one default route; a device that chose another mesh exit gets an exit the gateway cannot
- * reach, and the gateway drops its internet traffic (phase 1 limit, ADR 0032).
+ * Returns { meshExitByGateway: Map(gatewayId -> meshExitId), devices: Map(deviceId ->
+ * assignment) }. Each gateway holds one mesh exit it routes 0.0.0.0/0 and ::/0 to: the
+ * lowest id among usable mesh exits chosen by the devices it serves. WireGuard routes by
+ * destination only, so a gateway holds one default route; a device that chose another
+ * mesh exit gets an exit its gateway cannot reach, and the gateway drops its internet
+ * traffic (phase 1 limit, ADR 0032). An exit is `self` when it is the device's own gateway
+ * (ProfileGatewayService decides which gateway serves a device).
  *
- * Only devices that can be served (key, 32-byte PSK, not revoked, not quarantined) are
- * listed; the caller passes the revoked keys it already holds.
+ * Only devices that can be served (key, 32-byte PSK, not revoked, not quarantined, a
+ * gateway to serve them) are listed; the caller passes the revoked keys it already holds.
  */
 async function plan(organizationId, revoked = new Set(), client = getPgPool()) {
   const org = orgKey(organizationId);
   const res = await client.query(
-    `SELECT d.id, d.overlay_ipv4, d.overlay_ipv6, d.public_key, d.preshared_key, d.exit_allow_lan,
+    `SELECT d.id, d.overlay_ipv4, d.overlay_ipv6, d.public_key, d.preshared_key, d.exit_allow_lan, d.gateway_node_id,
             e.id AS exit_id, e.role AS exit_role, e.is_healthy AS exit_healthy,
-            e.is_quarantined AS exit_quarantined, e.device_kind AS exit_kind,
-            e.profile_gateway_endpoint IS NOT NULL AS exit_is_gateway
+            e.is_quarantined AS exit_quarantined, e.device_kind AS exit_kind
        FROM nodes d
        JOIN nodes e ON e.id = d.exit_node_id
       WHERE d.device_kind = 'profile' AND d.is_quarantined = FALSE
@@ -124,20 +126,17 @@ async function plan(organizationId, revoked = new Set(), client = getPgPool()) {
       ORDER BY d.id`,
     [org]
   );
-  const gw = await client.query(
-    `SELECT id FROM nodes WHERE COALESCE(organization_id, '${DEFAULT_ORG}') = $1
-        AND profile_gateway_endpoint IS NOT NULL AND device_kind = 'mesh'`,
-    [org]
-  );
-  const gatewayId = gw.rows[0] ? gw.rows[0].id : null;
+  const served = await ProfileGatewayService.resolver(org, client);
   const rules = res.rows.length > 0 ? await AclEngine.listRules(org) : [];
 
   const devices = new Map();
-  let meshExitId = null;
+  const meshExitByGateway = new Map();
   for (const row of res.rows) {
     const key = normalisePublicKeyHex(row.public_key);
     const psk = Buffer.from(String(row.preshared_key || ''), 'base64');
     if (!key || revoked.has(key.toLowerCase()) || psk.length !== 32) continue;
+    const gatewayId = served.of(row.gateway_node_id);
+    if (!gatewayId) continue;
     const ips = [];
     if (row.overlay_ipv4) ips.push(`${row.overlay_ipv4}/32`);
     if (row.overlay_ipv6) ips.push(`${row.overlay_ipv6}/128`);
@@ -148,9 +147,13 @@ async function plan(organizationId, revoked = new Set(), client = getPgPool()) {
       EXIT_ROLES.includes(row.exit_role) &&
       row.exit_healthy &&
       !row.exit_quarantined;
-    if (usableMesh && (meshExitId === null || String(row.exit_id) < String(meshExitId))) meshExitId = row.exit_id;
+    const current = meshExitByGateway.get(gatewayId);
+    if (usableMesh && (current === undefined || String(row.exit_id) < String(current))) {
+      meshExitByGateway.set(gatewayId, row.exit_id);
+    }
     devices.set(row.id, {
       device_id: row.id,
+      gateway_id: gatewayId,
       exit_node_id: row.exit_id,
       via: isGatewayExit ? 'self' : 'mesh',
       allow_lan: Boolean(row.exit_allow_lan),
@@ -158,7 +161,7 @@ async function plan(organizationId, revoked = new Set(), client = getPgPool()) {
       internet_rules: internetRulesFrom(rules, row.overlay_ipv4)
     });
   }
-  return { gatewayId, meshExitId, devices };
+  return { meshExitByGateway, devices };
 }
 
 /** The `exit` object of a device entry in the gateway's netmap. */
@@ -171,10 +174,12 @@ function exitEntry(assignment) {
 
 /** The `exit_clients` of the mesh exit's netmap: devices that leave through it. */
 function exitClientsOf(nodeId, exitPlan) {
-  if (!exitPlan || exitPlan.meshExitId !== nodeId) return [];
+  if (!exitPlan) return [];
   const out = [];
   for (const a of exitPlan.devices.values()) {
+    // Only devices whose gateway actually routes to this exit leave through it.
     if (a.via !== 'mesh' || a.exit_node_id !== nodeId) continue;
+    if (exitPlan.meshExitByGateway.get(a.gateway_id) !== nodeId) continue;
     const c = { node_id: a.device_id, allowed_ips: a.ips };
     if (a.allow_lan) c.allow_lan = true;
     if (a.internet_rules.length > 0) c.internet_rules = a.internet_rules;

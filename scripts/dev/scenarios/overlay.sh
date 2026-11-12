@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static|derp|profile|profile-d2d|wss443|profile-exit]
+# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static|derp|profile|profile-d2d|wss443|profile-exit|profile-multi-gw]
 #
 # Measures the overlay between the fleet nodes of a running stack. Every cell of the
 # matrix is a real TCP exchange: node A dials node B's overlay address through node
@@ -47,6 +47,11 @@
 #                 exits' LAN refused, an ACL DROP that cuts it, and the exit stopped with a
 #                 capture showing only WireGuard on the device's wire. Needs a stack started
 #                 with NERONET_EXTRA_COMPOSE_FILE=scripts/dev/scenarios/profile-exit.compose.yml
+#   profile-multi-gw  two gateways in one organisation (relay-de, the default, and
+#                 relay-fr or NERONET_PROFILE_GATEWAY2), a stock wg-quick device on each:
+#                 real TCP from both to client-it through their own gateway, each gateway
+#                 serving one device, then one device moved: its old profile cut, a new
+#                 one naming the other gateway working, and the emptied gateway removed
 #
 # The stack must be running with the data plane on:
 #
@@ -914,7 +919,7 @@ case "$SCENARIO" in
     org_policy '["udp"]'
     ;;
 
-  profile | profile-d2d | profile-exit)
+  profile | profile-d2d | profile-exit | profile-multi-gw)
     # ADR 0029 A5: a stock WireGuard client (wg-quick, the protocol of the official
     # iOS and Android apps) joins through the organisation's gateway and exchanges
     # real TCP with mesh nodes. Every claim below is a measurement: a payload whose
@@ -944,6 +949,7 @@ case "$SCENARIO" in
     DEV1_ID=
     DEV2_ID=
     DROP_ID=
+    G2_ID=
 
     container_of() { $COMPOSE --profile nodes ps -q "$1" | head -1; }
     GW_CID=$(container_of "$GW")
@@ -957,6 +963,7 @@ case "$SCENARIO" in
       for c in "$DEV1" "$DEV2"; do $ENGINE rm -f -t 0 "$c" > /dev/null 2>&1 || true; done
       [ -n "$DROP_ID" ] && api DELETE "/api/acl/rules/$DROP_ID" > /dev/null 2>&1 || true
       for id in $DEV1_ID $DEV2_ID; do api DELETE "/api/nodes/$id" > /dev/null 2>&1 || true; done
+      [ -n "$G2_ID" ] && api DELETE "/api/devices/gateways/$G2_ID" > /dev/null 2>&1 || true
       rm -rf "$WORK"
     }
     trap profile_cleanup EXIT INT TERM
@@ -981,8 +988,9 @@ case "$SCENARIO" in
         | sed -n 's/.*inbound \([0-9]*\) .*/\1/p'
     }
 
-    # start_device <container> <name> -> sets REG to the API's answer. The key pair and
-    # the PSK are generated inside the container; the private key never leaves it.
+    # start_device <container> <name> [json fields,] -> sets REG to the API's answer. The
+    # key pair and the PSK are generated inside the container; the private key never
+    # leaves it. The optional third argument adds fields, each followed by a comma.
     start_device() {
       $ENGINE rm -f "$1" > /dev/null 2>&1 || true
       $ENGINE run -d --name "$1" --network "$NET" --cap-add NET_ADMIN --cap-add NET_RAW \
@@ -991,7 +999,7 @@ case "$SCENARIO" in
       pub=$($ENGINE exec "$1" sh -c 'umask 077; wg genkey > /etc/wireguard/private &&
         wg genpsk > /etc/wireguard/psk && wg pubkey < /etc/wireguard/private')
       [ -n "$pub" ] || die "no key pair in $1"
-      REG=$( { printf '{"name":"%s","public_key":"%s","preshared_key":"' "$2" "$pub";
+      REG=$( { printf '{"name":"%s",%s"public_key":"%s","preshared_key":"' "$2" "${3:-}" "$pub";
                $ENGINE exec "$1" cat /etc/wireguard/psk | tr -d '\n'; printf '"}'; } | api_secret POST /api/devices/profile)
       printf '%s' "$REG" | grep -q '"device_id"' || die "registering $2 failed: $(printf '%s' "$REG" | sed 's/"preshared[^,]*,//')"
     }
@@ -1498,6 +1506,97 @@ PostUp = ip -6 route add ::/0 dev %i table 51820 && ip -6 rule add not fwmark 51
       [ "$src" = "$EX_INET" ] || { echo "unexpected: after the restart the traffic does not leave through $EX" >&2; rc=1; }
     }
 
+    # --- profile-multi-gw: two gateways, a device on each, one device moved -----------
+    #
+    # A second mesh node becomes a gateway of the same organisation. The phone joins
+    # through the default gateway, the laptop through the second (an administrator's
+    # choice at registration). Each must reach the same mesh node with real TCP, each
+    # gateway must serve only its own device, and moving the laptop must cut its old
+    # profile and need a new one naming the other gateway: a stock profile has one peer.
+    profile_multi_gw() {
+      G2=${NERONET_PROFILE_GATEWAY2:-$T1}
+      [ "$G2" != "$GW" ] || die "the second gateway must be another node than $GW"
+      G2_ID=$(node_id_of "$G2")
+      G2_IP=$($ENGINE inspect -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}" "$(container_of "$G2")")
+      [ -n "$G2_IP" ] || die "cannot read $G2's network address"
+      MGW_SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+      echo "== second gateway: $G2 ($G2_ID) at $G2_IP:51820"
+      api PUT /api/devices/gateway "{\"node_id\":\"$G2_ID\",\"endpoint\":\"$G2_IP:51820\"}" > "$WORK/gw2.json"
+      grep -q '"is_default":false' "$WORK/gw2.json" ||
+        { echo "unexpected: the second gateway is not a non-default gateway: $(cat "$WORK/gw2.json")" >&2; rc=1; }
+      gws=$(api GET /api/devices/gateways | grep -o '"node_id":"[^"]*"' | wc -l)
+      echo "  the organisation lists $gws gateways"
+      [ "$gws" = 2 ] || { echo "unexpected: $gws gateways listed, expected 2" >&2; rc=1; }
+
+      start_device "$DEV1" mgw-phone
+      DEV1_ID=$(printf '%s' "$REG" | json_field device_id)
+      DEV1_VIP=$(printf '%s' "$REG" | json_field overlay_ipv4)
+      G1_PUB=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{"public_key":"\([^"]*\)".*/\1/p')
+      G1_EP=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{[^}]*"endpoint":"\([^"]*\)".*/\1/p')
+      start_device "$DEV2" mgw-laptop "\"gateway_node_id\":\"$G2_ID\","
+      DEV2_ID=$(printf '%s' "$REG" | json_field device_id)
+      DEV2_VIP=$(printf '%s' "$REG" | json_field overlay_ipv4)
+      G2_PUB=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{"public_key":"\([^"]*\)".*/\1/p')
+      G2_EP=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{[^}]*"endpoint":"\([^"]*\)".*/\1/p')
+      echo "  phone $DEV1_ID at $DEV1_VIP names $G1_EP; laptop $DEV2_ID at $DEV2_VIP names $G2_EP"
+      [ "$G1_EP" = "$GW_IP:51820" ] || { echo "unexpected: the phone's profile names $G1_EP, not the default $GW_IP:51820" >&2; rc=1; }
+      [ "$G2_EP" = "$G2_IP:51820" ] || { echo "unexpected: the laptop's profile names $G2_EP, not $G2_IP:51820" >&2; rc=1; }
+
+      for g in "$GW" "$G2"; do
+        i=0
+        until node_logs_since "$g" "$MGW_SINCE" 2>/dev/null < /dev/null | grep -q 'Profile gateway: forwarding for 1 device'; do
+          i=$((i + 2)); [ "$i" -le 60 ] || die "$g never served exactly one device"
+          sleep 2
+        done
+        echo "  $g forwards for exactly one device after ${i}s"
+      done
+      converge
+
+      wg_up "$DEV1" "$DEV1_VIP" "$G1_PUB" "$G1_EP"
+      wg_up "$DEV2" "$DEV2_VIP" "$G2_PUB" "$G2_EP"
+
+      echo
+      echo "== (m1) real TCP from each device through its own gateway to $T2 ($T2_VIP)"
+      t=$(wait_tcp ok "$DEV1" "$T2_VIP" 60) || true
+      echo "  phone: first exchange after ${t}s"
+      expect_tcp ok "$DEV1" "$T2_VIP" "phone via $GW -> $T2"
+      t=$(wait_tcp ok "$DEV2" "$T2_VIP" 60) || true
+      echo "  laptop: first exchange after ${t}s"
+      expect_tcp ok "$DEV2" "$T2_VIP" "laptop via $G2 -> $T2"
+      for pair in "$DEV1:$GW_IP" "$DEV2:$G2_IP"; do
+        c=${pair%%:*}; want=${pair#*:}
+        ep=$($ENGINE exec "$c" wg show wg0 endpoints | awk '{print $2}')
+        echo "  $c talks to $ep"
+        [ "${ep%:*}" = "$want" ] || { echo "unexpected: $c talks to $ep, not $want" >&2; rc=1; }
+      done
+
+      echo
+      echo "== (m2) move the laptop to $GW: its old profile stops, a new one works"
+      api PUT "/api/devices/$DEV2_ID/gateway" "{\"gateway_node_id\":\"$GW_ID\"}" > "$WORK/move.json"
+      grep -q '"reimport_required":true' "$WORK/move.json" ||
+        { echo "unexpected: the move does not ask for a new profile: $(cat "$WORK/move.json")" >&2; rc=1; }
+      NEW_EP=$(sed -n 's/.*"endpoint":"\([^"]*\)".*/\1/p' "$WORK/move.json")
+      NEW_PUB=$(sed -n 's/.*"public_key":"\([^"]*\)".*/\1/p' "$WORK/move.json")
+      [ "$NEW_EP" = "$GW_IP:51820" ] && [ "$NEW_PUB" = "$G1_PUB" ] ||
+        { echo "unexpected: the move names $NEW_EP, not $GW_IP:51820 with the default gateway's key" >&2; rc=1; }
+      t=$(wait_tcp fail "$DEV2" "$T2_VIP" 120) || rc=1
+      echo "  the old profile (peer $G2) stopped working after ${t}s"
+      $ENGINE exec "$DEV2" wg-quick down wg0 > /dev/null 2>&1 || true
+      wg_up "$DEV2" "$DEV2_VIP" "$NEW_PUB" "$NEW_EP"
+      t=$(wait_tcp ok "$DEV2" "$T2_VIP" 120) || rc=1
+      echo "  the new profile (peer $GW) works after ${t}s"
+      expect_tcp ok "$DEV2" "$T2_VIP" "laptop via $GW -> $T2"
+      expect_tcp ok "$DEV1" "$T2_VIP" "phone via $GW -> $T2, unaffected"
+
+      echo
+      echo "== (m3) the emptied gateway can be removed"
+      api DELETE "/api/devices/gateways/$G2_ID" > "$WORK/rm.json"
+      grep -q '"removed"' "$WORK/rm.json" || { echo "unexpected: removing $G2 failed: $(cat "$WORK/rm.json")" >&2; rc=1; }
+      G2_ID=
+      echo "  $G2 is no longer a gateway"
+    }
+
     echo "== profile gateway: $GW ($GW_ID) at $GW_IP:51820; targets $T1 ($T1_VIP) and $T2 ($T2_VIP)"
     api PUT /api/devices/gateway "{\"node_id\":\"$GW_ID\",\"endpoint\":\"$GW_IP:51820\"}" > "$WORK/gw.json"
     grep -q '"gateway"' "$WORK/gw.json" || die "naming the gateway failed: $(cat "$WORK/gw.json")"
@@ -1507,6 +1606,10 @@ PostUp = ip -6 route add ::/0 dev %i table 51820 && ip -6 rule add not fwmark 51
     fi
     if [ "$SCENARIO" = profile-exit ]; then
       profile_exit
+      finish
+    fi
+    if [ "$SCENARIO" = profile-multi-gw ]; then
+      profile_multi_gw
       finish
     fi
 
@@ -2240,7 +2343,7 @@ EOF
     ;;
 
   *)
-    sed -n '2,56p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,63p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac

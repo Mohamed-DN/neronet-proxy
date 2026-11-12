@@ -17,6 +17,7 @@ const { allocateNextVip, normalisePublicKeyHex, publicKeyForms } = require('../u
 const EnrollmentService = require('../services/EnrollmentService');
 const AclEngine = require('../services/AclEngine');
 const ExitService = require('../services/ExitService');
+const ProfileGatewayService = require('../services/ProfileGatewayService');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -79,49 +80,103 @@ function strictNetworkOf(req) {
   };
 }
 
-async function gatewayOf(organizationId, client = getPgPool()) {
-  const res = await client.query(
-    `SELECT id, public_key, profile_gateway_endpoint FROM nodes
-      WHERE COALESCE(organization_id, 'org-default') = $1 AND profile_gateway_endpoint IS NOT NULL
-        AND device_kind = 'mesh'`,
-    [organizationId]
-  );
-  return res.rows[0] || null;
+// The answer a gateway gets in every response: what a profile needs and what the
+// Settings table shows. Never a private key; the public key is what profiles carry.
+function gatewayView(row) {
+  return {
+    node_id: row.id,
+    name: row.name || row.id,
+    public_key: wireguardKey(row.public_key),
+    endpoint: row.profile_gateway_endpoint,
+    is_default: Boolean(row.is_default_profile_gateway)
+  };
 }
 
-// Name the node that serves profile devices for the caller's organisation.
+// Run `work` in one transaction that also moves the netmap version, so every gateway and
+// node learns the change on its next fetch.
+async function withNetmapTransaction(work) {
+  const client = await getPgPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await work(client);
+    await AclEngine.bumpNetmap(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// Make `nodeId` the organisation's one default gateway, inside the caller's transaction.
+async function markDefault(client, org, nodeId) {
+  await client.query(
+    `UPDATE nodes SET is_default_profile_gateway = FALSE
+      WHERE COALESCE(organization_id, 'org-default') = $1 AND is_default_profile_gateway AND id <> $2`,
+    [org, nodeId]
+  );
+  await client.query('UPDATE nodes SET is_default_profile_gateway = TRUE WHERE id = $1', [nodeId]);
+}
+
+// The gateways that serve this organisation's profile devices, the default first, with
+// how many devices each serves and when it was last heard from.
+router.get('/gateways', async (req, res, next) => {
+  try {
+    const org = orgOf(req);
+    const [rows, served] = await Promise.all([
+      ProfileGatewayService.gateways(org),
+      ProfileGatewayService.devicesServed(org)
+    ]);
+    const gateways = rows.map((row, i) => ({
+      // The first row is the default, flagged or not (ProfileGatewayService's order).
+      ...gatewayView({ ...row, is_default_profile_gateway: i === 0 }),
+      devices: served.get(row.id) || 0,
+      overlay_ipv4: row.overlay_ipv4 || null,
+      online: Boolean(row.is_healthy) && !row.is_quarantined,
+      last_seen_at: row.last_heartbeat ? new Date(row.last_heartbeat).toISOString() : null
+    }));
+    return res.json({ gateways });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Make a node of the caller's organisation a gateway for profile devices, or change its
+// endpoint. Other gateways stay. It becomes the default when `default` is true or when the
+// organisation has no default yet; the default is handed away only by making another
+// gateway the default.
 router.put('/gateway', requireAdmin, async (req, res, next) => {
   try {
     const { node_id, endpoint } = req.body || {};
+    const wantDefault = req.body ? req.body.default : undefined;
     if (!validEndpoint(endpoint)) return res.status(400).json({ error: 'endpoint must be host:port' });
+    if (wantDefault !== undefined && typeof wantDefault !== 'boolean') {
+      return res.status(400).json({ error: 'default must be a boolean' });
+    }
     const org = orgOf(req);
-    const pool = getPgPool();
     const node = (
-      await pool.query(
-        `SELECT id, public_key FROM nodes WHERE id = $1 AND COALESCE(organization_id, 'org-default') = $2
+      await getPgPool().query(
+        `SELECT id, name, public_key FROM nodes WHERE id = $1 AND COALESCE(organization_id, 'org-default') = $2
             AND device_kind = 'mesh'`,
         [node_id, org]
       )
     ).rows[0];
     if (!node) return res.status(404).json({ error: `no node ${node_id}` });
 
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(
-        `UPDATE nodes SET profile_gateway_endpoint = NULL
-          WHERE COALESCE(organization_id, 'org-default') = $1 AND profile_gateway_endpoint IS NOT NULL`,
-        [org]
-      );
+    const isDefault = await withNetmapTransaction(async (client) => {
+      const before = await ProfileGatewayService.gateways(org, client);
+      const already = before.some((g) => g.id === node.id && g.is_default_profile_gateway);
+      const otherDefault = before.some((g) => g.id !== node.id && g.is_default_profile_gateway);
       await client.query('UPDATE nodes SET profile_gateway_endpoint = $1 WHERE id = $2', [endpoint, node.id]);
-      await AclEngine.bumpNetmap(client);
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK').catch(() => {});
-      throw err;
-    } finally {
-      client.release();
-    }
+      if (already) return true;
+      if (wantDefault === true || !otherDefault) {
+        await markDefault(client, org, node.id);
+        return true;
+      }
+      return false;
+    });
 
     await logAuditEvent({
       eventType: 'PROFILE_GATEWAY_SET',
@@ -131,11 +186,138 @@ router.put('/gateway', requireAdmin, async (req, res, next) => {
       actorUsername: req.user.username,
       targetId: node.id,
       targetType: 'node',
-      message: `Node ${node.id} serves profile devices at ${endpoint}`,
+      message: `Node ${node.id} serves profile devices at ${endpoint}${isDefault ? ' (default)' : ''}`,
       ipAddress: req.ip,
-      metadata: { after: { node_id: node.id, endpoint } }
+      metadata: { after: { node_id: node.id, endpoint, is_default: isDefault } }
     });
-    return res.status(200).json({ gateway: { node_id: node.id, public_key: wireguardKey(node.public_key), endpoint } });
+    return res.status(200).json({
+      gateway: gatewayView({ ...node, profile_gateway_endpoint: endpoint, is_default_profile_gateway: isDefault })
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// The gateway new devices join unless an administrator chooses another.
+router.put('/gateways/:id/default', requireAdmin, async (req, res, next) => {
+  try {
+    const org = orgOf(req);
+    const gateway = await ProfileGatewayService.gatewayById(org, req.params.id);
+    if (!gateway) return res.status(404).json({ error: 'no_such_gateway', code: 'no_such_gateway' });
+    await withNetmapTransaction((client) => markDefault(client, org, gateway.id));
+    await logAuditEvent({
+      eventType: 'PROFILE_GATEWAY_DEFAULT_SET',
+      organizationId: org,
+      severity: 'warn',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: gateway.id,
+      targetType: 'node',
+      message: `New profile devices join through gateway ${gateway.id}`,
+      ipAddress: req.ip,
+      metadata: { after: { default_gateway: gateway.id } }
+    });
+    return res.json({ gateway: gatewayView({ ...gateway, is_default_profile_gateway: true }) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Stop a node serving profile devices. Refused while it still serves any (each would lose
+// its tunnel), and for the default while another gateway exists (new devices need one).
+router.delete('/gateways/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const org = orgOf(req);
+    const all = await ProfileGatewayService.gateways(org);
+    const gateway = all.find((g) => g.id === req.params.id);
+    if (!gateway) return res.status(404).json({ error: 'no_such_gateway', code: 'no_such_gateway' });
+    const devices = (await ProfileGatewayService.devicesServed(org)).get(gateway.id) || 0;
+    if (devices > 0) {
+      return res.status(409).json({
+        code: 'profile_gateway_serves_devices',
+        devices,
+        error: `This gateway still serves ${devices} device(s). Move them to another gateway first.`
+      });
+    }
+    if (all[0].id === gateway.id && all.length > 1) {
+      return res.status(409).json({
+        code: 'profile_gateway_is_default',
+        error: 'New devices join through this gateway. Make another gateway the default first.'
+      });
+    }
+    await withNetmapTransaction((client) =>
+      client.query(
+        'UPDATE nodes SET profile_gateway_endpoint = NULL, is_default_profile_gateway = FALSE WHERE id = $1',
+        [gateway.id]
+      )
+    );
+    await logAuditEvent({
+      eventType: 'PROFILE_GATEWAY_REMOVED',
+      organizationId: org,
+      severity: 'warn',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: gateway.id,
+      targetType: 'node',
+      message: `Node ${gateway.id} no longer serves profile devices`,
+      ipAddress: req.ip,
+      metadata: { before: { node_id: gateway.id, endpoint: gateway.profile_gateway_endpoint } }
+    });
+    return res.json({ removed: gateway.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Move a profile device to another gateway of its organisation. A stock WireGuard profile
+// names one gateway (one [Peer], one Endpoint), so the person must import a new profile:
+// the answer says so and carries what the new [Peer] section needs.
+router.put('/:id/gateway', async (req, res, next) => {
+  try {
+    const org = orgOf(req);
+    const { gateway_node_id } = req.body || {};
+    if (typeof gateway_node_id !== 'string' || !gateway_node_id) {
+      return res.status(400).json({ error: 'gateway_node_id must be a node id' });
+    }
+    const device = (
+      await getPgPool().query(
+        `SELECT id, gateway_node_id FROM nodes
+          WHERE id = $1 AND device_kind = 'profile' AND COALESCE(organization_id, 'org-default') = $2`,
+        [req.params.id, org]
+      )
+    ).rows[0];
+    if (!device) return res.status(404).json({ error: `no device ${req.params.id}` });
+    if (!(await ProfileGatewayService.mayUseGateway(req.user, org, gateway_node_id))) {
+      return res.status(403).json({ error: 'gateway_not_permitted', code: 'gateway_not_permitted' });
+    }
+    const gateway = await ProfileGatewayService.gatewayById(org, gateway_node_id);
+    if (!gateway) return res.status(404).json({ error: 'no_such_gateway', code: 'no_such_gateway' });
+    const before = await ProfileGatewayService.servingGateway(org, device.gateway_node_id);
+    const changed = !before || before.id !== gateway.id;
+
+    await withNetmapTransaction((client) =>
+      client.query('UPDATE nodes SET gateway_node_id = $1 WHERE id = $2', [gateway.id, device.id])
+    );
+    await logAuditEvent({
+      eventType: 'DEVICE_GATEWAY_SET',
+      organizationId: org,
+      severity: 'warn',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: device.id,
+      targetType: 'node',
+      message: changed
+        ? `Device ${device.id} moved from gateway ${before ? before.id : 'none'} to ${gateway.id}; its profile must be imported again`
+        : `Device ${device.id} stays on gateway ${gateway.id}`,
+      ipAddress: req.ip,
+      metadata: { before: { gateway_node_id: before ? before.id : null }, after: { gateway_node_id: gateway.id } }
+    });
+    const view = gatewayView(gateway);
+    return res.json({
+      device_id: device.id,
+      gateway: { node_id: view.node_id, name: view.name, public_key: view.public_key, endpoint: view.endpoint },
+      reimport_required: changed
+    });
   } catch (err) {
     next(err);
   }
@@ -261,13 +443,27 @@ router.put('/:id/exit', async (req, res, next) => {
 // Register a profile device from its public key.
 router.post('/profile', async (req, res, next) => {
   try {
-    const { name, public_key, preshared_key, exit_node_id } = req.body || {};
+    const { name, public_key, preshared_key, exit_node_id, gateway_node_id } = req.body || {};
     const label = typeof name === 'string' ? name.trim() : '';
     if (!label || label.length > 64) return res.status(400).json({ error: 'name must be 1 to 64 characters' });
     if (!isKey(public_key)) return res.status(400).json({ error: 'public_key must be a 32-byte base64 key' });
     if (!isKey(preshared_key)) return res.status(400).json({ error: 'preshared_key must be a 32-byte base64 key' });
 
-    const gateway = await gatewayOf(orgOf(req));
+    // The default gateway, unless an administrator chose another of the organisation's.
+    let gateway;
+    if (gateway_node_id !== undefined && gateway_node_id !== null) {
+      if (!(await ProfileGatewayService.mayUseGateway(req.user, orgOf(req), gateway_node_id))) {
+        return res.status(403).json({
+          error: 'gateway_not_permitted',
+          code: 'gateway_not_permitted',
+          message: 'Only an administrator can choose the gateway of a device.'
+        });
+      }
+      gateway = await ProfileGatewayService.gatewayById(orgOf(req), gateway_node_id);
+      if (!gateway) return res.status(404).json({ error: 'no_such_gateway', code: 'no_such_gateway' });
+    } else {
+      gateway = await ProfileGatewayService.defaultGateway(orgOf(req));
+    }
     if (!gateway) {
       return res.status(409).json({
         error: 'no_profile_gateway',
@@ -311,8 +507,9 @@ router.post('/profile', async (req, res, next) => {
       vips = await allocateNextVip(client);
       await client.query(
         `INSERT INTO nodes (id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6, role,
-                            ip_class, is_healthy, is_quarantined, organization_id, device_kind, exit_node_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9)`,
+                            ip_class, is_healthy, is_quarantined, organization_id, device_kind, exit_node_id,
+                            gateway_node_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9, $10)`,
         [
           id,
           actor.id,
@@ -322,7 +519,8 @@ router.post('/profile', async (req, res, next) => {
           vips.overlayIpv4,
           vips.overlayIpv6,
           organizationId,
-          exit ? exit.node_id : null
+          exit ? exit.node_id : null,
+          gateway.id
         ]
       );
       await AclEngine.bumpNetmap(client);

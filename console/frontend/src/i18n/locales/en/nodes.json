@@ -61,7 +61,7 @@
   },
   "actionFailed": "This was not completed. Try again shortly.",
   "detail": {
-    "gatewayLocked": "This device is the gateway for WireGuard profiles. Revoking it would disconnect every device that uses the WireGuard app. Make another device the gateway first.",
+    "gatewayLocked": "This device is a gateway for WireGuard profiles. Revoking it would disconnect the devices it serves. Move them to another gateway and remove this one from the gateways in Settings first.",
     "description": "Details for one device: security checks, addresses, a connection test, and actions to block it or disconnect it.",
     "alert": "This device is blocked and cannot communicate with any other device on the network.",
     "reason": "Reason for the block",
@@ -102,5 +102,23 @@
     "close": "Close",
     "loadFailed": "The device could not be loaded. Try again.",
     "title": "Device details"
+  },
+  "gateway": {
+    "title": "Gateway",
+    "current": "Connects through {{name}} at {{endpoint}}",
+    "none": "No gateway serves this device. Add one in Settings.",
+    "moveTo": "Move to",
+    "move": "Move device",
+    "keep": "Keep current gateway",
+    "confirmTitle": "Move {{device}} to {{gateway}}?",
+    "warning": "After the move, this device cannot connect until its WireGuard profile is replaced. A WireGuard profile names one gateway, so the person must import a new profile on the device.",
+    "done": "{{device}} now goes through {{gateway}}. Until its profile is replaced it cannot connect. Ask the person to add the device again from their page, or to change the peer of the tunnel in the WireGuard app to:",
+    "publicKey": "Public key",
+    "endpoint": "Endpoint",
+    "unchanged": "{{device}} already goes through {{gateway}}. Nothing changed.",
+    "failed": "The device was not moved. Try again.",
+    "noOther": "There is no other gateway. Add one in Settings.",
+    "onlyAdmin": "Only an administrator can move a device to another gateway.",
+    "loadFailed": "The gateways could not be loaded."
   }
 }

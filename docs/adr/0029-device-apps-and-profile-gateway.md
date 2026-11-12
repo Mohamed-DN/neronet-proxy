@@ -99,3 +99,16 @@ private key anywhere.
 - Unsigned Windows and macOS builds show operating-system warnings until certificates exist.
 - The fake QR in the console (D26) is replaced by the profile flow; the old endpoint must stop
   returning a configuration that cannot work.
+
+## Amendment, 2026-11-12: several gateways per organisation
+
+Study `GATEWAY-PER-UTENTE-NOV12`, option B. An organisation may name several mesh nodes as
+profile gateways, exactly one of them the default (migration 051 replaces 046's one-gateway
+index with a one-default index). Each profile device is served by one gateway,
+`nodes.gateway_node_id`, the default unless an administrator chose another; only that
+gateway holds it as a peer, other nodes route its address to it, its profile names it, and
+only its handshake reports are stored. Moving a device needs a new profile, since a stock
+profile has one `[Peer]` and one `Endpoint`. Choosing a gateway other than the default goes
+through one hook (`ProfileGatewayService.mayUseGateway`, administrators only) that ADR
+0030's `gateway.use` replaces. No failover: a gateway that is down cuts the devices it
+serves until they are moved.

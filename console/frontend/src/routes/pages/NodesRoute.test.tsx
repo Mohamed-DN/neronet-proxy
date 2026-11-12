@@ -247,6 +247,45 @@ describe('Devices page', () => {
     expect(within(gwRow).getByText('Gateway')).toBeInTheDocument();
   });
 
+  it('shows which gateway a WireGuard-app device connects through in its details', async () => {
+    const phone = {
+      ...mockNodes[1],
+      id: 'svrn-node-phone',
+      name: 'Owner iPhone',
+      device_kind: 'profile',
+      gateway_node_id: 'svrn-node-gw'
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/nodes') return jsonResponse({ nodes: [phone] });
+        if (url.endsWith('/api/nodes/svrn-node-phone')) return jsonResponse({ node: phone });
+        if (url === '/api/devices/gateways') {
+          return jsonResponse({
+            gateways: [
+              {
+                node_id: 'svrn-node-gw',
+                name: 'Office Gateway',
+                endpoint: '203.0.113.9:51820',
+                public_key: 'k',
+                is_default: true,
+                devices: 1,
+                online: true,
+                last_seen_at: null
+              }
+            ]
+          });
+        }
+        return jsonResponse({});
+      })
+    );
+
+    renderNodes(['/nodes/svrn-node-phone']);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Connects through Office Gateway at 203.0.113.9:51820')).toBeInTheDocument();
+  });
+
   it('will not revoke the profile gateway, and says what to do instead', async () => {
     const gateway = { ...mockNodes[0], is_profile_gateway: true, profile_gateway_endpoint: '203.0.113.9:51820' };
     vi.stubGlobal(
@@ -265,7 +304,7 @@ describe('Devices page', () => {
     expect(revoke).toBeDisabled();
     expect(
       within(dialog).getByText(
-        'This device is the gateway for WireGuard profiles. Revoking it would disconnect every device that uses the WireGuard app. Make another device the gateway first.'
+        'This device is a gateway for WireGuard profiles. Revoking it would disconnect the devices it serves. Move them to another gateway and remove this one from the gateways in Settings first.'
       )
     ).toBeInTheDocument();
   });
