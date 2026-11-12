@@ -2,8 +2,9 @@ import React, { useContext, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import AuthContext from '../../context/AuthContext';
-import { effectiveRole } from '../../services/roles';
-import { Building2, Lock, Plus, RefreshCw, Search, Shield, Sliders, Trash2, UserPlus, Users } from 'lucide-react';
+import { effectiveRole, invitableRoles } from '../../services/roles';
+import { InvitationsPanel } from './invitations/InvitationsPanel';
+import { Building2, Lock, Mail, Plus, RefreshCw, Search, Shield, Sliders, Trash2, UserPlus, Users } from 'lucide-react';
 
 import {
   useCreateOrganization,
@@ -46,7 +47,7 @@ const PRESET_BYPASS_APPS = [
 ];
 
 export default function UsersRoute() {
-  const { t } = useTranslation(['users', 'ui', 'glossary']);
+  const { t } = useTranslation(['users', 'ui', 'glossary', 'invitations']);
 
   // Queries
   const { data: users = [], isLoading: isLoadingUsers, isError: isUsersError, refetch: refetchUsers } = useUsers();
@@ -60,7 +61,8 @@ export default function UsersRoute() {
   const createOrgMutation = useCreateOrganization();
 
   // Local State
-  const [activeTab, setActiveTab] = useState<'directory' | 'organizations' | 'sso'>('directory');
+  const [activeTab, setActiveTab] = useState<'directory' | 'invitations' | 'organizations' | 'sso'>('directory');
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modals state
@@ -74,6 +76,8 @@ export default function UsersRoute() {
   // Which roles the server accepts for these actions (routes/users.js: create and delete are super-admin only).
   const auth = useContext(AuthContext);
   const canAddUsers = effectiveRole(auth?.user ?? null) === 'super-admin';
+  // Owners and admins cannot create accounts, but they can invite people, who then choose their own password.
+  const canInvite = invitableRoles(effectiveRole(auth?.user ?? null)).length > 0;
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Split Tunneling Modal
@@ -383,6 +387,16 @@ export default function UsersRoute() {
       )
     },
     {
+      value: 'invitations',
+      label: (
+        <span className="flex items-center gap-2">
+          <Mail className="h-4 w-4" />
+          <span>{t('panel.title', { ns: 'invitations' })}</span>
+        </span>
+      ),
+      content: <InvitationsPanel inviteOpen={inviteOpen} onInviteOpenChange={setInviteOpen} />
+    },
+    {
       value: 'organizations',
       label: (
         <span className="flex items-center gap-2">
@@ -487,8 +501,21 @@ export default function UsersRoute() {
                 refetchOrgs();
               }}
             />
+            {canInvite && activeTab !== 'invitations' && (
+              <Button
+                variant="primary"
+                size="md"
+                icon={Mail}
+                onClick={() => {
+                  setActiveTab('invitations');
+                  setInviteOpen(true);
+                }}
+              >
+                {t('panel.invite', { ns: 'invitations' })}
+              </Button>
+            )}
             {canAddUsers ? (
-              <Button variant="primary" size="md" icon={UserPlus} onClick={handleOpenProvision}>
+              <Button variant="secondary" size="md" icon={UserPlus} onClick={handleOpenProvision}>
                 {t('btnProvision', 'Add user')}
               </Button>
             ) : (

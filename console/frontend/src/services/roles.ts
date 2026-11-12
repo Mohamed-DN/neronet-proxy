@@ -126,3 +126,16 @@ export function canAddAgentDevice(role: ConsoleRole | null): boolean {
 export function canChooseGateway(user: RoleUser | null): boolean {
   return user?.role === 'super-admin' || user?.role === 'admin';
 }
+
+/** The organisation roles a person can be invited into, highest first. Owner never is. */
+export type InvitableRole = 'admin' | 'network_admin' | 'auditor' | 'member';
+const INVITABLE: readonly InvitableRole[] = ['admin', 'network_admin', 'auditor', 'member'];
+
+/**
+ * Which roles this role may invite someone into. The server's rule is "at or below
+ * your own" (routes/invitations.js); only owners, admins and the platform
+ * administrator invite at all, and all three sit at or above admin.
+ */
+export function invitableRoles(role: ConsoleRole | null): InvitableRole[] {
+  return role === 'super-admin' || role === 'owner' || role === 'admin' ? [...INVITABLE] : [];
+}

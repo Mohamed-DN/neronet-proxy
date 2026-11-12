@@ -10,7 +10,7 @@ import { RequireAuth } from './RequireAuth';
 import { RequireRole, RoleLanding } from './RequireRole';
 import { RootLayout } from './RootLayout';
 import { RouteError } from './RouteError';
-import { LOGIN_PATH, ROUTES } from './paths';
+import { INVITE_PATH, LOGIN_PATH, ROUTES } from './paths';
 import { ShellProvider } from './shell';
 
 /*
@@ -24,6 +24,7 @@ const NotFoundRoute = lazy(() => import('./NotFoundRoute'));
 const GlossaryRoute = lazy(() => import('./GlossaryRoute'));
 const MeRoute = lazy(() => import('../portal/MeRoute'));
 const AddDeviceRoute = lazy(() => import('../portal/AddDeviceRoute'));
+const InviteAcceptRoute = lazy(() => import('../portal/InviteAcceptRoute'));
 const OverviewRoute = lazy(() => import('./pages/OverviewRoute'));
 const TopologyRoute = lazy(() => import('./pages/TopologyRoute'));
 const SubnetsRoute = lazy(() => import('./pages/SubnetsRoute'));
@@ -96,6 +97,16 @@ export const routes: RouteObject[] = [
   {
     path: LOGIN_PATH,
     element: <LoginRoute />,
+    errorElement: <RouteError />
+  },
+  {
+    // Public, like the sign-in: the person opening an invitation has no account yet.
+    path: INVITE_PATH,
+    element: (
+      <Suspense fallback={<Skeleton lines={6} />}>
+        <InviteAcceptRoute />
+      </Suspense>
+    ),
     errorElement: <RouteError />
   },
   {
