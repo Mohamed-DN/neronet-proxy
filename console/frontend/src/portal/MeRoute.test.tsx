@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import i18n from '../i18n';
@@ -13,8 +13,6 @@ const auth = vi.hoisted(() => ({ user: null as unknown }));
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: auth.user, role: null, isAuthenticated: true })
 }));
-
-const ROUTER_FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
 
 const NOW_ISO = new Date().toISOString();
 
@@ -74,7 +72,7 @@ async function renderMe(theme: 'light' | 'dark' = 'light') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const rendered = renderUI(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/me']} future={ROUTER_FUTURE}>
+      <MemoryRouter initialEntries={['/me']}>
         <Routes>
           <Route path="/me" element={<MeRoute />} />
           <Route path="/me/add" element={<p>Add page</p>} />

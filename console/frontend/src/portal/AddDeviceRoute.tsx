@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { AlertCircle, AlertTriangle, Copy, Download, Globe } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 

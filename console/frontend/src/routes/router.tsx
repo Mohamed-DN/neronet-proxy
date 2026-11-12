@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { type RouteObject } from 'react-router-dom';
+import { type RouteObject } from 'react-router';
 
 import { useAuth } from '../context/AuthContext';
 import PortalLayout from '../portal/PortalLayout';

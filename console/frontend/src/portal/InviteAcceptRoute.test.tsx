@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MfaChallenge } from '../services/session';
@@ -24,7 +24,6 @@ vi.mock('../context/AuthContext', () => ({
   })
 }));
 
-const ROUTER_FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
 const TOKEN = 'Q2hpYXZlLWRpLXByb3ZhLWxhcmdhLTMyLWJ5dGVzLXg';
 
 function json(body: unknown, status = 200) {
@@ -50,7 +49,7 @@ function renderAt(entry: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return renderUI(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE}>
+      <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route
             path="/invito"

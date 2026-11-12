@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Link, Outlet, createMemoryRouter } from 'react-router-dom';
+import { Link, Outlet, createMemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
 
 import { AppRouter } from './AppRouter';
