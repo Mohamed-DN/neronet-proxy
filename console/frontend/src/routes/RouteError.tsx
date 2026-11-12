@@ -6,6 +6,7 @@ import { AlertOctagon } from 'lucide-react';
 import { Button, Card, CodeText } from '../ui';
 import { newErrorId, reportError } from './errorId';
 import { DEFAULT_PATH } from './paths';
+import { isStaleBundleError, reloadOnceForStaleBundle } from './staleBundle';
 
 /**
  * What one page shows when it throws.
@@ -26,6 +27,8 @@ export function RouteError() {
   const id = useMemo(() => newErrorId(), []);
 
   useEffect(() => {
+    // A page chunk from before a deploy: one reload fetches the new one.
+    if (isStaleBundleError(error) && reloadOnceForStaleBundle()) return;
     reportError(id, error);
   }, [id, error]);
 
