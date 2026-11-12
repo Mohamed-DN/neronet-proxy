@@ -174,6 +174,102 @@ describe('Devices page', () => {
     expect(within(listTable()).getByText('Unknown type')).toBeInTheDocument();
   });
 
+  it('names the profile gateway and WireGuard-app devices by what they are', async () => {
+    const gateway = {
+      ...mockNodes[1],
+      id: 'svrn-node-gw',
+      name: 'Office Gateway',
+      role: 'CLIENT_ORIGIN',
+      is_profile_gateway: true,
+      profile_gateway_endpoint: '203.0.113.9:51820'
+    };
+    const phone = {
+      ...mockNodes[1],
+      id: 'svrn-node-phone',
+      name: 'Owner iPhone',
+      role: 'CLIENT_ORIGIN',
+      device_kind: 'profile',
+      last_heartbeat: null,
+      last_handshake_at: new Date(Date.now() - 20_000).toISOString()
+    };
+    vi.stubGlobal('fetch', fleetFetch([gateway, phone]));
+
+    renderNodes();
+
+    const gwRow = (await within(await screen.findByRole('table')).findByText('Office Gateway')).closest(
+      'tr'
+    ) as HTMLElement;
+    const phoneRow = within(listTable()).getByText('Owner iPhone').closest('tr') as HTMLElement;
+    expect(within(gwRow).getByText('Gateway')).toBeInTheDocument();
+    expect(within(phoneRow).getByText('WireGuard profile')).toBeInTheDocument();
+    expect(within(listTable()).queryByText('User device')).toBeNull();
+  });
+
+  it('judges a WireGuard-app device by the handshake its gateway reported', async () => {
+    const base = { ...mockNodes[1], role: 'CLIENT_ORIGIN', device_kind: 'profile', last_heartbeat: null };
+    const fresh = {
+      ...base,
+      id: 'p-fresh',
+      name: 'Fresh Phone',
+      last_handshake_at: new Date(Date.now() - 30_000).toISOString()
+    };
+    const stale = {
+      ...base,
+      id: 'p-stale',
+      name: 'Stale Phone',
+      last_handshake_at: new Date(Date.now() - 10 * 60_000).toISOString()
+    };
+    const never = { ...base, id: 'p-never', name: 'Never Phone', last_handshake_at: null };
+    vi.stubGlobal('fetch', fleetFetch([fresh, stale, never]));
+
+    renderNodes();
+
+    const row = async (name: string) =>
+      (await within(await screen.findByRole('table')).findByText(name)).closest('tr') as HTMLElement;
+    expect(within(await row('Fresh Phone')).getByText('Reachable')).toBeInTheDocument();
+    expect(within(await row('Stale Phone')).getByText('Last connected 10 minutes ago')).toBeInTheDocument();
+    expect(within(await row('Never Phone')).getByText('Not measured')).toBeInTheDocument();
+    expect(within(listTable()).queryByText('Unreachable')).toBeNull();
+  });
+
+  it('labels the gateway and profile devices in Italian', async () => {
+    const gateway = { ...mockNodes[1], id: 'gw-it', name: 'Gateway Ufficio', is_profile_gateway: true };
+    const phone = { ...mockNodes[1], id: 'ph-it', name: 'iPhone', device_kind: 'profile', last_handshake_at: null };
+    vi.stubGlobal('fetch', fleetFetch([gateway, phone]));
+
+    await setLanguage('it');
+    renderNodes();
+
+    const phoneRow = (await within(await screen.findByRole('table')).findByText('iPhone')).closest('tr') as HTMLElement;
+    expect(within(phoneRow).getByText('Profilo WireGuard')).toBeInTheDocument();
+    expect(within(phoneRow).getByText('Non misurato')).toBeInTheDocument();
+    const gwRow = within(listTable()).getByText('Gateway Ufficio').closest('tr') as HTMLElement;
+    expect(within(gwRow).getByText('Gateway')).toBeInTheDocument();
+  });
+
+  it('will not revoke the profile gateway, and says what to do instead', async () => {
+    const gateway = { ...mockNodes[0], is_profile_gateway: true, profile_gateway_endpoint: '203.0.113.9:51820' };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/nodes') return jsonResponse({ nodes: [gateway] });
+        if (url.endsWith('/api/nodes/svrn-node-rome')) return jsonResponse({ node: gateway });
+        return jsonResponse({});
+      })
+    );
+
+    renderNodes(['/nodes/svrn-node-rome']);
+
+    const dialog = await screen.findByRole('dialog');
+    const revoke = await within(dialog).findByRole('button', { name: 'Disconnect and revoke key' });
+    expect(revoke).toBeDisabled();
+    expect(
+      within(dialog).getByText(
+        'This device is the gateway for WireGuard profiles. Revoking it would disconnect every device that uses the WireGuard app. Make another device the gateway first.'
+      )
+    ).toBeInTheDocument();
+  });
+
   it('filters by search and by block status', async () => {
     vi.stubGlobal('fetch', fleetFetch(mockNodes));
 

@@ -9,7 +9,7 @@ import { IconButton } from '../ui/IconButton';
 import { NotMeasured } from '../ui/States';
 import { RowList } from '../ui/RowList';
 import { useToast } from '../ui/Toast';
-import { deviceStatus, type DeviceStatus } from './deviceStatus';
+import { deviceStatus, seenAt, type DeviceStatus } from './deviceStatus';
 
 export interface DeviceListProps {
   /** Only the signed-in person's own devices. The caller filters; this list never looks at anyone else's. */
@@ -40,7 +40,7 @@ function StatusLine({ status, node, now }: { status: DeviceStatus; node: MeshNod
     );
   }
   if (status === 'lastSeen') {
-    const when = formatRelativeTime(i18n.language, node.last_heartbeat, new Date(now));
+    const when = formatRelativeTime(i18n.language, seenAt(node), new Date(now));
     return <p className="text-caption text-muted">{t('me.status.lastSeen', { when: when ?? '' })}</p>;
   }
   if (status === 'profile') return <p className="text-caption text-muted">{t('me.status.profile')}</p>;

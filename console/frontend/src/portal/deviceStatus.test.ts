@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MeshNode } from '../services/types';
-import { CONNECTED_WITHIN_MS, deviceStatus } from './deviceStatus';
+import { CONNECTED_WITHIN_MS, deviceStatus, seenAt } from './deviceStatus';
 
 const NOW = Date.parse('2026-11-09T12:00:00.000Z');
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -17,12 +17,25 @@ describe('deviceStatus', () => {
     );
   });
 
-  it('is profile for a phone or computer that uses the WireGuard app', () => {
+  it('is profile (not measured) for a WireGuard-app device its gateway never reported', () => {
+    expect(deviceStatus(device({ device_kind: 'profile', last_handshake_at: null }), NOW)).toBe('profile');
+  });
+
+  it('a profile device is judged by its handshake, never by a heartbeat time', () => {
     expect(deviceStatus(device({ device_kind: 'profile', last_heartbeat: ago(1_000) }), NOW)).toBe('profile');
   });
 
-  it('profile wins over never: a profile device never reports a heartbeat and is not "never connected"', () => {
-    expect(deviceStatus(device({ device_kind: 'profile', last_heartbeat: null }), NOW)).toBe('profile');
+  it('a profile device whose gateway saw a handshake inside three minutes is connected', () => {
+    expect(deviceStatus(device({ device_kind: 'profile', last_handshake_at: ago(179_000) }), NOW)).toBe('connected');
+  });
+
+  it('a profile device whose last handshake is older than three minutes is lastSeen', () => {
+    expect(deviceStatus(device({ device_kind: 'profile', last_handshake_at: ago(181_000) }), NOW)).toBe('lastSeen');
+  });
+
+  it('seenAt reads the handshake of a profile device and the heartbeat of any other', () => {
+    expect(seenAt(device({ device_kind: 'profile', last_handshake_at: ago(5), last_heartbeat: ago(9) }))).toBe(ago(5));
+    expect(seenAt(device({ last_heartbeat: ago(9), last_handshake_at: ago(5) }))).toBe(ago(9));
   });
 
   it('blocked wins over profile', () => {

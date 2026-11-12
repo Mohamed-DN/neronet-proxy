@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MeshNode } from '../types';
-import { fleetCounts, isReachable, LIVENESS_WINDOW_MS } from './nodes';
+import { fleetCounts, isReachable, LIVENESS_WINDOW_MS, PROFILE_HANDSHAKE_WINDOW_MS } from './nodes';
 
 const NOW = Date.parse('2026-09-20T12:00:00.000Z');
 
@@ -55,5 +55,31 @@ describe('fleetCounts', () => {
     const counts = fleetCounts([node({ id: 'a', risk_score: null }), node({ id: 'b' })], NOW);
     expect(counts.highRisk).toBe(0);
     expect(counts.total).toBe(2);
+  });
+});
+
+// A profile device (stock WireGuard app) never heartbeats; the gateway reports its last
+// handshake. WireGuard rekeys every 2 min and the keepalive is 25 s, so 3 min is the window.
+describe('isReachable for a profile device', () => {
+  const profile = (partial: Partial<MeshNode>) => node({ device_kind: 'profile', ...partial });
+
+  it('is reachable when the gateway saw a handshake within three minutes', () => {
+    expect(isReachable(profile({ last_handshake_at: new Date(NOW - 179_000).toISOString() }), NOW)).toBe(true);
+  });
+
+  it('is not reachable three minutes after the last handshake', () => {
+    expect(PROFILE_HANDSHAKE_WINDOW_MS).toBe(180_000);
+    expect(isReachable(profile({ last_handshake_at: new Date(NOW - 181_000).toISOString() }), NOW)).toBe(false);
+  });
+
+  it('ignores a heartbeat time: a profile device is judged only by its handshake', () => {
+    expect(isReachable(profile({ last_heartbeat: new Date(NOW).toISOString(), last_handshake_at: null }), NOW)).toBe(
+      false
+    );
+  });
+
+  it('counts a connected profile device as reachable in the fleet counts', () => {
+    const counts = fleetCounts([profile({ last_handshake_at: new Date(NOW - 10_000).toISOString() })], NOW);
+    expect(counts.reachable).toBe(1);
   });
 });

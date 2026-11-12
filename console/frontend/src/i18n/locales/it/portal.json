@@ -28,7 +28,7 @@
     },
     "status": {
       "blocked": "Bloccato da un amministratore",
-      "profile": "Usa l'app WireGuard. Il suo collegamento non viene segnalato alla console.",
+      "profile": "Usa l'app WireGuard. Nessun collegamento misurato finora.",
       "connected": "Collegato",
       "lastSeen": "Visto l'ultima volta {{when}}",
       "never": "Mai collegato"
@@ -38,7 +38,8 @@
       "body": "{{name}} perde subito l'accesso alla rete e la sua chiave viene revocata. Per usarlo di nuovo dovrai aggiungerlo come nuovo dispositivo. Non si può annullare.",
       "confirm": "Rimuovi dispositivo",
       "done": "{{name}} rimosso.",
-      "failed": "{{name}} non è stato rimosso. Riprova tra poco."
+      "failed": "{{name}} non è stato rimosso. Riprova tra poco.",
+      "gatewayInUse": "{{name}} è il gateway dei profili WireGuard. Rimuoverlo scollegherebbe tutti i dispositivi che usano l'app WireGuard. Prima rendi gateway un altro dispositivo."
     },
     "sketch": {
       "title": "I tuoi dispositivi nella rete",

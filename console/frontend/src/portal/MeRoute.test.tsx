@@ -34,6 +34,17 @@ const ANNA_LAPTOP = {
   is_healthy: true,
   last_heartbeat: NOW_ISO
 };
+const ANNA_GATEWAY = {
+  id: 'a3',
+  name: 'Office gateway',
+  user_id: 'u1',
+  device_kind: 'mesh',
+  is_profile_gateway: true,
+  profile_gateway_endpoint: '203.0.113.9:51820',
+  overlay_ipv4: '100.64.0.1',
+  is_healthy: true,
+  last_heartbeat: NOW_ISO
+};
 const LUCA_LAPTOP = {
   id: 'b1',
   name: 'Luca laptop',
@@ -99,9 +110,53 @@ describe('MeRoute', () => {
     expect(within(list).queryByText('Luca laptop')).toBeNull();
     expect(screen.queryByText('Luca laptop')).toBeNull();
     expect(screen.queryByText('To remove a device, ask an administrator.')).toBeNull();
-    expect(
-      screen.getByText('Uses the WireGuard app. Its connection is not reported to the console.')
-    ).toBeInTheDocument();
+    expect(screen.getByText('Uses the WireGuard app. No connection measured yet.')).toBeInTheDocument();
+  });
+
+  it('leaves out the gateway that serves the WireGuard profiles: it is not a personal device', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'admin' };
+    stubApi(() => json({ nodes: [ANNA_PHONE, ANNA_GATEWAY, ANNA_LAPTOP] }));
+
+    await renderMe();
+
+    const list = await screen.findByRole('list', { name: 'Your devices' });
+    expect(within(list).getByText('Anna phone')).toBeInTheDocument();
+    expect(within(list).queryByText('Office gateway')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove Office gateway' })).toBeNull();
+  });
+
+  it('shows a WireGuard-app device as connected when its gateway saw a recent handshake', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
+    stubApi(() => json({ nodes: [{ ...ANNA_PHONE, last_handshake_at: new Date().toISOString() }] }));
+
+    await renderMe();
+
+    const list = await screen.findByRole('list', { name: 'Your devices' });
+    const row = within(list).getByText('Anna phone').closest('li') as HTMLElement;
+    expect(within(row).getByText('Connected')).toBeInTheDocument();
+  });
+
+  it('says why the gateway cannot be removed when the server refuses it', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'admin' };
+    // The list loads; the server refuses the DELETE because the node serves the profiles.
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/nodes') && init?.method === 'DELETE') {
+        return json({ code: 'profile_gateway_in_use', error: 'gateway' }, 409);
+      }
+      if (url.includes('/nodes')) return json({ nodes: [ANNA_LAPTOP] });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await renderMe();
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove Anna laptop' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove device' }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Anna laptop is the gateway for WireGuard profiles. Removing it would disconnect every device that uses the WireGuard app. Make another device the gateway first.'
+    );
   });
 
   it('lists nothing of the organisation to a viewer who owns no device', async () => {

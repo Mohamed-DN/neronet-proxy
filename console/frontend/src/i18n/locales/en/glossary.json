@@ -349,6 +349,8 @@
     "CLIENT_ORIGIN": "User device",
     "RELAY": "Forwards traffic",
     "HYBRID": "Mixed",
+    "GATEWAY": "Gateway",
+    "PROFILE": "WireGuard profile",
     "unknown": "Unknown type"
   },
   "page": {
