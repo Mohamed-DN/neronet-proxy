@@ -224,6 +224,10 @@ services:
       # organisations that allow DERP use the relays listed under /api/transports.
       - SOVEREIGN_TRANSPORT_CEILING=${NERONET_TRANSPORT_CEILING:-udp}
       - SOVEREIGN_RELAY_HOME_TTL_SECONDS=${NERONET_RELAY_HOME_TTL_SECONDS:-120}
+      # How recent a profile device's gateway-reported handshake must be for the console
+      # to call it connected. Empty is the 180 s default; the profile scenario lowers it
+      # so "not connected after wg-quick down" is observed without waiting three minutes.
+      - SOVEREIGN_PROFILE_HANDSHAKE_WINDOW_SECONDS=${NERONET_PROFILE_HANDSHAKE_WINDOW_SECONDS:-}
       - SOVEREIGN_RELAY_ADMISSION_MAX_STALENESS_SECONDS=${NERONET_RELAY_ADMISSION_MAX_STALENESS_SECONDS:-60}
       - SOVEREIGN_DATA_DIR=/app/data
       - SOVEREIGN_CONTRACT_SCHEMA_DIR=/app/api/contract/v4
