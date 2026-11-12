@@ -349,6 +349,8 @@
     "CLIENT_ORIGIN": "Dispositivo utente",
     "RELAY": "Inoltra traffico",
     "HYBRID": "Misto",
+    "GATEWAY": "Gateway",
+    "PROFILE": "Profilo WireGuard",
     "unknown": "Tipo non noto"
   },
   "page": {

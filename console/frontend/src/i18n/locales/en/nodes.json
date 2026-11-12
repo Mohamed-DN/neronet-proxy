@@ -37,11 +37,14 @@
   "reachability": {
     "online": "Reachable",
     "offline": "Unreachable",
-    "blocked": "Blocked"
+    "blocked": "Blocked",
+    "lastConnected": "Last connected {{when}}",
+    "notMeasured": "Not measured"
   },
   "kind": {
     "profile": "Phone or computer with the WireGuard app",
-    "mesh": "Enrolled device"
+    "mesh": "Enrolled device",
+    "gateway": "Gateway for WireGuard profiles"
   },
   "empty": {
     "title": "No devices found",
@@ -58,6 +61,7 @@
   },
   "actionFailed": "This was not completed. Try again shortly.",
   "detail": {
+    "gatewayLocked": "This device is the gateway for WireGuard profiles. Revoking it would disconnect every device that uses the WireGuard app. Make another device the gateway first.",
     "description": "Details for one device: security checks, addresses, a connection test, and actions to block it or disconnect it.",
     "alert": "This device is blocked and cannot communicate with any other device on the network.",
     "reason": "Reason for the block",

@@ -9,6 +9,7 @@ import (
 
 	"github.com/sovereign/proxy/v4/internal/derpwire"
 	"github.com/sovereign/proxy/v4/pkg/control"
+	"github.com/sovereign/proxy/v4/pkg/dataplane"
 	"github.com/sovereign/proxy/v4/pkg/transport"
 )
 
@@ -100,29 +101,61 @@ func (h *netmapHolder) transportReport(request *control.HeartbeatRequest) {
 		request.RelayHomes = append(request.RelayHomes, control.RelayHome{RelayID: id, ObservedAtUnix: now.Unix()})
 	}
 	m.mu.Lock()
-	ids := map[string]string{}
-	if !m.failClosed {
-		for _, p := range m.peers {
-			if _, revoked := m.revoked[normaliseKey(p.PublicKeyHex)]; !revoked {
-				ids[normaliseKey(p.PublicKeyHex)] = p.NodeID
+	peers := append([]control.NetmapPeer(nil), m.peers...)
+	revoked := make(map[string]uint64, len(m.revoked))
+	for k, v := range m.revoked {
+		revoked[k] = v
+	}
+	failClosed := m.failClosed
+	m.mu.Unlock()
+	request.PeerPaths = peerPathReport(peers, revoked, failClosed, m.dev.SampleAuthenticatedPaths(), m.mux, now)
+}
+
+// pathView is what the report reads from the transport multiplexer.
+type pathView interface {
+	PeerPaths(key string) []string
+	PeerAllows(key, address string) bool
+}
+
+// peerPathReport turns the device's authenticated WireGuard state into the heartbeat's
+// peer path observations, for the peers of the current document that are not revoked.
+// The handshake time and counters come from wireguard-go itself; nothing else in the
+// node can say whether a peer is actually talking to it.
+func peerPathReport(peers []control.NetmapPeer, revoked map[string]uint64, failClosed bool,
+	statuses []dataplane.PathStatus, mux pathView, now time.Time) []control.PeerPathObservation {
+	type entry struct {
+		id      string
+		profile bool
+	}
+	known := map[string]entry{}
+	if !failClosed {
+		for _, p := range peers {
+			if _, isRevoked := revoked[normaliseKey(p.PublicKeyHex)]; !isRevoked {
+				known[normaliseKey(p.PublicKeyHex)] = entry{id: p.NodeID, profile: p.Profile}
 			}
 		}
 	}
-	m.mu.Unlock()
-	for _, status := range m.dev.SampleAuthenticatedPaths() {
-		id, ok := ids[status.PublicKey]
+	var out []control.PeerPathObservation
+	for _, status := range statuses {
+		peer, ok := known[normaliseKey(status.PublicKey)]
 		if !ok {
 			continue
 		}
-		observation := control.PeerPathObservation{PeerID: id, WGRxBytes: strconv.FormatUint(status.RxBytes, 10), WGTxBytes: strconv.FormatUint(status.TxBytes, 10), State: "unknown", Reason: "waiting_for_authenticated_evidence"}
+		observation := control.PeerPathObservation{PeerID: peer.id, WGRxBytes: strconv.FormatUint(status.RxBytes, 10), WGTxBytes: strconv.FormatUint(status.TxBytes, 10), State: "unknown", Reason: "waiting_for_authenticated_evidence"}
 		if !status.LastHandshake.IsZero() {
 			stamp := status.LastHandshake.Unix()
 			observation.LastHandshakeUnix = &stamp
 		}
-		if len(m.mux.PeerPaths(status.PublicKey)) == 0 {
+		if peer.profile {
+			// A profile device (ADR 0029) has no declared path by design: the gateway
+			// answers it wherever its handshake came from. Its handshake time is what the
+			// control plane reads to say whether the device is connected.
+			observation.State = "profile"
+			observation.Reason = ""
+		} else if len(mux.PeerPaths(status.PublicKey)) == 0 {
 			observation.State = "no_path"
 			observation.Reason = "policy_has_no_candidate"
-		} else if !status.ObservedAt.IsZero() && m.mux.PeerAllows(status.PublicKey, status.Endpoint) {
+		} else if !status.ObservedAt.IsZero() && mux.PeerAllows(status.PublicKey, status.Endpoint) {
 			observation.Transport = transport.Scheme(status.Endpoint)
 			observation.ObservedAtUnix = status.ObservedAt.Unix()
 			observation.State = "observed"
@@ -136,6 +169,7 @@ func (h *netmapHolder) transportReport(request *control.HeartbeatRequest) {
 				observation.Reason = "observation_expired"
 			}
 		}
-		request.PeerPaths = append(request.PeerPaths, observation)
+		out = append(out, observation)
 	}
+	return out
 }

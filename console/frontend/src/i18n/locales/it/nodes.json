@@ -37,11 +37,14 @@
   "reachability": {
     "online": "Raggiungibile",
     "offline": "Non raggiungibile",
-    "blocked": "Bloccato"
+    "blocked": "Bloccato",
+    "lastConnected": "Ultimo collegamento {{when}}",
+    "notMeasured": "Non misurato"
   },
   "kind": {
     "profile": "Telefono o computer con app WireGuard",
-    "mesh": "Dispositivo registrato"
+    "mesh": "Dispositivo registrato",
+    "gateway": "Gateway dei profili WireGuard"
   },
   "empty": {
     "title": "Nessun dispositivo trovato",
@@ -58,6 +61,7 @@
   },
   "actionFailed": "L'operazione non è stata completata. Riprova tra poco.",
   "detail": {
+    "gatewayLocked": "Questo dispositivo è il gateway dei profili WireGuard. Revocarlo scollegherebbe tutti i dispositivi che usano l'app WireGuard. Prima rendi gateway un altro dispositivo.",
     "description": "Scheda di un singolo dispositivo: controlli di sicurezza, indirizzi, una verifica di collegamento e le azioni per bloccarlo o disconnetterlo.",
     "alert": "Questo dispositivo è bloccato e non può comunicare con nessun altro dispositivo della rete.",
     "reason": "Motivo del blocco",

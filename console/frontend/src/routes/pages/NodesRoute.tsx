@@ -3,12 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Search, ShieldAlert, ShieldCheck, Zap } from 'lucide-react';
 
+import { formatRelativeTime } from '../../i18n/format';
 import { PageFrame } from '../PageFrame';
 import { GlossaryHint } from '../GlossaryHint';
 import { ROUTES, nodePath } from '../paths';
 import { useShell } from '../shell';
 import {
   fleetCounts,
+  isProfileGateway,
   isReachable,
   useLiftQuarantineNode,
   useNode,
@@ -53,7 +55,7 @@ function formatCheck(value: boolean | null | undefined, yes: string, no: string,
 }
 
 export default function NodesRoute() {
-  const { t } = useTranslation('nodes');
+  const { t, i18n } = useTranslation('nodes');
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>();
   const shell = useShell();
@@ -104,8 +106,12 @@ export default function NodesRoute() {
     });
   }, [nodes, search, filter]);
 
-  const typeLabel = (role: string | undefined) => {
-    const known = KNOWN_ROLES.find((r) => r === role);
+  // What a row is, before what role it plays: the profile gateway and a WireGuard-app
+  // device both carry CLIENT_ORIGIN, which would read "User device" for either.
+  const typeLabel = (node: MeshNode) => {
+    if (isProfileGateway(node)) return t('deviceType.GATEWAY', { ns: 'glossary' });
+    if (node.device_kind === 'profile') return t('deviceType.PROFILE', { ns: 'glossary' });
+    const known = KNOWN_ROLES.find((r) => r === node.role);
     return known ? t(`deviceType.${known}`, { ns: 'glossary' }) : t('deviceType.unknown', { ns: 'glossary' });
   };
 
@@ -207,7 +213,7 @@ export default function NodesRoute() {
     {
       id: 'type',
       header: t('columns.type'),
-      cell: (n) => <Badge tone="neutral">{typeLabel(n.role)}</Badge>
+      cell: (n) => <Badge tone="neutral">{typeLabel(n)}</Badge>
     },
     {
       id: 'checks',
@@ -250,6 +256,19 @@ export default function NodesRoute() {
         }
         if (isReachable(n)) {
           return <StatusBadge status="ok" label={t('reachability.online')} />;
+        }
+        // A WireGuard-app device never heartbeats; only its gateway-reported handshake
+        // says anything, and without one nothing has been measured.
+        if (n.device_kind === 'profile') {
+          const when = formatRelativeTime(i18n.language, n.last_handshake_at);
+          if (!when) {
+            return (
+              <span data-state="not-measured">
+                <StatusBadge status="not-measured" label={t('reachability.notMeasured')} />
+              </span>
+            );
+          }
+          return <StatusBadge status="unknown" label={t('reachability.lastConnected', { when })} />;
         }
         return <StatusBadge status="unknown" label={t('reachability.offline')} />;
       }
@@ -504,11 +523,13 @@ export default function NodesRoute() {
               <CardHeader as="h2" title={t('detail.kind')} />
               <div className="flex flex-col gap-3 mt-3 text-sm">
                 <p className="font-medium">
-                  {selectedNode.device_kind === 'profile'
-                    ? t('kind.profile')
-                    : selectedNode.device_kind === 'mesh'
-                      ? t('kind.mesh')
-                      : t('detail.notReported')}
+                  {isProfileGateway(selectedNode)
+                    ? t('kind.gateway')
+                    : selectedNode.device_kind === 'profile'
+                      ? t('kind.profile')
+                      : selectedNode.device_kind === 'mesh'
+                        ? t('kind.mesh')
+                        : t('detail.notReported')}
                 </p>
                 <div>
                   <span className="text-muted block text-xs">{t('detail.publicKey')}</span>
@@ -577,10 +598,20 @@ export default function NodesRoute() {
                   </Button>
                 )}
 
-                <Button variant="danger" onClick={() => setRevokeConfirmOpen(true)}>
+                <Button
+                  variant="danger"
+                  disabled={isProfileGateway(selectedNode)}
+                  aria-describedby={isProfileGateway(selectedNode) ? 'gateway-revoke-locked' : undefined}
+                  onClick={() => setRevokeConfirmOpen(true)}
+                >
                   {t('detail.revoke')}
                 </Button>
               </div>
+              {isProfileGateway(selectedNode) && (
+                <p id="gateway-revoke-locked" className="mt-3 text-sm text-muted">
+                  {t('detail.gatewayLocked')}
+                </p>
+              )}
               {actionFailed && (
                 <p role="alert" className="mt-3 text-sm font-medium text-danger">
                   {t('actionFailed')}

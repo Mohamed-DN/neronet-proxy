@@ -5,7 +5,8 @@ import { useTranslation } from 'react-i18next';
 
 import { NetworkSketch, type SketchSite } from '../charts/NetworkSketch';
 import { useAuth } from '../context/AuthContext';
-import { useDeleteOwnDevice, useNodes } from '../services/queries/nodes';
+import { ApiError } from '../services/apiClient';
+import { isProfileGateway, useDeleteOwnDevice, useNodes } from '../services/queries/nodes';
 import type { MeshNode } from '../services/types';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { cn } from '../ui/cn';
@@ -33,24 +34,29 @@ export default function MeRoute() {
   const { notify } = useToast();
   const removeDevice = useDeleteOwnDevice();
   const [removing, setRemoving] = useState<MeshNode | null>(null);
-  const [removeFailed, setRemoveFailed] = useState(false);
+  const [removeFailed, setRemoveFailed] = useState<'failed' | 'gatewayInUse' | null>(null);
   const removingName = removing ? (removing.name ?? removing.hostname ?? t('me.unnamed')) : '';
 
   const confirmRemove = () => {
     if (!removing) return;
     const name = removingName;
-    setRemoveFailed(false);
+    setRemoveFailed(null);
     removeDevice.mutate(removing.id, {
       onSuccess: () => {
         setRemoving(null);
         notify(t('me.remove.done', { name }), { tone: 'success' });
       },
-      onError: () => setRemoveFailed(true)
+      onError: (error) =>
+        setRemoveFailed(
+          error instanceof ApiError && error.code === 'profile_gateway_in_use' ? 'gatewayInUse' : 'failed'
+        )
     });
   };
 
+  // The gateway that serves the organisation's WireGuard profiles is infrastructure, not
+  // a personal device: removing it would cut every profile device, so it is not listed here.
   const mine = useMemo(
-    () => (user ? (nodes.data ?? []).filter((node) => node.user_id === user.id) : []),
+    () => (user ? (nodes.data ?? []).filter((node) => node.user_id === user.id && !isProfileGateway(node)) : []),
     [nodes.data, user]
   );
   const statuses = mine.map((node) => ({ node, status: deviceStatus(node, now) }));
@@ -124,7 +130,7 @@ export default function MeRoute() {
               devices={mine}
               now={now}
               onRemove={(node) => {
-                setRemoveFailed(false);
+                setRemoveFailed(null);
                 setRemoving(node);
               }}
             />
@@ -149,7 +155,9 @@ export default function MeRoute() {
             role="alert"
             className="rounded-control border border-danger/40 bg-danger-subtle p-3 text-caption text-danger"
           >
-            {t('me.remove.failed', { name: removingName })}
+            {t(removeFailed === 'gatewayInUse' ? 'me.remove.gatewayInUse' : 'me.remove.failed', {
+              name: removingName
+            })}
           </p>
         )}
       </ConfirmDialog>

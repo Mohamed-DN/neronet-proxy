@@ -28,7 +28,7 @@
     },
     "status": {
       "blocked": "Blocked by an administrator",
-      "profile": "Uses the WireGuard app. Its connection is not reported to the console.",
+      "profile": "Uses the WireGuard app. No connection measured yet.",
       "connected": "Connected",
       "lastSeen": "Last seen {{when}}",
       "never": "Never connected"
@@ -38,7 +38,8 @@
       "body": "{{name}} loses access to the network immediately and its key is revoked. To use it again you will have to add it as a new device. This cannot be undone.",
       "confirm": "Remove device",
       "done": "{{name}} removed.",
-      "failed": "{{name}} was not removed. Try again in a moment."
+      "failed": "{{name}} was not removed. Try again in a moment.",
+      "gatewayInUse": "{{name}} is the gateway for WireGuard profiles. Removing it would disconnect every device that uses the WireGuard app. Make another device the gateway first."
     },
     "sketch": {
       "title": "Your devices in the network",

@@ -10,10 +10,23 @@ import { queryKeys } from './keys';
  */
 export const LIVENESS_WINDOW_MS = 60_000;
 
+/**
+ * A profile device (stock WireGuard app) never heartbeats; its gateway reports its last
+ * handshake. WireGuard rekeys every two minutes and the keepalive is 25 s, so a connected
+ * device handshakes at least every 2 min; one more minute of slack.
+ */
+export const PROFILE_HANDSHAKE_WINDOW_MS = 180_000;
+
+export function isProfileGateway(node: MeshNode): boolean {
+  return node.is_profile_gateway === true || Boolean(node.profile_gateway_endpoint);
+}
+
 export function isReachable(node: MeshNode, now = Date.now()): boolean {
-  if (!node.last_heartbeat) return false;
-  const heard = new Date(node.last_heartbeat).getTime();
-  return Number.isFinite(heard) && now - heard < LIVENESS_WINDOW_MS;
+  const profile = node.device_kind === 'profile';
+  const seen = profile ? node.last_handshake_at : node.last_heartbeat;
+  if (!seen) return false;
+  const heard = new Date(seen).getTime();
+  return Number.isFinite(heard) && now - heard < (profile ? PROFILE_HANDSHAKE_WINDOW_MS : LIVENESS_WINDOW_MS);
 }
 
 async function fetchNodes(signal: AbortSignal): Promise<MeshNode[]> {

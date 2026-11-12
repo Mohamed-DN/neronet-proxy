@@ -46,6 +46,14 @@ export interface MeshNode {
   device_kind?: 'mesh' | 'profile';
   /** The endpoint a profile device dials, set on the gateway node only. */
   profile_gateway_endpoint?: string | null;
+  /** True on the node that serves the organisation's WireGuard profile devices. */
+  is_profile_gateway?: boolean;
+  /**
+   * A profile device's last WireGuard handshake, as its gateway reported it. Null when
+   * no gateway has reported one, and always null on a mesh node (judged by its heartbeat).
+   */
+  last_handshake_at?: string | null;
+  handshake_status?: 'connected' | 'not_connected' | 'not_measured' | null;
   last_seen_at?: string | null;
   [key: string]: unknown;
 }
@@ -363,6 +371,7 @@ export interface TopologyNode {
   device_kind?: 'mesh' | 'profile';
   is_profile_gateway?: boolean;
   last_seen_at?: string | null;
+  handshake_status?: 'connected' | 'not_connected' | 'not_measured' | null;
   [key: string]: unknown;
 }
 
