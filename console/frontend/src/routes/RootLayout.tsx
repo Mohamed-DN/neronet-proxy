@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Outlet, useMatches } from 'react-router-dom';
+import { Outlet, useMatches } from 'react-router';
 
 import ConnectionStatus from '../components/ConnectionStatus';
 import Header from '../components/Header';

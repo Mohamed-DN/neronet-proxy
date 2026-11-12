@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations, renderUI } from '../test/harness';
@@ -67,7 +67,7 @@ function renderAdd(theme: 'light' | 'dark' = 'light') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return renderUI(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/me/add']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={['/me/add']}>
         <Routes>
           <Route path="/me/add" element={<AddDeviceRoute />} />
           <Route path="/me" element={<p>My devices page</p>} />

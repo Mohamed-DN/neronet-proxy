@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
-import type { createBrowserRouter } from 'react-router-dom';
-import { RouterProvider } from 'react-router-dom';
+import type { createBrowserRouter } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 
 import { Skeleton } from '../ui';
 
@@ -16,8 +16,8 @@ type Router = ReturnType<typeof createBrowserRouter>;
  * no fallback to show and the route error page appeared until the person pressed
  * Retry (owner report, 12 November 2026).
  *
- * - `v7_startTransition` runs navigations as transitions: the current page stays
- *   on screen while the next one loads, as in React Router 7.
+ * - React Router 7's DOM `RouterProvider` (from `react-router/dom`) runs navigations
+ *   as transitions: the current page stays on screen while the next one loads.
  * - The outer Suspense catches any first load that still waits (a direct visit,
  *   a reload) with a quiet placeholder instead of an error.
  */
@@ -30,7 +30,7 @@ export function AppRouter({ router }: { router: Router }) {
         </div>
       }
     >
-      <RouterProvider router={router} future={{ v7_startTransition: true }} />
+      <RouterProvider router={router} />
     </Suspense>
   );
 }

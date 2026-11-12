@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router';
 
 import { AuthProvider } from './context/AuthContext';
 import { AppErrorBoundary } from './routes/AppErrorBoundary';
