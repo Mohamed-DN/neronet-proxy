@@ -90,8 +90,7 @@ describe('buildStrictNetworkConfig', () => {
   it('keeps the keys and the address and points WireGuard at the local wstunnel client', () => {
     const text = buildStrictNetworkConfig({ privateKey: 'PRIVKEY=', presharedKey: 'PSKKEY=' }, device, strict);
 
-    expect(text.split('
-')).toEqual([
+    expect(text.split('\n')).toEqual([
       '[Interface]',
       'PrivateKey = PRIVKEY=',
       'Address = 100.64.0.7/32',
