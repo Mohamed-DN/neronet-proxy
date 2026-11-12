@@ -14,6 +14,8 @@ export interface ProfileDeviceResponse {
   gateway: { public_key: string; endpoint: string };
   allowed_ips: string[];
   dns: string[];
+  /** ADR 0032: present when every packet leaves through this exit (AllowedIPs 0.0.0.0/0, ::/0). */
+  exit?: { node_id: string; name: string; kind: 'gateway' | 'node' };
   console_url: string;
 }
 

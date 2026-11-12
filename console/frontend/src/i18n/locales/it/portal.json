@@ -97,7 +97,24 @@
       "noGateway": "La tua organizzazione non può ancora aggiungere dispositivi in questo modo. Un amministratore deve scegliere il gateway nelle Impostazioni.",
       "keyInUse": "La nuova chiave era già in uso. Crea di nuovo il codice.",
       "generic": "Il dispositivo non è stato aggiunto. Riprova.",
-      "noCrypto": "Questo browser non può creare le chiavi. Apri la pagina con una versione recente di Chrome, Firefox, Safari o Edge."
+      "noCrypto": "Questo browser non può creare le chiavi. Apri la pagina con una versione recente di Chrome, Firefox, Safari o Edge.",
+      "exitNotPermitted": "Solo un amministratore può far passare un dispositivo da un'uscita: chiedi al tuo, oppure crea il codice senza questa opzione.",
+      "exitGone": "Questa uscita non è più disponibile. Scegline un'altra e riprova."
+    },
+    "exit": {
+      "legend": "Traffico Internet",
+      "toggle": "Tutto il traffico tramite un'uscita",
+      "hint": "I siti vedono l'indirizzo dell'uscita invece del tuo. Utile su una Wi-Fi pubblica, o per navigare come se fossi dove si trova l'uscita.",
+      "none": "Non c'è ancora nessuna uscita. Un amministratore deve avviare un nodo come uscita.",
+      "notAllowed": "Solo un amministratore può far passare un dispositivo da un'uscita: chiedi al tuo, oppure crea il codice senza questa opzione.",
+      "picker": "Uscita",
+      "optionGateway": "{{name}} (gateway della tua organizzazione)",
+      "optionNode": "{{name}}",
+      "offline": " — non collegata ora",
+      "privacy": "Chi gestisce l'uscita può vedere a quali siti ti colleghi, ma non cosa invii in HTTPS.",
+      "down": "Se l'uscita smette di rispondere, il dispositivo resta senza internet finché non torna. Niente passa fuori dal tunnel.",
+      "lanNote": "Per continuare a usare stampanti e altri dispositivi della rete in cui ti trovi, attiva \"Exclude private IPs\" nell'app WireGuard.",
+      "resultNote": "Tutto il traffico di {{name}} esce da {{exit}}."
     }
   }
 }

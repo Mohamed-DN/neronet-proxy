@@ -1,6 +1,6 @@
-import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
 
-import { apiPost, apiPut, type ApiError } from '../apiClient';
+import { apiGet, apiPost, apiPut, type ApiError } from '../apiClient';
 import type { ProfileDeviceResponse } from '../../devices/wgConfig';
 /** The fleet list key, declared here so this file does not depend on keys.ts (same value: ['nodes']). */
 const nodesKey = ['nodes'] as const;
@@ -15,6 +15,30 @@ export interface RegisterProfileDeviceInput {
   name: string;
   public_key: string;
   preshared_key: string;
+  /** ADR 0032: send all the device's traffic through this exit. Omitted for an overlay-only profile. */
+  exit_node_id?: string;
+}
+
+export interface ProfileExit {
+  node_id: string;
+  name: string;
+  kind: 'gateway' | 'node';
+  online: boolean;
+}
+
+export interface ProfileExitsResponse {
+  can_choose: boolean;
+  self_service: boolean;
+  exits: ProfileExit[];
+}
+
+/** The exits the caller's devices may use, and whether the caller may choose one. */
+export function useProfileExits(): UseQueryResult<ProfileExitsResponse, ApiError> {
+  return useQuery({
+    queryKey: ['devices', 'exits'],
+    queryFn: ({ signal }) => apiGet<ProfileExitsResponse>('/devices/exits', { signal }),
+    staleTime: 30_000
+  });
 }
 
 export interface RegistrationKey {
@@ -26,8 +50,8 @@ export interface RegistrationKey {
 
 /**
  * Registers a phone or computer from the public key the browser made. Only
- * the three fields named here are sent: the private key is never part of a
- * request.
+ * the fields named here are sent (the exit only when one was chosen): the
+ * private key is never part of a request.
  */
 export function useRegisterProfileDevice(): UseMutationResult<
   ProfileDeviceResponse,
@@ -36,8 +60,11 @@ export function useRegisterProfileDevice(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, public_key, preshared_key }: RegisterProfileDeviceInput) =>
-      apiPost<ProfileDeviceResponse>('/devices/profile', { name, public_key, preshared_key }),
+    mutationFn: ({ name, public_key, preshared_key, exit_node_id }: RegisterProfileDeviceInput) =>
+      apiPost<ProfileDeviceResponse>(
+        '/devices/profile',
+        exit_node_id ? { name, public_key, preshared_key, exit_node_id } : { name, public_key, preshared_key }
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: nodesKey });
     }
