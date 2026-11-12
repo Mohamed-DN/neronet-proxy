@@ -32,8 +32,10 @@ import (
 // Enforcement: both ends' policies are applied here, because a stock client
 // enforces nothing. A packet from device D is checked against D's outbound rules
 // (which records conntrack for the reply); a packet to D against D's inbound rules,
-// where conntrack lets replies to D's own connections back in. The mesh node at the
-// other end still applies its own inbound check on top.
+// where conntrack lets replies to D's own connections back in. A flow D's inbound rules
+// accept may be answered by D although no outbound rule names the other end, unless an
+// explicit DROP does. The mesh node at the other end still applies its own inbound
+// check on top. Between two devices, both policies are enforced here and nowhere else.
 //
 // Source: the device can only send from its own address because wireguard-go drops
 // any decrypted packet whose source is not in the sending peer's allowed IPs, and the
@@ -98,13 +100,23 @@ func (t *ForwardTable) Decide(p Packet) error {
 		return errNotProfileTraffic
 	}
 	proto := toACLProtocol(p.Protocol)
+	src, dst := toNetIP(p.Src), toNetIP(p.Dst)
 	if fromDevice {
-		if err := srcFilter.EvaluateOutbound4Tuple(toNetIP(p.Src), p.SrcPort, toNetIP(p.Dst), p.DstPort, proto); err != nil {
+		err := srcFilter.EvaluateOutbound4Tuple(src, p.SrcPort, dst, p.DstPort, proto)
+		// A device answering a flow a rule let in to it needs no outbound rule of its
+		// own: a one-way allow-list rule (the phone may open the laptop's port) compiles
+		// to nothing in the laptop's outbound rules, and without this the laptop's
+		// answers would meet default deny. Only default deny gives way; an explicit
+		// DROP still drops the answer.
+		if errors.Is(err, acl.ErrOutboundDefaultDeny) && srcFilter.IsAnswer(src, p.SrcPort, dst, p.DstPort, proto) {
+			err = nil
+		}
+		if err != nil {
 			return fmt.Errorf("from profile device %s: %w", p.Src, err)
 		}
 	}
 	if toDevice {
-		if err := dstFilter.EvaluateInbound(toNetIP(p.Src), p.SrcPort, p.DstPort, proto); err != nil {
+		if err := dstFilter.EvaluateInboundAnswerable(src, p.SrcPort, dst, p.DstPort, proto); err != nil {
 			return fmt.Errorf("to profile device %s: %w", p.Dst, err)
 		}
 	}

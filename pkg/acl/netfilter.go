@@ -33,6 +33,10 @@ type NetstackFilter struct {
 	policy       *CompiledPeerPolicy
 	conntrack    map[string]*ConntrackEntry
 	conntrackTTL time.Duration
+	// answers holds, for a node that enforces nothing itself (a profile device behind
+	// its gateway, ADR 0029), the flows a rule let in: the node may answer them although
+	// no outbound rule names the other end. Keyed like conntrack, valued by expiry.
+	answers map[string]time.Time
 }
 
 // NewNetstackFilter creates an initialized client netstack filter
@@ -40,6 +44,7 @@ func NewNetstackFilter() *NetstackFilter {
 	return &NetstackFilter{
 		conntrack:    make(map[string]*ConntrackEntry),
 		conntrackTTL: 120 * time.Second,
+		answers:      make(map[string]time.Time),
 	}
 }
 
@@ -115,18 +120,57 @@ func (nf *NetstackFilter) EvaluateOutbound4Tuple(srcVIP net.IP, srcPort uint16, 
 
 // EvaluateInbound tests whether an inbound packet/stream from a peer is permitted
 func (nf *NetstackFilter) EvaluateInbound(srcVIP net.IP, srcPort uint16, destPort uint16, proto Protocol) error {
+	_, err := nf.evaluateInbound(srcVIP, srcPort, destPort, proto)
+	return err
+}
+
+// EvaluateInboundAnswerable is EvaluateInbound for a node that cannot enforce anything
+// itself: a profile device, whose gateway applies the device's policy to both
+// directions (ADR 0029). When a rule accepts the packet, its exact reverse becomes an
+// answer the node may send (IsAnswer) for as long as the flow keeps arriving.
+//
+// A packet let in by conntrack records nothing. It is the answer to the node's own
+// flow, and the node's further packets in that flow stay under its outbound rules: a
+// rule deleted or a DROP written later still cuts them.
+func (nf *NetstackFilter) EvaluateInboundAnswerable(srcVIP net.IP, srcPort uint16, dstVIP net.IP, destPort uint16, proto Protocol) error {
+	byConntrack, err := nf.evaluateInbound(srcVIP, srcPort, destPort, proto)
+	if err != nil || byConntrack {
+		return err
+	}
+	nf.mu.Lock()
+	nf.answers[flowKey(srcVIP, srcPort, dstVIP, destPort, proto)] = time.Now().Add(nf.conntrackTTL)
+	nf.mu.Unlock()
+	return nil
+}
+
+// IsAnswer reports whether a packet this node sends, srcVIP:srcPort -> dstVIP:dstPort,
+// is the reverse of a flow EvaluateInboundAnswerable accepted by rule and has not
+// expired.
+func (nf *NetstackFilter) IsAnswer(srcVIP net.IP, srcPort uint16, dstVIP net.IP, dstPort uint16, proto Protocol) bool {
+	nf.mu.RLock()
+	defer nf.mu.RUnlock()
+	exp, ok := nf.answers[flowKey(dstVIP, dstPort, srcVIP, srcPort, proto)]
+	return ok && time.Now().Before(exp)
+}
+
+func flowKey(src net.IP, srcPort uint16, dst net.IP, dstPort uint16, proto Protocol) string {
+	return fmt.Sprintf("%s:%d->%s:%d/%s", src.String(), srcPort, dst.String(), dstPort, proto)
+}
+
+// evaluateInbound also reports whether conntrack, rather than a rule, let the packet in.
+func (nf *NetstackFilter) evaluateInbound(srcVIP net.IP, srcPort uint16, destPort uint16, proto Protocol) (bool, error) {
 	nf.mu.Lock()
 	// 1. Check Conntrack for established stateful connections
 	nf.purgeExpiredLocked()
 	if nf.checkConntrackLocked(srcVIP, srcPort, destPort, proto) {
 		nf.mu.Unlock()
-		return nil
+		return true, nil
 	}
 	policy := nf.policy
 	nf.mu.Unlock()
 
 	if policy == nil {
-		return ErrNoPolicyLoaded
+		return false, ErrNoPolicyLoaded
 	}
 
 	// 2. Evaluate Inbound Policy Rules
@@ -136,16 +180,16 @@ func (nf *NetstackFilter) EvaluateInbound(srcVIP net.IP, srcPort uint16, destPor
 				for _, pr := range rule.PortRanges {
 					if pr.Matches(destPort) {
 						if rule.Action == ActionAccept {
-							return nil
+							return false, nil
 						}
-						return fmt.Errorf("%w: %s -> :%d/%s", ErrInboundBlockedDrop, srcVIP.String(), destPort, proto)
+						return false, fmt.Errorf("%w: %s -> :%d/%s", ErrInboundBlockedDrop, srcVIP.String(), destPort, proto)
 					}
 				}
 			}
 		}
 	}
 
-	return fmt.Errorf("%w: %s -> :%d/%s", ErrInboundDefaultDeny, srcVIP.String(), destPort, proto)
+	return false, fmt.Errorf("%w: %s -> :%d/%s", ErrInboundDefaultDeny, srcVIP.String(), destPort, proto)
 }
 
 // recordConntrack creates or updates a conntrack entry for the expected reverse return traffic
@@ -224,6 +268,11 @@ func (nf *NetstackFilter) purgeExpiredLocked() {
 	for k, v := range nf.conntrack {
 		if !now.Before(v.ExpiresAt) {
 			delete(nf.conntrack, k)
+		}
+	}
+	for k, exp := range nf.answers {
+		if !now.Before(exp) {
+			delete(nf.answers, k)
 		}
 	}
 }
