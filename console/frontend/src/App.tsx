@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { RouterProvider, createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 
 import { AuthProvider } from './context/AuthContext';
 import { AppErrorBoundary } from './routes/AppErrorBoundary';
+import { AppRouter } from './routes/AppRouter';
 import { routes } from './routes/router';
 
 /**
@@ -19,7 +20,7 @@ export default function App() {
   return (
     <AppErrorBoundary>
       <AuthProvider>
-        <RouterProvider router={router} />
+        <AppRouter router={router} />
       </AuthProvider>
     </AppErrorBoundary>
   );
