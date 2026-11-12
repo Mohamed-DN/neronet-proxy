@@ -307,6 +307,115 @@ func TestForwardTableDecidesWithBothEndsPolicies(t *testing.T) {
 	}
 }
 
+// A phone may open the laptop's service and nothing else: an allow-list rule for that
+// one pair and port. Compiled, it names the laptop in the phone's outbound rules and
+// the phone in the laptop's inbound rules, and nothing in the laptop's outbound rules.
+// The laptop runs a stock client that enforces nothing, so the gateway decides its
+// answers too: they must pass because they answer a flow the gateway let in, and only
+// that flow may be answered.
+func TestForwardTableLetsADeviceAnswerOnlyTheFlowsItAccepted(t *testing.T) {
+	phone := acl.NewNetstackFilter()
+	phone.UpdatePolicy(devicePolicy(deviceAddr, []acl.CompiledFilterRule{rule(otherAddr, acl.ProtocolTCP, 9999, acl.ActionAccept)}, nil))
+	laptop := acl.NewNetstackFilter()
+	laptop.UpdatePolicy(devicePolicy(otherAddr, nil, []acl.CompiledFilterRule{rule(deviceAddr, acl.ProtocolTCP, 9999, acl.ActionAccept)}))
+	table := NewForwardTable()
+	table.AddDevice(netip.MustParseAddr(deviceAddr), phone)
+	table.AddDevice(netip.MustParseAddr(otherAddr), laptop)
+
+	tcp := func(src string, sport uint16, dst string, dport uint16) Packet {
+		return Packet{Version: 4, Protocol: ProtoTCP, Src: netip.MustParseAddr(src), Dst: netip.MustParseAddr(dst), SrcPort: sport, DstPort: dport}
+	}
+	answer := tcp(otherAddr, 9999, deviceAddr, 40000)
+	if err := table.Decide(answer); err == nil {
+		t.Fatal("the laptop reached the phone before the phone opened anything")
+	}
+	if err := table.Decide(tcp(deviceAddr, 40000, otherAddr, 9999)); err != nil {
+		t.Fatalf("phone -> laptop:9999, which the rule allows: %v", err)
+	}
+	if err := table.Decide(answer); err != nil {
+		t.Fatalf("the laptop's answer to the phone's connection was dropped: %v", err)
+	}
+	for _, p := range []Packet{
+		tcp(otherAddr, 9999, deviceAddr, 22),    // another port of the phone
+		tcp(otherAddr, 8080, deviceAddr, 40000), // from another port of the laptop
+		tcp(otherAddr, 41000, deviceAddr, 9999), // the laptop opening the phone's 9999
+		{Version: 4, Protocol: ProtoUDP, Src: answer.Src, Dst: answer.Dst, SrcPort: 9999, DstPort: 40000},
+	} {
+		if err := table.Decide(p); err == nil {
+			t.Errorf("%s passed: only the answer to the accepted flow may", p)
+		}
+	}
+}
+
+// A device that is the server for a mesh node answers through the gateway the same way.
+func TestForwardTableLetsADeviceAnswerAMeshNodeItAccepted(t *testing.T) {
+	laptop := acl.NewNetstackFilter()
+	laptop.UpdatePolicy(devicePolicy(deviceAddr, nil, []acl.CompiledFilterRule{rule(meshAddr, acl.ProtocolTCP, 22, acl.ActionAccept)}))
+	table := NewForwardTable()
+	table.AddDevice(netip.MustParseAddr(deviceAddr), laptop)
+
+	in := Packet{Version: 4, Protocol: ProtoTCP, Src: netip.MustParseAddr(meshAddr), Dst: netip.MustParseAddr(deviceAddr), SrcPort: 50000, DstPort: 22}
+	out := Packet{Version: 4, Protocol: ProtoTCP, Src: in.Dst, Dst: in.Src, SrcPort: 22, DstPort: 50000}
+	if err := table.Decide(in); err != nil {
+		t.Fatalf("mesh -> laptop:22, which the rule allows: %v", err)
+	}
+	if err := table.Decide(out); err != nil {
+		t.Fatalf("the laptop's answer to the mesh node was dropped: %v", err)
+	}
+}
+
+// What a device's own flow brings back is accepted by conntrack, not by a rule, and
+// must not turn the device's further packets into answers: deleting the rule, or
+// writing a DROP, still cuts the device's established flow at its next packet.
+func TestForwardTablePolicyChangeStillCutsADevicesEstablishedFlow(t *testing.T) {
+	for name, later := range map[string][]acl.CompiledFilterRule{
+		"rule deleted": nil,
+		"DROP written": {rule(meshAddr, acl.ProtocolALL, 0, acl.ActionDrop)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			phone := acl.NewNetstackFilter()
+			phone.UpdatePolicy(devicePolicy(deviceAddr, []acl.CompiledFilterRule{rule(meshAddr, acl.ProtocolTCP, 9999, acl.ActionAccept)}, nil))
+			table := NewForwardTable()
+			table.AddDevice(netip.MustParseAddr(deviceAddr), phone)
+
+			out := Packet{Version: 4, Protocol: ProtoTCP, Src: netip.MustParseAddr(deviceAddr), Dst: netip.MustParseAddr(meshAddr), SrcPort: 40000, DstPort: 9999}
+			back := Packet{Version: 4, Protocol: ProtoTCP, Src: out.Dst, Dst: out.Src, SrcPort: 9999, DstPort: 40000}
+			if err := table.Decide(out); err != nil {
+				t.Fatalf("phone -> mesh: %v", err)
+			}
+			if err := table.Decide(back); err != nil {
+				t.Fatalf("the mesh node's answer: %v", err)
+			}
+			phone.UpdatePolicy(devicePolicy(deviceAddr, later, nil))
+			if err := table.Decide(out); err == nil {
+				t.Fatal("the phone's established flow survived the policy change")
+			}
+		})
+	}
+}
+
+// An explicit DROP in the answering device's own outbound rules wins over the answer.
+func TestForwardTableExplicitDropWinsOverAnAnswer(t *testing.T) {
+	phone := acl.NewNetstackFilter()
+	phone.UpdatePolicy(devicePolicy(deviceAddr, []acl.CompiledFilterRule{rule(otherAddr, acl.ProtocolTCP, 9999, acl.ActionAccept)}, nil))
+	laptop := acl.NewNetstackFilter()
+	laptop.UpdatePolicy(devicePolicy(otherAddr,
+		[]acl.CompiledFilterRule{rule(deviceAddr, acl.ProtocolALL, 0, acl.ActionDrop)},
+		[]acl.CompiledFilterRule{rule(deviceAddr, acl.ProtocolTCP, 9999, acl.ActionAccept)}))
+	table := NewForwardTable()
+	table.AddDevice(netip.MustParseAddr(deviceAddr), phone)
+	table.AddDevice(netip.MustParseAddr(otherAddr), laptop)
+
+	open := Packet{Version: 4, Protocol: ProtoTCP, Src: netip.MustParseAddr(deviceAddr), Dst: netip.MustParseAddr(otherAddr), SrcPort: 40000, DstPort: 9999}
+	if err := table.Decide(open); err != nil {
+		t.Fatalf("phone -> laptop:9999: %v", err)
+	}
+	answer := Packet{Version: 4, Protocol: ProtoTCP, Src: open.Dst, Dst: open.Src, SrcPort: 9999, DstPort: 40000}
+	if err := table.Decide(answer); err == nil {
+		t.Fatal("the laptop answered through a DROP in its own outbound rules")
+	}
+}
+
 // requireHandshake proves the spoofer's packets did reach the gateway, encrypted and
 // authenticated: what stopped them was the source check after decryption, not a
 // tunnel that never came up.
