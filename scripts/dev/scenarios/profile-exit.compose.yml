@@ -1,0 +1,65 @@
+# Test-only override for scripts/dev/scenarios/overlay.sh profile-exit (ADR 0032). Never
+# part of a deployment.
+#
+#   COMPOSE_PROJECT_NAME=exit12 NERONET_PORT_OFFSET=8200 NERONET_DATAPLANE=netstack \
+#   NERONET_EXTRA_COMPOSE_FILE=scripts/dev/scenarios/profile-exit.compose.yml \
+#     sh scripts/dev/stack.sh up && sh scripts/dev/stack.sh nodes relay-de relay-fr inet-echo
+#
+# A fake internet: a network in a documentation range (198.51.100.0/24, not RFC 1918, so
+# an exit lets it out) that only the two exits are attached to. inet-echo on it serves the
+# nodes' echo mode on 9999 and answers port 80 with the address it saw the connection
+# come from. The device is never attached to it: it can reach it through an exit only.
+# The exits resolve clients' names with this network's own resolver, which knows
+# inet-echo by name.
+#
+# exit-lan stands for the exits' own private network (172.31.250.0/24): inet-echo answers
+# there too, the exits reach it directly, the device does not, and an exit must refuse
+# to carry the device there. (The device shares the mesh network with the gateway, and
+# like any full-tunnel client it reaches its own subnet directly, so that one proves
+# nothing.)
+services:
+  relay-de:
+    networks:
+      - neronet-isolated-mesh
+      - exit-internet
+      - exit-lan
+    environment:
+      - SOVEREIGN_EXIT_DNS=198.51.100.1
+  relay-fr:
+    networks:
+      - neronet-isolated-mesh
+      - exit-internet
+      - exit-lan
+    environment:
+      - SOVEREIGN_EXIT_DNS=198.51.100.1
+  inet-echo:
+    profiles: ["nodes"]
+    build:
+      context: docker/wgclient
+      dockerfile: Containerfile
+    image: ${NERONET_WGCLIENT_IMAGE:-localhost/neronet-wgclient:dev}
+    restart: unless-stopped
+    networks:
+      exit-internet:
+        ipv4_address: 198.51.100.80
+        aliases: [inet-echo]
+      exit-lan:
+        ipv4_address: 172.31.250.80
+    command:
+      - >-
+        socat TCP4-LISTEN:80,fork,reuseaddr SYSTEM:'echo "$$SOCAT_PEERADDR"' &
+        exec socat TCP4-LISTEN:9999,fork,reuseaddr SYSTEM:'dd bs=1 count=1 of=/dev/null 2>/dev/null; exec cat'
+
+networks:
+  exit-internet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 198.51.100.0/24
+          gateway: 198.51.100.1
+  exit-lan:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24
+          gateway: 172.31.250.1
