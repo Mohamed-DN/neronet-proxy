@@ -347,6 +347,7 @@ func main() {
 		Netfilter:    netfilter,
 		Bridge:       netstackBridge,
 		Netmaps:      netmaps,
+		ExitEnabled:  *enableExit,
 	})
 	if dpErr != nil {
 		log.Fatalf("Failed to start data plane: %v", dpErr)

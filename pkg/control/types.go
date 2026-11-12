@@ -430,6 +430,44 @@ type NetmapPeer struct {
 	// path: the device's outbound rules to what it sends, its inbound rules to what is
 	// sent to it. A profile entry without one is forwarded nothing (default deny).
 	ACL *acl.CompiledPeerPolicy `json:"acl,omitempty"`
+
+	// Exit is a profile device's chosen exit (ADR 0032), sent to the gateway only. Absent
+	// means the device has none, and its internet-bound packets are dropped.
+	Exit *NetmapExit `json:"exit,omitempty"`
+}
+
+// NetmapExit says where a client's internet traffic leaves (ADR 0032).
+type NetmapExit struct {
+	// Via is "self" when the node reading the document is the exit, "mesh" when the
+	// exit is the mesh node NodeID, which this node's peer set routes 0.0.0.0/0 to.
+	Via    string `json:"via" jsonschema:"enum=self,enum=mesh"`
+	NodeID string `json:"node_id"`
+
+	// AllowLAN lets the client reach the exit's private networks (RFC 1918, ULA).
+	// Loopback, link-local, the metadata address and multicast are never reachable.
+	AllowLAN bool `json:"allow_lan,omitempty"`
+
+	// InternetRules are the client's ordered rules for internet destinations; the first
+	// match decides and no match accepts.
+	InternetRules []InternetRule `json:"internet_rules,omitempty"`
+}
+
+// InternetRule is one ACL rule whose destination is outside the overlay.
+type InternetRule struct {
+	CIDR      string `json:"cidr"`
+	Protocol  string `json:"protocol"`
+	PortStart uint16 `json:"port_start"`
+	PortEnd   uint16 `json:"port_end"`
+	Action    string `json:"action" jsonschema:"enum=ACCEPT,enum=DROP"`
+}
+
+// ExitClient is a client that leaves through the node reading the document, reached
+// through another node (a profile device behind the gateway).
+type ExitClient struct {
+	NodeID        string         `json:"node_id"`
+	AllowedIPs    []string       `json:"allowed_ips"`
+	AllowLAN      bool           `json:"allow_lan,omitempty"`
+	InternetRules []InternetRule `json:"internet_rules,omitempty"`
 }
 
 // NetmapResponse is the document. When Unchanged is true the node already holds this
@@ -446,6 +484,10 @@ type NetmapResponse struct {
 
 	// DNS carries MagicDNS configuration and search domains.
 	DNS *DNSConfig `json:"dns,omitempty"`
+
+	// ExitClients are the clients this node is the exit for, when it is a mesh exit
+	// (ADR 0032). The gateway's own clients travel in their peer entries instead.
+	ExitClients []ExitClient `json:"exit_clients,omitempty"`
 
 	// GeneratedAtUnix is the control plane's clock when the document was built. The
 	// node measures staleness against it.

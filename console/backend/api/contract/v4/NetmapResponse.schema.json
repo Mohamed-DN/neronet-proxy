@@ -92,6 +92,34 @@
         "magic_dns"
       ]
     },
+    "ExitClient": {
+      "properties": {
+        "node_id": {
+          "type": "string"
+        },
+        "allowed_ips": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "allow_lan": {
+          "type": "boolean"
+        },
+        "internet_rules": {
+          "items": {
+            "$ref": "#/$defs/InternetRule"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "node_id",
+        "allowed_ips"
+      ]
+    },
     "IPMask": {
       "type": "string",
       "contentEncoding": "base64"
@@ -111,6 +139,67 @@
       "required": [
         "IP",
         "Mask"
+      ]
+    },
+    "InternetRule": {
+      "properties": {
+        "cidr": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "port_start": {
+          "type": "integer"
+        },
+        "port_end": {
+          "type": "integer"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "ACCEPT",
+            "DROP"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "cidr",
+        "protocol",
+        "port_start",
+        "port_end",
+        "action"
+      ]
+    },
+    "NetmapExit": {
+      "properties": {
+        "via": {
+          "type": "string",
+          "enum": [
+            "self",
+            "mesh"
+          ]
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "allow_lan": {
+          "type": "boolean"
+        },
+        "internet_rules": {
+          "items": {
+            "$ref": "#/$defs/InternetRule"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "via",
+        "node_id"
       ]
     },
     "NetmapPeer": {
@@ -182,6 +271,9 @@
         },
         "acl": {
           "$ref": "#/$defs/CompiledPeerPolicy"
+        },
+        "exit": {
+          "$ref": "#/$defs/NetmapExit"
         }
       },
       "additionalProperties": false,
@@ -450,6 +542,12 @@
     },
     "dns": {
       "$ref": "#/$defs/DNSConfig"
+    },
+    "exit_clients": {
+      "items": {
+        "$ref": "#/$defs/ExitClient"
+      },
+      "type": "array"
     },
     "generated_at_unix": {
       "type": "integer"
