@@ -5,12 +5,15 @@
  *
  * A phone or laptop on the stock WireGuard app never heartbeats. Its organisation's
  * profile gateway reads the device's last handshake from its own wireguard-go state and
- * reports it in peer_paths on the gateway's authenticated heartbeat. Only that gateway is
- * believed: a node is the gateway of exactly one organisation, the device must belong to
- * the same one, and a quarantined gateway carries no traffic, so its word counts for nothing.
+ * reports it in peer_paths on the gateway's authenticated heartbeat. Only the gateway that
+ * serves the device is believed (ProfileGatewayService: the one assigned to it, else the
+ * organisation's default): another gateway, even of the same organisation, does not hold
+ * the device as a peer and has nothing true to say about it, and a quarantined gateway
+ * carries no traffic, so its word counts for nothing.
  */
 
 const { getPgPool } = require('../db/index');
+const ProfileGatewayService = require('./ProfileGatewayService');
 
 // WireGuard rekeys every two minutes while traffic flows and the profile keepalive is
 // 25 s, so a connected device handshakes at least every 2 min; one more minute of slack.
@@ -33,7 +36,7 @@ function status(lastHandshakeAt, nowMs = Date.now()) {
 
 /**
  * Store the handshakes a gateway reported for the profile devices it serves. Entries for
- * any other node are ignored, as is everything when the reporter is not its organisation's
+ * any other node are ignored, and so is every device the reporter does not serve as its
  * profile gateway. A handshake never moves backwards and never lands in the future.
  */
 async function record(gatewayNodeId, peerPaths, client = null) {
@@ -65,6 +68,7 @@ async function record(gatewayNodeId, peerPaths, client = null) {
         AND d.id = v.id
         AND d.device_kind = 'profile'
         AND COALESCE(d.organization_id, 'org-default') = COALESCE(g.organization_id, 'org-default')
+        AND g.id = ${ProfileGatewayService.servingGatewaySql('d')}
         AND (d.last_handshake_at IS NULL OR d.last_handshake_at < v.at)`,
     [gatewayNodeId, ids, stamps]
   );

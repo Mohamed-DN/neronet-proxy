@@ -32,6 +32,7 @@ const AclEngine = require('./AclEngine');
 const RouteEngine = require('./RouteEngine');
 const RevocationEngine = require('./RevocationEngine');
 const ExitService = require('./ExitService');
+const ProfileGatewayService = require('./ProfileGatewayService');
 
 // --- Configured constants ----------------------------------------------------
 //
@@ -549,14 +550,14 @@ async function buildNetmap(nodeId) {
         // policy were ever to name one.
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
                 transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
-                device_kind, preshared_key, profile_gateway_endpoint, role
+                device_kind, preshared_key, profile_gateway_endpoint, gateway_node_id, role
            FROM nodes
           WHERE id <> $1 AND is_quarantined = FALSE AND is_healthy = TRUE
             AND COALESCE(organization_id, 'org-default') = $2`,
         [nodeId, self.organization_id || 'org-default'],
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
                 transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
-                'mesh' AS device_kind, NULL AS preshared_key, NULL AS profile_gateway_endpoint, role
+                'mesh' AS device_kind, NULL AS preshared_key, NULL AS profile_gateway_endpoint, NULL AS gateway_node_id, role
            FROM nodes
           WHERE id <> ? AND is_quarantined = 0 AND is_healthy = 1
             AND COALESCE(organization_id, 'org-default') = ?`,
@@ -572,12 +573,13 @@ async function buildNetmap(nodeId) {
   // a document SetPeers refuses whole; the lowest id keeps the entry.
   const emittedKeys = new Set();
 
-  // ADR 0029: profile devices are peers of their organisation's gateway only. Every
-  // other node reaches them through the gateway, so their addresses join the gateway's
-  // allowed IPs below.
+  // ADR 0029: a profile device is a peer of the one gateway that serves it
+  // (ProfileGatewayService: the gateway assigned to it, else the organisation's default).
+  // Every other node, other gateways included, reaches it through that gateway, so its
+  // addresses join that gateway's allowed IPs below.
   //
   // The gateway relays; it is not a party to the traffic. So the peers it holds do not
-  // follow its own policy alone: it serves every device of its organisation, and holds
+  // follow its own policy alone: it serves every device assigned to it, and holds
   // every mesh node some device's own policy lets that device reach, or a rule naming
   // only a device and a server would connect nothing. What actually passes is decided
   // per packet: the gateway enforces each device's policy, which travels in the
@@ -585,7 +587,18 @@ async function buildNetmap(nodeId) {
   // traffic -- the gateway's filter still applies its own policy to anything it sends
   // or receives itself.
   const selfIsGateway = Boolean(self.profile_gateway_endpoint) && self.device_kind !== 'profile';
-  const routedThroughGateway = [];
+  // Device addresses to route to each gateway: Map(gateway id -> allowed IPs).
+  const routedThroughGateway = new Map();
+  const routeTo = (gatewayId, ips) => {
+    if (!gatewayId || gatewayId === self.id) return;
+    const list = routedThroughGateway.get(gatewayId) || [];
+    for (const ip of ips) if (!list.includes(ip)) list.push(ip);
+    routedThroughGateway.set(gatewayId, list);
+  };
+  // Profile devices exist in PostgreSQL only.
+  const servedBy =
+    isPostgres() && !self.is_quarantined ? await ProfileGatewayService.resolver(self.organization_id) : null;
+  const gatewayOf = (row) => (servedBy ? servedBy.of(row.gateway_node_id) : null);
   const sorted = candidates.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
 
   const servedDevice = (row) => {
@@ -607,36 +620,39 @@ async function buildNetmap(nodeId) {
     isPostgres() && !self.is_quarantined && (selfIsGateway || selfMayBeExit)
       ? await ExitService.plan(self.organization_id, revoked)
       : null;
-  const exitClients = selfIsGateway ? [] : ExitService.exitClientsOf(self.id, exitPlan);
+  // A gateway can be the mesh exit for another gateway's devices; its own devices leave
+  // through it as `self`, never as exit clients.
+  const exitClients = ExitService.exitClientsOf(self.id, exitPlan);
 
   const devicePolicies = new Map();
   const deviceReach = new Set();
   if (selfIsGateway) {
     for (const row of sorted) {
-      if (!servedDevice(row)) continue;
+      if (!servedDevice(row) || gatewayOf(row) !== self.id) continue;
       const devicePolicy = await AclEngine.compilePolicyFor(row.id);
       devicePolicies.set(row.id, devicePolicy);
       for (const vip of permittedPeerVIPs(devicePolicy)) deviceReach.add(vip);
     }
-  } else {
-    // A device this node's policy permits is reached through the gateway, whether or not
-    // this node may talk to the gateway itself.
-    for (const row of sorted) {
-      const device = servedDevice(row);
-      if (device && permitted.has(String(row.overlay_ipv4))) routedThroughGateway.push(...device.ips);
-    }
-    // A device that leaves through this exit is reached through the gateway too.
-    for (const client of exitClients) {
-      for (const ip of client.allowed_ips) {
-        if (!routedThroughGateway.includes(ip)) routedThroughGateway.push(ip);
-      }
-    }
+  }
+  // A device this node's policy permits -- or, on a gateway, the policy of a device it
+  // serves -- is reached through the device's own gateway, whether or not this node may
+  // talk to that gateway itself.
+  for (const row of sorted) {
+    const device = servedDevice(row);
+    if (!device) continue;
+    const vip = String(row.overlay_ipv4);
+    if (permitted.has(vip) || deviceReach.has(vip)) routeTo(gatewayOf(row), device.ips);
+  }
+  // A device that leaves through this exit is reached through its gateway too.
+  for (const client of exitClients) {
+    const assignment = exitPlan.devices.get(client.node_id);
+    routeTo(assignment && assignment.gateway_id, client.allowed_ips);
   }
 
   for (const row of sorted) {
     if (row.device_kind === 'profile') {
       const device = servedDevice(row);
-      if (!device || !selfIsGateway) continue;
+      if (!device || !selfIsGateway || gatewayOf(row) !== self.id) continue;
       const { deviceKey, psk, ips: deviceIPs } = device;
       // The same key under two rows (two spellings) is listed once (H2).
       if (emittedKeys.has(deviceKey)) continue;
@@ -664,11 +680,11 @@ async function buildNetmap(nodeId) {
 
     const vip = String(row.overlay_ipv4);
     const ownTraffic = permitted.has(vip) || deviceReach.has(vip);
-    const isOrgGateway = Boolean(row.profile_gateway_endpoint);
+    const routesDevices = routedThroughGateway.has(row.id);
     // The mesh exit the gateway's devices leave through is held whatever the gateway's own
     // policy says, like a server a device may reach: it is a relay for them.
-    const isMeshExit = selfIsGateway && exitPlan !== null && exitPlan.meshExitId === row.id;
-    if (!ownTraffic && !(isOrgGateway && routedThroughGateway.length > 0) && !isMeshExit) continue;
+    const isMeshExit = selfIsGateway && exitPlan !== null && exitPlan.meshExitByGateway.get(self.id) === row.id;
+    if (!ownTraffic && !routesDevices && !isMeshExit) continue;
 
     const keyHex = normalisePublicKeyHex(row.public_key);
     // A node whose stored key cannot be decoded cannot be a WireGuard peer. Sending
@@ -747,11 +763,10 @@ async function buildNetmap(nodeId) {
     peers.push(peerEntry);
   }
 
-  if (routedThroughGateway.length > 0) {
-    const gatewayRow = candidates.find((r) => r.profile_gateway_endpoint && r.device_kind !== 'profile');
-    const gatewayEntry = gatewayRow && peers.find((p) => p.node_id === gatewayRow.id);
+  for (const [gatewayId, ips] of routedThroughGateway) {
+    const gatewayEntry = peers.find((p) => p.node_id === gatewayId);
     if (gatewayEntry) {
-      gatewayEntry.allowed_ips = sortAllowedIPs([...gatewayEntry.allowed_ips, ...routedThroughGateway]);
+      gatewayEntry.allowed_ips = sortAllowedIPs([...gatewayEntry.allowed_ips, ...ips]);
     }
   }
 

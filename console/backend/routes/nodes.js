@@ -133,6 +133,9 @@ async function formatNode(row, telemetry) {
     device_kind: row.device_kind || 'mesh',
     profile_gateway_endpoint: row.profile_gateway_endpoint || null,
     is_profile_gateway: Boolean(row.profile_gateway_endpoint),
+    is_default_profile_gateway: Boolean(row.profile_gateway_endpoint && row.is_default_profile_gateway),
+    // The gateway assigned to a profile device (migration 051); null for a mesh node.
+    gateway_node_id: row.device_kind === 'profile' ? row.gateway_node_id || null : null,
     // A profile device never heartbeats; its gateway reports its last WireGuard handshake
     // (services/ProfileHandshake.js). A mesh node is judged by its own heartbeat: null.
     last_handshake_at:
@@ -474,16 +477,16 @@ router.put('/:id', async (req, res, next) => {
 });
 
 /**
- * The node that serves the organisation's profile devices (ADR 0029) carries every one of
- * their tunnels: removing it disconnects them all at once. The role has to move to another
- * node first (PUT /api/devices/gateway).
+ * A node that serves profile devices (ADR 0029) carries every one of their tunnels:
+ * removing it disconnects them all at once. Its devices move to another gateway and the
+ * node stops being a gateway first (DELETE /api/devices/gateways/:id).
  */
 function refuseProfileGateway(node, res) {
   if (!node || !node.profile_gateway_endpoint) return false;
   res.status(409).json({
     code: 'profile_gateway_in_use',
     error:
-      'This node is the gateway for your WireGuard profile devices. Removing it would disconnect all of them. Make another node the gateway first.'
+      'This node is a gateway for your WireGuard profile devices. Removing it would disconnect the devices it serves. Move them to another gateway and remove this one from the gateways in Settings first.'
   });
   return true;
 }
