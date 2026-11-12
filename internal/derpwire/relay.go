@@ -1,7 +1,6 @@
 package derpwire
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net"
@@ -105,5 +104,8 @@ func (r *RelayServer) Close() error {
 	s := r.server
 	r.mu.Unlock()
 	_ = s.Close()
-	return r.admission.Shutdown(context.Background())
+	// Close, not Shutdown: the admission listener is loopback-only and its only client
+	// is the derp server just closed above, so there is nothing to drain. Shutdown
+	// waits five seconds for a connection that never sent a request.
+	return r.admission.Close()
 }
