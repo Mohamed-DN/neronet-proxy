@@ -194,13 +194,33 @@ async function bootstrapPostgresAdmin(pool) {
 
   const passwordHash = bcryptLib.hashSync(appConfig.ADMIN_PASSWORD, bcryptLib.genSaltSync(10));
 
-  await pool.query(
-    `INSERT INTO users (
-       id, username, email, password_hash, role, status
-     ) VALUES ($1, $2, $3, $4, 'super-admin', 'active')
-     ON CONFLICT (username) DO NOTHING`,
-    ['usr-admin', appConfig.ADMIN_USERNAME, appConfig.ADMIN_EMAIL, passwordHash]
-  );
+  // One transaction: the account, its organisation and its owner membership exist together
+  // or not at all. Migration 017's backfill cannot cover this account on a fresh install
+  // because the users table is still empty when it runs.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO users (
+         id, username, email, password_hash, role, status, organization_id
+       ) VALUES ($1, $2, $3, $4, 'super-admin', 'active', 'org-default')
+       ON CONFLICT (username) DO NOTHING`,
+      ['usr-admin', appConfig.ADMIN_USERNAME, appConfig.ADMIN_EMAIL, passwordHash]
+    );
+    await client.query(
+      `INSERT INTO memberships (id, user_id, organization_id, role)
+       SELECT 'mem-' || substr(md5(id || 'org-default'), 1, 12), id, 'org-default', 'owner'
+       FROM users WHERE username = $1 AND role = 'super-admin'
+       ON CONFLICT (user_id, organization_id) DO NOTHING`,
+      [appConfig.ADMIN_USERNAME]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 
   logger.info(`Bootstrapped super-admin account '${appConfig.ADMIN_USERNAME}'.`);
   return true;
