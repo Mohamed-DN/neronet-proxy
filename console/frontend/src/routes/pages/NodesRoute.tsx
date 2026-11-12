@@ -5,6 +5,7 @@ import { Search, ShieldAlert, ShieldCheck, Zap } from 'lucide-react';
 
 import { formatRelativeTime } from '../../i18n/format';
 import { PageFrame } from '../PageFrame';
+import { DeviceGatewayCard } from './DeviceGatewayCard';
 import { GlossaryHint } from '../GlossaryHint';
 import { ROUTES, nodePath } from '../paths';
 import { useShell } from '../shell';
@@ -556,6 +557,8 @@ export default function NodesRoute() {
                 </div>
               </div>
             </Card>
+
+            {selectedNode.device_kind === 'profile' && <DeviceGatewayCard device={selectedNode} />}
 
             <Card className="p-4">
               <CardHeader as="h2" title={t('detail.connectionTest')} />

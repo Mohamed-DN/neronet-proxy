@@ -46,8 +46,12 @@ export interface MeshNode {
   device_kind?: 'mesh' | 'profile';
   /** The endpoint a profile device dials, set on the gateway node only. */
   profile_gateway_endpoint?: string | null;
-  /** True on the node that serves the organisation's WireGuard profile devices. */
+  /** True on a node that serves WireGuard profile devices (an organisation may have several). */
   is_profile_gateway?: boolean;
+  /** True on the gateway new WireGuard-app devices join by default. */
+  is_default_profile_gateway?: boolean;
+  /** The gateway a WireGuard-app device connects through; null on a mesh node. */
+  gateway_node_id?: string | null;
   /**
    * A profile device's last WireGuard handshake, as its gateway reported it. Null when
    * no gateway has reported one, and always null on a mesh node (judged by its heartbeat).

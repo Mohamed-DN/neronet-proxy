@@ -61,7 +61,7 @@
   },
   "actionFailed": "L'operazione non è stata completata. Riprova tra poco.",
   "detail": {
-    "gatewayLocked": "Questo dispositivo è il gateway dei profili WireGuard. Revocarlo scollegherebbe tutti i dispositivi che usano l'app WireGuard. Prima rendi gateway un altro dispositivo.",
+    "gatewayLocked": "Questo dispositivo è un gateway dei profili WireGuard. Revocarlo scollegherebbe i dispositivi che serve. Prima spostali su un altro gateway e toglilo dai gateway in Impostazioni.",
     "description": "Scheda di un singolo dispositivo: controlli di sicurezza, indirizzi, una verifica di collegamento e le azioni per bloccarlo o disconnetterlo.",
     "alert": "Questo dispositivo è bloccato e non può comunicare con nessun altro dispositivo della rete.",
     "reason": "Motivo del blocco",
@@ -102,5 +102,23 @@
     "close": "Chiudi",
     "loadFailed": "Impossibile caricare il dispositivo. Riprova.",
     "title": "Dettagli del dispositivo"
+  },
+  "gateway": {
+    "title": "Gateway",
+    "current": "Si collega attraverso {{name}} su {{endpoint}}",
+    "none": "Nessun gateway serve questo dispositivo. Aggiungine uno in Impostazioni.",
+    "moveTo": "Sposta su",
+    "move": "Sposta dispositivo",
+    "keep": "Lascia il gateway attuale",
+    "confirmTitle": "Spostare {{device}} su {{gateway}}?",
+    "warning": "Dopo lo spostamento questo dispositivo non può collegarsi finché il suo profilo WireGuard non viene sostituito. Un profilo WireGuard indica un solo gateway, quindi la persona deve importare un nuovo profilo sul dispositivo.",
+    "done": "{{device}} ora passa da {{gateway}}. Finché il profilo non viene sostituito non può collegarsi. Chiedi alla persona di aggiungere di nuovo il dispositivo dalla sua pagina, oppure di cambiare il peer del tunnel nell'app WireGuard con:",
+    "publicKey": "Chiave pubblica",
+    "endpoint": "Endpoint",
+    "unchanged": "{{device}} passa già da {{gateway}}. Nessuna modifica.",
+    "failed": "Il dispositivo non è stato spostato. Riprova.",
+    "noOther": "Non ci sono altri gateway. Aggiungine uno in Impostazioni.",
+    "onlyAdmin": "Solo un amministratore può spostare un dispositivo su un altro gateway.",
+    "loadFailed": "Non è stato possibile caricare i gateway."
   }
 }
