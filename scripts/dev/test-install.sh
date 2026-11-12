@@ -10,7 +10,7 @@
 set -eu
 . "$(dirname "$0")/engine.sh"
 
-IMAGE=${NERONET_TEST_INSTALL_IMAGE:-docker.io/library/golang:1.26.10}
+IMAGE=${NERONET_TEST_INSTALL_IMAGE:-docker.io/library/golang:1.26.11}
 SRC=$(HOST_PATH "$REPO_ROOT/scripts")
 
 $ENGINE run --rm -v "$SRC:/src/scripts:ro" "$IMAGE" bash -c '
