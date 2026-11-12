@@ -178,6 +178,16 @@ describe('AddDeviceRoute', () => {
     expect(alert).toHaveFocus();
   });
 
+  it('the server body for a missing gateway (error field only) still shows the Settings message', async () => {
+    // What routes/devices.js sent before it carried `code`: the page must not call this a used key.
+    stubRegister(409, { error: 'no_profile_gateway', message: 'This organisation has no gateway yet.' });
+    renderAdd();
+
+    await fillAndSubmit();
+
+    expect(await alertWith(/An administrator has to choose the gateway in Settings/)).toBeInTheDocument();
+  });
+
   it('409 without the gateway code says the key was already in use', async () => {
     stubRegister(409, { error: 'taken' });
     renderAdd();
