@@ -133,6 +133,75 @@ describe('AddDeviceRoute', () => {
     expect(downloads).toContain('work-phone.conf');
   });
 
+  it('shows nothing about blocked networks when the installation does not offer it', async () => {
+    stubRegister(201, { ...DEVICE, strict_network: null });
+    renderAdd();
+
+    await fillAndSubmit();
+    await screen.findByRole('img', { name: 'Access code for Work phone' });
+
+    expect(screen.queryByRole('heading', { name: 'Networks that block VPNs (port 443)' })).toBeNull();
+  });
+
+  it('offers the port 443 command and a second file with the same keys pointing at the local client', async () => {
+    const secret = '0123456789abcdef0123456789abcdef0123456789abcdef';
+    stubRegister(201, {
+      ...DEVICE,
+      strict_network: {
+        url: 'wss://console.example.net',
+        path_prefix: secret,
+        remote: 'gateway:51820',
+        local_endpoint: '127.0.0.1:51820',
+        mtu: 1380,
+        persistent_keepalive: 20
+      }
+    });
+    const files: Array<{ name: string; blob: Blob }> = [];
+    let lastBlob: Blob | null = null;
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, {
+        createObjectURL: vi.fn((blob: Blob) => {
+          lastBlob = blob;
+          return 'blob:config';
+        }),
+        revokeObjectURL: vi.fn()
+      })
+    );
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      if (lastBlob) files.push({ name: this.download, blob: lastBlob });
+    });
+    const qrcode = (await import('qrcode')).default;
+    const view = renderAdd();
+
+    const user = await fillAndSubmit();
+    const heading = await screen.findByRole('heading', { level: 3, name: 'Networks that block VPNs (port 443)' });
+    const section = heading.closest('section') as HTMLElement;
+
+    expect(section).toHaveTextContent(
+      `wstunnel client --tls-verify-certificate -P ${secret} -L 'udp://127.0.0.1:51820:gateway:51820?timeout_sec=0' wss://console.example.net`
+    );
+    expect(section).toHaveTextContent('.\\wstunnel.exe client --tls-verify-certificate');
+    expect(screen.getByRole('button', { name: 'Copy the command for Linux and macOS (Terminal)' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Download the file for blocked networks' }));
+    expect(files.map((f) => f.name)).toEqual(['work-phone-443.conf']);
+    const alt = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(files[0]?.blob as Blob);
+    });
+    const main = String(vi.mocked(qrcode.toDataURL).mock.calls.at(-1)?.[0]);
+    expect(alt).toContain('Endpoint = 127.0.0.1:51820');
+    expect(alt).toContain('MTU = 1380');
+    expect(alt).toContain('PersistentKeepalive = 20');
+    expect(alt).toContain(/PrivateKey = \S+/.exec(main)?.[0] as string);
+    expect(main).toContain('Endpoint = gw.example.net:51820');
+    expect(main).not.toContain(secret);
+
+    await expectNoAxeViolations(view.container, 'light');
+  });
+
   it('registers beforeunload while the result is shown and removes it on Back', async () => {
     stubRegister(201, DEVICE);
     const add = vi.spyOn(window, 'addEventListener');

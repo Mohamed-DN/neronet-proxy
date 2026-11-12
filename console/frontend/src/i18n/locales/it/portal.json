@@ -98,6 +98,24 @@
       "keyInUse": "La nuova chiave era già in uso. Crea di nuovo il codice.",
       "generic": "Il dispositivo non è stato aggiunto. Riprova.",
       "noCrypto": "Questo browser non può creare le chiavi. Apri la pagina con una versione recente di Chrome, Firefox, Safari o Edge."
+    },
+    "strict": {
+      "title": "Reti che bloccano le VPN (porta 443)",
+      "intro": "Per computer. Alcune reti, come quelle di alberghi, uffici e Wi-Fi per ospiti, lasciano passare solo il web. Con questo metodo il collegamento passa dalla porta 443, come un sito, ma è più lento: usalo solo quando il codice qui sopra non si collega.",
+      "install": "Installa wstunnel {{version}} sul computer.",
+      "installLink": "Scarica wstunnel {{version}} da GitHub",
+      "run": "Avvia questo comando e lascialo aperto finché resti collegato:",
+      "shell": {
+        "unix": "Linux e macOS (Terminale)",
+        "windows": "Windows (PowerShell, nella cartella di wstunnel.exe)"
+      },
+      "copy": "Copia il comando",
+      "copyFor": "Copia il comando per {{shell}}",
+      "copied": "Comando copiato.",
+      "import": "Importa nell'app WireGuard questo secondo file e attivalo al posto del primo. Usa le stesse chiavi, ma passa dal comando qui sopra.",
+      "download": "Scarica il file per reti bloccate",
+      "secret": "Il comando contiene un indirizzo riservato alla tua organizzazione: non pubblicarlo e non condividerlo fuori dal team.",
+      "phones": "Su iPhone e Android l'app WireGuard non può usare questo metodo."
     }
   }
 }

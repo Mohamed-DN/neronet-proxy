@@ -44,6 +44,40 @@ function validEndpoint(value) {
   return Boolean(m) && Number(m[1]) >= 1 && Number(m[1]) <= 65535;
 }
 
+// The strict-network tunnel (docker-compose.wss.yml, ADR 0032 draft method wg-wss). Its
+// path prefix is a per-installation secret: anyone who knows it can open the WebSocket,
+// though only to the gateway's WireGuard port, where the device key still decides. It is
+// given to a signed-in user together with the profile they just made, never in a
+// public answer. A malformed or missing value turns the whole field off.
+const WSS_PATH_PREFIX = /^[A-Za-z0-9_-]{16,128}$/;
+const WSS_URL = /^wss:\/\/[A-Za-z0-9.[\]:-]{1,255}$/;
+const HOST_HEADER = /^[A-Za-z0-9.[\]:-]{1,255}$/;
+
+function strictNetworkOf(req) {
+  const pathPrefix = process.env.NERONET_WSS_PATH_PREFIX || '';
+  if (!WSS_PATH_PREFIX.test(pathPrefix)) return null;
+  const remote = process.env.NERONET_WSS_UPSTREAM || 'gateway:51820';
+  if (!validEndpoint(remote)) return null;
+  let url = (process.env.NERONET_WSS_PUBLIC_URL || '').trim().replace(/\/+$/, '');
+  if (!url) {
+    const host = req.get('host');
+    if (!host || !HOST_HEADER.test(host)) return null;
+    url = `wss://${host}`;
+  }
+  if (!WSS_URL.test(url)) return null;
+  return {
+    url,
+    path_prefix: pathPrefix,
+    remote,
+    // What the alternative profile says instead of the gateway's address: the local end
+    // of the client, a smaller MTU for the WebSocket and TLS overhead, and a keepalive
+    // under the idle timeouts of common reverse proxies (60 s in nginx).
+    local_endpoint: '127.0.0.1:51820',
+    mtu: 1380,
+    persistent_keepalive: 20
+  };
+}
+
 async function gatewayOf(organizationId, client = getPgPool()) {
   const res = await client.query(
     `SELECT id, public_key, profile_gateway_endpoint FROM nodes
@@ -169,7 +203,8 @@ router.post('/profile', async (req, res, next) => {
       gateway: { public_key: wireguardKey(gateway.public_key), endpoint: gateway.profile_gateway_endpoint },
       allowed_ips: OVERLAY,
       dns: [],
-      console_url: `https://${req.get('host')}/me`
+      console_url: `https://${req.get('host')}/me`,
+      strict_network: strictNetworkOf(req)
     });
   } catch (err) {
     if (err && err.code === '23505') return res.status(409).json({ error: 'public_key is already in use' });

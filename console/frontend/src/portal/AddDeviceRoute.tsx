@@ -5,7 +5,13 @@ import { useTranslation } from 'react-i18next';
 
 import { generateDeviceKeys, KeyGenerationUnavailable } from '../devices/keys';
 import { QrCode } from '../devices/QrCode';
-import { buildProfileConfig, configFileName } from '../devices/wgConfig';
+import {
+  buildProfileConfig,
+  buildStrictNetworkConfig,
+  configFileName,
+  strictConfigFileName,
+  type StrictNetwork
+} from '../devices/wgConfig';
 import { ApiError } from '../services/apiClient';
 import { useRegisterProfileDevice } from '../services/queries/devices';
 import { Button } from '../ui/Button';
@@ -14,6 +20,7 @@ import { FormField } from '../ui/FormField';
 import { Input } from '../ui/Input';
 import { PageHeader } from '../ui/PageHeader';
 import { useToast } from '../ui/Toast';
+import { StrictNetworkSection } from './StrictNetworkSection';
 
 const NAME_MIN = 1;
 const NAME_MAX = 64;
@@ -26,6 +33,8 @@ interface Result {
   name: string;
   /** The WireGuard configuration text, which holds the private key. Kept in memory only. */
   config: string;
+  /** The same profile for networks that block VPNs, when the installation offers it. Memory only. */
+  strict: { info: StrictNetwork; config: string } | null;
 }
 
 function alertKindFor(error: unknown): AlertKind {
@@ -86,7 +95,12 @@ export default function AddDeviceRoute() {
         public_key: keys.publicKey,
         preshared_key: keys.presharedKey
       });
-      setResult({ name: trimmed, config: buildProfileConfig(keys, device) });
+      const strictInfo = device.strict_network ?? null;
+      setResult({
+        name: trimmed,
+        config: buildProfileConfig(keys, device),
+        strict: strictInfo ? { info: strictInfo, config: buildStrictNetworkConfig(keys, device, strictInfo) } : null
+      });
       notify(t('add.result.added', { name: trimmed }), { tone: 'success' });
     } catch (error) {
       if (error instanceof ApiError && error.status === 400) {
@@ -99,11 +113,11 @@ export default function AddDeviceRoute() {
     }
   }
 
-  function downloadConfig(current: Result) {
-    const url = URL.createObjectURL(new Blob([current.config], { type: 'text/plain' }));
+  function downloadConfig(text: string, fileName: string) {
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = configFileName(current.name);
+    link.download = fileName;
     document.body.append(link);
     link.click();
     link.remove();
@@ -139,7 +153,7 @@ export default function AddDeviceRoute() {
               variant="secondary"
               size="lg"
               icon={Download}
-              onClick={() => downloadConfig(result)}
+              onClick={() => downloadConfig(result.config, configFileName(result.name))}
               className="w-full sm:w-auto"
             >
               {t('add.result.download')}
@@ -154,6 +168,12 @@ export default function AddDeviceRoute() {
               {t('add.result.copy')}
             </Button>
           </div>
+          {result.strict && (
+            <StrictNetworkSection
+              strict={result.strict.info}
+              onDownload={() => result.strict && downloadConfig(result.strict.config, strictConfigFileName(result.name))}
+            />
+          )}
           <div className="mt-8 border-t border-border-subtle pt-4">
             <Link to="/me" onClick={() => setResult(null)} className={cn(SECONDARY_LARGE, 'w-full sm:w-auto')}>
               {t('add.result.back')}

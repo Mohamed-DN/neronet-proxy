@@ -122,6 +122,72 @@ describe('ADR 0029 A1: profile devices through a gateway', () => {
     });
   });
 
+  it('gives the strict-network tunnel only when it is configured, and only with a signed-in request', async () => {
+    const saved = {
+      prefix: process.env.NERONET_WSS_PATH_PREFIX,
+      upstream: process.env.NERONET_WSS_UPSTREAM,
+      url: process.env.NERONET_WSS_PUBLIC_URL
+    };
+    const restore = (name, value) => {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    };
+    try {
+      assert.strictEqual(
+        (await setGateway(adminToken, { node_id: 'node-prof-gw', endpoint: 'gw.example:51820' })).status,
+        200
+      );
+      delete process.env.NERONET_WSS_PATH_PREFIX;
+      delete process.env.NERONET_WSS_UPSTREAM;
+      delete process.env.NERONET_WSS_PUBLIC_URL;
+      const off = await register(memberToken, { name: 'laptop-off', public_key: key(), preshared_key: key() });
+      assert.strictEqual(off.status, 201);
+      assert.strictEqual(off.body.strict_network, null);
+
+      const secret = crypto.randomBytes(24).toString('hex');
+      process.env.NERONET_WSS_PATH_PREFIX = secret;
+      const on = await register(memberToken, { name: 'laptop-on', public_key: key(), preshared_key: key() }).set(
+        'Host',
+        'vpn.example.org'
+      );
+      assert.strictEqual(on.status, 201);
+      assert.deepStrictEqual(on.body.strict_network, {
+        url: 'wss://vpn.example.org',
+        path_prefix: secret,
+        remote: 'gateway:51820',
+        local_endpoint: '127.0.0.1:51820',
+        mtu: 1380,
+        persistent_keepalive: 20
+      });
+
+      process.env.NERONET_WSS_PUBLIC_URL = 'wss://wss.example.org:8444/';
+      process.env.NERONET_WSS_UPSTREAM = 'gw-node:51820';
+      const explicit = await register(memberToken, { name: 'laptop-url', public_key: key(), preshared_key: key() });
+      assert.strictEqual(explicit.body.strict_network.url, 'wss://wss.example.org:8444');
+      assert.strictEqual(explicit.body.strict_network.remote, 'gw-node:51820');
+
+      // A value that could not be a path segment, or a short one, switches the field off
+      // instead of handing out something the server would not accept.
+      for (const bad of ['short', 'has/slash/0123456789abcdef', 'with space 0123456789abcdef']) {
+        process.env.NERONET_WSS_PATH_PREFIX = bad;
+        const res = await register(memberToken, { name: 'laptop-bad', public_key: key(), preshared_key: key() });
+        assert.strictEqual(res.status, 201);
+        assert.strictEqual(res.body.strict_network, null, bad);
+      }
+
+      process.env.NERONET_WSS_PATH_PREFIX = secret;
+      const anonymous = await request(app)
+        .post('/api/devices/profile')
+        .send({ name: 'anon', public_key: key(), preshared_key: key() });
+      assert.strictEqual(anonymous.status, 401);
+      assert.ok(!JSON.stringify(anonymous.body).includes(secret), 'no secret in an unauthenticated answer');
+    } finally {
+      restore('NERONET_WSS_PATH_PREFIX', saved.prefix);
+      restore('NERONET_WSS_UPSTREAM', saved.upstream);
+      restore('NERONET_WSS_PUBLIC_URL', saved.url);
+    }
+  });
+
   it('refuses keys that are not 32 bytes and a public key already in use', async () => {
     assert.strictEqual(
       (await setGateway(adminToken, { node_id: 'node-prof-gw', endpoint: 'gw.example:51820' })).status,
