@@ -12,6 +12,7 @@ const NetmapService = require('../services/NetmapService');
 const { resolveMetricsScope, nodeVisibility } = require('../services/FleetVisibility');
 const { readMetricHistory, counterRates, sameSources, trafficCoverage } = require('../services/ScopedMetricsHistory');
 const NativeMetrics = require('../services/NativeMetrics');
+const ProfileHandshake = require('../services/ProfileHandshake');
 
 // The compartment a node counts as being in, the same expression AclEngine compiles
 // with: a node enrolled without one is in its organisation's default compartment.
@@ -253,6 +254,11 @@ async function geoMatrixHandler(req, res, next) {
 router.get('/geo', geoMatrixHandler);
 router.get('/geo-matrix', geoMatrixHandler);
 
+function lastSeenAt(n) {
+  const seen = n.device_kind === 'profile' ? n.last_handshake_at : n.last_heartbeat;
+  return seen ? new Date(seen).toISOString() : null;
+}
+
 // 4. Topology (Global vs User-Scoped)
 async function topologyHandler(req, res, next) {
   try {
@@ -267,19 +273,19 @@ async function topologyHandler(req, res, next) {
 
     if (isSuperAdmin && !req.query.org_id) {
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, n.last_heartbeat AS last_seen_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE 1=1 ${hiddenClause} ORDER BY n.created_at ASC`
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, n.last_heartbeat AS last_heartbeat, n.last_handshake_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE 1=1 ${hiddenClause} ORDER BY n.created_at ASC`
       );
       visibleNodes = qRes.rows;
     } else if (isOrgPrivileged || isSuperAdmin) {
       const orgId = isSuperAdmin ? req.query.org_id : req.user.organization_id || 'org-default';
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, n.last_heartbeat AS last_seen_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.organization_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, n.last_heartbeat AS last_heartbeat, n.last_handshake_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.organization_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
         [orgId]
       );
       visibleNodes = qRes.rows;
     } else {
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, n.last_heartbeat AS last_seen_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.user_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, n.last_heartbeat AS last_heartbeat, n.last_handshake_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.user_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
         [req.user.id]
       );
       visibleNodes = qRes.rows;
@@ -302,7 +308,10 @@ async function topologyHandler(req, res, next) {
       // gateway endpoint, a key or a PSK.
       device_kind: n.device_kind || 'mesh',
       is_profile_gateway: Boolean(n.is_profile_gateway),
-      last_seen_at: n.last_seen_at ? new Date(n.last_seen_at).toISOString() : null
+      // A profile device never heartbeats: it was last seen at its last handshake with
+      // the gateway, as the gateway reported it (services/ProfileHandshake.js).
+      last_seen_at: lastSeenAt(n),
+      handshake_status: n.device_kind === 'profile' ? ProfileHandshake.status(n.last_handshake_at) : null
     }));
 
     // Links are the paths the policy permits, compiled by the same engine that

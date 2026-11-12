@@ -51,9 +51,24 @@ describe('topology payload: device kind, profile gateway and last seen', () => {
     const ins = (id, org, user, n, ip, kind, endpoint, seen) =>
       pool.query(
         `INSERT INTO nodes (id, organization_id, user_id, name, overlay_ipv4, overlay_ipv6, public_key, preshared_key,
-                            role, is_healthy, is_quarantined, device_kind, profile_gateway_endpoint, last_heartbeat)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'CLIENT_ORIGIN',TRUE,FALSE,$9,$10,$11)`,
-        [id, org, user, n, ip, `fd00:41::${++seq}`, key(), kind === 'profile' ? PSK : null, kind, endpoint, seen]
+                            role, is_healthy, is_quarantined, device_kind, profile_gateway_endpoint, last_heartbeat,
+                            last_handshake_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'CLIENT_ORIGIN',TRUE,FALSE,$9,$10,$11,$12)`,
+        // A profile device never heartbeats; it is seen through its gateway-reported handshake.
+        [
+          id,
+          org,
+          user,
+          n,
+          ip,
+          `fd00:41::${++seq}`,
+          key(),
+          kind === 'profile' ? PSK : null,
+          kind,
+          endpoint,
+          kind === 'profile' ? null : seen,
+          kind === 'profile' ? seen : null
+        ]
       );
     await ins(
       'topo-gw-a',

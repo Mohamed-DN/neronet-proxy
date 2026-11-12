@@ -14,6 +14,7 @@ const RevocationEngine = require('../services/RevocationEngine');
 const { resolveUserOrg } = require('../middleware/rbac');
 const EnrollmentService = require('../services/EnrollmentService');
 const NativeTelemetry = require('../services/NativeTelemetry');
+const ProfileHandshake = require('../services/ProfileHandshake');
 const { resolveMetricsScope, nodeVisibility } = require('../services/FleetVisibility');
 const { validateEndpoints } = require('../services/NetmapService');
 
@@ -131,6 +132,12 @@ async function formatNode(row, telemetry) {
     last_seen_at: row.last_seen_at || row.last_heartbeat || null,
     device_kind: row.device_kind || 'mesh',
     profile_gateway_endpoint: row.profile_gateway_endpoint || null,
+    is_profile_gateway: Boolean(row.profile_gateway_endpoint),
+    // A profile device never heartbeats; its gateway reports its last WireGuard handshake
+    // (services/ProfileHandshake.js). A mesh node is judged by its own heartbeat: null.
+    last_handshake_at:
+      row.device_kind === 'profile' && row.last_handshake_at ? new Date(row.last_handshake_at).toISOString() : null,
+    handshake_status: row.device_kind === 'profile' ? ProfileHandshake.status(row.last_handshake_at) : null,
     created_at: row.created_at,
     updated_at: row.updated_at
   };
@@ -466,6 +473,21 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
+/**
+ * The node that serves the organisation's profile devices (ADR 0029) carries every one of
+ * their tunnels: removing it disconnects them all at once. The role has to move to another
+ * node first (PUT /api/devices/gateway).
+ */
+function refuseProfileGateway(node, res) {
+  if (!node || !node.profile_gateway_endpoint) return false;
+  res.status(409).json({
+    code: 'profile_gateway_in_use',
+    error:
+      'This node is the gateway for your WireGuard profile devices. Removing it would disconnect all of them. Make another node the gateway first.'
+  });
+  return true;
+}
+
 // 5. Delete / Revoke Node
 router.delete('/:id', async (req, res, next) => {
   try {
@@ -477,6 +499,7 @@ router.delete('/:id', async (req, res, next) => {
     if (!access.ok) {
       return res.status(access.error).json({ error: access.message });
     }
+    if (refuseProfileGateway(node, res)) return;
 
     // 1. Write public key to revoked_keys table and bump the policy epoch.
     //    Every peer receives the revocation on its next heartbeat (≤20 s) and
@@ -523,6 +546,7 @@ router.post('/:id/revoke', async (req, res, next) => {
     if (!access.ok) {
       return res.status(access.error).json({ error: access.message });
     }
+    if (refuseProfileGateway(node, res)) return;
 
     await RevocationEngine.revokeNodeKeys([req.params.id], {
       reason: req.body?.reason || 'node_revoked',

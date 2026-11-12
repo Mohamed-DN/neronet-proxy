@@ -36,6 +36,7 @@ const PreAuthKeyService = require('../services/PreAuthKeyService');
 const NodeCredentialService = require('../services/NodeCredentialService');
 const EnrollmentService = require('../services/EnrollmentService');
 const NativeTelemetry = require('../services/NativeTelemetry');
+const ProfileHandshake = require('../services/ProfileHandshake');
 const TransportPolicyService = require('../services/TransportPolicyService');
 const logger = require('../utils/logger');
 const { logAuditEvent } = require('../utils/audit');
@@ -521,6 +522,13 @@ router.post('/heartbeat', normalizeRegisterBody, validateRequest('HeartbeatReque
 
     if (req.body.telemetry) {
       await NativeTelemetry.record(nodeId, auth.node?.credentialId, req.body.telemetry);
+    }
+
+    // A profile gateway's word on the handshakes of the devices it serves (ADR 0029). Only
+    // a credential bound to this node id speaks for it; the service then believes it only
+    // for profile devices of the gateway's own organisation.
+    if (auth.node && auth.node.id === nodeId) {
+      await ProfileHandshake.record(nodeId, req.body.peer_paths);
     }
 
     // The attestation the node sends with every beat. It was decoded off the wire and
