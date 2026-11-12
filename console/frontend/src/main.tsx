@@ -2,12 +2,14 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 
 import App from './App';
+import { installStaleBundleReload } from './routes/staleBundle';
 import { initI18n } from './i18n';
 import { ThemeProvider } from './theme/ThemeProvider';
 import { ToastProvider } from './ui/Toast';
 import { TooltipProvider } from './ui/Tooltip';
 import './index.css';
 
+installStaleBundleReload();
 initI18n();
 
 const container = document.getElementById('root');
