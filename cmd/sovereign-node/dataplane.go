@@ -51,6 +51,10 @@ type dataplaneOptions struct {
 
 	// Netmaps is where the heartbeat loop finds the manager once it exists.
 	Netmaps *netmapHolder
+
+	// ExitEnabled is the operator's consent to be an exit (-enable-exit): without it the
+	// node never dials the internet for a client, whatever the netmap says (ADR 0032).
+	ExitEnabled bool
 }
 
 // overlayPrefixBits is the prefix length of the mesh IPv4 range. The address is
@@ -178,6 +182,15 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		cfg.ListenPort, opts.StunServer,
 		opts.Keypair.PublicKey, nil,
 	)
+	if opts.ExitEnabled {
+		dns, ok := exitDNSUpstream()
+		manager.SetExit(true, dns)
+		if ok {
+			log.Printf("[SOVEREIGN-NODE] Exit enabled: clients the netmap names leave from this host; their DNS goes to %s", dns)
+		} else {
+			log.Printf("[SOVEREIGN-NODE] Exit enabled, but no resolver found for clients' DNS (set SOVEREIGN_EXIT_DNS)")
+		}
+	}
 
 	pskManager := pskepoch.NewManager(dev, opts.Keypair, pskepoch.DefaultRotationInterval)
 	manager.SetPSKManager(pskManager)
@@ -360,12 +373,14 @@ func reportDrops(ctx context.Context, dev *dataplane.Device, interval time.Durat
 			if current == previous {
 				continue
 			}
-			log.Printf("[SOVEREIGN-NODE] Data plane drops since start: outbound %d (+%d), inbound %d (+%d), malformed %d (+%d), forward-dropped %d (+%d); forwarded %d (+%d)",
+			log.Printf("[SOVEREIGN-NODE] Data plane drops since start: outbound %d (+%d), inbound %d (+%d), malformed %d (+%d), forward-dropped %d (+%d); forwarded %d (+%d); egress-dropped %d (+%d), egressed %d (+%d)",
 				current.OutboundDropped, current.OutboundDropped-previous.OutboundDropped,
 				current.InboundDropped, current.InboundDropped-previous.InboundDropped,
 				current.MalformedDropped, current.MalformedDropped-previous.MalformedDropped,
 				current.ForwardDropped, current.ForwardDropped-previous.ForwardDropped,
-				current.Forwarded, current.Forwarded-previous.Forwarded)
+				current.Forwarded, current.Forwarded-previous.Forwarded,
+				current.EgressDropped, current.EgressDropped-previous.EgressDropped,
+				current.Egressed, current.Egressed-previous.Egressed)
 			previous = current
 		}
 	}

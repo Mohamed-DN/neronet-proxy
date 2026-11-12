@@ -97,7 +97,9 @@
       "noGateway": "Your organisation cannot add devices this way yet. An administrator has to choose the gateway in Settings.",
       "keyInUse": "The new key was already in use. Create the code again.",
       "generic": "The device was not added. Try again.",
-      "noCrypto": "This browser cannot create the keys. Open this page in a current version of Chrome, Firefox, Safari or Edge."
+      "noCrypto": "This browser cannot create the keys. Open this page in a current version of Chrome, Firefox, Safari or Edge.",
+      "exitNotPermitted": "Only an administrator can send a device through an exit. Ask yours, or create the code without this option.",
+      "exitGone": "That exit is no longer available. Choose another and try again."
     },
     "strict": {
       "title": "Networks that block VPNs (port 443)",
@@ -116,6 +118,21 @@
       "download": "Download the file for blocked networks",
       "secret": "The command contains an address reserved for your organisation: do not publish it or share it outside your team.",
       "phones": "On iPhone and Android the WireGuard app cannot use this method."
+    },
+    "exit": {
+      "legend": "Internet traffic",
+      "toggle": "All traffic through an exit",
+      "hint": "Websites see the exit's address instead of yours. Choose this on a public Wi-Fi, or to browse as if you were at the exit.",
+      "none": "No exit is available yet. An administrator has to start a node as an exit.",
+      "notAllowed": "Only an administrator can send a device through an exit. Ask yours, or create the code without this option.",
+      "picker": "Exit",
+      "optionGateway": "{{name}} (your organisation's gateway)",
+      "optionNode": "{{name}}",
+      "offline": " — offline now",
+      "privacy": "Whoever runs the exit can see which sites you connect to, but not what you send over HTTPS.",
+      "down": "If the exit stops answering, the device has no internet until it is back. Nothing goes around the tunnel.",
+      "lanNote": "To keep using printers and other devices on the network you are on, turn on \"Exclude private IPs\" in the WireGuard app.",
+      "resultNote": "All of {{name}}'s traffic leaves through {{exit}}."
     }
   }
 }

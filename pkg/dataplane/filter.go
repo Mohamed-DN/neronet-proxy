@@ -72,6 +72,11 @@ type FilterStats struct {
 	// the mesh (ADR 0029); ForwardDropped those it refused to relay.
 	Forwarded      uint64
 	ForwardDropped uint64
+	// Egressed counts packets a client of this node's exit sent towards the internet
+	// that were let out (locally or to the mesh exit); EgressDropped those refused by
+	// the exit checks (ADR 0032).
+	Egressed      uint64
+	EgressDropped uint64
 }
 
 // filteredTUN wraps the tun.Device so every packet crossing the tunnel passes the
@@ -106,6 +111,12 @@ type filteredTUN struct {
 	fwdQueue       chan *[]byte
 	forwarded      atomic.Uint64
 	forwardDropped atomic.Uint64
+
+	// Exit (egress.go). egress is nil on every node that serves no exit client.
+	egress        atomic.Pointer[EgressTable]
+	egressStack   atomic.Pointer[egressStack]
+	egressed      atomic.Uint64
+	egressDropped atomic.Uint64
 
 	// The reader switch. Until forwarding is first switched on, Read reads the
 	// backend directly, exactly as before. From then on a pump goroutine reads the
@@ -142,6 +153,9 @@ func (f *filteredTUN) Close() error {
 		f.closed = true
 		f.writeMu.Unlock()
 		close(f.done)
+		if es := f.egressStack.Load(); es != nil {
+			es.close()
+		}
 		f.closeErr = f.Device.Close()
 	})
 	return f.closeErr
@@ -171,6 +185,8 @@ func (f *filteredTUN) stats() FilterStats {
 		DummyDropped:     f.dummyDropped.Load(),
 		Forwarded:        f.forwarded.Load(),
 		ForwardDropped:   f.forwardDropped.Load(),
+		Egressed:         f.egressed.Load(),
+		EgressDropped:    f.egressDropped.Load(),
 	}
 }
 
@@ -188,7 +204,7 @@ func (f *filteredTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) 
 	}
 	n, err := f.Device.Read(bufs, sizes, offset)
 	kept := f.keepOutbound(bufs, sizes, offset, n)
-	if err == nil && f.forward.Load() != nil && len(bufs) > 0 {
+	if err == nil && f.relaying() && len(bufs) > 0 {
 		// Only this goroutine reads, so the switch needs no lock: from the next call on
 		// the pump is the only reader of the backend.
 		f.pumping.Store(true)
@@ -296,6 +312,12 @@ func (f *filteredTUN) pump(batch, bufLen, offset int) {
 	}
 }
 
+// relaying reports whether this node relays anything it did not originate: profile
+// devices' packets (forwarding) or exit clients' packets and their replies (egress).
+func (f *filteredTUN) relaying() bool {
+	return f.forward.Load() != nil || f.egress.Load() != nil
+}
+
 // relay forwards one decrypted packet that belongs to a profile device flow and is
 // not addressed to this node.
 func (f *filteredTUN) relay(raw []byte, pkt Packet, t *ForwardTable) {
@@ -303,21 +325,91 @@ func (f *filteredTUN) relay(raw []byte, pkt Packet, t *ForwardTable) {
 		f.forwardDropped.Add(1)
 		return
 	}
+	if f.enqueueRelay(raw) {
+		f.forwarded.Add(1)
+	} else {
+		f.forwardDropped.Add(1)
+	}
+}
+
+// enqueueRelay copies a packet routed through this node, lowers its TTL and queues it
+// for wireguard-go to encrypt towards whichever peer holds the destination.
+func (f *filteredTUN) enqueueRelay(raw []byte) bool {
 	bp := forwardBufPool.Get().(*[]byte)
 	buf := append((*bp)[:0], raw...)
 	*bp = buf
 	if err := decrementTTL(buf); err != nil {
 		forwardBufPool.Put(bp)
-		f.forwardDropped.Add(1)
-		return
+		return false
 	}
+	return f.enqueue(bp)
+}
+
+// enqueueOriginated queues a packet this node's exit stack sent to a client. It was
+// built here, so its TTL is not lowered.
+func (f *filteredTUN) enqueueOriginated(raw []byte) bool {
+	bp := forwardBufPool.Get().(*[]byte)
+	*bp = append((*bp)[:0], raw...)
+	return f.enqueue(bp)
+}
+
+func (f *filteredTUN) enqueue(bp *[]byte) bool {
 	select {
 	case f.fwdQueue <- bp:
-		f.forwarded.Add(1)
 		f.wakeIfDirect()
+		return true
 	default:
 		forwardBufPool.Put(bp)
-		f.forwardDropped.Add(1)
+		return false
+	}
+}
+
+// egressWrite handles a decrypted packet on the exit path and reports whether it took
+// it: an internet-bound packet from an exit client, or a mesh exit's reply to one.
+// Anything else is left to the paths that existed before exits.
+func (f *filteredTUN) egressWrite(raw []byte, pkt Packet, t *EgressTable) bool {
+	if c, ok := t.clients[pkt.Src.Unmap()]; ok && !f.isLocal(pkt.Dst) && t.isInternet(pkt.Dst) {
+		if err := f.egressOut(raw, pkt, c, t); err != nil {
+			f.egressDropped.Add(1)
+		} else {
+			f.egressed.Add(1)
+		}
+		return true
+	}
+	if c, ok := t.clients[pkt.Dst.Unmap()]; ok && c.Via == EgressMesh && t.isInternet(pkt.Src) &&
+		t.ct.isReply(pkt, time.Now()) {
+		if f.enqueueRelay(raw) {
+			f.forwarded.Add(1)
+		} else {
+			f.forwardDropped.Add(1)
+		}
+		return true
+	}
+	return false
+}
+
+func (f *filteredTUN) egressOut(raw []byte, pkt Packet, c *EgressClient, t *EgressTable) error {
+	if err := c.Decide(pkt); err != nil {
+		return err
+	}
+	switch c.Via {
+	case EgressLocal:
+		es := f.egressStack.Load()
+		if es == nil {
+			return errEgressNoStack
+		}
+		es.inject(raw)
+		return nil
+	case EgressMesh:
+		if err := t.ct.record(pkt, time.Now()); err != nil {
+			return err
+		}
+		if !f.enqueueRelay(raw) {
+			return errEgressQueueFull
+		}
+		return nil
+	default:
+		return errEgressNoExit
 	}
 }
 
@@ -418,6 +510,12 @@ func (f *filteredTUN) Write(bufs [][]byte, offset int) (int, error) {
 			f.dummyDropped.Add(1)
 			startFiltering(i)
 			continue
+		}
+		if t := f.egress.Load(); t != nil {
+			if pkt, ok := ParsePacket(raw); ok && f.egressWrite(raw, pkt, t) {
+				startFiltering(i)
+				continue
+			}
 		}
 		if t := f.forward.Load(); t != nil {
 			if pkt, ok := ParsePacket(raw); ok && t.involves(pkt) && !f.isLocal(pkt.Dst) {

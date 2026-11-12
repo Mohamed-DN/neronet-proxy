@@ -237,6 +237,7 @@ type Device struct {
 	backing      backend
 	transportMgr *stealth.TransportManager
 	daitaShaper  *daita.Shaper
+	mtu          int
 
 	mu     sync.Mutex
 	closed bool
@@ -351,6 +352,7 @@ func New(cfg Config) (*Device, error) {
 		backing:       back,
 		transportMgr:  cfg.TransportMgr,
 		daitaShaper:   shaper,
+		mtu:           cfg.MTU,
 		counterEpoch:  1,
 	}, nil
 }

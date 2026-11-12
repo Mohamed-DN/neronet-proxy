@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, AlertTriangle, Copy, Download } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Copy, Download, Globe } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { generateDeviceKeys, KeyGenerationUnavailable } from '../devices/keys';
@@ -13,12 +13,14 @@ import {
   type StrictNetwork
 } from '../devices/wgConfig';
 import { ApiError } from '../services/apiClient';
-import { useRegisterProfileDevice } from '../services/queries/devices';
+import { useProfileExits, useRegisterProfileDevice, type ProfileExit } from '../services/queries/devices';
 import { Button } from '../ui/Button';
+import { Checkbox } from '../ui/Checkbox';
 import { cn } from '../ui/cn';
 import { FormField } from '../ui/FormField';
 import { Input } from '../ui/Input';
 import { PageHeader } from '../ui/PageHeader';
+import { Select } from '../ui/Select';
 import { useToast } from '../ui/Toast';
 import { StrictNetworkSection } from './StrictNetworkSection';
 
@@ -27,10 +29,12 @@ const NAME_MAX = 64;
 const SECONDARY_LARGE =
   'inline-flex h-11 items-center justify-center gap-2 rounded-control border border-border-strong bg-surface-raised px-4 text-body font-medium text-content hover:bg-surface-hover focus-visible:outline-focus';
 
-type AlertKind = 'noCrypto' | 'noGateway' | 'keyInUse' | 'generic';
+type AlertKind = 'noCrypto' | 'noGateway' | 'keyInUse' | 'exitNotPermitted' | 'exitGone' | 'generic';
 
 interface Result {
   name: string;
+  /** The exit every packet leaves through, when the profile is full-tunnel. */
+  exitName?: string;
   /** The WireGuard configuration text, which holds the private key. Kept in memory only. */
   config: string;
   /** The same profile for networks that block VPNs, when the installation offers it. Memory only. */
@@ -39,6 +43,9 @@ interface Result {
 
 function alertKindFor(error: unknown): AlertKind {
   if (error instanceof KeyGenerationUnavailable) return 'noCrypto';
+  if (error instanceof ApiError && error.status === 403 && error.code === 'exit_not_permitted')
+    return 'exitNotPermitted';
+  if (error instanceof ApiError && error.status === 404 && error.code === 'no_such_exit') return 'exitGone';
   if (error instanceof ApiError && error.status === 409) {
     // Older servers name the reason only in `error`; the message is that same word then.
     const reason = error.code ?? error.message;
@@ -56,7 +63,14 @@ export default function AddDeviceRoute() {
   const { t } = useTranslation('portal');
   const { notify } = useToast();
   const register = useRegisterProfileDevice();
+  const exitsQuery = useProfileExits();
+  const exits: ProfileExit[] = Array.isArray(exitsQuery.data?.exits) ? exitsQuery.data.exits : [];
+  const canChoose = exitsQuery.data?.can_choose === true;
+  const [fullTunnel, setFullTunnel] = useState(false);
+  const [exitId, setExitId] = useState<string | undefined>(undefined);
+  const chosenExit = exits.find((e) => e.node_id === exitId) ?? exits[0];
   const resultId = useId();
+  const exitHintId = useId();
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
   const [alert, setAlert] = useState<AlertKind | null>(null);
@@ -92,14 +106,17 @@ export default function AddDeviceRoute() {
     setBusy(true);
     try {
       const keys = await generateDeviceKeys();
+      const exitNodeId = fullTunnel && canChoose && chosenExit ? chosenExit.node_id : undefined;
       const device = await register.mutateAsync({
         name: trimmed,
         public_key: keys.publicKey,
-        preshared_key: keys.presharedKey
+        preshared_key: keys.presharedKey,
+        ...(exitNodeId ? { exit_node_id: exitNodeId } : {})
       });
       const strictInfo = device.strict_network ?? null;
       setResult({
         name: trimmed,
+        exitName: device.exit?.name,
         config: buildProfileConfig(keys, device),
         strict: strictInfo ? { info: strictInfo, config: buildStrictNetworkConfig(keys, device, strictInfo) } : null
       });
@@ -150,6 +167,15 @@ export default function AddDeviceRoute() {
             <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
             <span>{t('add.result.warning')}</span>
           </p>
+          {result.exitName && (
+            <div className="mt-4 rounded-card border border-border-subtle bg-surface-raised p-3 text-body text-content">
+              <p className="flex items-start gap-2">
+                <Globe aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+                <span>{t('add.exit.resultNote', { name: result.name, exit: result.exitName })}</span>
+              </p>
+              <p className="mt-2 text-muted">{t('add.exit.lanNote')}</p>
+            </div>
+          )}
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Button
               variant="secondary"
@@ -173,7 +199,9 @@ export default function AddDeviceRoute() {
           {result.strict && (
             <StrictNetworkSection
               strict={result.strict.info}
-              onDownload={() => result.strict && downloadConfig(result.strict.config, strictConfigFileName(result.name))}
+              onDownload={() =>
+                result.strict && downloadConfig(result.strict.config, strictConfigFileName(result.name))
+              }
             />
           )}
           <div className="mt-8 border-t border-border-subtle pt-4">
@@ -211,6 +239,44 @@ export default function AddDeviceRoute() {
         <FormField label={t('add.name')} hint={t('add.nameHint')} error={nameError} required>
           <Input value={name} onChange={(event) => setName(event.target.value)} autoComplete="off" className="h-11" />
         </FormField>
+        {exitsQuery.isSuccess && (
+          <fieldset className="space-y-3 rounded-card border border-border-subtle p-4">
+            <legend className="px-1 text-label font-medium text-content">{t('add.exit.legend')}</legend>
+            <Checkbox
+              label={t('add.exit.toggle')}
+              checked={fullTunnel && canChoose && exits.length > 0}
+              disabled={!canChoose || exits.length === 0}
+              onChange={(event) => setFullTunnel(event.target.checked)}
+              aria-describedby={exitHintId}
+            />
+            <p id={exitHintId} className="text-body text-muted">
+              {exits.length === 0 ? t('add.exit.none') : !canChoose ? t('add.exit.notAllowed') : t('add.exit.hint')}
+            </p>
+            {fullTunnel && canChoose && chosenExit && (
+              <>
+                <FormField label={t('add.exit.picker')}>
+                  <Select
+                    value={chosenExit.node_id}
+                    onValueChange={setExitId}
+                    options={exits.map((e) => ({
+                      value: e.node_id,
+                      label:
+                        t(e.kind === 'gateway' ? 'add.exit.optionGateway' : 'add.exit.optionNode', {
+                          name: e.name
+                        }) + (e.online ? '' : t('add.exit.offline'))
+                    }))}
+                    className="h-11"
+                  />
+                </FormField>
+                <ul className="list-disc space-y-1 ps-5 text-body text-muted">
+                  <li>{t('add.exit.privacy')}</li>
+                  <li>{t('add.exit.down')}</li>
+                  <li>{t('add.exit.lanNote')}</li>
+                </ul>
+              </>
+            )}
+          </fieldset>
+        )}
         <Button
           type="submit"
           variant="primary"

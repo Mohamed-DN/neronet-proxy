@@ -31,6 +31,7 @@ const TransportPolicyService = require('./TransportPolicyService');
 const AclEngine = require('./AclEngine');
 const RouteEngine = require('./RouteEngine');
 const RevocationEngine = require('./RevocationEngine');
+const ExitService = require('./ExitService');
 
 // --- Configured constants ----------------------------------------------------
 //
@@ -498,12 +499,12 @@ function computeDNSName(name, explicitDnsName, domain) {
  */
 async function buildNetmap(nodeId) {
   const selfRows = await query(
-    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, n.device_kind, n.profile_gateway_endpoint, o.search_domain, o.slug as org_slug
+    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, n.device_kind, n.profile_gateway_endpoint, n.role, o.search_domain, o.slug as org_slug
        FROM nodes n
        LEFT JOIN organizations o ON n.organization_id = o.id
       WHERE n.id = $1`,
     [nodeId],
-    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, 'mesh' AS device_kind, NULL AS profile_gateway_endpoint, o.search_domain, o.slug as org_slug
+    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, 'mesh' AS device_kind, NULL AS profile_gateway_endpoint, n.role, o.search_domain, o.slug as org_slug
        FROM nodes n
        LEFT JOIN organizations o ON n.organization_id = o.id
       WHERE n.id = ?`,
@@ -548,14 +549,14 @@ async function buildNetmap(nodeId) {
         // policy were ever to name one.
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
                 transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
-                device_kind, preshared_key, profile_gateway_endpoint
+                device_kind, preshared_key, profile_gateway_endpoint, role
            FROM nodes
           WHERE id <> $1 AND is_quarantined = FALSE AND is_healthy = TRUE
             AND COALESCE(organization_id, 'org-default') = $2`,
         [nodeId, self.organization_id || 'org-default'],
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
                 transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
-                'mesh' AS device_kind, NULL AS preshared_key, NULL AS profile_gateway_endpoint
+                'mesh' AS device_kind, NULL AS preshared_key, NULL AS profile_gateway_endpoint, role
            FROM nodes
           WHERE id <> ? AND is_quarantined = 0 AND is_healthy = 1
             AND COALESCE(organization_id, 'org-default') = ?`,
@@ -598,6 +599,16 @@ async function buildNetmap(nodeId) {
     return { deviceKey, psk, ips };
   };
 
+  // ADR 0032: exits. The gateway learns each device's exit and holds the one mesh exit it
+  // routes 0.0.0.0/0 to; that mesh exit learns the devices that leave through it and
+  // routes them back to the gateway. Profile devices exist in PostgreSQL only.
+  const selfMayBeExit = ExitService.EXIT_ROLES.includes(self.role) && self.device_kind !== 'profile';
+  const exitPlan =
+    isPostgres() && !self.is_quarantined && (selfIsGateway || selfMayBeExit)
+      ? await ExitService.plan(self.organization_id, revoked)
+      : null;
+  const exitClients = selfIsGateway ? [] : ExitService.exitClientsOf(self.id, exitPlan);
+
   const devicePolicies = new Map();
   const deviceReach = new Set();
   if (selfIsGateway) {
@@ -613,6 +624,12 @@ async function buildNetmap(nodeId) {
     for (const row of sorted) {
       const device = servedDevice(row);
       if (device && permitted.has(String(row.overlay_ipv4))) routedThroughGateway.push(...device.ips);
+    }
+    // A device that leaves through this exit is reached through the gateway too.
+    for (const client of exitClients) {
+      for (const ip of client.allowed_ips) {
+        if (!routedThroughGateway.includes(ip)) routedThroughGateway.push(ip);
+      }
     }
   }
 
@@ -638,6 +655,8 @@ async function buildNetmap(nodeId) {
         preshared_key_hex: psk.toString('hex')
       };
       if (devicePolicies.get(row.id)) deviceEntry.acl = devicePolicies.get(row.id);
+      const exitAssignment = exitPlan && exitPlan.devices.get(row.id);
+      if (exitAssignment) deviceEntry.exit = ExitService.exitEntry(exitAssignment);
       if (row.name) deviceEntry.name = row.name;
       peers.push(deviceEntry);
       continue;
@@ -646,7 +665,10 @@ async function buildNetmap(nodeId) {
     const vip = String(row.overlay_ipv4);
     const ownTraffic = permitted.has(vip) || deviceReach.has(vip);
     const isOrgGateway = Boolean(row.profile_gateway_endpoint);
-    if (!ownTraffic && !(isOrgGateway && routedThroughGateway.length > 0)) continue;
+    // The mesh exit the gateway's devices leave through is held whatever the gateway's own
+    // policy says, like a server a device may reach: it is a relay for them.
+    const isMeshExit = selfIsGateway && exitPlan !== null && exitPlan.meshExitId === row.id;
+    if (!ownTraffic && !(isOrgGateway && routedThroughGateway.length > 0) && !isMeshExit) continue;
 
     const keyHex = normalisePublicKeyHex(row.public_key);
     // A node whose stored key cannot be decoded cannot be a WireGuard peer. Sending
@@ -665,6 +687,8 @@ async function buildNetmap(nodeId) {
     const allowed = [];
     if (ownTraffic && row.overlay_ipv4) allowed.push(`${row.overlay_ipv4}/32`);
     if (ownTraffic && row.overlay_ipv6) allowed.push(`${row.overlay_ipv6}/128`);
+
+    if (isMeshExit) allowed.push(...ExitService.FULL_TUNNEL);
 
     for (const route of routeList) {
       if (!ownTraffic) break;
@@ -769,6 +793,7 @@ async function buildNetmap(nodeId) {
       search_domains: [searchDomain, 'mesh', 'neronet'],
       nameservers: ['100.64.0.1']
     },
+    ...(exitClients.length > 0 ? { exit_clients: exitClients } : {}),
     max_staleness_seconds: MAX_STALENESS_SECONDS,
     ...transports.document
   };

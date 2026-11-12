@@ -36,13 +36,31 @@ const DEVICE = {
   console_url: 'https://console.example.net'
 };
 
-function stubRegister(status: number, body: unknown) {
-  const fetchMock = vi.fn(
-    async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+const NO_EXITS = { can_choose: false, self_service: false, exits: [] };
+const EXITS = {
+  can_choose: true,
+  self_service: false,
+  exits: [
+    { node_id: 'node-home', name: 'Home', kind: 'gateway', online: true },
+    { node_id: 'node-fr', name: 'Paris', kind: 'node', online: false }
+  ]
+};
+
+const json = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+/** GET /devices/exits answers `exits`; every other request answers the registration. */
+function stubRegister(status: number, body: unknown, exits: unknown = NO_EXITS) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
+    /\/devices\/exits$/.test(String(input)) ? json(200, exits) : json(status, body)
   );
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
+}
+
+/** The requests that are not the read of the exits list. */
+function writes(fetchMock: ReturnType<typeof stubRegister>) {
+  return fetchMock.mock.calls.filter(([input]) => !/\/devices\/exits$/.test(String(input)));
 }
 
 function renderAdd(theme: 'light' | 'dark' = 'light') {
@@ -94,10 +112,10 @@ describe('AddDeviceRoute', () => {
     const privateKey = /PrivateKey = (\S+)/.exec(config)?.[1];
     expect(privateKey).toBeTruthy();
 
-    // Exactly one request, with exactly the three fields the server may see.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/devices\/profile$/);
-    const sent = String((fetchMock.mock.calls[0]?.[1] as RequestInit).body);
+    // Exactly one write, with exactly the three fields the server may see.
+    expect(writes(fetchMock)).toHaveLength(1);
+    expect(String(writes(fetchMock)[0]?.[0])).toMatch(/\/devices\/profile$/);
+    const sent = String((writes(fetchMock)[0]?.[1] as RequestInit).body);
     expect(Object.keys(JSON.parse(sent)).sort()).toEqual(['name', 'preshared_key', 'public_key']);
     expect(sent).not.toContain(privateKey as string);
 
@@ -233,7 +251,7 @@ describe('AddDeviceRoute', () => {
     const alert = await alertWith(/This browser cannot create the keys/);
     expect(alert).toHaveTextContent('This browser cannot create the keys.');
     expect(alert).toHaveFocus();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(writes(fetchMock)).toHaveLength(0);
   });
 
   it('409 no_profile_gateway shows the Settings message and takes focus', async () => {
@@ -296,7 +314,81 @@ describe('AddDeviceRoute', () => {
     await user.click(screen.getByRole('button', { name: 'Create the code' }));
 
     expect(await screen.findByText('Enter a name of 1 to 64 characters.')).toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(writes(fetchMock)).toHaveLength(0);
+  });
+
+  it('a full-tunnel profile sends every packet to the chosen exit and resolves names there', async () => {
+    const fetchMock = stubRegister(
+      201,
+      {
+        ...DEVICE,
+        allowed_ips: ['0.0.0.0/0', '::/0'],
+        dns: ['100.100.100.100'],
+        exit: { node_id: 'node-home', name: 'Home', kind: 'gateway' }
+      },
+      EXITS
+    );
+    const qrcode = (await import('qrcode')).default;
+    renderAdd();
+
+    const user = userEvent.setup();
+    const toggle = await screen.findByRole('checkbox', { name: 'All traffic through an exit' });
+    expect(toggle).toHaveAccessibleDescription(/Websites see the exit's address/);
+    await user.click(toggle);
+    expect(screen.getByText(/Whoever runs the exit can see which sites/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing goes around the tunnel/)).toBeInTheDocument();
+    expect(screen.getByText(/Exclude private IPs/)).toBeInTheDocument();
+    await fillAndSubmit();
+
+    await screen.findByText("All of Work phone's traffic leaves through Home.");
+    const sent = JSON.parse(String((writes(fetchMock)[0]?.[1] as RequestInit).body));
+    expect(sent.exit_node_id).toBe('node-home');
+    expect(Object.keys(sent).sort()).toEqual(['exit_node_id', 'name', 'preshared_key', 'public_key']);
+    const config = String(vi.mocked(qrcode.toDataURL).mock.calls.at(-1)?.[0]);
+    expect(config).toContain('AllowedIPs = 0.0.0.0/0, ::/0');
+    expect(config).toContain('DNS = 100.100.100.100');
+  });
+
+  it('leaves the option off unless it is ticked', async () => {
+    const fetchMock = stubRegister(201, DEVICE, EXITS);
+    renderAdd();
+    expect(await screen.findByRole('checkbox', { name: 'All traffic through an exit' })).not.toBeChecked();
+    await fillAndSubmit();
+    await screen.findByRole('img', { name: 'Access code for Work phone' });
+    expect(JSON.parse(String((writes(fetchMock)[0]?.[1] as RequestInit).body)).exit_node_id).toBeUndefined();
+  });
+
+  it('says who to ask when the person may not choose an exit', async () => {
+    stubRegister(201, DEVICE, { ...EXITS, can_choose: false });
+    renderAdd();
+    const toggle = await screen.findByRole('checkbox', { name: 'All traffic through an exit' });
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAccessibleDescription(/Only an administrator can send a device through an exit/);
+  });
+
+  it('says there is no exit yet when none exists', async () => {
+    stubRegister(201, DEVICE, NO_EXITS);
+    renderAdd();
+    const toggle = await screen.findByRole('checkbox', { name: 'All traffic through an exit' });
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAccessibleDescription(/No exit is available yet/);
+  });
+
+  it('403 exit_not_permitted says only an administrator can do it', async () => {
+    stubRegister(403, { error: 'exit_not_permitted', code: 'exit_not_permitted' }, EXITS);
+    renderAdd();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('checkbox', { name: 'All traffic through an exit' }));
+    await fillAndSubmit();
+    expect(await alertWith(/create the code without this option/)).toHaveFocus();
+  });
+
+  it('is accessible with the exit option open', async () => {
+    stubRegister(201, DEVICE, EXITS);
+    const view = renderAdd('dark');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('checkbox', { name: 'All traffic through an exit' }));
+    await expectNoAxeViolations(view.container, 'dark');
   });
 
   it('is accessible in both themes', async () => {

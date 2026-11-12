@@ -268,7 +268,9 @@ function vipFromOffset(offset) {
   const o4 = offset % 256;
 
   return {
-    usable: o4 !== 0 && o4 !== 255 && o2 < 128,
+    // 100.100.100.100 is the exit DNS address (ADR 0032): a full-tunnel profile names it
+    // as its resolver and the exit answers it, so no node may hold it.
+    usable: o4 !== 0 && o4 !== 255 && o2 < 128 && !(o2 === 100 && o3 === 100 && o4 === 100),
     exhausted: o2 >= 128,
     overlayIpv4: `100.${o2}.${o3}.${o4}`,
     overlayIpv6: `fd7a:115c:a1e0::${offset.toString(16).toLowerCase()}`

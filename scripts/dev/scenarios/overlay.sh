@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static|derp|profile|profile-d2d|wss443]
+# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static|derp|profile|profile-d2d|wss443|profile-exit]
 #
 # Measures the overlay between the fleet nodes of a running stack. Every cell of the
 # matrix is a real TCP exchange: node A dials node B's overlay address through node
@@ -29,7 +29,7 @@
 #                 between the two that cuts them and its deletion that restores them, an
 #                 allow-list letting the phone open the laptop's port only, the
 #                 gateway's own overlay address over TCP, and whether it answers ping
-#   wss443        ADR 0032 draft, wg-wss: the same device with every UDP packet dropped
+#   wss443        multi-protocol ADR draft, wg-wss: the same device with every UDP packet dropped
 #                 reaches the gateway through wstunnel behind an nginx that plays Nginx
 #                 Proxy Manager; real TCP both ways, an ACL DROP next to a UDP device,
 #                 probes without the secret prefix, the cut after deleting the device,
@@ -37,6 +37,12 @@
 #                   NERONET_EXTRA_COMPOSE_FILE="docker-compose.gateway.yml docker-compose.wss.yml"
 #                   NERONET_WSS_PUBLIC_URL=wss://wss.neronet.test
 #                 and NERONET_NODE_SERVICES="gateway relay-fr" for this script
+#   profile-exit  ADR 0032: a stock wg-quick device with AllowedIPs 0.0.0.0/0, ::/0 whose
+#                 exit is a mesh node, then the gateway: real TCP to a fake internet only
+#                 the exits reach, the source address it sees, DNS through the exit, the
+#                 exits' LAN refused, an ACL DROP that cuts it, and the exit stopped with a
+#                 capture showing only WireGuard on the device's wire. Needs a stack started
+#                 with NERONET_EXTRA_COMPOSE_FILE=scripts/dev/scenarios/profile-exit.compose.yml
 #
 # The stack must be running with the data plane on:
 #
@@ -897,7 +903,7 @@ case "$SCENARIO" in
     org_policy '["udp"]'
     ;;
 
-  profile | profile-d2d)
+  profile | profile-d2d | profile-exit)
     # ADR 0029 A5: a stock WireGuard client (wg-quick, the protocol of the official
     # iOS and Android apps) joins through the organisation's gateway and exchanges
     # real TCP with mesh nodes. Every claim below is a measurement: a payload whose
@@ -914,7 +920,8 @@ case "$SCENARIO" in
 
     GW=${NERONET_PROFILE_GATEWAY:-relay-de}
     T1=${NERONET_PROFILE_TARGET1:-relay-fr}
-    T2=${NERONET_PROFILE_TARGET2:-client-it}
+    # profile-exit runs on the smallest stack it needs: the gateway and one exit.
+    if [ "$SCENARIO" = profile-exit ]; then T2=${NERONET_PROFILE_TARGET2:-$T1}; else T2=${NERONET_PROFILE_TARGET2:-client-it}; fi
     for svc in "$GW" "$T1" "$T2"; do
       [ -n "$(vip_of "$svc")" ] || die "$svc is not in the fleet"
     done
@@ -929,7 +936,9 @@ case "$SCENARIO" in
 
     container_of() { $COMPOSE --profile nodes ps -q "$1" | head -1; }
     GW_CID=$(container_of "$GW")
-    NET=$($ENGINE inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$GW_CID" | awk '{print $1}')
+    # The mesh network, not the fake internet profile-exit adds next to it.
+    NETS=$($ENGINE inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$GW_CID")
+    NET=$(echo "$NETS" | tr ' ' '\n' | grep -m1 'neronet-isolated-mesh' || echo "$NETS" | awk '{print $1}')
     GW_IP=$($ENGINE inspect -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}" "$GW_CID")
     [ -n "$NET" ] && [ -n "$GW_IP" ] || die "cannot read the gateway's network address"
 
@@ -978,19 +987,22 @@ case "$SCENARIO" in
 
     # wg_up <container> <overlay address> <gateway public key> <endpoint>: the profile
     # exactly as ADR 0029 defines it, from the API's answer. An optional fifth argument
-    # sets the interface MTU, which wg-quick otherwise derives from the route.
+    # sets the interface MTU, which wg-quick otherwise derives from the route. WG_ALLOWED
+    # replaces the overlay-only AllowedIPs; WG_EXTRA adds [Interface] lines.
     wg_up() {
-      $ENGINE exec -e ADDR="$2" -e GWPUB="$3" -e EP="$4" -e MTU="${5:-}" "$1" sh -c 'umask 077; cat > /etc/wireguard/wg0.conf <<EOF
+      $ENGINE exec -e ADDR="$2" -e GWPUB="$3" -e EP="$4" -e MTU="${5:-}" -e ALLOWED="${WG_ALLOWED:-100.64.0.0/10}" \
+        -e EXTRA="${WG_EXTRA:-}" "$1" sh -c 'umask 077; cat > /etc/wireguard/wg0.conf <<EOF
 [Interface]
 PrivateKey = $(cat /etc/wireguard/private)
 Address = $ADDR/32
 ${MTU:+MTU = $MTU}
+${EXTRA}
 
 [Peer]
 PublicKey = $GWPUB
 PresharedKey = $(cat /etc/wireguard/psk)
 Endpoint = $EP
-AllowedIPs = 100.64.0.0/10
+AllowedIPs = $ALLOWED
 PersistentKeepalive = 25
 EOF
 wg-quick up wg0 > /tmp/wg-quick.log 2>&1 || { grep -v -i key /tmp/wg-quick.log; exit 1; }
@@ -1182,11 +1194,272 @@ grep -i "userspace" /tmp/wg-quick.log || echo "  wg-quick up on the kernel WireG
       echo "  phone -> $T1 restored after ${t}s"
     }
 
+    # --- profile-exit: all of a phone's traffic through an exit (ADR 0032) -----------
+    #
+    # A stock wg-quick client with AllowedIPs 0.0.0.0/0, ::/0, whose only peer is the
+    # gateway, reaches a fake internet (198.51.100.0/24, profile-exit.compose.yml) that
+    # only the exits are attached to. Every claim is a measurement: a 64 KiB exchange
+    # whose hash comes back intact, the source address the internet server saw, a DNS
+    # answer, a TCP connect that does or does not complete, and captures of the device's
+    # own wire.
+    INET_ECHO=${NERONET_EXIT_INET_ECHO:-198.51.100.80}
+    INET_NET=${NERONET_EXIT_INET_NET:-198.51.100.0/24}
+
+    # inet_ip <container id>: its address on the fake internet.
+    # shellcheck disable=SC2016 # a Go template, not a shell expansion
+    inet_ip() {
+      $ENGINE inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{$v.IPAddress}}{{"\n"}}{{end}}' "$1" \
+        | awk '$1 ~ /exit-internet/ { print $2 }' | head -1
+    }
+
+    # dev_source <container> -> the address the internet server saw, or "none".
+    dev_source() {
+      s=$($ENGINE exec "$1" sh -c "timeout 8 socat -T 4 - TCP:$INET_ECHO:80,connect-timeout=4 < /dev/null 2>/dev/null" < /dev/null | tr -d '\r\n ')
+      echo "${s:-none}"
+    }
+
+    # wait_source <container> <want address> <limit seconds> -> elapsed seconds
+    wait_source() {
+      w_start=$(date +%s)
+      while :; do
+        [ "$(dev_source "$1")" = "$2" ] && { echo "$(($(date +%s) - w_start))"; return 0; }
+        [ "$(($(date +%s) - w_start))" -ge "$3" ] && { echo "timeout"; return 1; }
+        sleep 2
+      done
+    }
+
+    # dev_connect <container> <ip> <port> -> "open" when a TCP connection completes.
+    dev_connect() {
+      if $ENGINE exec "$1" sh -c "timeout 7 socat -T 2 /dev/null TCP:$2:$3,connect-timeout=5 > /dev/null 2>&1" < /dev/null; then
+        echo open
+      else
+        echo closed
+      fi
+    }
+
+    # dev_dns <container> <name> -> the addresses the exit's resolver gave, through the
+    # tunnel, from the address the profile names as its DNS server.
+    dev_dns() {
+      $ENGINE exec "$1" sh -c "timeout 8 nslookup $2 100.100.100.100 2>/dev/null" < /dev/null \
+        | sed -n '/^Name:/,$ s/^Address[^:]*: *\([0-9.]*\).*/\1/p' | tr '\n' ' ' | sed 's/ $//'
+    }
+
+    # egress_count <service> <1 egressed | 2 egress-dropped> -> that counter, 0 when none.
+    egress_count() {
+      v=$(egress_counters "$1" | awk -v f="$2" '{print $f}')
+      echo "${v:-0}"
+    }
+
+    # egress_counters <service> -> "egressed egress_dropped" from its latest drop report.
+    egress_counters() {
+      node_logs_since "$1" 30m 2>/dev/null < /dev/null | grep 'Data plane drops since start' | tail -1 \
+        | sed -n 's/.*egress-dropped \([0-9]*\) .*egressed \([0-9]*\) .*/\2 \1/p'
+    }
+
+    profile_exit() {
+      EX=${NERONET_PROFILE_EXIT:-$T1}
+      EX_ID=$(node_id_of "$EX")
+      EX_CID=$(container_of "$EX")
+      GW_INET=$(inet_ip "$GW_CID")
+      EX_INET=$(inet_ip "$EX_CID")
+      [ -n "$GW_INET" ] && [ -n "$EX_INET" ] ||
+        die "$GW and $EX are not on the fake internet; start the stack with NERONET_EXTRA_COMPOSE_FILE=scripts/dev/scenarios/profile-exit.compose.yml"
+      # A private address both exits reach directly and the device does not
+      # (profile-exit.compose.yml, network exit-lan).
+      LAN_IP=${NERONET_EXIT_LAN:-172.31.250.80}
+      echo "== exits: gateway $GW ($GW_ID) at $GW_INET and mesh exit $EX ($EX_ID) at $EX_INET on the fake internet $INET_NET"
+      echo "   internet server $INET_ECHO; the exits' private LAN: $LAN_IP:$ECHO_PORT"
+
+      api GET /api/devices/exits > "$WORK/exits.json"
+      for id in "$GW_ID" "$EX_ID"; do
+        grep -q "\"node_id\":\"$id\"" "$WORK/exits.json" || die "$id is not offered as an exit: $(cat "$WORK/exits.json")"
+      done
+      echo "  the API offers both as exits: $(sed 's/"online":[a-z]*,\{0,1\}//g' "$WORK/exits.json" | head -c 300)"
+
+      # The device container gets the two sysctls wg-quick sets for a default route; a
+      # phone's WireGuard app needs neither.
+      DEVICE_RUN_ARGS="--sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv6.conf.all.disable_ipv6=0"
+      $ENGINE rm -f "$DEV1" > /dev/null 2>&1 || true
+      # shellcheck disable=SC2086
+      $ENGINE run -d --name "$DEV1" --network "$NET" --cap-add NET_ADMIN --cap-add NET_RAW $DEVICE_RUN_ARGS \
+        "$WG_IMAGE" 'sleep infinity' > /dev/null || die "starting $DEV1 failed"
+
+      echo
+      echo "== (0) before the tunnel: the device cannot reach the fake internet on its own"
+      r=$(dev_connect "$DEV1" "$INET_ECHO" "$ECHO_PORT")
+      echo "  device -> $INET_ECHO:$ECHO_PORT without the tunnel: $r"
+      [ "$r" = closed ] || { echo "unexpected: the device reaches the fake internet directly; the test proves nothing" >&2; rc=1; }
+      r=$(dev_connect "$DEV1" "$LAN_IP" "$ECHO_PORT")
+      echo "  device -> $LAN_IP:$ECHO_PORT (the exits' private LAN) without the tunnel: $r"
+      [ "$r" = closed ] || { echo "unexpected: the device reaches the exits' LAN directly; the test proves nothing" >&2; rc=1; }
+
+      pub=$($ENGINE exec "$DEV1" sh -c 'umask 077; wg genkey > /etc/wireguard/private &&
+        wg genpsk > /etc/wireguard/psk && wg pubkey < /etc/wireguard/private')
+      [ -n "$pub" ] || die "no key pair in $DEV1"
+      REG=$( { printf '{"name":"exit-phone","exit_node_id":"%s","public_key":"%s","preshared_key":"' "$EX_ID" "$pub";
+               $ENGINE exec "$DEV1" cat /etc/wireguard/psk | tr -d '\n'; printf '"}'; } | api_secret POST /api/devices/profile)
+      printf '%s' "$REG" | grep -q '"device_id"' || die "registering the phone failed: $(printf '%s' "$REG" | sed 's/"preshared[^,]*,//')"
+      DEV1_ID=$(printf '%s' "$REG" | json_field device_id)
+      DEV1_VIP=$(printf '%s' "$REG" | json_field overlay_ipv4)
+      GW_PUB=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{"public_key":"\([^"]*\)".*/\1/p')
+      GW_EP=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{[^}]*"endpoint":"\([^"]*\)".*/\1/p')
+      ALLOWED=$(printf '%s' "$REG" | sed -n 's/.*"allowed_ips":\[\([^]]*\)\].*/\1/p' | tr -d '"' | sed 's/,/, /g')
+      DNS=$(printf '%s' "$REG" | sed -n 's/.*"dns":\[\([^]]*\)\].*/\1/p' | tr -d '"')
+      echo "registered $DEV1_ID at $DEV1_VIP through $EX: AllowedIPs = $ALLOWED, DNS = $DNS"
+      [ "$ALLOWED" = "0.0.0.0/0, ::/0" ] && [ "$DNS" = 100.100.100.100 ] ||
+        { echo "unexpected: the API did not answer a full-tunnel profile" >&2; rc=1; }
+      printf '%s' "$REG" | grep -qi private && { echo "the API answer contains a private key field" >&2; rc=1; }
+
+      echo "waiting for $GW to route the phone through $EX..."
+      i=0
+      until node_logs_since "$GW" 5m 2>/dev/null < /dev/null | grep -q "Exit: .* 1 through mesh exit $EX_ID"; do
+        i=$((i + 2)); [ "$i" -le 90 ] || die "$GW never routed the phone through $EX"
+        sleep 2
+      done
+      echo "  $GW: $(node_logs_since "$GW" 5m 2>/dev/null < /dev/null | grep 'Exit: ' | tail -1 | sed 's/.*Exit: //')"
+      i=0
+      until node_logs_since "$EX" 5m 2>/dev/null < /dev/null | grep -q 'Exit: 1 client(s) leave from this host'; do
+        i=$((i + 2)); [ "$i" -le 90 ] || die "$EX never took the phone as its exit client"
+        sleep 2
+      done
+      echo "  $EX: $(node_logs_since "$EX" 5m 2>/dev/null < /dev/null | grep 'Exit: ' | tail -1 | sed 's/.*Exit: //')"
+
+      # The profile as the API answered it, except two things. The DNS line: the
+      # resolver is queried directly below, at the address the profile names, instead
+      # of through resolvconf. And the default route: wg-quick installs it with an nft
+      # anti-spoofing table that needs nft_fib, which the Podman machine's kernel does
+      # not have, so the same routes and rules are set here without that table. Every
+      # packet but WireGuard's own (fwmark 51820) still goes into the tunnel.
+      WG_EXTRA="Table = off
+FwMark = 51820
+PostUp = ip -4 route add 0.0.0.0/0 dev %i table 51820 && ip -4 rule add not fwmark 51820 table 51820 && ip -4 rule add table main suppress_prefixlength 0
+PostUp = ip -6 route add ::/0 dev %i table 51820 && ip -6 rule add not fwmark 51820 table 51820 && ip -6 rule add table main suppress_prefixlength 0"
+      WG_ALLOWED=$ALLOWED WG_EXTRA=$WG_EXTRA wg_up "$DEV1" "$DEV1_VIP" "$GW_PUB" "$GW_EP" "${NERONET_PROFILE_MTU:-1420}"
+      $ENGINE exec "$DEV1" sh -c 'ip rule | grep -c "lookup 51820"; ip route show table 51820' < /dev/null |
+        tr '\n' ' ' | sed 's/^/  device policy routing (rules to table 51820, then the table): /'
+      echo
+
+      GW_EG0=$(egress_count "$GW" 1); GW_DROP0=$(egress_count "$GW" 2); EX_EG0=$(egress_count "$EX" 1)
+
+      echo
+      echo "== (a) real TCP to the internet through $EX, and the address the internet sees"
+      t=$(wait_tcp ok "$DEV1" "$INET_ECHO" 60) || rc=1
+      echo "  first exchange succeeded after ${t}s (handshakes included)"
+      expect_tcp ok "$DEV1" "$INET_ECHO" "device -> internet $INET_ECHO:$ECHO_PORT through $EX"
+      src=$(dev_source "$DEV1")
+      echo "  the internet server saw the connection from $src ($EX is $EX_INET, the device $DEV1_VIP)"
+      [ "$src" = "$EX_INET" ] || { echo "unexpected: the observed source is not the exit's address" >&2; rc=1; }
+
+      echo
+      echo "== (b) DNS through the tunnel: the exit's resolver answers 100.100.100.100"
+      got=$(dev_dns "$DEV1" inet-echo)
+      echo "  nslookup inet-echo 100.100.100.100 -> ${got:-nothing}"
+      case " $got " in *" $INET_ECHO "*) ;; *) echo "unexpected: the name did not resolve through the exit" >&2; rc=1 ;; esac
+      # The exit's resolver also names inet-echo's address on the exits' private LAN
+      # (Compose gives a service its name on every network): that one is refused, the
+      # public one is carried.
+      for a in $(printf '%s\n' "$got" | tr ' ' '\n' | sort -u); do
+        case "$a" in
+          "$INET_ECHO") expect_tcp ok "$DEV1" "$a" "device -> inet-echo at its resolved public address $a" ;;
+          *) expect_tcp fail "$DEV1" "$a" "device -> inet-echo at its resolved private address $a" ;;
+        esac
+      done
+
+      echo
+      echo "== (c) the exit's own LAN is refused"
+      r=$(dev_connect "$DEV1" "$LAN_IP" "$ECHO_PORT")
+      echo "  device -> $LAN_IP:$ECHO_PORT (on the exits' private LAN) through $EX: $r"
+      [ "$r" = closed ] || { echo "unexpected: the device reached the exit's LAN" >&2; rc=1; }
+      echo "  waiting 16s for the counter reports..."
+      sleep 16
+      GW_EG1=$(egress_count "$GW" 1); GW_DROP1=$(egress_count "$GW" 2); EX_EG1=$(egress_count "$EX" 1)
+      echo "  $GW egressed $GW_EG0 -> $GW_EG1, egress-dropped $GW_DROP0 -> $GW_DROP1; $EX egressed $EX_EG0 -> $EX_EG1"
+      [ $((GW_EG1 - GW_EG0)) -gt 50 ] && [ $((EX_EG1 - EX_EG0)) -gt 50 ] ||
+        { echo "unexpected: the gateway or the exit counted too few packets for the exchanges above" >&2; rc=1; }
+      # The gateway applies the exit checks first (the exit repeats them; pkg/dataplane tests
+      # the exit on its own), so the refused LAN attempt is counted there.
+      [ "$GW_DROP1" -gt "$GW_DROP0" ] || { echo "unexpected: no egress drop counted for the LAN attempt" >&2; rc=1; }
+
+      echo
+      echo "== (d) the gateway itself as the exit"
+      api PUT "/api/devices/$DEV1_ID/exit" "{\"exit_node_id\":\"$GW_ID\"}" > "$WORK/exit-gw.json"
+      grep -q '"kind":"gateway"' "$WORK/exit-gw.json" || { echo "unexpected: moving the exit failed: $(cat "$WORK/exit-gw.json")" >&2; rc=1; }
+      t=$(wait_source "$DEV1" "$GW_INET" 60) || rc=1
+      echo "  the internet sees the gateway's address $GW_INET ${t}s after the change"
+      expect_tcp ok "$DEV1" "$INET_ECHO" "device -> internet through $GW"
+      r=$(dev_connect "$DEV1" "$LAN_IP" "$ECHO_PORT")
+      echo "  device -> $LAN_IP:$ECHO_PORT (on the gateway's private LAN) through $GW: $r"
+      [ "$r" = closed ] || { echo "unexpected: the device reached the gateway's LAN" >&2; rc=1; }
+
+      echo
+      echo "== (e) policy: an ACL DROP from the device to the internet range, then its deletion"
+      DROP_ID=$(api POST /api/acl/rules "{\"priority\":5,\"source_cidr\":\"$DEV1_VIP/32\",\"destination_cidr\":\"$INET_NET\",\"action\":\"DROP\",\"description\":\"profile-exit scenario\"}" \
+        | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+      [ -n "$DROP_ID" ] || die "creating the DROP rule failed"
+      t=$(wait_tcp fail "$DEV1" "$INET_ECHO" 60) || rc=1
+      echo "  device -> internet cut ${t}s after the rule was written"
+      expect_tcp fail "$DEV1" "$INET_ECHO" "device -> internet with the DROP"
+      api DELETE "/api/acl/rules/$DROP_ID" > /dev/null
+      DROP_ID=
+      t=$(wait_tcp ok "$DEV1" "$INET_ECHO" 60) || rc=1
+      echo "  rule deleted: restored after ${t}s"
+
+      echo
+      echo "== (f) the mesh exit stopped: no traffic, and nothing leaves the device outside WireGuard"
+      api PUT "/api/devices/$DEV1_ID/exit" "{\"exit_node_id\":\"$EX_ID\"}" > /dev/null
+      t=$(wait_source "$DEV1" "$EX_INET" 60) || rc=1
+      echo "  back on $EX after ${t}s"
+      $COMPOSE --profile nodes stop "$EX" > /dev/null 2>&1 || die "stopping $EX failed"
+      echo "  $EX stopped"
+      $ENGINE exec -d "$DEV1" sh -c 'rm -f /tmp/leak.pcap; tcpdump -i eth0 -n -U -w /tmp/leak.pcap ip or ip6 2>/tmp/leak.err' > /dev/null
+      sleep 2
+      expect_tcp fail "$DEV1" "$INET_ECHO" "device -> internet with $EX stopped"
+      r=$(dev_source "$DEV1"); echo "  internet source probe with $EX stopped: $r"
+      [ "$r" = none ] || { echo "unexpected: the internet answered with the exit stopped" >&2; rc=1; }
+      got=$(dev_dns "$DEV1" inet-echo); echo "  DNS with $EX stopped: ${got:-no answer}"
+      [ -z "$got" ] || { echo "unexpected: a DNS answer arrived with the exit stopped" >&2; rc=1; }
+      echo "  waiting 30s, through at least one netmap fetch, still sending..."
+      i=0
+      while [ "$i" -lt 3 ]; do
+        expect_tcp fail "$DEV1" "$INET_ECHO" "device -> internet with $EX stopped (+$(( (i + 1) * 10 ))s)"
+        sleep 2; i=$((i + 1))
+      done
+      $ENGINE exec "$DEV1" sh -c 'pkill tcpdump; sleep 1' < /dev/null || true
+      # shellcheck disable=SC2016 # expanded by the device's shell
+      $ENGINE exec -e GW_IP="$GW_IP" "$DEV1" sh -c '
+        tcpdump -n -r /tmp/leak.pcap 2>/dev/null > /tmp/leak.txt
+        total=$(wc -l < /tmp/leak.txt)
+        wgudp=$(grep -c -E "IP [0-9.]+\.[0-9]+ > $GW_IP\.51820: |IP $GW_IP\.51820 > [0-9.]+: " /tmp/leak.txt)
+        inet=$(grep -c "198\.51\.100\." /tmp/leak.txt)
+        dns=$(grep -c -E "\.53: |100\.100\.100\.100" /tmp/leak.txt)
+        # IPv6 neighbour discovery from the interface itself (link-local or unspecified
+        # source, never routed) is the link, not the device sending anything anywhere.
+        grep -v -E "IP [0-9.]+\.[0-9]+ > $GW_IP\.51820: |IP $GW_IP\.51820 > [0-9.]+: " /tmp/leak.txt > /tmp/other.txt
+        link=$(grep -c -E "^[0-9:.]+ IP6 (fe80:[0-9a-f:]*|::) > (ff02:|fe80:)[0-9a-f:]*: ICMP6" /tmp/other.txt)
+        echo "  device eth0 while the exit was down: $total packets, $wgudp WireGuard UDP with $GW_IP:51820, $link IPv6 link-local neighbour discovery, $inet to the internet in clear, $dns DNS in clear"
+        sed -n "1,5s/^/    not WireGuard: /p" /tmp/other.txt
+        [ "$total" -gt 0 ] || { echo "  nothing captured: $(cat /tmp/leak.err)"; exit 1; }
+        [ "$inet" = 0 ] && [ "$dns" = 0 ] && [ $((wgudp + link)) = "$total" ]' < /dev/null ||
+        { echo "unexpected: something other than WireGuard left the device while its exit was down" >&2; rc=1; }
+      $COMPOSE --profile nodes start "$EX" > /dev/null 2>&1 || die "starting $EX again failed"
+      t=$(wait_tcp ok "$DEV1" "$INET_ECHO" 180) || rc=1
+      echo "  $EX started again: device -> internet restored after ${t}s"
+      # A restarted container may come back with another address on the fake internet.
+      EX_INET=$(inet_ip "$EX_CID")
+      src=$(dev_source "$DEV1")
+      echo "  observed source after the restart: $src"
+      [ "$src" = "$EX_INET" ] || { echo "unexpected: after the restart the traffic does not leave through $EX" >&2; rc=1; }
+    }
+
     echo "== profile gateway: $GW ($GW_ID) at $GW_IP:51820; targets $T1 ($T1_VIP) and $T2 ($T2_VIP)"
     api PUT /api/devices/gateway "{\"node_id\":\"$GW_ID\",\"endpoint\":\"$GW_IP:51820\"}" > "$WORK/gw.json"
     grep -q '"gateway"' "$WORK/gw.json" || die "naming the gateway failed: $(cat "$WORK/gw.json")"
     if [ "$SCENARIO" = profile-d2d ]; then
       profile_d2d
+      finish
+    fi
+    if [ "$SCENARIO" = profile-exit ]; then
+      profile_exit
       finish
     fi
 
@@ -1888,7 +2161,7 @@ EOF
     ;;
 
   *)
-    sed -n '2,48p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,54p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac
