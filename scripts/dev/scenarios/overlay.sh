@@ -27,8 +27,10 @@
 #   profile-d2d   two stock wg-quick devices on one gateway, a phone and a laptop: real
 #                 TCP both ways between them, WireGuard only on their wire, an ACL DROP
 #                 between the two that cuts them and its deletion that restores them, an
-#                 allow-list letting the phone open the laptop's port only, the
-#                 gateway's own overlay address over TCP, and whether it answers ping
+#                 allow-list letting the phone open the laptop's port only, one letting
+#                 it open a mesh node's port only (the node answers with no outbound
+#                 rule), the gateway's own overlay address over TCP, and whether it
+#                 answers ping
 #   wss443        ADR 0032 draft, wg-wss: the same device with every UDP packet dropped
 #                 reaches the gateway through wstunnel behind an nginx that plays Nginx
 #                 Proxy Manager; real TCP both ways, an ACL DROP next to a UDP device,
@@ -1180,6 +1182,42 @@ grep -i "userspace" /tmp/wg-quick.log || echo "  wg-quick up on the kernel WireG
       echo "  rule deleted: laptop -> phone restored after ${t}s"
       t=$(wait_tcp ok "$DEV1" "$T1_VIP" 90) || rc=1
       echo "  phone -> $T1 restored after ${t}s"
+
+      echo
+      echo "== (e) an allow-list: the phone may open $T1's port $ECHO_PORT and nothing else"
+      # Compiled, the rule names $T1 in the phone's outbound rules and the phone in
+      # $T1's inbound rules only. $T1 enforces its own policy on its own packets, so its
+      # answers pass only because they answer a flow its inbound rule let in.
+      DROP_ID=$(api POST /api/acl/rules "{\"priority\":5,\"source_cidr\":\"$DEV1_VIP/32\",\"destination_cidr\":\"$T1_VIP/32\",\"protocol\":\"TCP\",\"port_start\":$ECHO_PORT,\"port_end\":$ECHO_PORT,\"action\":\"ACCEPT\",\"description\":\"profile-d2d scenario\"}" \
+        | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+      [ -n "$DROP_ID" ] || die "creating the ACCEPT rule failed"
+      t=$(wait_tcp fail "$DEV2" "$T1_VIP" 60) || rc=1
+      echo "  laptop -> $T1 refused ${t}s after the rule was written: the gateway has the allow-list"
+      # $T1 has it too once $T1 -> $T2, which no rule allows, stops passing (a drop by
+      # the filter reads as a timeout on the dial).
+      i=0
+      while d=$(dial "$T1" "$T2_VIP"); [ "${d%% *}" = ok ]; do
+        i=$((i + 2)); [ "$i" -le 60 ] || { echo "unexpected: $T1 -> $T2 still passes; $T1 never loaded the allow-list" >&2; rc=1; break; }
+        sleep 2
+      done
+      echo "  $T1 -> $T2 is '$d' ${i}s later: the fleet has the allow-list"
+      expect_tcp ok "$DEV1" "$T1_VIP" "phone -> $T1:$ECHO_PORT, which the rule allows ($T1 answers with no outbound rule)"
+      expect_tcp fail "$DEV2" "$T1_VIP" "laptop -> $T1, which no rule allows"
+      expect_tcp fail "$DEV1" "$T2_VIP" "phone -> $T2, which no rule allows"
+      ACCEPT_ID=$DROP_ID
+      DROP_ID=$(api POST /api/acl/rules "{\"priority\":4,\"source_cidr\":\"$DEV1_VIP/32\",\"destination_cidr\":\"$T1_VIP/32\",\"action\":\"DROP\",\"description\":\"profile-d2d scenario\"}" \
+        | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+      [ -n "$DROP_ID" ] || { api DELETE "/api/acl/rules/$ACCEPT_ID" > /dev/null; die "creating the DROP rule failed"; }
+      t=$(wait_tcp fail "$DEV1" "$T1_VIP" 60) || rc=1
+      echo "  a DROP written above the rule cuts phone -> $T1 after ${t}s"
+      api DELETE "/api/acl/rules/$DROP_ID" > /dev/null
+      DROP_ID=$ACCEPT_ID
+      t=$(wait_tcp ok "$DEV1" "$T1_VIP" 60) || rc=1
+      echo "  DROP deleted: phone -> $T1 back under the allow-list after ${t}s"
+      api DELETE "/api/acl/rules/$DROP_ID" > /dev/null
+      DROP_ID=
+      t=$(wait_tcp ok "$DEV2" "$T1_VIP" 90) || rc=1
+      echo "  rules deleted: laptop -> $T1 restored after ${t}s"
     }
 
     echo "== profile gateway: $GW ($GW_ID) at $GW_IP:51820; targets $T1 ($T1_VIP) and $T2 ($T2_VIP)"
