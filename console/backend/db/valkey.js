@@ -122,8 +122,13 @@ function subscribeTopologyEvents(handler) {
   });
 
   if (valkeySubscriber) {
+    // The connection may arrive after closeValkey() cleared the module's subscriber (a
+    // test that ended first, a shutdown): subscribe on the one this call saw, and only
+    // while it is still the current one.
+    const subscriber = valkeySubscriber;
     const doSubscribe = () => {
-      valkeySubscriber.subscribe(TOPOLOGY_CHANNEL, (err) => {
+      if (valkeySubscriber !== subscriber) return;
+      subscriber.subscribe(TOPOLOGY_CHANNEL, (err) => {
         if (err) {
           logger.warn(`Failed to subscribe to Valkey channel ${TOPOLOGY_CHANNEL}: ${err.message}`);
         }
