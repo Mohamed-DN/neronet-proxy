@@ -70,6 +70,18 @@ describe('ADR 0029 A1: profile devices through a gateway', () => {
     const res = await register(memberToken, { name: 'phone', public_key: key(), preshared_key: key() });
     assert.strictEqual(res.status, 409);
     assert.strictEqual(res.body.error, 'no_profile_gateway');
+    // The console tells the person what to do from `code`; without it the page showed
+    // "the key was already in use" to an owner who had not chosen a gateway yet.
+    assert.strictEqual(res.body.code, 'no_profile_gateway');
+  });
+
+  it('marks a key that is already registered with its own code', async () => {
+    await setGateway(adminToken, { node_id: 'node-prof-gw', endpoint: 'gw.example:51820' });
+    const pk = key();
+    assert.strictEqual((await register(memberToken, { name: 'a', public_key: pk, preshared_key: key() })).status, 201);
+    const again = await register(memberToken, { name: 'b', public_key: pk, preshared_key: key() });
+    assert.strictEqual(again.status, 409);
+    assert.strictEqual(again.body.code, 'public_key_in_use');
   });
 
   it('lets only an administrator name the gateway, and only a node of their organisation', async () => {

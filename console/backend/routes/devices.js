@@ -119,6 +119,7 @@ router.post('/profile', async (req, res, next) => {
     if (!gateway) {
       return res.status(409).json({
         error: 'no_profile_gateway',
+        code: 'no_profile_gateway',
         message: 'This organisation has no gateway for profile devices yet; an administrator must name one.'
       });
     }
@@ -126,7 +127,8 @@ router.post('/profile', async (req, res, next) => {
     const taken = await getPgPool().query('SELECT 1 FROM nodes WHERE public_key = ANY($1::text[])', [
       publicKeyForms(public_key)
     ]);
-    if (taken.rows.length > 0) return res.status(409).json({ error: 'public_key is already in use' });
+    if (taken.rows.length > 0)
+      return res.status(409).json({ error: 'public_key is already in use', code: 'public_key_in_use' });
 
     const id = `dev-${crypto.randomBytes(6).toString('hex')}`;
     let organizationId;
@@ -172,7 +174,16 @@ router.post('/profile', async (req, res, next) => {
       console_url: `https://${req.get('host')}/me`
     });
   } catch (err) {
-    if (err && err.code === '23505') return res.status(409).json({ error: 'public_key is already in use' });
+    if (err && err.code === '23505') {
+      // Only the key is the person's to change; any other unique clash (an overlay address
+      // taken in a race) is ours, so say so instead of blaming their key.
+      if (String(err.constraint || '').includes('public_key')) {
+        return res.status(409).json({ error: 'public_key is already in use', code: 'public_key_in_use' });
+      }
+      return res
+        .status(503)
+        .json({ error: 'try_again', code: 'try_again', message: 'The device could not be added; try again.' });
+    }
     next(err);
   }
 });

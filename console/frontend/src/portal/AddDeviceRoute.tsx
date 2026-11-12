@@ -31,7 +31,9 @@ interface Result {
 function alertKindFor(error: unknown): AlertKind {
   if (error instanceof KeyGenerationUnavailable) return 'noCrypto';
   if (error instanceof ApiError && error.status === 409) {
-    return error.code === 'no_profile_gateway' ? 'noGateway' : 'keyInUse';
+    // Older servers name the reason only in `error`; the message is that same word then.
+    const reason = error.code ?? error.message;
+    return reason === 'no_profile_gateway' ? 'noGateway' : 'keyInUse';
   }
   return 'generic';
 }
