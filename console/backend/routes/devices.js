@@ -16,6 +16,7 @@ const { logAuditEvent } = require('../utils/audit');
 const { allocateNextVip, normalisePublicKeyHex, publicKeyForms } = require('../utils/crypto');
 const EnrollmentService = require('../services/EnrollmentService');
 const AclEngine = require('../services/AclEngine');
+const ExitService = require('../services/ExitService');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -106,10 +107,130 @@ router.put('/gateway', requireAdmin, async (req, res, next) => {
   }
 });
 
+// ADR 0032: the exits this organisation's devices may use, and whether the caller may
+// choose one. The /me page shows the full-tunnel option from this answer.
+router.get('/exits', async (req, res, next) => {
+  try {
+    const org = orgOf(req);
+    const [exits, selfService] = await Promise.all([
+      ExitService.exitCandidates(org),
+      ExitService.selfService(org)
+    ]);
+    const canChoose = ExitService.isAdmin(req.user) || selfService;
+    return res.json({ can_choose: canChoose, self_service: selfService, exits });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Whether a device's owner may choose its exit, or only an administrator.
+router.put('/exit-policy', requireAdmin, async (req, res, next) => {
+  try {
+    const { self_service } = req.body || {};
+    if (typeof self_service !== 'boolean') return res.status(400).json({ error: 'self_service must be a boolean' });
+    const org = orgOf(req);
+    await getPgPool().query('UPDATE organizations SET exit_self_service = $1 WHERE id = $2', [self_service, org]);
+    await logAuditEvent({
+      eventType: 'EXIT_POLICY_SET',
+      organizationId: org,
+      severity: 'warn',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: org,
+      targetType: 'organization',
+      message: self_service
+        ? 'Device owners may now choose an exit for their devices'
+        : 'Only administrators may choose an exit for a device',
+      ipAddress: req.ip,
+      metadata: { after: { exit_self_service: self_service } }
+    });
+    return res.json({ self_service });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// The exit node a request names, if it is one this organisation's devices may use.
+async function validExit(org, exitNodeId) {
+  if (typeof exitNodeId !== 'string' || !exitNodeId) return null;
+  return (await ExitService.exitCandidates(org)).find((e) => e.node_id === exitNodeId) || null;
+}
+
+// Choose, change or remove a device's exit. Null removes it.
+router.put('/:id/exit', async (req, res, next) => {
+  try {
+    const org = orgOf(req);
+    const { exit_node_id, allow_lan } = req.body || {};
+    if (exit_node_id !== null && typeof exit_node_id !== 'string') {
+      return res.status(400).json({ error: 'exit_node_id must be a node id or null' });
+    }
+    if (allow_lan !== undefined && typeof allow_lan !== 'boolean') {
+      return res.status(400).json({ error: 'allow_lan must be a boolean' });
+    }
+    const pool = getPgPool();
+    const device = (
+      await pool.query(
+        `SELECT id, user_id, exit_allow_lan FROM nodes
+          WHERE id = $1 AND device_kind = 'profile' AND COALESCE(organization_id, 'org-default') = $2`,
+        [req.params.id, org]
+      )
+    ).rows[0];
+    if (!device) return res.status(404).json({ error: `no device ${req.params.id}` });
+    if (!(await ExitService.mayChooseExit(req.user, org, { ownerId: device.user_id }))) {
+      return res.status(403).json({ error: 'exit_not_permitted', code: 'exit_not_permitted' });
+    }
+    // Reaching the exit's private networks is an administrator's decision only.
+    if (allow_lan === true && !ExitService.isAdmin(req.user)) {
+      return res.status(403).json({ error: 'exit_lan_admin_only', code: 'exit_lan_admin_only' });
+    }
+    let exit = null;
+    if (exit_node_id !== null) {
+      exit = await validExit(org, exit_node_id);
+      if (!exit) return res.status(404).json({ error: 'no_such_exit', code: 'no_such_exit' });
+    }
+    const allowLan = exit === null ? false : allow_lan === undefined ? device.exit_allow_lan : allow_lan;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE nodes SET exit_node_id = $1, exit_allow_lan = $2 WHERE id = $3', [
+        exit ? exit.node_id : null,
+        allowLan,
+        device.id
+      ]);
+      await AclEngine.bumpNetmap(client);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    await logAuditEvent({
+      eventType: 'DEVICE_EXIT_SET',
+      organizationId: org,
+      severity: 'warn',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: device.id,
+      targetType: 'node',
+      message: exit
+        ? `Device ${device.id} sends all its traffic through ${exit.kind} ${exit.node_id}${allowLan ? ', with access to its LAN' : ''}`
+        : `Device ${device.id} no longer uses an exit`,
+      ipAddress: req.ip,
+      metadata: { after: { exit_node_id: exit ? exit.node_id : null, exit_allow_lan: allowLan } }
+    });
+    return res.json({ device_id: device.id, exit, allow_lan: allowLan });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Register a profile device from its public key.
 router.post('/profile', async (req, res, next) => {
   try {
-    const { name, public_key, preshared_key } = req.body || {};
+    const { name, public_key, preshared_key, exit_node_id } = req.body || {};
     const label = typeof name === 'string' ? name.trim() : '';
     if (!label || label.length > 64) return res.status(400).json({ error: 'name must be 1 to 64 characters' });
     if (!isKey(public_key)) return res.status(400).json({ error: 'public_key must be a 32-byte base64 key' });
@@ -122,6 +243,22 @@ router.post('/profile', async (req, res, next) => {
         code: 'no_profile_gateway',
         message: 'This organisation has no gateway for profile devices yet; an administrator must name one.'
       });
+    }
+
+    // A full-tunnel profile (ADR 0032): every packet goes to the gateway and leaves through
+    // the chosen exit. Without the right to choose one the request is refused rather than
+    // answered with a profile whose internet traffic would all be dropped.
+    let exit = null;
+    if (exit_node_id !== undefined && exit_node_id !== null) {
+      if (!(await ExitService.mayChooseExit(req.user, orgOf(req)))) {
+        return res.status(403).json({
+          error: 'exit_not_permitted',
+          code: 'exit_not_permitted',
+          message: 'Only an administrator can send a device through an exit in this organisation.'
+        });
+      }
+      exit = await validExit(orgOf(req), exit_node_id);
+      if (!exit) return res.status(404).json({ error: 'no_such_exit', code: 'no_such_exit' });
     }
 
     const taken = await getPgPool().query('SELECT 1 FROM nodes WHERE public_key = ANY($1::text[])', [
@@ -143,9 +280,19 @@ router.post('/profile', async (req, res, next) => {
       vips = await allocateNextVip(client);
       await client.query(
         `INSERT INTO nodes (id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6, role,
-                            ip_class, is_healthy, is_quarantined, organization_id, device_kind)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile')`,
-        [id, actor.id, label, public_key, preshared_key, vips.overlayIpv4, vips.overlayIpv6, organizationId]
+                            ip_class, is_healthy, is_quarantined, organization_id, device_kind, exit_node_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9)`,
+        [
+          id,
+          actor.id,
+          label,
+          public_key,
+          preshared_key,
+          vips.overlayIpv4,
+          vips.overlayIpv6,
+          organizationId,
+          exit ? exit.node_id : null
+        ]
       );
       await AclEngine.bumpNetmap(client);
     });
@@ -160,7 +307,15 @@ router.post('/profile', async (req, res, next) => {
       targetType: 'node',
       message: `Profile device ${id} (${label}) joined through gateway ${gateway.id} at ${vips.overlayIpv4}`,
       ipAddress: req.ip,
-      metadata: { after: { id, name: label, overlay_ipv4: vips.overlayIpv4, gateway: gateway.id } }
+      metadata: {
+        after: {
+          id,
+          name: label,
+          overlay_ipv4: vips.overlayIpv4,
+          gateway: gateway.id,
+          exit_node_id: exit ? exit.node_id : null
+        }
+      }
     });
 
     return res.status(201).json({
@@ -169,8 +324,11 @@ router.post('/profile', async (req, res, next) => {
       overlay_ipv4: vips.overlayIpv4,
       overlay_ipv6: vips.overlayIpv6,
       gateway: { public_key: wireguardKey(gateway.public_key), endpoint: gateway.profile_gateway_endpoint },
-      allowed_ips: OVERLAY,
-      dns: [],
+      allowed_ips: exit ? ExitService.FULL_TUNNEL : OVERLAY,
+      // The exit answers this address from its own resolver, so names resolve where the
+      // traffic leaves and no query goes around the tunnel.
+      dns: exit ? [ExitService.EXIT_DNS] : [],
+      ...(exit ? { exit: { node_id: exit.node_id, name: exit.name, kind: exit.kind } } : {}),
       console_url: `https://${req.get('host')}/me`
     });
   } catch (err) {
