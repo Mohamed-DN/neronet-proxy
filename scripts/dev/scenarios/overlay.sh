@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static|derp|profile|profile-d2d]
+# Usage: overlay.sh [matrix|telemetry|metrics|rule-deny|discovery|subnet|quarantine|revoke|fail-static|derp|profile|profile-d2d|wss443]
 #
 # Measures the overlay between the fleet nodes of a running stack. Every cell of the
 # matrix is a real TCP exchange: node A dials node B's overlay address through node
@@ -29,6 +29,14 @@
 #                 between the two that cuts them and its deletion that restores them, an
 #                 allow-list letting the phone open the laptop's port only, the
 #                 gateway's own overlay address over TCP, and whether it answers ping
+#   wss443        ADR 0032 draft, wg-wss: the same device with every UDP packet dropped
+#                 reaches the gateway through wstunnel behind an nginx that plays Nginx
+#                 Proxy Manager; real TCP both ways, an ACL DROP next to a UDP device,
+#                 probes without the secret prefix, the cut after deleting the device,
+#                 and mutations of docker-compose.wss.yml. Needs the stack started with
+#                   NERONET_EXTRA_COMPOSE_FILE="docker-compose.gateway.yml docker-compose.wss.yml"
+#                   NERONET_WSS_PUBLIC_URL=wss://wss.neronet.test
+#                 and NERONET_NODE_SERVICES="gateway relay-fr" for this script
 #
 # The stack must be running with the data plane on:
 #
@@ -48,6 +56,16 @@ export NERONET_REPO_ROOT
 . "$(dirname "$0")/../engine.sh"
 
 cd "$REPO_ROOT"
+
+# The same extra compose files stack.sh started the stack with (docker-compose.gateway.yml
+# docker-compose.wss.yml for wss443): without them compose cannot name those services.
+if [ -n "${NERONET_EXTRA_COMPOSE_FILE:-}" ]; then
+  COMPOSE="$COMPOSE -f docker-compose.yml"
+  for extra in $NERONET_EXTRA_COMPOSE_FILE; do
+    [ -f "$extra" ] || die "no $extra"
+    COMPOSE="$COMPOSE -f $extra"
+  done
+fi
 
 SCENARIO=${1:-matrix}
 ECHO_PORT=${NERONET_OVERLAY_ECHO_PORT:-9999}
@@ -397,6 +415,98 @@ wait_metrics() {
     sleep 5
   done
   cat "$WORK/metrics-probe.log"
+}
+
+# --- Profile devices (profile, wss443) ------------------------------------------
+#
+# A stock wg-quick device in its own container. These read GW, NET, WG_IMAGE and
+# ECHO_PORT, which the scenario sets before calling them.
+
+# api_secret <method> <path>: the JSON body comes on stdin, so a PSK never reaches
+# a process argument list.
+api_secret() {
+  curl -sS -X "$1" "$API$2" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+    --data-binary @-
+}
+json_field() { sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p" | head -1; }
+
+# gw_counters -> "forwarded forward_dropped" from the gateway's latest drop report.
+# The report is written every 15s and only when a counter moved, so the caller waits
+# past one interval before reading it.
+gw_counters() {
+  node_logs_since "$GW" 30m 2>/dev/null < /dev/null | grep 'Data plane drops since start' | tail -1 \
+    | sed -n 's/.*forward-dropped \([0-9]*\) .*forwarded \([0-9]*\) .*/\2 \1/p'
+}
+inbound_drops() {
+  node_logs_since "$1" 30m 2>/dev/null < /dev/null | grep 'Data plane drops since start' | tail -1 \
+    | sed -n 's/.*inbound \([0-9]*\) .*/\1/p'
+}
+
+# start_device <container> <name> -> sets REG to the API's answer. The key pair and
+# the PSK are generated inside the container; the private key never leaves it.
+start_device() {
+  $ENGINE rm -f "$1" > /dev/null 2>&1 || true
+  $ENGINE run -d --name "$1" --network "$NET" --cap-add NET_ADMIN --cap-add NET_RAW \
+    "$WG_IMAGE" 'sleep infinity' > /dev/null ||
+    die "starting $1 failed"
+  pub=$($ENGINE exec "$1" sh -c 'umask 077; wg genkey > /etc/wireguard/private &&
+    wg genpsk > /etc/wireguard/psk && wg pubkey < /etc/wireguard/private')
+  [ -n "$pub" ] || die "no key pair in $1"
+  REG=$( { printf '{"name":"%s","public_key":"%s","preshared_key":"' "$2" "$pub";
+           $ENGINE exec "$1" cat /etc/wireguard/psk | tr -d '\n'; printf '"}'; } | api_secret POST /api/devices/profile)
+  printf '%s' "$REG" | grep -q '"device_id"' || die "registering $2 failed: $(printf '%s' "$REG" | sed 's/"preshared[^,]*,//')"
+}
+
+# wg_up <container> <overlay address> <gateway public key> <endpoint> [keepalive] [mtu]:
+# the profile exactly as ADR 0029 defines it, from the API's answer. wss443 passes the
+# alternative profile's keepalive and MTU.
+wg_up() {
+  $ENGINE exec -e ADDR="$2" -e GWPUB="$3" -e EP="$4" -e KA="${5:-25}" -e MTU_LINE="${6:+MTU = $6}" "$1" sh -c 'umask 077; cat > /etc/wireguard/wg0.conf <<EOF
+[Interface]
+PrivateKey = $(cat /etc/wireguard/private)
+Address = $ADDR/32
+$MTU_LINE
+
+[Peer]
+PublicKey = $GWPUB
+PresharedKey = $(cat /etc/wireguard/psk)
+Endpoint = $EP
+AllowedIPs = 100.64.0.0/10
+PersistentKeepalive = $KA
+EOF
+wg-quick up wg0 > /tmp/wg-quick.log 2>&1 || { grep -v -i key /tmp/wg-quick.log; exit 1; }
+grep -i "userspace" /tmp/wg-quick.log || echo "  wg-quick up on the kernel WireGuard"' || die "wg-quick up failed in $1"
+}
+
+# dev_tcp <container> <vip> -> "ok <ms> <bytes>" or "fail <reason>". 64 KiB of random
+# bytes go to the node's echo and must come back with the same SHA-256.
+dev_tcp() {
+  $ENGINE exec "$1" sh -c '
+    head -c 65536 /dev/urandom > /tmp/payload
+    want=$(sha256sum < /tmp/payload | cut -d" " -f1)
+    t0=$(date +%s%N)
+    { printf E; cat /tmp/payload; } | timeout 8 socat -t 4 - TCP:'"$2"':'"$ECHO_PORT"',connect-timeout=4 > /tmp/back 2>/dev/null
+    t1=$(date +%s%N)
+    got=$(sha256sum < /tmp/back | cut -d" " -f1)
+    bytes=$(wc -c < /tmp/back)
+    if [ "$got" = "$want" ]; then echo "ok $(( (t1 - t0) / 1000000 )) $bytes"; else echo "fail got-$bytes-bytes"; fi' < /dev/null
+}
+
+expect_tcp() { # <want ok|fail> <container> <vip> <label>
+  r=$(dev_tcp "$2" "$3")
+  echo "  $4: $r"
+  [ "${r%% *}" = "$1" ] || { echo "unexpected: $4 is '$r', expected $1" >&2; rc=1; }
+}
+
+# wait_tcp <want> <container> <vip> <limit seconds> -> echoes the elapsed seconds
+wait_tcp() {
+  w_start=$(date +%s)
+  while :; do
+    r=$(dev_tcp "$2" "$3")
+    [ "${r%% *}" = "$1" ] && { echo "$(($(date +%s) - w_start))"; return 0; }
+    [ "$(($(date +%s) - w_start))" -ge "$4" ] && { echo "timeout"; return 1; }
+    sleep 1
+  done
 }
 
 case "$SCENARIO" in
@@ -1209,8 +1319,576 @@ grep -i "userspace" /tmp/wg-quick.log || echo "  wg-quick up on the kernel WireG
     expect_tcp fail "$DEV1" "$T2_VIP" "device -> $T2 20s later"
     ;;
 
+  wss443)
+    # ADR 0032 draft, phase 1a (method wg-wss): a stock wg-quick device on a network that
+    # drops every UDP packet reaches the profile gateway through wstunnel over TCP 443,
+    # behind a TLS-terminating reverse proxy, as on an installation where Nginx Proxy
+    # Manager holds 443. Every claim is a measurement: a payload whose SHA-256 comes back,
+    # iptables counters, captures in the device's and the gateway's network namespaces,
+    # and the gateway's own counters. The secret path prefix comes from the API answer
+    # and is never printed.
+    [ -n "${COMPOSE_PROJECT_NAME:-}" ] && [ "$COMPOSE_PROJECT_NAME" != neronet ] \
+      || die "wss443 requires a dedicated stack (COMPOSE_PROJECT_NAME other than neronet)"
+    WSS_FILE=docker-compose.wss.yml
+    case " ${NERONET_EXTRA_COMPOSE_FILE:-} " in
+      *" docker-compose.gateway.yml "*"$WSS_FILE "*) ;;
+      *) die "wss443 needs NERONET_EXTRA_COMPOSE_FILE=\"docker-compose.gateway.yml $WSS_FILE\" for stack.sh and this script" ;;
+    esac
+
+    WG_IMAGE=${NERONET_WGCLIENT_IMAGE:-localhost/neronet-wgclient:dev}
+    $ENGINE image inspect "$WG_IMAGE" > /dev/null 2>&1 ||
+      $ENGINE build -t "$WG_IMAGE" -f docker/wgclient/Containerfile docker/wgclient ||
+      die "building $WG_IMAGE failed"
+    NETFAULT_IMAGE=${NERONET_NETFAULT_IMAGE:-localhost/neronet-netfault:dev}
+    $ENGINE image inspect "$NETFAULT_IMAGE" > /dev/null 2>&1 ||
+      $ENGINE build -t "$NETFAULT_IMAGE" -f docker/netfault/Containerfile docker/netfault ||
+      die "building $NETFAULT_IMAGE failed"
+    # The client runs the same pinned upstream image as the server, read from the compose
+    # file so the two cannot drift apart.
+    WST_IMAGE=$(sed -n 's/^    image: \(ghcr\.io\/erebe\/wstunnel:[^ ]*\)$/\1/p' "$WSS_FILE")
+    [ -n "$WST_IMAGE" ] || die "no wstunnel image in $WSS_FILE"
+    # Stands in for Nginx Proxy Manager: TLS for the public name, one location for the
+    # tunnel, everything else to the console.
+    PROXY_IMAGE=${NERONET_WSS443_PROXY_IMAGE:-docker.io/library/nginx:1.27-alpine}
+    PUBLIC_NAME=wss.neronet.test
+    DIRECT_NAME=wss-direct.neronet.test
+
+    GW=${NERONET_WSS443_GATEWAY:-gateway}
+    T1=${NERONET_WSS443_TARGET1:-relay-fr}
+    # One mesh node is enough; a second one only repeats the measurement.
+    T2=${NERONET_WSS443_TARGET2:-$T1}
+    for svc in "$GW" "$T1" "$T2"; do
+      [ -n "$(vip_of "$svc")" ] || die "$svc is not in the fleet (NERONET_NODE_SERVICES must name it)"
+    done
+    GW_ID=$(node_id_of "$GW")
+    T1_VIP=$(vip_of "$T1")
+    T2_VIP=$(vip_of "$T2")
+
+    P=$COMPOSE_PROJECT_NAME
+    DEV1="$P-wss-dev1"     # the device behind the UDP block, through wstunnel
+    DEV2="$P-wss-dev2"     # a control device on plain UDP
+    PROBE="$P-wss-probe"   # an outsider on the same network
+    PROXY="$P-wss-proxy"
+    CAP="$P-wss-cap"       # a capture in the gateway's network namespace
+    DEV1_ID=
+    DEV2_ID=
+    RULE_IDS=
+    MUT_BACKUP=
+    WSS_DIRTY=0
+
+    container_of() { $COMPOSE --profile nodes ps -q "$1" | head -1; }
+    ip_of() { $ENGINE inspect -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}" "$1"; }
+    GW_CID=$(container_of "$GW")
+    [ -n "$GW_CID" ] || die "$GW is not running"
+    NET=$($ENGINE inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$GW_CID" | awk '{print $1}')
+    GW_IP=$(ip_of "$GW_CID")
+    [ -n "$NET" ] && [ -n "$GW_IP" ] || die "cannot read the gateway's network address"
+    # Empty when the service is not running (podman inspect with no name lists everything).
+    wss_ip() { _cid=$(container_of wstunnel); [ -n "$_cid" ] && ip_of "$_cid"; }
+    wss_up() {
+      WSS_IP=$(wss_ip) || true
+      [ -n "$WSS_IP" ] || die "wstunnel did not start: $($COMPOSE logs --no-color --tail 5 wstunnel 2>&1)"
+    }
+    wss_up
+
+    wss_cleanup() {
+      for c in "$DEV1-wst" "$PROBE-wst" "$DEV1" "$DEV2" "$PROBE" "$PROXY" "$CAP"; do
+        $ENGINE rm -f -t 0 "$c" > /dev/null 2>&1 || true
+      done
+      for id in $RULE_IDS; do api DELETE "/api/acl/rules/$id" > /dev/null 2>&1 || true; done
+      for id in $DEV1_ID $DEV2_ID; do api DELETE "/api/nodes/$id" > /dev/null 2>&1 || true; done
+      # A mutation interrupted half-way leaves the original file in place, byte for byte.
+      # An interruption in the direct TLS part leaves the server as the stack started it.
+      if [ -n "$MUT_BACKUP" ] && [ -f "$MUT_BACKUP" ]; then
+        cp "$MUT_BACKUP" "$WSS_FILE"
+        WSS_DIRTY=1
+      fi
+      if [ "$WSS_DIRTY" = 1 ]; then
+        $COMPOSE up -d --no-deps --force-recreate wstunnel > /dev/null 2>&1 || true
+      fi
+      rm -rf "$WORK"
+    }
+    trap wss_cleanup EXIT INT TERM
+
+    RESULTS="$WORK/results"
+    : > "$RESULTS"
+    # result <name> <pass|fail> <detail>: one line per named test, summarised at the end.
+    result() {
+      printf '%-28s %-4s %s\n' "$1" "$2" "$3" >> "$RESULTS"
+      echo "  [$2] $1: $3"
+      [ "$2" = pass ] || rc=1
+    }
+
+    # netfault <container> <script>: iptables inside that container's network namespace only.
+    netfault() {
+      $ENGINE run --rm --network "container:$1" --cap-add NET_ADMIN "$NETFAULT_IMAGE" "$2"
+    }
+    udp_block() {
+      netfault "$1" 'iptables -I OUTPUT 1 -o eth0 -p udp -j DROP -m comment --comment neronet-wss443 &&
+                     iptables -I INPUT 1 -i eth0 -p udp -j DROP -m comment --comment neronet-wss443'
+    }
+    udp_dropped() {
+      netfault "$1" 'iptables -L -v -x -n | grep neronet-wss443' | awk '{p+=$1} END {print p+0}'
+    }
+
+    # Datagrams the gateway received on 51820 from the wstunnel server, counted by a
+    # capture in the gateway's own network namespace.
+    wss_datagrams() {
+      $ENGINE exec "$CAP" sh -c "grep -c 'IP $WSS_IP\.[0-9]* > $GW_IP\.51820: UDP' /tmp/cap.txt || true" < /dev/null
+    }
+    restart_capture() {
+      $ENGINE rm -f -t 0 "$CAP" > /dev/null 2>&1 || true
+      $ENGINE run -d --name "$CAP" --network "container:$GW_CID" --cap-add NET_RAW --cap-add NET_ADMIN \
+        "$WG_IMAGE" 'tcpdump -i eth0 -n -l udp dst port 51820 > /tmp/cap.txt 2>/tmp/cap.err' > /dev/null ||
+        die "starting the gateway capture failed"
+      sleep 2
+    }
+
+    # host_file <path>: the path in the notation the engine expects (--env-file).
+    host_file() { printf '%s/%s' "$(HOST_PATH "$(dirname "$1")")" "$(basename "$1")"; }
+
+    # A WireGuard handshake initiation has this shape: type 1, three zero bytes, 148 bytes.
+    send_wg_like() { # <container> <udp port>
+      $ENGINE exec "$1" sh -c "for i in 1 2 3; do { printf '\\001\\000\\000\\000'; head -c 144 /dev/urandom; } |
+        socat -u - UDP:127.0.0.1:$2; sleep 1; done" < /dev/null
+    }
+
+    # probe_client <prefix env file> <server url> <-L spec>...: a wstunnel client in the
+    # outsider's network namespace. The prefix is read from a file inside $WORK so it
+    # never reaches a process argument list.
+    probe_client() {
+      pc_env=$1; pc_url=$2; shift 2
+      $ENGINE rm -f -t 0 "$PROBE-wst" > /dev/null 2>&1 || true
+      $ENGINE run -d --name "$PROBE-wst" --network "container:$PROBE" --entrypoint /home/app/wstunnel \
+        -e NO_COLOR=true --env-file "$(host_file "$pc_env")" "$WST_IMAGE" client "$@" "$pc_url" > /dev/null ||
+        die "starting the probe client failed"
+      sleep 2
+    }
+
+    # http_probe <container> <socat address> <request> -> the status line and a verdict
+    # on the answer: "banner" when anything in it names wstunnel. The Server header, if
+    # any, is shown so the handbook can say what each port gives away.
+    http_probe() {
+      $ENGINE exec -e REQ="$3" "$1" sh -c "printf \"\$REQ\" | timeout 6 socat -t 3 - '$2' > /tmp/http.out 2>/dev/null
+        first=\$(head -1 /tmp/http.out | tr -d '\r' | cut -c1-60)
+        srv=\$(grep -i '^server:' /tmp/http.out | head -1 | tr -d '\r' | cut -c1-40)
+        size=\$(wc -c < /tmp/http.out)
+        if grep -qi wstunnel /tmp/http.out; then v=banner; else v=clean; fi
+        echo \"\$v \${size}B '\${first:-<closed>}' \${srv:-no Server header}\"" < /dev/null
+    }
+
+    echo "== wss443: gateway $GW ($GW_ID) at $GW_IP:51820, wstunnel at $WSS_IP:8444, targets $T1 ($T1_VIP) and $T2 ($T2_VIP)"
+    api PUT /api/devices/gateway "{\"node_id\":\"$GW_ID\",\"endpoint\":\"$GW_IP:51820\"}" > "$WORK/gw.json"
+    grep -q '"gateway"' "$WORK/gw.json" || die "naming the gateway failed: $(cat "$WORK/gw.json")"
+
+    start_device "$DEV1" wss-laptop
+    DEV1_ID=$(printf '%s' "$REG" | json_field device_id)
+    DEV1_VIP=$(printf '%s' "$REG" | json_field overlay_ipv4)
+    GW_PUB=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{"public_key":"\([^"]*\)".*/\1/p')
+    GW_EP=$(printf '%s' "$REG" | sed -n 's/.*"gateway":{[^}]*"endpoint":"\([^"]*\)".*/\1/p')
+    STRICT=$(printf '%s' "$REG" | sed -n 's/.*"strict_network":{\([^}]*\)}.*/\1/p')
+    WSS_URL=$(printf '{%s}' "$STRICT" | json_field url)
+    WSS_REMOTE=$(printf '{%s}' "$STRICT" | json_field remote)
+    WSS_LOCAL=$(printf '{%s}' "$STRICT" | json_field local_endpoint)
+    WSS_MTU=$(printf '{%s}' "$STRICT" | sed -n 's/.*"mtu":\([0-9]*\).*/\1/p')
+    WSS_KA=$(printf '{%s}' "$STRICT" | sed -n 's/.*"persistent_keepalive":\([0-9]*\).*/\1/p')
+    # The secret goes to files in $WORK (mode 600) and nowhere else.
+    ( umask 077
+      printf '{%s}' "$STRICT" | json_field path_prefix > "$WORK/secret"
+      printf 'WSTUNNEL_HTTP_UPGRADE_PATH_PREFIX=%s\n' "$(cat "$WORK/secret")" > "$WORK/secret.env"
+      printf 'WSTUNNEL_HTTP_UPGRADE_PATH_PREFIX=%s\n' "$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')" > "$WORK/wrong.env"
+      printf 'WSTUNNEL_HTTP_UPGRADE_PATH_PREFIX=v1\n' > "$WORK/default.env" )
+    SECRET_LEN=$(tr -d '\n' < "$WORK/secret" | wc -c | tr -d ' ')
+    echo "registered $DEV1_ID at $DEV1_VIP; strict_network: url $WSS_URL, remote $WSS_REMOTE, local $WSS_LOCAL, MTU $WSS_MTU, keepalive $WSS_KA, path prefix $SECRET_LEN characters (not shown)"
+    if [ "$WSS_URL" = "wss://$PUBLIC_NAME" ] && [ "$SECRET_LEN" -ge 32 ] && [ "$WSS_LOCAL" = 127.0.0.1:51820 ] &&
+       [ "$WSS_MTU" = 1380 ] && [ "$WSS_KA" = 20 ]; then
+      result api-strict-network pass "the signed-in answer carries the tunnel address, the remote and a $SECRET_LEN-character prefix"
+    else
+      result api-strict-network fail "strict_network is missing or not what docker-compose.wss.yml configures (start the stack with NERONET_WSS_PUBLIC_URL=wss://$PUBLIC_NAME)"
+    fi
+
+    # The reverse proxy, configured the way Nginx Proxy Manager writes a custom location
+    # with "Websockets support" on: same headers, nginx's default 60 s read timeout.
+    mkdir -p "$WORK/proxy"
+    ( cd "$WORK/proxy" && umask 077 &&
+      openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=wss443 test CA" \
+        -keyout ca.key -out ca.crt > /dev/null 2>&1 &&
+      openssl req -newkey rsa:2048 -nodes -subj "/CN=$PUBLIC_NAME" -keyout proxy.key -out proxy.csr > /dev/null 2>&1 &&
+      printf 'subjectAltName=DNS:%s,DNS:%s\n' "$PUBLIC_NAME" "$DIRECT_NAME" > san.ext &&
+      openssl x509 -req -in proxy.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 1 -extfile san.ext \
+        -out proxy.crt > /dev/null 2>&1 ) || die "making the proxy's test certificate failed"
+    { cat <<EOF
+server {
+    listen 443 ssl;
+    server_name $PUBLIC_NAME;
+    ssl_certificate /etc/nginx/conf.d/proxy.crt;
+    ssl_certificate_key /etc/nginx/conf.d/proxy.key;
+
+    location /$(cat "$WORK/secret") {
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-Scheme \$scheme;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$http_connection;
+        proxy_http_version 1.1;
+        proxy_pass http://wstunnel:8444;
+    }
+
+    location / {
+        proxy_set_header Host \$host;
+        proxy_pass https://frontend:8443;
+    }
+}
+EOF
+    } > "$WORK/proxy/default.conf"
+    chmod 644 "$WORK/proxy/proxy.crt" "$WORK/proxy/proxy.key" "$WORK/proxy/default.conf" "$WORK/proxy/ca.crt"
+    $ENGINE rm -f "$PROXY" > /dev/null 2>&1 || true
+    $ENGINE run -d --name "$PROXY" --network "$NET" -v "$(HOST_PATH "$WORK/proxy"):/etc/nginx/conf.d:ro" \
+      "$PROXY_IMAGE" > /dev/null || die "starting the reverse proxy failed"
+    sleep 2
+    PROXY_IP=$(ip_of "$PROXY")
+    [ -n "$PROXY_IP" ] || die "the reverse proxy has no address: $($ENGINE logs "$PROXY" 2>&1 | tail -3)"
+    echo "reverse proxy $PROXY at $PROXY_IP:443 for $PUBLIC_NAME: /<prefix> -> wstunnel:8444, / -> the console"
+    $ENGINE exec "$DEV1" sh -c "echo '$PROXY_IP $PUBLIC_NAME' >> /etc/hosts"
+
+    echo "waiting for $GW to serve the device..."
+    i=0
+    until node_logs_since "$GW" 5m 2>/dev/null < /dev/null | grep -q 'Profile gateway: forwarding for'; do
+      i=$((i + 2)); [ "$i" -le 90 ] || die "$GW never switched forwarding on"
+      sleep 2
+    done
+    converge
+    restart_capture
+
+    echo
+    echo "== (1) all UDP dropped on the device's network; only TCP is left"
+    udp_block "$DEV1"
+    echo "  -- negative control: the ordinary profile (Endpoint $GW_EP) with UDP dropped"
+    wg_up "$DEV1" "$DEV1_VIP" "$GW_PUB" "$GW_EP"
+    expect_tcp fail "$DEV1" "$T1_VIP" "device -> $T1 over plain UDP, blocked"
+    sleep 12
+    hs=$($ENGINE exec "$DEV1" wg show wg0 latest-handshakes | awk '{print $2}')
+    dropped=$(udp_dropped "$DEV1")
+    if [ "${hs:-0}" = 0 ] && [ "$dropped" -gt 0 ]; then
+      result 1-negative-control pass "no handshake in 20 s; iptables dropped $dropped UDP packets on eth0"
+    else
+      result 1-negative-control fail "handshake $hs, dropped $dropped: the UDP block does not hold, so test 1 proves nothing"
+    fi
+    $ENGINE exec "$DEV1" wg-quick down wg0 > /dev/null 2>&1 || true
+
+    echo "  -- the same device through wstunnel and the reverse proxy"
+    dropped_before=$(udp_dropped "$DEV1")
+    dg_before=$(wss_datagrams)
+    $ENGINE exec -d "$DEV1" sh -c 'tcpdump -i eth0 -n -U -w /tmp/eth0.pcap ip 2>/tmp/eth0.err' > /dev/null
+    $ENGINE rm -f "$DEV1-wst" > /dev/null 2>&1 || true
+    $ENGINE run -d --name "$DEV1-wst" --network "container:$DEV1" --entrypoint /home/app/wstunnel \
+      -e NO_COLOR=true --env-file "$(host_file "$WORK/secret.env")" -e SSL_CERT_FILE=/ca/ca.crt \
+      -v "$(HOST_PATH "$WORK/proxy"):/ca:ro" "$WST_IMAGE" \
+      client --tls-verify-certificate -L "udp://$WSS_LOCAL:$WSS_REMOTE?timeout_sec=0" "$WSS_URL" > /dev/null ||
+      die "starting the device's wstunnel client failed"
+    sleep 2
+    wg_up "$DEV1" "$DEV1_VIP" "$GW_PUB" "$WSS_LOCAL" "$WSS_KA" "$WSS_MTU"
+    t=$(wait_tcp ok "$DEV1" "$T1_VIP" 60) || true
+    echo "  first exchange with $T1 after ${t}s (handshake included)"
+    r1=$(dev_tcp "$DEV1" "$T1_VIP"); r2=$(dev_tcp "$DEV1" "$T2_VIP")
+    echo "  device -> $T1: $r1; device -> $T2: $r2 (64 KiB random, SHA-256 compared)"
+    hs=$($ENGINE exec "$DEV1" wg show wg0 latest-handshakes | awk '{print $2}')
+    # The other way: a mesh node opens the connection to the device's overlay address.
+    $ENGINE exec -d "$DEV1" sh -c "socat TCP-LISTEN:$ECHO_PORT,bind=$DEV1_VIP,fork,reuseaddr SYSTEM:'tail -c +2'" > /dev/null
+    sleep 1
+    # The node may still be setting up its session to the gateway for this new peer; the
+    # first answer within 45 s counts, and the wait is reported.
+    w_start=$(date +%s)
+    while :; do
+      back=$(node_exec "$T1" env NERONET_OVERLAY_PAYLOAD_BYTES=65536 /bin/sovereign-cli overlay-dial \
+        "$SOCKS" "$DEV1_VIP:$ECHO_PORT" 10 2>/dev/null < /dev/null) || true
+      case "$back" in ok*) break ;; esac
+      [ "$(($(date +%s) - w_start))" -ge 45 ] && break
+      sleep 2
+    done
+    echo "  $T1 -> device ($DEV1_VIP:$ECHO_PORT), 64 KiB: ${back:-no answer} after $(($(date +%s) - w_start))s"
+    sleep 1
+    $ENGINE exec "$DEV1" sh -c 'pkill tcpdump; sleep 1' || true
+    eth0=$($ENGINE exec -e PIP="$PROXY_IP" "$DEV1" sh -c '
+      tcpdump -n -r /tmp/eth0.pcap 2>/dev/null > /tmp/eth0.txt
+      total=$(wc -l < /tmp/eth0.txt)
+      tls=$(grep -c -E "IP [0-9.]+ > $PIP\.443: |IP $PIP\.443 > [0-9.]+: " /tmp/eth0.txt)
+      udp=$(grep -c " UDP" /tmp/eth0.txt)
+      echo "$total $tls $udp"' < /dev/null)
+    # shellcheck disable=SC2086 # three numbers, split on purpose
+    set -- $eth0
+    dropped_after=$(udp_dropped "$DEV1")
+    dg_after=$(wss_datagrams)
+    echo "  device eth0 capture: $1 IPv4 packets, $2 of them TCP with the proxy's 443, $3 UDP; iptables UDP drops $dropped_before -> $dropped_after"
+    echo "  gateway capture: datagrams from wstunnel ($WSS_IP) to 51820: $dg_before -> $dg_after"
+    if [ "${r1%% *}" = ok ] && [ "${r2%% *}" = ok ] && [ "${hs:-0}" -gt 0 ]; then
+      result 1-tcp-device-to-mesh pass "handshake done, 64 KiB echoed intact by $T1 and $T2 (${r1#ok }, ${r2#ok })"
+    else
+      result 1-tcp-device-to-mesh fail "handshake $hs; $T1 '$r1'; $T2 '$r2'"
+    fi
+    case "$back" in
+      ok*) result 1-tcp-mesh-to-device pass "$T1 opened TCP to the device and got its 64 KiB back ($back)" ;;
+      *) result 1-tcp-mesh-to-device fail "$T1 -> device: '${back:-no answer}'" ;;
+    esac
+    if [ "$1" -gt 0 ] && [ "$2" = "$1" ] && [ "$dg_after" -gt "$dg_before" ]; then
+      result 1-path-is-tcp-443 pass "every packet on the device's wire was TCP with the proxy's 443; the gateway got $((dg_after - dg_before)) datagrams from wstunnel"
+    else
+      result 1-path-is-tcp-443 fail "eth0 $1 packets, $2 with the proxy; gateway datagrams $dg_before -> $dg_after"
+    fi
+
+    echo
+    echo "== (2) an ACL DROP cuts the device over wss exactly as it cuts a device over UDP"
+    start_device "$DEV2" udp-laptop
+    DEV2_ID=$(printf '%s' "$REG" | json_field device_id)
+    DEV2_VIP=$(printf '%s' "$REG" | json_field overlay_ipv4)
+    converge
+    wg_up "$DEV2" "$DEV2_VIP" "$GW_PUB" "$GW_EP"
+    t=$(wait_tcp ok "$DEV2" "$T1_VIP" 60) || true
+    echo "  control device $DEV2_ID ($DEV2_VIP) on plain UDP reaches $T1 after ${t}s"
+    expect_tcp ok "$DEV1" "$T1_VIP" "wss device -> $T1 before the rules"
+    sleep 16
+    # shellcheck disable=SC2046 # two numbers, split on purpose
+    set -- $(gw_counters)
+    FDROP_BEFORE=${2:-0}
+    for vip in "$DEV1_VIP" "$DEV2_VIP"; do
+      id=$(api POST /api/acl/rules "{\"priority\":5,\"source_cidr\":\"$vip/32\",\"destination_cidr\":\"100.64.0.0/10\",\"action\":\"DROP\",\"description\":\"wss443 scenario\"}" \
+        | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+      [ -n "$id" ] || die "creating the DROP rule for $vip failed"
+      RULE_IDS="$RULE_IDS $id"
+    done
+    t1=$(wait_tcp fail "$DEV1" "$T1_VIP" 60) || true
+    t2=$(wait_tcp fail "$DEV2" "$T1_VIP" 60) || true
+    r_wss=$(dev_tcp "$DEV1" "$T2_VIP"); r_udp=$(dev_tcp "$DEV2" "$T2_VIP")
+    sleep 16
+    # shellcheck disable=SC2046 # two numbers, split on purpose
+    set -- $(gw_counters)
+    FDROP_AFTER=${2:-0}
+    echo "  blocked after the rule: wss ${t1}s, udp ${t2}s; to $T2: wss '$r_wss', udp '$r_udp'; gateway forward-dropped $FDROP_BEFORE -> $FDROP_AFTER"
+    if [ "${r_wss%% *}" = fail ] && [ "${r_udp%% *}" = fail ] && [ "$t1" != timeout ] && [ "$t2" != timeout ] &&
+       [ "$FDROP_AFTER" -gt "$FDROP_BEFORE" ]; then
+      result 2-deny-rule pass "both devices cut (wss ${t1}s, udp ${t2}s), the gateway's forward-dropped rose by $((FDROP_AFTER - FDROP_BEFORE))"
+    else
+      result 2-deny-rule fail "wss ${t1}/'$r_wss', udp ${t2}/'$r_udp', forward-dropped $FDROP_BEFORE -> $FDROP_AFTER"
+    fi
+    for id in $RULE_IDS; do api DELETE "/api/acl/rules/$id" > /dev/null; done
+    RULE_IDS=
+    t1=$(wait_tcp ok "$DEV1" "$T1_VIP" 60) || true
+    t2=$(wait_tcp ok "$DEV2" "$T1_VIP" 60) || true
+    if [ "$t1" != timeout ] && [ "$t2" != timeout ]; then
+      result 2-rule-deleted pass "both devices back after the rules went: wss ${t1}s, udp ${t2}s"
+    else
+      result 2-rule-deleted fail "wss $t1, udp $t2"
+    fi
+    $ENGINE rm -f -t 0 "$DEV2" > /dev/null
+    api DELETE "/api/nodes/$DEV2_ID" > /dev/null
+    DEV2_ID=
+
+    echo
+    echo "== (4) probes from an outsider: nothing without the prefix reaches the gateway"
+    # The device's tunnel is paused so that every datagram counted now is a probe's.
+    $ENGINE exec "$DEV1" wg-quick down wg0 > /dev/null 2>&1 || true
+    $ENGINE stop -t 1 "$DEV1-wst" > /dev/null
+    $ENGINE rm -f "$PROBE" > /dev/null 2>&1 || true
+    $ENGINE run -d --name "$PROBE" --network "$NET" "$WG_IMAGE" 'sleep infinity' > /dev/null || die "starting $PROBE failed"
+    $ENGINE exec "$PROBE" sh -c "echo '$PROXY_IP $PUBLIC_NAME' >> /etc/hosts"
+    sleep 3
+    UPGRADE='GET /%s/events HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n'
+
+    # probe_4c: the wstunnel port itself (reachable on the LAN in production), with a
+    # wrong prefix: refused, no datagram. Removing the path check turns it red.
+    probe_4c() {
+      wrong=$(sed -n 's/^WSTUNNEL_HTTP_UPGRADE_PATH_PREFIX=//p' "$WORK/wrong.env")
+      # shellcheck disable=SC2059 # the request template is the format
+      ans=$(http_probe "$PROBE" "TCP:wstunnel:8444" "$(printf "$UPGRADE" "$wrong" "wstunnel:8444")")
+      before=$(wss_datagrams)
+      probe_client "$WORK/wrong.env" ws://wstunnel:8444 -L "udp://127.0.0.1:51830:$WSS_REMOTE?timeout_sec=0"
+      send_wg_like "$PROBE" 51830
+      sleep 3
+      after=$(wss_datagrams)
+      echo "    direct to wstunnel:8444 with a wrong prefix: answer $ans; gateway datagrams $before -> $after"
+      [ "$after" = "$before" ] && [ "${ans%% *}" = clean ] && ! printf '%s' "$ans" | grep -q ' 101 '
+    }
+    # probe_4d: the right prefix but a destination other than the gateway's 51820 (the
+    # console's API): refused. Removing --restrict-to turns it red.
+    probe_4d() {
+      probe_client "$WORK/secret.env" ws://wstunnel:8444 -L tcp://127.0.0.1:18081:backend:8081
+      # stdin stays open for 3 s: wstunnel closes the whole tunnel on a half-close, which
+      # would make an opened tunnel look refused.
+      got=$($ENGINE exec "$PROBE" sh -c "(printf 'GET /api/health HTTP/1.0\r\n\r\n'; sleep 3) |
+        timeout 8 socat -t 3 - TCP:127.0.0.1:18081 2>/dev/null | head -1 | tr -d '\r'" < /dev/null)
+      echo "    right prefix, destination backend:8081: '${got:-<closed>}'"
+      [ -z "$got" ]
+    }
+    # probe_4d_control: the same client to the allowed destination does deliver datagrams,
+    # so a zero above is the server refusing, not a capture that sees nothing.
+    probe_4d_control() {
+      before=$(wss_datagrams)
+      probe_client "$WORK/secret.env" ws://wstunnel:8444 -L "udp://127.0.0.1:51831:$WSS_REMOTE?timeout_sec=0"
+      send_wg_like "$PROBE" 51831
+      sleep 3
+      after=$(wss_datagrams)
+      echo "    right prefix, allowed destination $WSS_REMOTE: gateway datagrams $before -> $after"
+      [ "$after" -gt "$before" ]
+    }
+
+    before=$(wss_datagrams)
+    ans=$(http_probe "$PROBE" "OPENSSL:$PUBLIC_NAME:443,verify=0" "GET / HTTP/1.1\r\nHost: $PUBLIC_NAME\r\nConnection: close\r\n\r\n")
+    echo "    HTTPS GET / through the proxy: $ans"
+    case "$ans" in clean*" 200 OK"*) result 4a-no-prefix-page pass "the console's own page ($ans), nothing from wstunnel" ;;
+      *) result 4a-no-prefix-page fail "$ans" ;; esac
+
+    # shellcheck disable=SC2059 # the request template is the format
+    ans=$(http_probe "$PROBE" "OPENSSL:$PUBLIC_NAME:443,verify=0" "$(printf "$UPGRADE" v1 "$PUBLIC_NAME")")
+    probe_client "$WORK/default.env" "wss://$PUBLIC_NAME" -L "udp://127.0.0.1:51832:$WSS_REMOTE?timeout_sec=0"
+    send_wg_like "$PROBE" 51832
+    sleep 3
+    after=$(wss_datagrams)
+    echo "    WebSocket upgrade on wstunnel's default path /v1/events through the proxy: $ans; gateway datagrams $before -> $after"
+    if [ "$after" = "$before" ] && [ "${ans%% *}" = clean ] && ! printf '%s' "$ans" | grep -q ' 101 '; then
+      result 4b-wrong-path-proxy pass "no upgrade ($ans), no datagram at the gateway"
+    else
+      result 4b-wrong-path-proxy fail "$ans, datagrams $before -> $after"
+    fi
+
+    if probe_4c; then result 4c-wrong-path-direct pass "refused with no banner, no datagram"
+    else result 4c-wrong-path-direct fail "the wstunnel port accepted a wrong prefix or named itself"; fi
+    if probe_4d; then result 4d-restrict-to pass "a tunnel to backend:8081 was refused"
+    else result 4d-restrict-to fail "a tunnel to backend:8081 was opened"; fi
+    if probe_4d_control; then result 4d-capture-control pass "the allowed destination does deliver datagrams to the gateway"
+    else result 4d-capture-control fail "no datagram even on the allowed path: the counts above prove nothing"; fi
+
+    before=$(wss_datagrams)
+    $ENGINE exec "$PROBE" sh -c 'head -c 512 /dev/urandom > /tmp/garbage' < /dev/null
+    g1=$($ENGINE exec "$PROBE" sh -c "timeout 6 socat -t 3 - TCP:$PUBLIC_NAME:443 < /tmp/garbage > /tmp/g1 2>/dev/null;
+      if grep -qi wstunnel /tmp/g1; then v=banner; else v=clean; fi;
+      echo \"\$v \$(wc -c < /tmp/g1)B '\$(head -1 /tmp/g1 | tr -d '\r' | tr -cd '[:print:]' | cut -c1-40)'\"" < /dev/null)
+    g2=$($ENGINE exec "$PROBE" sh -c "timeout 6 socat -t 3 - TCP:wstunnel:8444 < /tmp/garbage > /tmp/g2 2>/dev/null;
+      if grep -qi wstunnel /tmp/g2; then v=banner; else v=clean; fi;
+      echo \"\$v \$(wc -c < /tmp/g2)B '\$(head -1 /tmp/g2 | tr -d '\r' | tr -cd '[:print:]' | cut -c1-40)'\"" < /dev/null)
+    after=$(wss_datagrams)
+    echo "    512 random bytes to the proxy's 443: $g1; to wstunnel:8444: $g2; gateway datagrams $before -> $after"
+    if [ "${g1%% *}" = clean ] && [ "${g2%% *}" = clean ] && [ "$after" = "$before" ]; then
+      result 4e-raw-garbage pass "no banner from either port, no datagram"
+    else
+      result 4e-raw-garbage fail "proxy $g1; wstunnel $g2; datagrams $before -> $after"
+    fi
+    leaks=$($COMPOSE logs --no-color wstunnel 2>&1 | grep -c -F -f "$WORK/secret" || true)
+    if [ "$leaks" = 0 ]; then result 4f-secret-not-logged pass "the prefix appears in none of the wstunnel server's log lines"
+    else result 4f-secret-not-logged fail "the prefix appears in $leaks wstunnel log lines"; fi
+    $ENGINE rm -f -t 0 "$PROBE-wst" > /dev/null 2>&1 || true
+
+    echo
+    echo "== (3) deleting the device cuts it within one netmap fetch, tunnel or not"
+    $ENGINE start "$DEV1-wst" > /dev/null
+    sleep 2
+    wg_up "$DEV1" "$DEV1_VIP" "$GW_PUB" "$WSS_LOCAL" "$WSS_KA" "$WSS_MTU"
+    t=$(wait_tcp ok "$DEV1" "$T1_VIP" 60) || true
+    expect_tcp ok "$DEV1" "$T1_VIP" "device -> $T1 before (back after ${t}s)"
+    api DELETE "/api/nodes/$DEV1_ID" > /dev/null
+    DEV1_ID=
+    t=$(wait_tcp fail "$DEV1" "$T1_VIP" 60) || true
+    sleep 20
+    late1=$(dev_tcp "$DEV1" "$T1_VIP"); late2=$(dev_tcp "$DEV1" "$T2_VIP")
+    echo "  cut ${t}s after the delete; 20 s later: $T1 '$late1', $T2 '$late2'"
+    case "$t" in
+      ''|timeout) result 3-revoke fail "still reachable 60 s after the delete" ;;
+      *) if [ "$t" -le 25 ] && [ "${late1%% *}" = fail ] && [ "${late2%% *}" = fail ]; then
+           result 3-revoke pass "cut ${t}s after the delete (one fetch is 15 s), still cut 20 s later"
+         else
+           result 3-revoke fail "cut after ${t}s; later $late1 / $late2"
+         fi ;;
+    esac
+    $ENGINE rm -f -t 0 "$DEV1-wst" "$DEV1" > /dev/null
+
+    echo
+    echo "== (1d) without a proxy: wstunnel terminates TLS itself (docker-compose.wss-tls.yml)"
+    WSS_DIRTY=1
+    NERONET_WSS_TLS_CERT="$(HOST_PATH "$WORK/proxy")/proxy.crt" NERONET_WSS_TLS_KEY="$(HOST_PATH "$WORK/proxy")/proxy.key" \
+      $COMPOSE -f docker-compose.wss-tls.yml up -d --no-deps --force-recreate wstunnel > /dev/null 2>&1 ||
+      die "recreating wstunnel in direct TLS mode failed"
+    sleep 3
+    wss_up
+    restart_capture
+    $ENGINE exec "$PROBE" sh -c "echo '$WSS_IP $DIRECT_NAME' >> /etc/hosts"
+    # direct_client <env file> <udp port>: a certificate-checking client straight to the
+    # wstunnel port, which now holds the certificate for $DIRECT_NAME.
+    direct_client() {
+      $ENGINE rm -f -t 0 "$PROBE-wst" > /dev/null 2>&1 || true
+      $ENGINE run -d --name "$PROBE-wst" --network "container:$PROBE" --entrypoint /home/app/wstunnel \
+        -e NO_COLOR=true --env-file "$(host_file "$1")" -e SSL_CERT_FILE=/ca/ca.crt -v "$(HOST_PATH "$WORK/proxy"):/ca:ro" \
+        "$WST_IMAGE" client --tls-verify-certificate -L "udp://127.0.0.1:$2:$WSS_REMOTE?timeout_sec=0" \
+        "wss://$DIRECT_NAME:8444" > /dev/null || die "starting the direct client failed"
+      sleep 2
+    }
+    before=$(wss_datagrams)
+    direct_client "$WORK/secret.env" 51833
+    send_wg_like "$PROBE" 51833
+    sleep 3
+    mid=$(wss_datagrams)
+    direct_client "$WORK/wrong.env" 51834
+    send_wg_like "$PROBE" 51834
+    sleep 3
+    after=$(wss_datagrams)
+    echo "  wss://$DIRECT_NAME:8444 with the certificate checked: right prefix $before -> $mid datagrams, wrong prefix $mid -> $after"
+    if [ "$mid" -gt "$before" ] && [ "$after" = "$mid" ]; then
+      result 1d-direct-tls pass "TLS by wstunnel itself: the right prefix delivers, a wrong one does not"
+    else
+      result 1d-direct-tls fail "right prefix $before -> $mid, wrong prefix $mid -> $after"
+    fi
+    $ENGINE rm -f -t 0 "$PROBE-wst" > /dev/null 2>&1 || true
+    $COMPOSE up -d --no-deps --force-recreate wstunnel > /dev/null 2>&1 || die "recreating wstunnel failed"
+    sleep 3
+    WSS_DIRTY=0
+    wss_up
+    restart_capture
+
+    echo
+    echo "== (9) mutations of $WSS_FILE: each must turn a named test red"
+    ORIG_SHA=$(sha256sum < "$WSS_FILE" | cut -d' ' -f1)
+    # mutate <label> <sed program> <probe function> <test name>
+    mutate() {
+      MUT_BACKUP="$WORK/wss.orig"
+      cp "$WSS_FILE" "$MUT_BACKUP"
+      sed -i "$2" "$WSS_FILE"
+      if cmp -s "$WSS_FILE" "$MUT_BACKUP"; then
+        result "9-$1" fail "the sed program changed nothing; the mutation is not applied"
+      else
+        $COMPOSE up -d --no-deps --force-recreate wstunnel > /dev/null 2>&1 || die "recreating wstunnel failed"
+        sleep 3
+        wss_up
+        restart_capture
+        if "$3"; then
+          result "9-$1" fail "$4 stayed green with the mutation: it does not guard this line"
+        else
+          result "9-$1" pass "$4 turned red with the mutation"
+        fi
+      fi
+      cp "$MUT_BACKUP" "$WSS_FILE"
+      MUT_BACKUP=
+      sha=$(sha256sum < "$WSS_FILE" | cut -d' ' -f1)
+      $COMPOSE up -d --no-deps --force-recreate wstunnel > /dev/null 2>&1 || die "recreating wstunnel failed"
+      sleep 3
+      wss_up
+      restart_capture
+      if [ "$sha" = "$ORIG_SHA" ] && git diff --quiet -- "$WSS_FILE" && "$3"; then
+        result "9-$1-restored" pass "file byte-identical (sha256 ${sha%"${sha#????????????}"}...), $4 green again"
+      else
+        result "9-$1-restored" fail "restore incomplete: sha $sha, $4 after restore failed"
+      fi
+    }
+    mutate no-restrict-to '/^      - --restrict-to$/,/^      - \${NERONET_WSS_UPSTREAM/d' probe_4d 4d-restrict-to
+    mutate no-path-check '/^      WSTUNNEL_RESTRICT_HTTP_UPGRADE_PATH_PREFIX:/d' probe_4c 4c-wrong-path-direct
+    $ENGINE rm -f -t 0 "$PROBE-wst" "$PROBE" > /dev/null 2>&1 || true
+
+    echo
+    echo "== wss443 results"
+    cat "$RESULTS"
+    ;;
+
   *)
-    sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,48p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac

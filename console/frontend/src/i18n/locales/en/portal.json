@@ -98,6 +98,24 @@
       "keyInUse": "The new key was already in use. Create the code again.",
       "generic": "The device was not added. Try again.",
       "noCrypto": "This browser cannot create the keys. Open this page in a current version of Chrome, Firefox, Safari or Edge."
+    },
+    "strict": {
+      "title": "Networks that block VPNs (port 443)",
+      "intro": "For computers. Some networks, such as those in hotels, offices and guest Wi-Fi, let only the web through. With this method the connection goes over port 443, like a website, but it is slower: use it only when the code above does not connect.",
+      "install": "Install wstunnel {{version}} on the computer.",
+      "installLink": "Download wstunnel {{version}} from GitHub",
+      "run": "Start this command and leave it open while you stay connected:",
+      "shell": {
+        "unix": "Linux and macOS (Terminal)",
+        "windows": "Windows (PowerShell, in the wstunnel.exe folder)"
+      },
+      "copy": "Copy the command",
+      "copyFor": "Copy the command for {{shell}}",
+      "copied": "Command copied.",
+      "import": "Import this second file into the WireGuard app and turn it on instead of the first one. It uses the same keys but goes through the command above.",
+      "download": "Download the file for blocked networks",
+      "secret": "The command contains an address reserved for your organisation: do not publish it or share it outside your team.",
+      "phones": "On iPhone and Android the WireGuard app cannot use this method."
     }
   }
 }

@@ -1,0 +1,46 @@
+# The strict-network tunnel without a reverse proxy: wstunnel terminates TLS itself.
+# Add it after docker-compose.wss.yml:
+#
+#   NERONET_EXTRA_COMPOSE_FILE="docker-compose.gateway.yml docker-compose.wss.yml docker-compose.wss-tls.yml"
+#   NERONET_WSS_BIND=0.0.0.0                       the router forwards TCP 443 to this port
+#   NERONET_WSS_PORT=8444                          any free port; rootless Podman cannot bind 443
+#   NERONET_WSS_TLS_CERT=/path/fullchain.pem       a certificate for the name devices dial
+#   NERONET_WSS_TLS_KEY=/path/privkey.pem
+#   NERONET_WSS_PUBLIC_URL=wss://vpn.example.org   with :port when it is not 443
+#
+# With a proxy in front (Nginx Proxy Manager, Caddy, Traefik) do not use this file: the
+# proxy holds the certificate and docker-compose.wss.yml alone is the right set-up.
+services:
+  wstunnel:
+    command:
+      - server
+      - --restrict-to
+      - ${NERONET_WSS_UPSTREAM:-gateway:51820}
+      - --websocket-ping-frequency
+      - 20s
+      - --log-lvl
+      - WARN
+      - --tls-certificate
+      - /run/secrets/wss_tls_cert
+      - --tls-private-key
+      - /run/secrets/wss_tls_key
+      - wss://0.0.0.0:8444
+    # The files are mounted with their owner and mode from the host, and the server runs as
+    # the image's unprivileged user (uid 1000, no capabilities), so the key must be readable
+    # by that user: under rootless Podman a key owned by the host user with mode 0640 or
+    # 0644 is; with rootful Docker give it to uid 1000 or make it group-readable. Running as
+    # root does not help: with every capability dropped, root cannot enter the image's
+    # /home/app (mode 0700), which holds the binary.
+    secrets:
+      - wss_tls_cert
+      - wss_tls_key
+
+  backend:
+    environment:
+      NERONET_WSS_PUBLIC_URL: ${NERONET_WSS_PUBLIC_URL:?set NERONET_WSS_PUBLIC_URL to the wss:// address devices dial}
+
+secrets:
+  wss_tls_cert:
+    file: ${NERONET_WSS_TLS_CERT:?set NERONET_WSS_TLS_CERT to the certificate (PEM, full chain) for the tunnel}
+  wss_tls_key:
+    file: ${NERONET_WSS_TLS_KEY:?set NERONET_WSS_TLS_KEY to that certificate's private key (PEM)}

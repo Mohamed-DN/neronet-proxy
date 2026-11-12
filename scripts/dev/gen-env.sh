@@ -46,7 +46,7 @@ if [ "$MODE" = append ]; then
   # Only secrets introduced after the first release of this script belong here: a
   # missing database password is a different problem, and a new one would not open the
   # database that already exists.
-  for entry in RESTIC_PASSWORD:32; do
+  for entry in RESTIC_PASSWORD:32 NERONET_WSS_PATH_PREFIX:24; do
     key=${entry%%:*}
     if ! grep -q "^$key=." "$TARGET"; then
       # A file that does not end in a newline would join the new line to its last one.
@@ -80,6 +80,9 @@ fi
   echo "# Encrypts the backups (profile backup). Without it no backup can be read, and it"
   echo "# cannot be recovered from the backups themselves: keep a copy outside this host."
   echo "RESTIC_PASSWORD=$(rand_hex 32)"
+  echo "# The secret first part of the address the strict-network tunnel answers on"
+  echo "# (docker-compose.wss.yml). Signed-in users see it in /me; nobody else should."
+  echo "NERONET_WSS_PATH_PREFIX=$(rand_hex 24)"
   if [ "$EXPOSED" = 1 ]; then
     echo "# Reachable by other people: administrators sign in with an authenticator."
     echo "SOVEREIGN_MFA_MANDATORY=admins"
@@ -93,4 +96,4 @@ fi
 # No effect on filesystems without POSIX modes (NTFS through Git Bash).
 chmod 600 "$TARGET" 2>/dev/null || true
 
-echo "wrote $TARGET (8 secrets, not shown)"
+echo "wrote $TARGET (9 secrets, not shown)"

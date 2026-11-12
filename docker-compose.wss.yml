@@ -1,0 +1,71 @@
+# WireGuard over WebSocket on TCP 443 (ADR 0032 draft, method `wg-wss`): for laptops on
+# networks that drop every UDP packet (hotels, offices, some guest Wi-Fi) and leave only
+# the web open. The device runs the wstunnel client, which carries its unchanged
+# WireGuard packets inside one WebSocket; this server unwraps them and hands them to the
+# profile gateway's UDP 51820. Identity, policy and revocation stay with the gateway:
+# this container decides nothing about who may reach what.
+#
+#   NERONET_EXTRA_COMPOSE_FILE="docker-compose.proxy.yml docker-compose.gateway.yml docker-compose.wss.yml"
+#
+# It needs docker-compose.gateway.yml, and NERONET_WSS_PATH_PREFIX in .env
+# (scripts/dev/gen-env.sh writes it; --append-missing adds it to an older .env).
+#
+# Behind a reverse proxy that holds the certificate (the usual case: Nginx Proxy Manager
+# on 443 for the console's name), this server speaks plain WebSocket on
+# NERONET_WSS_BIND:NERONET_WSS_PORT and the proxy forwards one location to it:
+#
+#   location /<NERONET_WSS_PATH_PREFIX>  ->  http://<this host>:<NERONET_WSS_PORT>, WebSocket on
+#
+# Without a proxy, add docker-compose.wss-tls.yml: the server then terminates TLS itself.
+# docs/handbook/strict-networks.md has both set-ups and what the tests measured.
+#
+# Upstream: wstunnel (BSD-3-Clause, https://github.com/erebe/wstunnel) v11.1.0, the
+# multi-architecture image pinned by its index digest. Change the version and the digest
+# together, and read the release notes for changes to --restrict-to and the path check.
+services:
+  wstunnel:
+    image: ghcr.io/erebe/wstunnel:v11.1.0@sha256:e2b62fac898406c73342e8e50fc21f7e221c17811aad532ed3a80a2e3c327b79
+    restart: unless-stopped
+    networks:
+      - neronet-isolated-mesh
+    entrypoint: ["/home/app/wstunnel"]
+    command:
+      - server
+      # The only destination a client may ask for: the gateway's WireGuard port. Any
+      # other host or port is refused before a socket is opened.
+      - --restrict-to
+      - ${NERONET_WSS_UPSTREAM:-gateway:51820}
+      - --websocket-ping-frequency
+      - 20s
+      # At INFO wstunnel logs every accepted tunnel with the name of the rule it matched,
+      # and that name contains the secret prefix. WARN keeps the refusals (wrong path,
+      # wrong destination) and leaves the secret out of the logs.
+      - --log-lvl
+      - WARN
+      - ${NERONET_WSS_LISTEN:-ws://0.0.0.0:8444}
+    environment:
+      # The secret first part of the upgrade path. A request with any other path is
+      # answered 400 and never reaches the gateway. Given through the environment so it
+      # does not show in the process list.
+      WSTUNNEL_RESTRICT_HTTP_UPGRADE_PATH_PREFIX: ${NERONET_WSS_PATH_PREFIX:?run scripts/dev/gen-env.sh --append-missing to add NERONET_WSS_PATH_PREFIX to .env}
+      NO_COLOR: "true"
+    ports:
+      # Bind it to the address the reverse proxy reaches (the LAN address when the proxy
+      # runs on another machine), never to a port the router forwards.
+      - "${NERONET_WSS_BIND:-127.0.0.1}:${NERONET_WSS_PORT:-8444}:8444"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    depends_on:
+      - gateway
+
+  backend:
+    environment:
+      # Read by POST /api/devices/profile, which gives them only to a signed-in user who
+      # adds a device (the "networks that block VPNs" part of the result page in /me).
+      NERONET_WSS_PATH_PREFIX: ${NERONET_WSS_PATH_PREFIX:?run scripts/dev/gen-env.sh --append-missing to add NERONET_WSS_PATH_PREFIX to .env}
+      NERONET_WSS_UPSTREAM: ${NERONET_WSS_UPSTREAM:-gateway:51820}
+      # The address devices dial. Empty: wss:// plus the name the browser used for the
+      # console, which is right when the proxy serves both on 443.
+      NERONET_WSS_PUBLIC_URL: ${NERONET_WSS_PUBLIC_URL:-}

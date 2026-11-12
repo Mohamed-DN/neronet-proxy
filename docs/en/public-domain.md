@@ -151,7 +151,9 @@ If a reverse proxy already owns ports 80 and 443 on your network, put the consol
 4. **Do not send these two through the proxy**: forward them straight from the router to the VM:
    - **TCP 8443**, the control plane: nodes pin the control-plane certificate, so a proxy that
      re-encrypts the traffic with its own certificate makes nodes refuse to connect.
-   - **UDP 51820**, WireGuard: a web proxy does not carry UDP.
+   - **UDP 51820**, WireGuard: a web proxy does not carry UDP. For laptops on networks that
+     drop UDP, the proxy can carry WireGuard inside a WebSocket on 443 instead: see
+     [strict-networks.md](strict-networks.md).
    Make sure the proxy itself does not use 8443; if it does, move the proxy's admin port.
 5. Keep the DNS records "DNS only" and pointing at the public IP (see the section above).
 
