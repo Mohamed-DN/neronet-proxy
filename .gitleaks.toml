@@ -57,3 +57,31 @@ paths = ['''^docs/adr/.*\.md$''']
 description = "Test fixtures and test keys in third-party carved packages (Tailscale DERP mesh keys in unit tests)."
 targetRules = ["generic-api-key"]
 paths = ['''^third_party/.*_test\.go$''']
+
+[[allowlists]]
+description = "Frontend tests of the invitation flow. TOKEN is the base64url of the ASCII phrase 'Chiave-di-prova-larga-32-bytes-x' (Italian for 'long test key'), a placeholder shaped like a 32-byte invite token. The tests post it to a mocked fetch; no control plane ever issued it."
+targetRules = ["generic-api-key"]
+paths = [
+  '''^console/frontend/src/portal/InviteAcceptRoute\.test\.tsx$''',
+  '''^console/frontend/src/routes/pages/invitations/InvitationsPanel\.test\.tsx$''',
+]
+
+[[allowlists]]
+description = "Test of the Cloudflare DDNS kit. TOKEN is a made-up string ('cfT0ken_SECRET-...') that the test writes into a temporary config and checks the script handles without leaking it. It is not a Cloudflare API token."
+targetRules = ["generic-api-key"]
+paths = ['''^scripts/ops/cloudflare-ddns/test\.sh$''']
+
+[[allowlists]]
+description = "Go test of the transport multiplexer. 'key' is a hex peer identifier used as a map key for a peerState built in memory; it is a public-key-shaped constant of the test, not a private key or credential."
+targetRules = ["generic-api-key"]
+paths = ['''^pkg/transport/mux_fallback_test\.go$''']
+
+[[allowlists]]
+description = "Frontend test of the add-device flow. 'secret' is the hex counting sequence 0123456789abcdef repeated, a placeholder returned by a stubbed register call."
+targetRules = ["generic-api-key"]
+paths = ['''^console/frontend/src/portal/AddDeviceRoute\.test\.tsx$''']
+
+[[allowlists]]
+description = "Overlay scenario script. Sec-WebSocket-Key is the sample nonce from RFC 6455 section 1.3 (base64 of 'the sample nonce'), sent in a hand-written WebSocket upgrade request. It is public and protects nothing."
+targetRules = ["generic-api-key"]
+paths = ['''^scripts/dev/scenarios/overlay\.sh$''']
