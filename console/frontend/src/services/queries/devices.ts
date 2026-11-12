@@ -1,4 +1,10 @@
-import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult
+} from '@tanstack/react-query';
 
 import { apiGet, apiPost, apiPut, type ApiError } from '../apiClient';
 import type { ProfileDeviceResponse } from '../../devices/wgConfig';

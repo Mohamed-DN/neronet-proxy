@@ -55,9 +55,7 @@ async function exitCandidates(organizationId, client = getPgPool()) {
 async function mayChooseExit(user, organizationId, { ownerId = null } = {}, client = getPgPool()) {
   if (user && (user.role === 'admin' || user.role === 'super-admin')) return true;
   if (ownerId !== null && ownerId !== user.id) return false;
-  const res = await client.query('SELECT exit_self_service FROM organizations WHERE id = $1', [
-    orgKey(organizationId)
-  ]);
+  const res = await client.query('SELECT exit_self_service FROM organizations WHERE id = $1', [orgKey(organizationId)]);
   return Boolean(res.rows[0] && res.rows[0].exit_self_service);
 }
 
@@ -66,9 +64,7 @@ function isAdmin(user) {
 }
 
 async function selfService(organizationId, client = getPgPool()) {
-  const res = await client.query('SELECT exit_self_service FROM organizations WHERE id = $1', [
-    orgKey(organizationId)
-  ]);
+  const res = await client.query('SELECT exit_self_service FROM organizations WHERE id = $1', [orgKey(organizationId)]);
   return Boolean(res.rows[0] && res.rows[0].exit_self_service);
 }
 

@@ -189,7 +189,7 @@ describe('ADR 0032: exits for profile devices', () => {
       node_id: 'node-exit-a'
     });
     const exitAtGw = gw.peers.find((p) => p.node_id === 'node-exit-a');
-    assert.ok(exitAtGw, "the gateway holds the exit although its own policy permits nobody");
+    assert.ok(exitAtGw, 'the gateway holds the exit although its own policy permits nobody');
     assert.deepStrictEqual(exitAtGw.allowed_ips, ['0.0.0.0/0', '::/0']);
 
     const exitDoc = await NetmapService.buildNetmap('node-exit-a');
@@ -198,7 +198,10 @@ describe('ADR 0032: exits for profile devices', () => {
       { node_id: dev.device_id, allowed_ips: [`${dev.overlay_ipv4}/32`, `${dev.overlay_ipv6}/128`] }
     ]);
     const gwAtExit = exitDoc.peers.find((p) => p.node_id === 'node-exit-gw');
-    assert.ok(gwAtExit && gwAtExit.allowed_ips.includes(`${dev.overlay_ipv4}/32`), "the device's replies go to the gateway");
+    assert.ok(
+      gwAtExit && gwAtExit.allowed_ips.includes(`${dev.overlay_ipv4}/32`),
+      "the device's replies go to the gateway"
+    );
     assert.ok(!JSON.stringify(exitDoc).includes('preshared_key_hex'), 'the exit never learns a device PSK');
 
     const bystander = await NetmapService.buildNetmap('node-exit-b');
