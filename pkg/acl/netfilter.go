@@ -33,9 +33,9 @@ type NetstackFilter struct {
 	policy       *CompiledPeerPolicy
 	conntrack    map[string]*ConntrackEntry
 	conntrackTTL time.Duration
-	// answers holds, for a node that enforces nothing itself (a profile device behind
-	// its gateway, ADR 0029), the flows a rule let in: the node may answer them although
-	// no outbound rule names the other end. Keyed like conntrack, valued by expiry.
+	// answers holds the flows an inbound rule let in, for a mesh node's own filter or,
+	// at a gateway, a profile device's (ADR 0029): the node may answer them although no
+	// outbound rule names the other end. Keyed like conntrack, valued by expiry.
 	answers map[string]time.Time
 }
 
@@ -124,10 +124,11 @@ func (nf *NetstackFilter) EvaluateInbound(srcVIP net.IP, srcPort uint16, destPor
 	return err
 }
 
-// EvaluateInboundAnswerable is EvaluateInbound for a node that cannot enforce anything
-// itself: a profile device, whose gateway applies the device's policy to both
-// directions (ADR 0029). When a rule accepts the packet, its exact reverse becomes an
-// answer the node may send (IsAnswer) for as long as the flow keeps arriving.
+// EvaluateInboundAnswerable is EvaluateInbound for a filter whose outbound check
+// consults IsAnswer: a mesh node's own (dataplane.ACLFilter) and, at a gateway, a
+// profile device's (ADR 0029). When a rule accepts the packet, its exact reverse
+// becomes an answer the node may send (IsAnswer) for as long as the flow keeps
+// arriving.
 //
 // A packet let in by conntrack records nothing. It is the answer to the node's own
 // flow, and the node's further packets in that flow stay under its outbound rules: a

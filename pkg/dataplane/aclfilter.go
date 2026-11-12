@@ -1,6 +1,7 @@
 package dataplane
 
 import (
+	"errors"
 	"net"
 	"net/netip"
 
@@ -29,19 +30,30 @@ func NewACLFilter(nf *acl.NetstackFilter) *ACLFilter {
 }
 
 // Outbound applies the sender-side check.
+//
+// The node may answer a flow its inbound rules let in although no outbound rule names
+// the other end: a one-way allow-list rule (the phone may open this node's port)
+// compiles to an inbound entry here and nothing in the outbound rules, and without
+// this the node's answers would meet default deny. Only default deny gives way; an
+// explicit DROP still drops the answer. This is the rule the profile gateway applies
+// to a device's answers (forward.go).
 func (f *ACLFilter) Outbound(p Packet) error {
-	return f.nf.EvaluateOutbound4Tuple(
-		toNetIP(p.Src), p.SrcPort,
-		toNetIP(p.Dst), p.DstPort,
-		toACLProtocol(p.Protocol),
-	)
+	src, dst, proto := toNetIP(p.Src), toNetIP(p.Dst), toACLProtocol(p.Protocol)
+	err := f.nf.EvaluateOutbound4Tuple(src, p.SrcPort, dst, p.DstPort, proto)
+	if errors.Is(err, acl.ErrOutboundDefaultDeny) && f.nf.IsAnswer(src, p.SrcPort, dst, p.DstPort, proto) {
+		return nil
+	}
+	return err
 }
 
-// Inbound applies the receiver-side check, which is the authoritative one.
+// Inbound applies the receiver-side check, which is the authoritative one. A packet a
+// rule (not conntrack) accepts makes its exact reverse an answer Outbound lets out for
+// as long as the flow keeps arriving; deleting the rule or writing a DROP for it drops
+// the flow's next packet here.
 func (f *ACLFilter) Inbound(p Packet) error {
-	return f.nf.EvaluateInbound(
+	return f.nf.EvaluateInboundAnswerable(
 		toNetIP(p.Src), p.SrcPort,
-		p.DstPort,
+		toNetIP(p.Dst), p.DstPort,
 		toACLProtocol(p.Protocol),
 	)
 }
