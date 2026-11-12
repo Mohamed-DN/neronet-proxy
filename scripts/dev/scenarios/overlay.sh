@@ -24,8 +24,7 @@
 #                 through the API, and measure real TCP to two nodes, an ACL DROP at
 #                 the gateway, roaming, a second device spoofing the first's address,
 #                 the console calling the device connected from the gateway-reported
-#                 handshake and not connected after wg-quick down (shorten the 180 s
-#                 window with NERONET_PROFILE_HANDSHAKE_WINDOW_SECONDS on the stack),
+#                 handshake and not connected within 180 s of wg-quick down,
 #                 and the cut after deleting the device (image docker/wgclient)
 #   profile-d2d   two stock wg-quick devices on one gateway, a phone and a laptop: real
 #                 TCP both ways between them, WireGuard only on their wire, an ACL DROP
@@ -1622,9 +1621,11 @@ PostUp = ip -6 route add ::/0 dev %i table 51820 && ip -6 rule add not fwmark 51
     echo "== (f) the console reports the device by the handshake its gateway saw"
     # A stock WireGuard app never heartbeats; the gateway reports the device's last
     # handshake on its own heartbeat (every 15 s). Read back through the API, as the
-    # Devices page and the map read it.
+    # Devices page and the map read it. The 180 s window is not shortened here: with a
+    # 25 s keepalive a live session rekeys about every 120-145 s, so any window below
+    # that would call a connected device "not connected" (measured: a 30 s window did).
     hs_status() { api GET "/api/nodes/$DEV1_ID" | sed -n 's/.*"handshake_status":"\([a-z_]*\)".*/\1/p'; }
-    HS_WINDOW=${NERONET_PROFILE_HANDSHAKE_WINDOW_SECONDS:-180}
+    HS_WINDOW=180
     wait_hs() { # <want> <limit seconds> -> echoes the elapsed seconds
       h_start=$(date +%s)
       while :; do
@@ -1637,8 +1638,11 @@ PostUp = ip -6 route add ::/0 dev %i table 51820 && ip -6 rule add not fwmark 51
     echo "  console: connected ${t}s after the check started; last_handshake_at $(api GET "/api/nodes/$DEV1_ID" | sed -n 's/.*"last_handshake_at":"\([^"]*\)".*/\1/p')"
     $ENGINE exec "$DEV1" wg-quick down wg0 > /dev/null 2>&1 || die "wg-quick down failed in $DEV1"
     DOWN_AT=$(date +%s)
-    t=$(wait_hs not_connected $((HS_WINDOW + 150))) || rc=1
-    echo "  console: not connected ${t}s after wg-quick down (window ${HS_WINDOW}s; rekey 120 s)"
+    [ "$(hs_status)" = connected ] || { echo "unexpected: not connected at the moment of wg-quick down" >&2; rc=1; }
+    # The last handshake is at most one rekey old when the device goes away, so the
+    # verdict flips within the window, plus one gateway report and one poll.
+    t=$(wait_hs not_connected $((HS_WINDOW + 30))) || rc=1
+    echo "  console: not connected ${t}s after wg-quick down (window ${HS_WINDOW}s)"
     $ENGINE exec "$DEV1" wg-quick up wg0 > /dev/null 2>&1 || die "wg-quick up again failed in $DEV1"
     t=$(wait_tcp ok "$DEV1" "$T1_VIP" 60) || rc=1
     echo "  wg-quick up again: device -> $T1 after ${t}s ($(($(date +%s) - DOWN_AT))s after the down)"
