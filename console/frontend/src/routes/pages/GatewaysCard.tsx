@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -41,7 +42,7 @@ export function isValidGatewayEndpoint(value: string): boolean {
 }
 
 /** Why the server refused to remove a gateway, in words the person can act on. */
-function removeRefusal(error: unknown, name: string, t: (key: string, options?: object) => string): string {
+function removeRefusal(error: unknown, name: string, t: TFunction<readonly ['settings', 'ui']>): string {
   if (error instanceof ApiError && error.code === 'profile_gateway_serves_devices') {
     const details = (error.details ?? {}) as { devices?: unknown };
     const count = typeof details.devices === 'number' ? details.devices : 0;
