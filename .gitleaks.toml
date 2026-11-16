@@ -59,6 +59,11 @@ targetRules = ["generic-api-key"]
 paths = ['''^pkg/drop/ticket_test\.go$''']
 
 [[allowlists]]
+description = "WebRTC token test: a stubbed database row whose otp_secret is the literal 'ABCDEF234567', a base32 sample that belongs to no account."
+targetRules = ["generic-api-key"]
+paths = ['''^console/backend/tests/webrtc_token_entropy\.test\.js$''']
+
+[[allowlists]]
 description = "Test fixtures and test keys in third-party carved packages (Tailscale DERP mesh keys in unit tests)."
 targetRules = ["generic-api-key"]
 paths = ['''^third_party/.*_test\.go$''']
