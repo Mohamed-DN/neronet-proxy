@@ -19,8 +19,10 @@ const { bumpNetmap } = require('../services/AclEngine');
 
 // The error handler drops `code` on 5xx, and clients map these two to a message.
 function sendHonestFailure(res, err) {
-  if (err && (err.code === 'server_key_missing' ||
-      err.code === 'server_endpoint_missing' || err.code === 'qr_generation_failed')) {
+  if (
+    err &&
+    (err.code === 'server_key_missing' || err.code === 'server_endpoint_missing' || err.code === 'qr_generation_failed')
+  ) {
     res.status(503).json({ error: err.message, code: err.code });
     return true;
   }
@@ -110,31 +112,31 @@ router.post('/generate', async (req, res, next) => {
       );
       // Built before commit: if the QR cannot be rendered the node is rolled back
       // rather than left enrolled with a private key nobody received.
-    wgConf = buildWireGuardConfig({
-          deviceName: name ? name.trim() : 'Sovereign-Client',
-          role: nodeRole,
-          privateKeyBase64: kp.privateKeyBase64,
-          overlayIpv4,
-          overlayIpv6,
-          presharedKeyBase64: kp.presharedKeyBase64,
-          onionRoutingEnabled: onionEnabled,
-          onionHops: hops
-        });
+      wgConf = buildWireGuardConfig({
+        deviceName: name ? name.trim() : 'Sovereign-Client',
+        role: nodeRole,
+        privateKeyBase64: kp.privateKeyBase64,
+        overlayIpv4,
+        overlayIpv6,
+        presharedKeyBase64: kp.presharedKeyBase64,
+        onionRoutingEnabled: onionEnabled,
+        onionHops: hops
+      });
 
-    jsonProfile = buildNoiseJsonProfile({
-          nodeId: kp.nodeId,
-          privateKeyHex: kp.privateKeyHex,
-          publicKeyHex: kp.publicKeyHex,
-          overlayIpv4,
-          overlayIpv6,
-          presharedKeyHex: kp.presharedKeyHex,
-          role: nodeRole,
-          countryCode: nodeCountry,
-          onionHops: hops,
-          onionRoutingEnabled: onionEnabled
-        });
+      jsonProfile = buildNoiseJsonProfile({
+        nodeId: kp.nodeId,
+        privateKeyHex: kp.privateKeyHex,
+        publicKeyHex: kp.publicKeyHex,
+        overlayIpv4,
+        overlayIpv6,
+        presharedKeyHex: kp.presharedKeyHex,
+        role: nodeRole,
+        countryCode: nodeCountry,
+        onionHops: hops,
+        onionRoutingEnabled: onionEnabled
+      });
 
-    qrCodeDataUrl = await generateQrCodeDataUrl(wgConf);
+      qrCodeDataUrl = await generateQrCodeDataUrl(wgConf);
       await bumpNetmap(client);
       afterCommit.push(() =>
         logAuditEvent({

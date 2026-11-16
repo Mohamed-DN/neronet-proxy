@@ -135,7 +135,11 @@ describe('ADR 0032: exits for profile devices', () => {
       assert.strictEqual(res.body.code, 'no_such_exit');
     }
     const plain = await register(adminToken, {});
-    assert.deepStrictEqual(plain.body.allowed_ips, ['100.64.0.0/10'], 'a profile without an exit keeps the overlay routes');
+    assert.deepStrictEqual(
+      plain.body.allowed_ips,
+      ['100.64.0.0/10'],
+      'a profile without an exit keeps the overlay routes'
+    );
     assert.deepStrictEqual(plain.body.dns, ['100.100.100.100'], 'every profile resolves mesh names (ADR 0034)');
   });
 

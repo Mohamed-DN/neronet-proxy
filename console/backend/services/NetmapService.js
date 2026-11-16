@@ -677,7 +677,9 @@ async function buildNetmap(nodeId) {
       // and put under the search domain as it is now, so a changed domain does not leave a
       // device under the old one. A row without a stored name gets the computed one.
       const storedLabel = row.dns_name ? String(row.dns_name).split('.')[0] : '';
-      const deviceDNS = storedLabel ? `${storedLabel}.${searchDomain}` : computeDNSName(row.name, undefined, searchDomain);
+      const deviceDNS = storedLabel
+        ? `${storedLabel}.${searchDomain}`
+        : computeDNSName(row.name, undefined, searchDomain);
       if (deviceDNS) deviceEntry.dns_name = deviceDNS;
       peers.push(deviceEntry);
       continue;

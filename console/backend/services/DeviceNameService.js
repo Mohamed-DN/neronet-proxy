@@ -15,7 +15,10 @@ const SAVEPOINT = 'device_dns_name';
 
 function exhausted() {
   // The caller turns a 23505 that is not about the key into 503 try_again, never a 500.
-  return Object.assign(new Error('no free device name found'), { code: '23505', constraint: `${DNS_NAME_INDEX}_exhausted` });
+  return Object.assign(new Error('no free device name found'), {
+    code: '23505',
+    constraint: `${DNS_NAME_INDEX}_exhausted`
+  });
 }
 
 async function firstFree(client, organizationId, label, searchDomain, from) {

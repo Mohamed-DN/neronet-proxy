@@ -14,7 +14,11 @@ const OFF = new Set(['off', 'false', '0', 'no']);
  * must not point at it.
  */
 function meshDnsEnabled(env = process.env) {
-  return !OFF.has(String(env.SOVEREIGN_MESH_DNS || '').trim().toLowerCase());
+  return !OFF.has(
+    String(env.SOVEREIGN_MESH_DNS || '')
+      .trim()
+      .toLowerCase()
+  );
 }
 
 /**

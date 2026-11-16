@@ -159,9 +159,13 @@ describe('unique device names (ADR 0034 phase 2)', () => {
 
     // Another unique violation (the key) is not ours to retry.
     await assert.rejects(
-      DeviceNameService.insertWithDnsName(client, { organizationId: ORG, name: 'Phone', searchDomain: SD }, async () => {
-        throw Object.assign(new Error('key clash'), { code: '23505', constraint: 'nodes_public_key_key' });
-      }),
+      DeviceNameService.insertWithDnsName(
+        client,
+        { organizationId: ORG, name: 'Phone', searchDomain: SD },
+        async () => {
+          throw Object.assign(new Error('key clash'), { code: '23505', constraint: 'nodes_public_key_key' });
+        }
+      ),
       /key clash/
     );
   });
@@ -172,12 +176,25 @@ describe('unique device names (ADR 0034 phase 2)', () => {
         `INSERT INTO nodes (id, user_id, name, public_key, overlay_ipv4, overlay_ipv6, role, ip_class, is_healthy,
                             is_quarantined, organization_id, device_kind, dns_name, created_at)
          VALUES ($1, 'usr-ddn-admin', $2, $3, $4, 'fd7a:115c:a1e0:8::' || $9::text, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $5, $6, $7, $8)`,
-        [id, name, crypto.randomBytes(32).toString('hex'), `100.66.0.${nextIp}`, OTHER, kind, dnsName, createdAt, `66${nextIp++}`]
+        [
+          id,
+          name,
+          crypto.randomBytes(32).toString('hex'),
+          `100.66.0.${nextIp}`,
+          OTHER,
+          kind,
+          dnsName,
+          createdAt,
+          `66${nextIp++}`
+        ]
       );
     let nextIp = 1;
     const names = async (ids) =>
       Object.fromEntries(
-        (await pool.query('SELECT id, dns_name FROM nodes WHERE id = ANY($1)', [ids])).rows.map((r) => [r.id, r.dns_name])
+        (await pool.query('SELECT id, dns_name FROM nodes WHERE id = ANY($1)', [ids])).rows.map((r) => [
+          r.id,
+          r.dns_name
+        ])
       );
 
     it('names old rows with the registration rule, resolves collisions by age then id, then enforces uniqueness', async () => {
