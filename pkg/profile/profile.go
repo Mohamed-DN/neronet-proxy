@@ -44,9 +44,12 @@ type Profile struct {
 	PrivateKey Key
 	Addresses  []netip.Prefix
 	DNS        []netip.Addr
-	ListenPort int
-	MTU        int
-	Peers      []Peer
+	// SearchDomains are the names after the addresses in the DNS line (ADR 0034): wg-quick and
+	// the stock apps use them as search domains, so a bare device name resolves.
+	SearchDomains []string
+	ListenPort    int
+	MTU           int
+	Peers         []Peer
 }
 
 func parseKey(field, value string) (Key, error) {
@@ -162,12 +165,18 @@ func Parse(r io.Reader) (*Profile, error) {
 			p.Addresses = append(p.Addresses, ps...)
 		case "interface.dns":
 			for _, part := range strings.Split(value, ",") {
-				a, e := netip.ParseAddr(strings.TrimSpace(part))
-				if e != nil {
-					// wg-quick also accepts search domains here; NeroNet profiles do not use them.
-					return nil, fmt.Errorf("profile: line %d: DNS %q is not an address", line, strings.TrimSpace(part))
+				part = strings.TrimSpace(part)
+				if a, e := netip.ParseAddr(part); e == nil {
+					p.DNS = append(p.DNS, a)
+					continue
 				}
-				p.DNS = append(p.DNS, a)
+				// wg-quick takes search domains here too. Anything that is neither an address
+				// nor a plain DNS name is an error: the value reaches the resolver config.
+				d, ok := normaliseDNSName(part)
+				if !ok {
+					return nil, fmt.Errorf("profile: line %d: DNS %q is neither an address nor a domain name", line, part)
+				}
+				p.SearchDomains = append(p.SearchDomains, d)
 			}
 		case "interface.listenport":
 			p.ListenPort, err = parseInt("ListenPort", value, 65535)
@@ -264,6 +273,33 @@ func (p *Profile) String() string {
 	for _, peer := range p.Peers {
 		peers = append(peers, fmt.Sprintf("%s via %s", base64.StdEncoding.EncodeToString(peer.PublicKey[:])[:8]+"…", peer.Endpoint))
 	}
-	return fmt.Sprintf("NeroNet profile v%d device=%s addresses=%v dns=%v peers=[%s]",
-		p.Version, p.DeviceID, p.Addresses, p.DNS, strings.Join(peers, ", "))
+	return fmt.Sprintf("NeroNet profile v%d device=%s addresses=%v dns=%v search=%v peers=[%s]",
+		p.Version, p.DeviceID, p.Addresses, p.DNS, p.SearchDomains, strings.Join(peers, ", "))
+}
+
+// normaliseDNSName lowercases a host name and reports whether it is one: dot-separated labels
+// of 1 to 63 letters, digits and hyphens, none starting or ending with a hyphen, at most 253
+// characters, and a last label that is not all digits (that would be a malformed address).
+func normaliseDNSName(s string) (string, bool) {
+	s = strings.ToLower(strings.TrimSuffix(s, "."))
+	if s == "" || len(s) > 253 {
+		return "", false
+	}
+	labels := strings.Split(s, ".")
+	for _, l := range labels {
+		if l == "" || len(l) > 63 || l[0] == '-' || l[len(l)-1] == '-' {
+			return "", false
+		}
+		for i := 0; i < len(l); i++ {
+			c := l[i]
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+				return "", false
+			}
+		}
+	}
+	last := labels[len(labels)-1]
+	if strings.Trim(last, "0123456789") == "" {
+		return "", false
+	}
+	return s, true
 }

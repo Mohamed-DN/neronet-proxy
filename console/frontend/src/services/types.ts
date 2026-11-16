@@ -23,6 +23,8 @@ export interface MeshNode {
   city?: string;
   overlay_ipv4?: string | null;
   overlay_ipv6?: string | null;
+  /** The mesh name other devices reach this one by, for example phone-2.example.com (ADR 0034). */
+  dns_name?: string | null;
   public_key?: string;
   is_quarantined?: boolean | number;
   is_healthy?: boolean | number;

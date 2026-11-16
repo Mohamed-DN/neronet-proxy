@@ -990,10 +990,18 @@ router.post('/:id/action', async (req, res, next) => {
         return res.status(400).json({ error: 'dns_name string is required' });
       }
 
-      await pool.query(`UPDATE nodes SET dns_name = $1, updated_at = NOW() WHERE id = $2`, [
-        dnsName.toLowerCase().trim(),
-        node.id
-      ]);
+      try {
+        await pool.query(`UPDATE nodes SET dns_name = $1, updated_at = NOW() WHERE id = $2`, [
+          dnsName.toLowerCase().trim(),
+          node.id
+        ]);
+      } catch (err) {
+        // Names are unique per organisation (migration 053): say so instead of a 500.
+        if (err && err.code === '23505') {
+          return res.status(409).json({ error: 'dns_name is already in use', code: 'dns_name_in_use' });
+        }
+        throw err;
+      }
 
       await bumpNetmap();
 

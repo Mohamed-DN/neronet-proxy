@@ -74,6 +74,26 @@ describe('profile device mesh names (ADR 0034)', () => {
     assert.equal(entry.dns_name, 'my-phone.pmn.example.com');
   });
 
+  it('answers the resolver and the organisation search domain for the DNS line', async () => {
+    const res = await register('laptop');
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.deepEqual(res.body.dns, ['100.100.100.100']);
+    assert.equal(res.body.search_domain, 'pmn.example.com');
+  });
+
+  it('falls back to <slug>.neronet when the organisation has no search domain', async () => {
+    await pool.query('UPDATE organizations SET search_domain = NULL WHERE id = $1', [ORG]);
+    try {
+      const res = await register('desk');
+      assert.equal(res.body.search_domain, 'pmn.neronet');
+      const netmap = await NetmapService.buildNetmap(gateway);
+      const entry = netmap.peers.find((p) => p.node_id === res.body.device_id);
+      assert.equal(entry.dns_name, 'desk.pmn.neronet', 'the netmap and the profile use one suffix');
+    } finally {
+      await pool.query("UPDATE organizations SET search_domain = 'pmn.example.com' WHERE id = $1", [ORG]);
+    }
+  });
+
   it('an explicit dns_name on the row wins over the computed one', async () => {
     const tablet = await register('tablet');
     await pool.query('UPDATE nodes SET dns_name = $1 WHERE id = $2', ['ipad.pmn.example.com', tablet.body.device_id]);

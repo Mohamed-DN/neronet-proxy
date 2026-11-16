@@ -333,6 +333,108 @@ func TestMeshDNSDeviceWithAnExitKeepsUsingTheExitsResolver(t *testing.T) {
 	}
 }
 
+func TestMeshDNSDeviceWithAnExitResolvesMeshNamesLocally(t *testing.T) {
+	g, d := meshDNSPair(t)
+	meshUp := newStubResolver(t, [4]byte{192, 0, 2, 77})
+	exitUp := newStubResolver(t, [4]byte{198, 51, 100, 5})
+	if err := g.dev.SetMeshDNS(meshNames(t, meshUp.addr)); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.dev.SetEgress(egressFor(deviceAddr, &EgressClient{ID: "dev", Via: EgressLocal}), exitUp.addr); err != nil {
+		t.Fatal(err)
+	}
+	for _, network := range []string{"udp", "tcp"} {
+		for name, want := range map[string]string{"laptop.example.com.": "100.64.0.9", "laptop.": "100.64.0.9", "phone.example.com.": deviceAddr} {
+			m, err := ask(t, d.dev, network, name, 15*time.Second)
+			if err != nil {
+				t.Fatalf("%s %s: no answer: %v", network, name, err)
+			}
+			if got := aOf(t, m); len(got) != 1 || got[0].String() != want {
+				t.Errorf("%s %s: answered %v, want %s", network, name, got, want)
+			}
+		}
+		m, err := ask(t, d.dev, network, "ghost.example.com.", 15*time.Second)
+		if err != nil {
+			t.Fatalf("%s ghost: %v", network, err)
+		}
+		if m.RCode != dnsmessage.RCodeNameError {
+			t.Errorf("%s: an unknown mesh name got rcode %v, want NXDOMAIN", network, m.RCode)
+		}
+	}
+	if exitUp.queries.Load() != 0 {
+		t.Fatalf("the exit's resolver saw %d queries for mesh names, want 0", exitUp.queries.Load())
+	}
+	if meshUp.queries.Load() != 0 {
+		t.Fatalf("the gateway's own upstream saw %d queries from an exit device, want 0", meshUp.queries.Load())
+	}
+	// Anything else still leaves through the exit, over both transports.
+	for _, network := range []string{"udp", "tcp"} {
+		m, err := ask(t, d.dev, network, "www.example.org.", 15*time.Second)
+		if err != nil {
+			t.Fatalf("%s: %v", network, err)
+		}
+		if got := aOf(t, m); len(got) != 1 || got[0].String() != "198.51.100.5" {
+			t.Errorf("%s: answered %v, want the exit resolver's 198.51.100.5", network, got)
+		}
+	}
+	if exitUp.queries.Load() != 2 || meshUp.queries.Load() != 0 {
+		t.Fatalf("exit saw %d queries (want 2), gateway upstream %d (want 0)", exitUp.queries.Load(), meshUp.queries.Load())
+	}
+}
+
+func TestMeshDNSExitDeviceWithoutAnExitResolverGetsSERVFAILNotTheGatewaysUpstream(t *testing.T) {
+	g, d := meshDNSPair(t)
+	meshUp := newStubResolver(t, [4]byte{192, 0, 2, 77})
+	if err := g.dev.SetMeshDNS(meshNames(t, meshUp.addr)); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.dev.SetEgress(egressFor(deviceAddr, &EgressClient{ID: "dev", Via: EgressLocal}), netip.AddrPort{}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := ask(t, d.dev, "udp", "www.example.org.", 15*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.RCode != dnsmessage.RCodeServerFailure || meshUp.queries.Load() != 0 {
+		t.Fatalf("rcode %v, gateway upstream saw %d: a device with an exit must never go around it", m.RCode, meshUp.queries.Load())
+	}
+}
+
+func TestMeshDNSDeviceBehindAMeshExitResolvesMeshNamesLocallyOverUDP(t *testing.T) {
+	m := newMeshExit(t)
+	meshUp := newStubResolver(t, [4]byte{192, 0, 2, 77})
+	exitUp := newStubResolver(t, [4]byte{198, 51, 100, 5})
+	ft := NewForwardTable()
+	ft.AddDevice(netip.MustParseAddr(deviceAddr), acl.NewNetstackFilter())
+	m.g.dev.SetForwarding(ft)
+	if err := m.g.dev.SetMeshDNS(meshNames(t, meshUp.addr)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.x.dev.SetEgress(egressFor(deviceAddr, &EgressClient{ID: "dev", Via: EgressLocal, AllowLAN: true}), exitUp.addr); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ask(t, m.d.dev, "udp", "laptop.example.com.", 15*time.Second)
+	if err != nil {
+		t.Fatalf("mesh name through a mesh exit: %v", err)
+	}
+	if a := aOf(t, got); len(a) != 1 || a[0].String() != "100.64.0.9" {
+		t.Fatalf("answered %v, want 100.64.0.9", a)
+	}
+	if exitUp.queries.Load() != 0 {
+		t.Fatalf("the mesh exit's resolver saw %d queries for a mesh name, want 0", exitUp.queries.Load())
+	}
+	other, err := ask(t, m.d.dev, "udp", "www.example.org.", 15*time.Second)
+	if err != nil {
+		t.Fatalf("outside name through a mesh exit: %v", err)
+	}
+	if a := aOf(t, other); len(a) != 1 || a[0].String() != "198.51.100.5" {
+		t.Fatalf("answered %v, want the exit resolver's 198.51.100.5", a)
+	}
+	if exitUp.queries.Load() != 1 || meshUp.queries.Load() != 0 {
+		t.Fatalf("exit saw %d queries (want 1), gateway upstream %d (want 0)", exitUp.queries.Load(), meshUp.queries.Load())
+	}
+}
+
 func TestMeshDNSRemovedRestoresTheExitOnlyBehaviour(t *testing.T) {
 	g, d := meshDNSPair(t)
 	if err := g.dev.SetMeshDNS(meshNames(t, netip.AddrPort{})); err != nil {

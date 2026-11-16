@@ -111,6 +111,30 @@ describe('MeRoute', () => {
     expect(screen.getByText('Uses the WireGuard app. No connection measured yet.')).toBeInTheDocument();
   });
 
+  it('shows the name a device is reachable by, as text, only when it has one', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
+    stubApi(() =>
+      json({
+        nodes: [
+          { ...ANNA_PHONE, dns_name: 'anna-phone-2.example.com' },
+          { ...ANNA_LAPTOP, dns_name: null }
+        ]
+      })
+    );
+
+    await renderMe();
+
+    const list = await screen.findByRole('list', { name: 'Your devices' });
+    const phone = within(list).getByText('Anna phone').closest('li') as HTMLElement;
+    expect(within(phone).getByText('Reachable as')).toBeInTheDocument();
+    expect(within(phone).getByText('anna-phone-2.example.com')).toBeInTheDocument();
+    const laptop = within(list).getByText('Anna laptop').closest('li') as HTMLElement;
+    expect(within(laptop).queryByText('Reachable as')).toBeNull();
+
+    await i18n.changeLanguage('it');
+    expect(await within(phone).findByText('Raggiungibile come')).toBeInTheDocument();
+  });
+
   it('leaves out the gateway that serves the WireGuard profiles: it is not a personal device', async () => {
     auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'admin' };
     stubApi(() => json({ nodes: [ANNA_PHONE, ANNA_GATEWAY, ANNA_LAPTOP] }));

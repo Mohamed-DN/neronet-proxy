@@ -17,7 +17,9 @@ const { allocateNextVip, normalisePublicKeyHex, publicKeyForms } = require('../u
 const EnrollmentService = require('../services/EnrollmentService');
 const AclEngine = require('../services/AclEngine');
 const ExitService = require('../services/ExitService');
+const { MESH_DNS, meshDnsEnabled, effectiveSearchDomain } = require('../utils/meshNames');
 const ProfileGatewayService = require('../services/ProfileGatewayService');
+const DeviceNameService = require('../services/DeviceNameService');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -497,6 +499,7 @@ router.post('/profile', async (req, res, next) => {
     const id = `dev-${crypto.randomBytes(6).toString('hex')}`;
     let organizationId;
     let vips;
+    let searchDomain;
     await EnrollmentService.transaction(async (client) => {
       const actor = await EnrollmentService.authorizeConsole(
         client,
@@ -504,24 +507,30 @@ router.post('/profile', async (req, res, next) => {
         req.sessionAuthority.organizationIdAtIssue
       );
       organizationId = actor.organization_id;
+      const org = await client.query('SELECT search_domain, slug FROM organizations WHERE id = $1', [organizationId]);
+      searchDomain = effectiveSearchDomain(org.rows[0] && org.rows[0].search_domain, org.rows[0] && org.rows[0].slug);
       vips = await allocateNextVip(client);
-      await client.query(
-        `INSERT INTO nodes (id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6, role,
-                            ip_class, is_healthy, is_quarantined, organization_id, device_kind, exit_node_id,
-                            gateway_node_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9, $10)`,
-        [
-          id,
-          actor.id,
-          label,
-          public_key,
-          preshared_key,
-          vips.overlayIpv4,
-          vips.overlayIpv6,
-          organizationId,
-          exit ? exit.node_id : null,
-          gateway.id
-        ]
+      // The name other devices reach this one by (ADR 0034), unique in the organisation.
+      await DeviceNameService.insertWithDnsName(client, { organizationId, name: label, searchDomain }, (dnsName) =>
+        client.query(
+          `INSERT INTO nodes (id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6, role,
+                              ip_class, is_healthy, is_quarantined, organization_id, device_kind, exit_node_id,
+                              gateway_node_id, dns_name)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9, $10, $11)`,
+          [
+            id,
+            actor.id,
+            label,
+            public_key,
+            preshared_key,
+            vips.overlayIpv4,
+            vips.overlayIpv6,
+            organizationId,
+            exit ? exit.node_id : null,
+            gateway.id,
+            dnsName
+          ]
+        )
       );
       await AclEngine.bumpNetmap(client);
     });
@@ -554,9 +563,12 @@ router.post('/profile', async (req, res, next) => {
       overlay_ipv6: vips.overlayIpv6,
       gateway: { public_key: wireguardKey(gateway.public_key), endpoint: gateway.profile_gateway_endpoint },
       allowed_ips: exit ? ExitService.FULL_TUNNEL : OVERLAY,
-      // The exit answers this address from its own resolver, so names resolve where the
-      // traffic leaves and no query goes around the tunnel.
-      dns: exit ? [ExitService.EXIT_DNS] : [],
+      // The gateway's resolver answers this address: mesh names from the netmap, and for a
+      // device with an exit the rest through the exit, so no query goes around the tunnel.
+      // With the mesh resolver switched off only an exit profile has anything to ask.
+      dns: exit || meshDnsEnabled() ? [MESH_DNS] : [],
+      // Written after the address in the DNS line, so a stock app searches it: `phone` works.
+      search_domain: searchDomain,
       ...(exit ? { exit: { node_id: exit.node_id, name: exit.name, kind: exit.kind } } : {}),
       console_url: `https://${req.get('host')}/me`,
       strict_network: strictNetworkOf(req)
