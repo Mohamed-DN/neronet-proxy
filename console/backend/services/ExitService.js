@@ -22,7 +22,7 @@ const { normalisePublicKeyHex } = require('../utils/crypto');
 
 const EXIT_ROLES = ['EXIT_BRIDGE', 'HYBRID'];
 const DEFAULT_ORG = 'org-default';
-const EXIT_DNS = '100.100.100.100';
+const { MESH_DNS: EXIT_DNS } = require('../utils/meshNames');
 const FULL_TUNNEL = ['0.0.0.0/0', '::/0'];
 const OVERLAY_FIRST = AclEngine.parseCidr('100.64.0.0/10').first;
 const OVERLAY_LAST = AclEngine.parseCidr('100.64.0.0/10').last;

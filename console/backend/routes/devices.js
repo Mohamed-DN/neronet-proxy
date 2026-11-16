@@ -17,6 +17,7 @@ const { allocateNextVip, normalisePublicKeyHex, publicKeyForms } = require('../u
 const EnrollmentService = require('../services/EnrollmentService');
 const AclEngine = require('../services/AclEngine');
 const ExitService = require('../services/ExitService');
+const { MESH_DNS, meshDnsEnabled } = require('../utils/meshNames');
 const ProfileGatewayService = require('../services/ProfileGatewayService');
 
 router.use(authenticateToken);
@@ -554,9 +555,10 @@ router.post('/profile', async (req, res, next) => {
       overlay_ipv6: vips.overlayIpv6,
       gateway: { public_key: wireguardKey(gateway.public_key), endpoint: gateway.profile_gateway_endpoint },
       allowed_ips: exit ? ExitService.FULL_TUNNEL : OVERLAY,
-      // The exit answers this address from its own resolver, so names resolve where the
-      // traffic leaves and no query goes around the tunnel.
-      dns: exit ? [ExitService.EXIT_DNS] : [],
+      // The gateway's resolver answers this address: mesh names from the netmap, and for a
+      // device with an exit the rest through the exit, so no query goes around the tunnel.
+      // With the mesh resolver switched off only an exit profile has anything to ask.
+      dns: exit || meshDnsEnabled() ? [MESH_DNS] : [],
       ...(exit ? { exit: { node_id: exit.node_id, name: exit.name, kind: exit.kind } } : {}),
       console_url: `https://${req.get('host')}/me`,
       strict_network: strictNetworkOf(req)

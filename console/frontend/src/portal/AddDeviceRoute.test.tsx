@@ -32,7 +32,7 @@ const DEVICE = {
   overlay_ipv6: null,
   gateway: { public_key: 'GATEWAYPUBLICKEY0000000000000000000000000=', endpoint: 'gw.example.net:51820' },
   allowed_ips: ['100.64.0.0/10'],
-  dns: ['100.64.0.1'],
+  dns: ['100.100.100.100'],
   console_url: 'https://console.example.net'
 };
 

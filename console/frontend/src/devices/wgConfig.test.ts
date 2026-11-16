@@ -17,7 +17,7 @@ const device: ProfileDeviceResponse = {
   overlay_ipv6: null,
   gateway: { public_key: 'GATEWAYPUB=', endpoint: 'gw.example.net:51820' },
   allowed_ips: ['100.64.0.0/10', 'fd7a:115c:a1e0::/48'],
-  dns: ['100.64.0.1', '1.1.1.1'],
+  dns: ['100.100.100.100'],
   console_url: 'https://console.example.net'
 };
 
@@ -30,7 +30,7 @@ describe('buildProfileConfig', () => {
         '[Interface]',
         'PrivateKey = PRIVKEY=',
         'Address = 100.64.0.7/32',
-        'DNS = 100.64.0.1, 1.1.1.1',
+        'DNS = 100.100.100.100',
         '',
         '[Peer]',
         'PublicKey = GATEWAYPUB=',
@@ -94,7 +94,7 @@ describe('buildStrictNetworkConfig', () => {
       '[Interface]',
       'PrivateKey = PRIVKEY=',
       'Address = 100.64.0.7/32',
-      'DNS = 100.64.0.1, 1.1.1.1',
+      'DNS = 100.100.100.100',
       'MTU = 1380',
       '',
       '[Peer]',
