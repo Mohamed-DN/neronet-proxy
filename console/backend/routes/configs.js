@@ -7,6 +7,7 @@ const { logAuditEvent } = require('../utils/audit');
 const {
   generateCurve25519Keypair,
   buildWireGuardConfig,
+  requireServerPublicKey,
   buildNoiseJsonProfile,
   generateQrCodeDataUrl,
   allocateNextVip
@@ -14,6 +15,15 @@ const {
 const { broadcastNodeEvent } = require('../services/TopologySync');
 const EnrollmentService = require('../services/EnrollmentService');
 const { bumpNetmap } = require('../services/AclEngine');
+
+// The error handler drops `code` on 5xx, and clients map these two to a message.
+function sendHonestFailure(res, err) {
+  if (err && (err.code === 'server_key_missing' || err.code === 'qr_generation_failed')) {
+    res.status(503).json({ error: err.message, code: err.code });
+    return true;
+  }
+  return false;
+}
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -37,6 +47,10 @@ router.post('/generate', async (req, res, next) => {
       // the infrastructure protections that matter are elsewhere.
     }
 
+    // Refuse before anything is allocated or stored: no node is created for a profile
+    // that cannot be honest.
+    requireServerPublicKey();
+
     const kp = generateCurve25519Keypair();
     const VALID_ROLES = ['CLIENT_ORIGIN', 'EXIT_BRIDGE', 'HYBRID', 'RELAY'];
     const nodeRole = role && VALID_ROLES.includes(role) ? role : 'CLIENT_ORIGIN';
@@ -45,7 +59,7 @@ router.post('/generate', async (req, res, next) => {
     const hops = onionEnabled ? (onion_hops !== undefined && Number(onion_hops) > 0 ? Number(onion_hops) : 3) : 0;
     const killSwitch = Boolean(kill_switch_enabled);
 
-    let overlayIpv4, overlayIpv6;
+    let overlayIpv4, overlayIpv6, wgConf, jsonProfile, qrCodeDataUrl;
 
     await EnrollmentService.transaction(async (client, afterCommit) => {
       const actor = await EnrollmentService.authorizeConsole(
@@ -91,6 +105,33 @@ router.post('/generate', async (req, res, next) => {
           organizationId
         ]
       );
+      // Built before commit: if the QR cannot be rendered the node is rolled back
+      // rather than left enrolled with a private key nobody received.
+    wgConf = buildWireGuardConfig({
+          deviceName: name ? name.trim() : 'Sovereign-Client',
+          role: nodeRole,
+          privateKeyBase64: kp.privateKeyBase64,
+          overlayIpv4,
+          overlayIpv6,
+          presharedKeyBase64: kp.presharedKeyBase64,
+          onionRoutingEnabled: onionEnabled,
+          onionHops: hops
+        });
+
+    jsonProfile = buildNoiseJsonProfile({
+          nodeId: kp.nodeId,
+          privateKeyHex: kp.privateKeyHex,
+          publicKeyHex: kp.publicKeyHex,
+          overlayIpv4,
+          overlayIpv6,
+          presharedKeyHex: kp.presharedKeyHex,
+          role: nodeRole,
+          countryCode: nodeCountry,
+          onionHops: hops,
+          onionRoutingEnabled: onionEnabled
+        });
+
+    qrCodeDataUrl = await generateQrCodeDataUrl(wgConf);
       await bumpNetmap(client);
       afterCommit.push(() =>
         logAuditEvent({
@@ -123,32 +164,6 @@ router.post('/generate', async (req, res, next) => {
       );
     });
 
-    const wgConf = buildWireGuardConfig({
-      deviceName: name ? name.trim() : 'Sovereign-Client',
-      role: nodeRole,
-      privateKeyBase64: kp.privateKeyBase64,
-      overlayIpv4,
-      overlayIpv6,
-      presharedKeyBase64: kp.presharedKeyBase64,
-      onionRoutingEnabled: onionEnabled,
-      onionHops: hops
-    });
-
-    const jsonProfile = buildNoiseJsonProfile({
-      nodeId: kp.nodeId,
-      privateKeyHex: kp.privateKeyHex,
-      publicKeyHex: kp.publicKeyHex,
-      overlayIpv4,
-      overlayIpv6,
-      presharedKeyHex: kp.presharedKeyHex,
-      role: nodeRole,
-      countryCode: nodeCountry,
-      onionHops: hops,
-      onionRoutingEnabled: onionEnabled
-    });
-
-    const qrCodeDataUrl = await generateQrCodeDataUrl(wgConf);
-
     return res.status(200).json({
       node_id: kp.nodeId,
       private_key: kp.privateKeyBase64,
@@ -162,6 +177,7 @@ router.post('/generate', async (req, res, next) => {
       qrcode_data_url: qrCodeDataUrl
     });
   } catch (err) {
+    if (sendHonestFailure(res, err)) return;
     next(err);
   }
 });
@@ -196,6 +212,7 @@ router.get('/wireguard/:id', async (req, res, next) => {
       wireguard_conf: wgConf
     });
   } catch (err) {
+    if (sendHonestFailure(res, err)) return;
     next(err);
   }
 });

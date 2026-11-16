@@ -6,6 +6,14 @@ const logger = require('../../utils/logger');
 const { settleAuditWrites } = require('../../utils/audit');
 const { getDistributedLeaderService } = require('../../services/DistributedLeaderService');
 
+const config = require('../../config/env');
+
+// Profiles refuse to be built without a real server key (D21). Give every test
+// database a well-formed one; tests of the missing-key path clear it themselves.
+if (!config.SERVER_PUBKEY) {
+  config.SERVER_PUBKEY = Buffer.alloc(32, 7).toString('base64');
+}
+
 const TEMPLATE_DB_NAME = 'neronet_test_template';
 const ADVISORY_LOCK_ID = 7429148;
 

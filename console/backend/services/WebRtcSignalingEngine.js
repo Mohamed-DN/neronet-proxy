@@ -249,9 +249,8 @@ async function projectDevice(instanceId, actor) {
     throw err;
   }
 
-  const hashSeed = `${instanceId}_${Date.now()}_${Math.random()}`;
-  const session_id = `webrtc_sess_${crypto.createHash('sha256').update(hashSeed).digest('hex').substring(0, 16)}`;
-  const stream_token = `stok_${crypto.createHash('sha256').update(session_id).digest('hex')}`;
+  const session_id = `webrtc_sess_${crypto.randomBytes(16).toString('hex')}`;
+  const stream_token = `stok_${crypto.randomBytes(32).toString('hex')}`;
 
   logAuditEvent({
     eventType: 'CLOUDPC_PROJECT',
@@ -429,11 +428,7 @@ async function authenticateGateway(domain, otpCode) {
     throw err;
   }
 
-  const stream_token = `stream_auth_${crypto
-    .createHash('sha256')
-    .update(normDomain + Date.now())
-    .digest('hex')
-    .substring(0, 16)}`;
+  const stream_token = `stream_auth_${crypto.randomBytes(32).toString('hex')}`;
 
   return {
     authenticated: true,

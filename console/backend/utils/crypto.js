@@ -38,6 +38,22 @@ function generateCurve25519Keypair() {
 /**
  * Builds standard WireGuard .conf file string.
  */
+/**
+ * The server's WireGuard public key a profile must carry, or a 503 `server_key_missing`.
+ * A profile with a made-up key looks valid and never connects, so refusing is the
+ * only honest answer when SOVEREIGN_SERVER_PUBKEY is unset or is not 32 bytes of base64.
+ */
+function requireServerPublicKey(override) {
+  const key = String(override || config.SERVER_PUBKEY || '').trim();
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(key) || Buffer.from(key, 'base64').length !== 32) {
+    const err = new Error('SOVEREIGN_SERVER_PUBKEY is not set to a valid WireGuard public key');
+    err.status = 503;
+    err.code = 'server_key_missing';
+    throw err;
+  }
+  return key;
+}
+
 function buildWireGuardConfig({
   deviceName = 'Sovereign-Client',
   role = 'CLIENT_ORIGIN',
@@ -53,15 +69,16 @@ function buildWireGuardConfig({
   onionHops = 0
 }) {
   const endpoint = serverEndpoint || config.SERVER_ENDPOINT || 'relay-us.neronet.darknero.com:51820';
-  const serverPub = serverPublicKey || config.SERVER_PUBKEY || 'NeroNetServerMasterPublicKeyBase64Placeholder=';
+  const serverPub = requireServerPublicKey(serverPublicKey);
   const pskLine = presharedKeyBase64 ? `\nPresharedKey = ${presharedKeyBase64}` : '';
   const isOnion = Boolean(onionRoutingEnabled || onionHops > 0);
+  const hopCount = onionHops > 0 ? onionHops : 3;
 
   return `# =========================================================
 # NeroNet Sovereign Mesh DirectFrame v4.0 WireGuard Profile
 # Device: ${deviceName}
 # Role: ${role}
-# Onion Obfuscation: ${isOnion ? '3-Hop Multi-Route' : 'Direct (0-Hop)'}
+# Onion Obfuscation: ${isOnion ? `${hopCount}-Hop Multi-Route` : 'Direct (0-Hop)'}
 # =========================================================
 
 [Interface]
@@ -171,11 +188,14 @@ async function generateQrCodeDataUrl(text) {
         light: '#FFFFFF'
       }
     });
-  } catch (err) {
-    const encoded = Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><rect width="100%" height="100%" fill="#fff"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#000" font-family="monospace" font-size="12">QR_CODE_DATA_PLACEHOLDER</text></svg>`
-    ).toString('base64');
-    return `data:image/svg+xml;base64,${encoded}`;
+  } catch (cause) {
+    // An SVG that said QR_CODE_DATA_PLACEHOLDER used to be returned here and shown as
+    // the profile's QR code. It scanned as nothing.
+    const err = new Error('QR code generation failed');
+    err.status = 503;
+    err.code = 'qr_generation_failed';
+    err.cause = cause;
+    throw err;
   }
 }
 
@@ -367,6 +387,7 @@ module.exports = {
   vipFromOffset,
   generateCurve25519Keypair,
   buildWireGuardConfig,
+  requireServerPublicKey,
   buildNoiseJsonProfile,
   generateQrCodeDataUrl,
   allocateNextVip,

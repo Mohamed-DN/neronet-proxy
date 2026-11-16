@@ -460,6 +460,7 @@ describe('CHALLENGER 1: Milestone 1 Empirical Verification & Adversarial Stress 
         privateKeyBase64: kp.privateKeyBase64,
         overlayIpv4: '100.64.0.10',
         overlayIpv6: 'fd7a:115c:a1e0::a',
+        serverPublicKey: Buffer.alloc(32, 7).toString('base64'),
         onionRoutingEnabled: true
       });
 
