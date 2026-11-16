@@ -1,6 +1,9 @@
 # Multi-Stage Dockerfile for NeroNet Enterprise Management Console Frontend
 # Stage 1: Build Vite React SPA
-FROM node:22-alpine AS builder
+# The bundle is the same bytes on every architecture, so it is built once on the build
+# host's own platform; only the nginx stage below is per-architecture. Built under
+# emulation, the arm64 npm install hung for the whole 45-minute CI limit (16 Nov 2026).
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
