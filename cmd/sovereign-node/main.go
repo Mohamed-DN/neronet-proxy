@@ -44,6 +44,11 @@ func main() {
 	overlayEchoPort := config.BindIntFlag(flag.CommandLine, "overlay-echo-port", "SOVEREIGN_OVERLAY_ECHO_PORT", 0, "TCP port answering on this node's overlay address; 0 disables it")
 	stunServer := config.BindStringFlag(flag.CommandLine, "stun-server", "SOVEREIGN_STUN_SERVER", "", "STUN server (host:port) asked for this node's reflexive address; empty disables it")
 	metricsAddr := config.BindStringFlag(flag.CommandLine, "metrics-addr", "SOVEREIGN_METRICS_LISTEN_ADDR", "", "HTTP metrics listen address (e.g. 127.0.0.1:9090); empty disables metrics")
+	dropListen := config.BindStringFlag(flag.CommandLine, "drop-listen", "SOVEREIGN_DROP_LISTEN", "", "NeroDrop mailbox listen address for the console's reverse proxy (e.g. :8788); empty disables the mailbox")
+	dropDir := config.BindStringFlag(flag.CommandLine, "drop-dir", "SOVEREIGN_DROP_DIR", "/var/lib/neronet-drop", "Directory that holds NeroDrop ciphertext (a persistent volume)")
+	dropMaxMiB := config.BindIntFlag(flag.CommandLine, "drop-max-mib", "SOVEREIGN_DROP_MAX_MIB", 256, "Largest NeroDrop transfer accepted, in MiB of ciphertext")
+	dropQuotaMiB := config.BindIntFlag(flag.CommandLine, "drop-quota-mib", "SOVEREIGN_DROP_QUOTA_MIB", 2048, "All stored NeroDrop transfers together, in MiB")
+	dropMaxHours := config.BindIntFlag(flag.CommandLine, "drop-max-hours", "SOVEREIGN_DROP_MAX_HOURS", 168, "Longest a NeroDrop transfer is kept, in hours, whatever the console asks")
 	flag.Parse()
 
 	log.Printf("[SOVEREIGN-NODE] Initializing SovereignMesh client daemon (%s)...", ClientVersion)
@@ -146,7 +151,9 @@ func main() {
 	// which case the node runs on its stored netmap or at default deny.
 	dataplaneNodeID := ""
 
-	regResp, err := registerWithRetry(ctx, ctrlClient, enrolment, role, withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location))
+	dropEnabled := *dropListen != ""
+	dropNode := &currentNodeID{}
+	regResp, err := registerWithRetry(ctx, ctrlClient, enrolment, role, withDrop(withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), dropEnabled))
 
 	if err != nil {
 		log.Printf("[SOVEREIGN-NODE] Warning: Initial control plane registration failed: %v (operating in local standalone mode)", err)
@@ -185,6 +192,7 @@ func main() {
 		// whatever the value turns out to be; the loop passes its own current id to
 		// every later netmap fetch.
 		dataplaneNodeID = nodeID
+		dropNode.Set(nodeID)
 
 		// Start periodic heartbeat and continuous posture attestation loop
 		go func() {
@@ -236,7 +244,7 @@ func main() {
 						// credential check: it expired while the node was cut off, or the
 						// control plane lost the registration it belonged to.
 						if errors.Is(hbErr, control.ErrNodeUnknown) || errors.Is(hbErr, control.ErrUnauthorized) {
-							newID, reErr := reregister(ctx, ctrlClient, enrolment, role, withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), netmaps.endpoints())
+							newID, reErr := reregister(ctx, ctrlClient, enrolment, role, withDrop(withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), dropEnabled), netmaps.endpoints())
 							if reErr != nil {
 								log.Printf("[SOVEREIGN-NODE] Re-enrolment failed: %v", reErr)
 								continue
@@ -244,6 +252,7 @@ func main() {
 
 							log.Printf("[SOVEREIGN-NODE] Re-enrolled after the control plane lost this node: %s -> %s", nodeID, newID)
 							nodeID = newID
+							dropNode.Set(newID)
 
 							// The epochs belonged to the registration that no longer
 							// exists. Resetting them makes the next sync a full one.
@@ -353,6 +362,22 @@ func main() {
 		log.Fatalf("Failed to start data plane: %v", dpErr)
 	}
 	defer stopDataplane()
+
+	if dropEnabled {
+		stopDrop, dropErr := startDrop(ctx, dropOptions{
+			Listen:     *dropListen,
+			Dir:        *dropDir,
+			MaxBytes:   int64(*dropMaxMiB) << 20,
+			QuotaBytes: int64(*dropQuotaMiB) << 20,
+			MaxTTL:     time.Duration(*dropMaxHours) * time.Hour,
+			Key:        dropKeySource(keypair.PrivateKey, ctrlClient.GetChallenge),
+			NodeID:     dropNode,
+		})
+		if dropErr != nil {
+			log.Fatalf("Failed to start the NeroDrop mailbox: %v", dropErr)
+		}
+		defer stopDrop()
+	}
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)

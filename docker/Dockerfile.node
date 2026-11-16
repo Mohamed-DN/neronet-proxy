@@ -24,7 +24,9 @@ RUN adduser -D -u 10001 neronet
 # ownership: Docker copies the image's ownership onto an empty volume, and a volume
 # created against a path that does not exist in the image comes up owned by root,
 # where uid 10001 cannot write.
-RUN mkdir -p /var/lib/neronet && chown 10001:10001 /var/lib/neronet && chmod 700 /var/lib/neronet
+# /var/lib/neronet-drop is the NeroDrop mailbox (ADR 0033) on a gateway that runs it: its
+# own volume, so the ciphertext can be sized, inspected and wiped apart from the identity.
+RUN mkdir -p /var/lib/neronet /var/lib/neronet-drop  && chown 10001:10001 /var/lib/neronet /var/lib/neronet-drop  && chmod 700 /var/lib/neronet /var/lib/neronet-drop
 
 COPY --from=builder /build/bin/sovereign-node /bin/sovereign-node
 COPY --from=builder /build/bin/sovereign-cli /bin/sovereign-cli
