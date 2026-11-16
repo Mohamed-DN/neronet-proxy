@@ -114,7 +114,12 @@ describe('MeRoute', () => {
   it('shows the name a device is reachable by, as text, only when it has one', async () => {
     auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
     stubApi(() =>
-      json({ nodes: [{ ...ANNA_PHONE, dns_name: 'anna-phone-2.example.com' }, { ...ANNA_LAPTOP, dns_name: null }] })
+      json({
+        nodes: [
+          { ...ANNA_PHONE, dns_name: 'anna-phone-2.example.com' },
+          { ...ANNA_LAPTOP, dns_name: null }
+        ]
+      })
     );
 
     await renderMe();

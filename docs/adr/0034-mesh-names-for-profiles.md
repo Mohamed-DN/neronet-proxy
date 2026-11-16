@@ -1,6 +1,6 @@
-# ADR 0034: Mesh names for profile devices, phase 1
+# ADR 0034: Mesh names for profile devices, phases 1 and 2
 
-**Status:** Accepted (phase 1)
+**Status:** Accepted (phase 1 and phase 2; per-device name visibility is open)
 **Date:** 2026-11-16
 **Deciders:** owner, lead engineer
 
@@ -59,23 +59,43 @@ the console already sends it each device's name in the netmap.
 
 - A stock WireGuard device with `DNS = 100.100.100.100` and the search domain resolves mesh
   names, and, being forwarded, other names too. Neither needs a client of ours.
-- A device with an exit does not resolve mesh names in phase 1: its DNS goes to the exit.
-- A name is only as unique as the console makes it. Until names are unique per organisation,
-  the lowest node id wins and the other device is unreachable by that name.
+- Names are unique per organisation from phase 2 (migration 053). The gateway's lowest-node-id
+  tiebreak stays as a safety net for documents that predate it.
 - Every name of the organisation is visible to every profile device on the gateway: a device
   that may not reach a node can still learn that its name exists and its address.
 - Queries are not logged and not rate limited per device beyond the in-flight bound.
 
-## Phase 2
+## Phase 2 (delivered)
 
-TODO, none of it in code yet:
+- **P2.1. A DNS line in every profile.** `POST /api/devices/profile` answers
+  `dns: ["100.100.100.100"]` for every profile, exit or not. The address is one constant
+  (`utils/meshNames.js`, which `ExitService.EXIT_DNS` re-exports). `SOVEREIGN_MESH_DNS=off` on the
+  console restores the old answer (only exit profiles carry it), so a profile never names a
+  resolver the gateway has switched off; set it to the same value on the console and the gateways.
+- **P2.2. Search domain in the profile.** The response also has `search_domain` (the organisation's,
+  else `<slug>.neronet`, else `mesh`: the same helper NetmapService uses). The frontend writes
+  `DNS = 100.100.100.100, <search domain>`, which the stock WireGuard apps on iOS and Android use as a
+  search domain, so `phone` resolves. `pkg/profile` now accepts DNS names after the addresses into
+  `Profile.SearchDomains` and still rejects anything that is neither an address nor a valid DNS name.
+- **P2.3. Unique names.** Migration 053 renames existing duplicate `dns_name` values, backfills profile
+  rows oldest first (`phone`, `phone-2`, `phone-3` by `created_at`, then id) and adds
+  `UNIQUE (organization_id, dns_name) WHERE dns_name IS NOT NULL`. Registration stores the name in its
+  transaction under a savepoint and retries with the next suffix on a unique violation, never a 500.
+  The slug drops accents, caps the label at 63 characters and is shared by the migration and
+  `computeDNSName`. The netmap keeps the stored label under the organisation's current search
+  domain. `set_dns_name` on a node answers 409 `dns_name_in_use` on a clash. No rename route for
+  profile devices exists yet; whoever adds one must recompute through `DeviceNameService`.
+- **P2.4. Exit profiles resolve mesh names.** The gateway's resolver decides first for every profile
+  device. For an exit on the gateway (UDP and TCP) and for a mesh exit (UDP only: the gateway reads
+  the query before relaying it; TCP and the names it does not answer go to the exit unchanged) a mesh
+  name never reaches the exit's resolver. Outside names from a device with an exit go to the exit's
+  resolver and never to the gateway's own upstream; with no exit resolver the device gets SERVFAIL.
+- **P2.5. Visible name.** The portal's device list shows `Reachable as <name>`.
 
-1. A DNS line in every profile (`DNS = 100.100.100.100`), not only in exit profiles.
-2. Unique names per organisation: a migration and a refusal at registration, so the
-   deterministic tiebreak is a safety net and not the rule.
-3. The search domain in the profile (`DNS = 100.100.100.100, example.com`), so `phone` works
-   without a suffix on the device.
-4. Per-device name policy: the gateway answers a device only for the names it may reach under
-   its compiled policy (today every name is visible to every device, D4).
-5. Exit profiles resolving mesh names: the gateway answers mesh names first for a device with
-   an exit and sends only the rest to the exit's resolver.
+## Phase 3 (open)
+
+1. Per-device name policy: the gateway answers a device only for the names it may reach under its
+   compiled policy (today every name is visible to every device, D4).
+2. Mesh-exit TCP DNS (truncated answers) is not answered locally; a gateway-side relay to the exit
+   would close it.
+3. A rename route for profile devices, with the new name checked for uniqueness.
