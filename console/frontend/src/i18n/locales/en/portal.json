@@ -7,6 +7,7 @@
     "title": "My devices",
     "description": "Your phones and computers on the network, and how to add a new one.",
     "add": "Add a device",
+    "drop": "Send a file to a colleague",
     "listLabel": "Your devices",
     "loading": "Loading your devices…",
     "unnamed": "Device without a name",

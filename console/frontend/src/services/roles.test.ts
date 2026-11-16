@@ -33,6 +33,7 @@ const MATRIX: Record<PageId, number[]> = {
   peering: [1, 0, 0, 0, 0, 0, 0],
   me: [1, 1, 1, 1, 1, 1, 1],
   meAdd: [1, 1, 1, 1, 1, 1, 1],
+  drop: [1, 1, 1, 1, 1, 1, 1],
   glossary: [1, 1, 1, 1, 1, 1, 1]
 };
 

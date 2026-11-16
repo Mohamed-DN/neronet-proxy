@@ -22,6 +22,8 @@ export const ROUTES = {
   nuke: '/nuke',
   me: '/me',
   meAdd: '/me/add',
+  /** NeroDrop (ADR 0033): send and receive end-to-end encrypted files. Every signed-in member. */
+  drop: '/drop',
   glossary: '/help/glossary'
 } as const;
 

@@ -1,0 +1,99 @@
+{
+  "title": "Send a file",
+  "description": "Send a file to someone in your organisation, encrypted on this device before it leaves.",
+  "loading": "Loading NeroDrop…",
+  "error": {
+    "title": "NeroDrop could not load",
+    "body": "Check your connection and try again."
+  },
+  "unavailable": {
+    "title": "NeroDrop is not set up yet",
+    "body": "An administrator needs to start the file mailbox on the organisation's gateway. Until then, files cannot be sent."
+  },
+  "disabled": {
+    "title": "NeroDrop is turned off for your organisation",
+    "body": "An administrator turned it off. Ask them if you need to send files."
+  },
+  "readOnly": "Your role can receive files but not send them.",
+  "send": {
+    "heading": "Send",
+    "file": "File",
+    "fileHint": "Up to {{size}}. Larger files and resuming an interrupted transfer come in a later version.",
+    "chosen": "{{name}}, {{size}}",
+    "recipient": "Send to",
+    "recipientPlaceholder": "Choose a person",
+    "keep": "How long it stays",
+    "once": "One download, then deleted",
+    "onceHint": "Deleted from the server as soon as it has been downloaded, or after 24 hours.",
+    "day": "24 hours",
+    "dayHint": "Can be downloaded again until it expires.",
+    "submit": "Encrypt and send",
+    "busy": "Sending",
+    "encrypting": "Encrypting on this device… {{percent}}%",
+    "uploading": "Uploading the encrypted file… {{percent}}%",
+    "noFile": "Choose a file.",
+    "noRecipient": "Choose who to send it to.",
+    "tooLarge": "This file is larger than {{size}}. Choose a smaller one.",
+    "failed": "The file was not sent. Check your connection and try again.",
+    "full": "The file mailbox is full. Try again later or send a smaller file.",
+    "tooMany": "You have too many files waiting. Wait until some are downloaded or expire.",
+    "noCrypto": "This browser cannot encrypt here. Open the console over https in an up-to-date browser."
+  },
+  "result": {
+    "heading": "Sent to {{name}}",
+    "body": "Give {{name}} this link, or let them scan the code. The key that opens the file is inside the link, so send it only to them.",
+    "link": "Link",
+    "copy": "Copy link",
+    "copied": "Link copied.",
+    "qr": "QR code with the link to the file for {{name}}",
+    "code": "Short code",
+    "codeHint": "{{name}} sees the same code next to the file in their inbox.",
+    "expiresOnce": "Deleted after the first download, at the latest on {{date}}.",
+    "expiresDay": "Available until {{date}}.",
+    "another": "Send another file"
+  },
+  "inbox": {
+    "heading": "Received",
+    "loading": "Loading received files…",
+    "empty": {
+      "title": "Nothing received",
+      "body": "Files sent to you appear here until they expire. To open one you need the link from the person who sent it."
+    },
+    "from": "From {{name}}",
+    "code": "Code",
+    "details": "{{size}} encrypted, until {{date}}",
+    "received": "Already downloaded",
+    "paste": "Paste the link you received",
+    "pasteHint": "The link holds the key. It never reaches the server.",
+    "open": "Open link",
+    "badLink": "That is not a NeroDrop link. Copy the whole link and try again."
+  },
+  "receive": {
+    "heading": "File from {{name}}",
+    "headingUnknown": "A file for you",
+    "body": "The file is decrypted on this device. Nobody else can read it on the way.",
+    "start": "Download and decrypt",
+    "busy": "Downloading",
+    "progress": "Downloading and decrypting… {{percent}}%",
+    "done": "Decrypted and checked: nothing was changed on the way.",
+    "save": "Save {{name}}",
+    "onceGone": "This was a one-download file: it has been deleted from the server.",
+    "wrongLink": "This link does not open this file. Ask the sender to copy the link again.",
+    "notFound": "This file is not addressed to you, or it no longer exists.",
+    "gone": "This file has expired or was already downloaded.",
+    "failed": "The download stopped. Check your connection and try again.",
+    "close": "Close"
+  },
+  "admin": {
+    "label": "Allow NeroDrop in this organisation",
+    "description": "When off, nobody can send files and files already sent can no longer be downloaded.",
+    "failed": "The setting was not saved. Try again."
+  },
+  "privacy": {
+    "summary": "How your file is protected",
+    "encrypted": "The file and its name are encrypted in this browser with a new key for every transfer (AES-256-GCM). The key is only in the link, after the # sign, which browsers never send to a server.",
+    "path": "The encrypted file passes through the console's web server and stays on your organisation's gateway until it is downloaded or expires. Both see only encrypted data, its size, who sent it to whom and when it expires. Neither can read the file or its name.",
+    "link": "To download it, the recipient must be signed in as themselves and have the link.",
+    "later": "Large files and resuming an interrupted transfer come in a later version."
+  }
+}

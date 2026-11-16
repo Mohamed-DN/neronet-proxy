@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { TriangleAlert } from 'lucide-react';
+import { Send, TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { NetworkSketch, type SketchSite } from '../charts/NetworkSketch';
@@ -161,6 +161,16 @@ export default function MeRoute() {
           </p>
         )}
       </ConfirmDialog>
+
+      <p className="mt-8">
+        <Link
+          to="/drop"
+          className="inline-flex min-h-11 items-center gap-2 rounded-sm text-body text-content underline focus-visible:outline-focus"
+        >
+          <Send aria-hidden="true" className="h-4 w-4 shrink-0" />
+          {t('me.drop')}
+        </Link>
+      </p>
 
       <DownloadApps />
 

@@ -20,6 +20,7 @@ import {
   Shield,
   ShieldCheck,
   Skull,
+  Send,
   UserRound,
   Users,
   type LucideIcon
@@ -55,6 +56,7 @@ const PAGE_OF: Record<RouteId, PageId> = {
   nuke: 'nuke',
   me: 'me',
   meAdd: 'meAdd',
+  drop: 'drop',
   glossary: 'glossary'
 };
 
@@ -188,7 +190,10 @@ export default function Sidebar({
     },
     {
       key: 'you',
-      items: [{ id: 'me', icon: UserRound }]
+      items: [
+        { id: 'me', icon: UserRound },
+        { id: 'drop', icon: Send }
+      ]
     }
   ];
 

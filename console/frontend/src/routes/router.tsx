@@ -25,6 +25,7 @@ const GlossaryRoute = lazy(() => import('./GlossaryRoute'));
 const MeRoute = lazy(() => import('../portal/MeRoute'));
 const AddDeviceRoute = lazy(() => import('../portal/AddDeviceRoute'));
 const InviteAcceptRoute = lazy(() => import('../portal/InviteAcceptRoute'));
+const DropRoute = lazy(() => import('../portal/DropRoute'));
 const OverviewRoute = lazy(() => import('./pages/OverviewRoute'));
 const TopologyRoute = lazy(() => import('./pages/TopologyRoute'));
 const SubnetsRoute = lazy(() => import('./pages/SubnetsRoute'));
@@ -119,7 +120,8 @@ export const routes: RouteObject[] = [
         errorElement: <RouteError />,
         children: [
           portalPage(ROUTES.me, <MeRoute />, 'nav.items.me'),
-          portalPage(ROUTES.meAdd, <AddDeviceRoute />, 'nav.items.me')
+          portalPage(ROUTES.meAdd, <AddDeviceRoute />, 'nav.items.me'),
+          portalPage(ROUTES.drop, <DropRoute />, 'nav.items.drop')
         ]
       },
       {

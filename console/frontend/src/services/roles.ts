@@ -28,6 +28,7 @@ export type PageId =
   | 'nuke'
   | 'me'
   | 'meAdd'
+  | 'drop'
   | 'glossary';
 
 export interface RoleFeatures {
@@ -64,6 +65,8 @@ export const ACCESS: Record<PageId, readonly ConsoleRole[]> = {
   peering: ['super-admin'],
   me: EVERYONE,
   meAdd: EVERYONE,
+  // NeroDrop (ADR 0033): every member sends to and receives from their organisation.
+  drop: EVERYONE,
   glossary: EVERYONE
 };
 

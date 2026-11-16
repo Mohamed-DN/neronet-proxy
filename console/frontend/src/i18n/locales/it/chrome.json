@@ -31,6 +31,7 @@
       "settings": "Impostazioni",
       "nuke": "Cancellazione dati",
       "me": "I miei dispositivi",
+      "drop": "Invia un file",
       "glossary": "Glossario"
     },
     "alertCount_one": "{{count}} richiede attenzione",

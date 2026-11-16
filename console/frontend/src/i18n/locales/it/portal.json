@@ -7,6 +7,7 @@
     "title": "I miei dispositivi",
     "description": "I tuoi telefoni e computer collegati alla rete, e come aggiungerne uno nuovo.",
     "add": "Aggiungi un dispositivo",
+    "drop": "Invia un file a un collega",
     "listLabel": "I tuoi dispositivi",
     "loading": "Caricamento dei tuoi dispositivi…",
     "unnamed": "Dispositivo senza nome",

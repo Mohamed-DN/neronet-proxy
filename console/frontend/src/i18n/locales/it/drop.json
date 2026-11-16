@@ -1,0 +1,99 @@
+{
+  "title": "Invia un file",
+  "description": "Manda un file a una persona della tua organizzazione, cifrato su questo dispositivo prima di partire.",
+  "loading": "Caricamento di NeroDrop…",
+  "error": {
+    "title": "Impossibile caricare NeroDrop",
+    "body": "Controlla la connessione e riprova."
+  },
+  "unavailable": {
+    "title": "NeroDrop non è ancora attivo",
+    "body": "Un amministratore deve avviare la casella dei file sul gateway dell'organizzazione. Fino ad allora non si possono inviare file."
+  },
+  "disabled": {
+    "title": "NeroDrop è spento per la tua organizzazione",
+    "body": "L'ha spento un amministratore. Chiedi a lui se devi inviare file."
+  },
+  "readOnly": "Con il tuo ruolo puoi ricevere file ma non inviarli.",
+  "send": {
+    "heading": "Invia",
+    "file": "File",
+    "fileHint": "Fino a {{size}}. I file più grandi e la ripresa di un invio interrotto arriveranno in una versione successiva.",
+    "chosen": "{{name}}, {{size}}",
+    "recipient": "Invia a",
+    "recipientPlaceholder": "Scegli una persona",
+    "keep": "Per quanto resta",
+    "once": "Un solo download, poi cancellato",
+    "onceHint": "Cancellato dal server appena scaricato, o dopo 24 ore.",
+    "day": "24 ore",
+    "dayHint": "Si può scaricare di nuovo fino alla scadenza.",
+    "submit": "Cifra e invia",
+    "busy": "Invio in corso",
+    "encrypting": "Cifratura su questo dispositivo… {{percent}}%",
+    "uploading": "Caricamento del file cifrato… {{percent}}%",
+    "noFile": "Scegli un file.",
+    "noRecipient": "Scegli a chi mandarlo.",
+    "tooLarge": "Questo file supera {{size}}. Scegline uno più piccolo.",
+    "failed": "Il file non è stato inviato. Controlla la connessione e riprova.",
+    "full": "La casella dei file è piena. Riprova più tardi o manda un file più piccolo.",
+    "tooMany": "Hai troppi file in attesa. Aspetta che qualcuno venga scaricato o scada.",
+    "noCrypto": "Questo browser non può cifrare qui. Apri la console in https con un browser aggiornato."
+  },
+  "result": {
+    "heading": "Inviato a {{name}}",
+    "body": "Dai a {{name}} questo link, oppure fagli inquadrare il codice. La chiave che apre il file è dentro il link: mandalo solo a questa persona.",
+    "link": "Link",
+    "copy": "Copia il link",
+    "copied": "Link copiato.",
+    "qr": "Codice QR con il link al file per {{name}}",
+    "code": "Codice breve",
+    "codeHint": "{{name}} vede lo stesso codice accanto al file nei suoi file ricevuti.",
+    "expiresOnce": "Cancellato dopo il primo download, al più tardi il {{date}}.",
+    "expiresDay": "Disponibile fino al {{date}}.",
+    "another": "Invia un altro file"
+  },
+  "inbox": {
+    "heading": "Ricevuti",
+    "loading": "Caricamento dei file ricevuti…",
+    "empty": {
+      "title": "Nessun file ricevuto",
+      "body": "I file mandati a te compaiono qui fino alla scadenza. Per aprirne uno serve il link di chi l'ha inviato."
+    },
+    "from": "Da {{name}}",
+    "code": "Codice",
+    "details": "{{size}} cifrati, fino al {{date}}",
+    "received": "Già scaricato",
+    "paste": "Incolla il link ricevuto",
+    "pasteHint": "Il link contiene la chiave. Non arriva mai al server.",
+    "open": "Apri il link",
+    "badLink": "Questo non è un link di NeroDrop. Copia il link intero e riprova."
+  },
+  "receive": {
+    "heading": "File da {{name}}",
+    "headingUnknown": "Un file per te",
+    "body": "Il file viene decifrato su questo dispositivo. Nessun altro può leggerlo durante il viaggio.",
+    "start": "Scarica e decifra",
+    "busy": "Download in corso",
+    "progress": "Download e decifratura… {{percent}}%",
+    "done": "Decifrato e verificato: nulla è stato cambiato durante il viaggio.",
+    "save": "Salva {{name}}",
+    "onceGone": "Era un file da un solo download: ora è cancellato dal server.",
+    "wrongLink": "Questo link non apre questo file. Chiedi a chi l'ha inviato di copiare di nuovo il link.",
+    "notFound": "Questo file non è indirizzato a te, oppure non esiste più.",
+    "gone": "Questo file è scaduto o è già stato scaricato.",
+    "failed": "Il download si è interrotto. Controlla la connessione e riprova.",
+    "close": "Chiudi"
+  },
+  "admin": {
+    "label": "Consenti NeroDrop in questa organizzazione",
+    "description": "Se è spento, nessuno può inviare file e i file già inviati non si possono più scaricare.",
+    "failed": "L'impostazione non è stata salvata. Riprova."
+  },
+  "privacy": {
+    "summary": "Come è protetto il tuo file",
+    "encrypted": "Il file e il suo nome vengono cifrati in questo browser con una chiave nuova per ogni invio (AES-256-GCM). La chiave sta solo nel link, dopo il segno #, che i browser non mandano mai a un server.",
+    "path": "Il file cifrato passa dal server web della console e resta sul gateway della tua organizzazione finché non viene scaricato o scade. Entrambi vedono solo dati cifrati, la loro dimensione, chi lo manda a chi e quando scade. Nessuno dei due può leggere il file o il suo nome.",
+    "link": "Per scaricarlo, il destinatario deve aver fatto l'accesso con il proprio account e avere il link.",
+    "later": "I file grandi e la ripresa di un invio interrotto arriveranno in una versione successiva."
+  }
+}

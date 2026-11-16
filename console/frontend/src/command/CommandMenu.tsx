@@ -25,6 +25,7 @@ const PAGE_IDS: readonly RouteId[] = [
   'settings',
   'nuke',
   'me',
+  'drop',
   'glossary'
 ];
 
