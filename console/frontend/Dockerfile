@@ -22,6 +22,11 @@ ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 # The template needs a value: with none the directive would keep the literal variable
 # name and nginx would not start. Loopback means "no proxy is trusted".
 ENV NERONET_TRUSTED_PROXY=127.0.0.1
+# Where /drop-blob/ goes: the profile gateway's NeroDrop mailbox on the compose network
+# (docker-compose.gateway.yml), and the largest request body accepted on the way. The
+# gateway enforces its own, exact limits.
+ENV NERONET_DROP_UPSTREAM=gateway:8788
+ENV NERONET_DROP_MAX_BODY=300m
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 # Where the certificate comes from (NERONET_TLS_MODE=internal|acme): writes the files the
 # template includes and, in acme mode, reloads nginx when a renewed certificate arrives.

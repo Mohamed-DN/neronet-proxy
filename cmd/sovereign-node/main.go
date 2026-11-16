@@ -48,7 +48,7 @@ func main() {
 	dropDir := config.BindStringFlag(flag.CommandLine, "drop-dir", "SOVEREIGN_DROP_DIR", "/var/lib/neronet-drop", "Directory that holds NeroDrop ciphertext (a persistent volume)")
 	dropMaxMiB := config.BindIntFlag(flag.CommandLine, "drop-max-mib", "SOVEREIGN_DROP_MAX_MIB", 256, "Largest NeroDrop transfer accepted, in MiB of ciphertext")
 	dropQuotaMiB := config.BindIntFlag(flag.CommandLine, "drop-quota-mib", "SOVEREIGN_DROP_QUOTA_MIB", 2048, "All stored NeroDrop transfers together, in MiB")
-	dropMaxHours := config.BindIntFlag(flag.CommandLine, "drop-max-hours", "SOVEREIGN_DROP_MAX_HOURS", 168, "Longest a NeroDrop transfer is kept, in hours, whatever the console asks")
+	dropMaxAge := config.BindStringFlag(flag.CommandLine, "drop-max-age", "SOVEREIGN_DROP_MAX_AGE", "168h", "Longest a NeroDrop transfer is kept, whatever the console asks (Go duration, e.g. 24h)")
 	flag.Parse()
 
 	log.Printf("[SOVEREIGN-NODE] Initializing SovereignMesh client daemon (%s)...", ClientVersion)
@@ -364,12 +364,16 @@ func main() {
 	defer stopDataplane()
 
 	if dropEnabled {
+		maxAge, ageErr := time.ParseDuration(*dropMaxAge)
+		if ageErr != nil || maxAge <= 0 {
+			log.Fatalf("Invalid -drop-max-age %q: want a positive duration such as 168h", *dropMaxAge)
+		}
 		stopDrop, dropErr := startDrop(ctx, dropOptions{
 			Listen:     *dropListen,
 			Dir:        *dropDir,
 			MaxBytes:   int64(*dropMaxMiB) << 20,
 			QuotaBytes: int64(*dropQuotaMiB) << 20,
-			MaxTTL:     time.Duration(*dropMaxHours) * time.Hour,
+			MaxTTL:     maxAge,
 			Key:        dropKeySource(keypair.PrivateKey, ctrlClient.GetChallenge),
 			NodeID:     dropNode,
 		})

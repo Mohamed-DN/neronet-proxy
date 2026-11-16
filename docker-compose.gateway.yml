@@ -28,6 +28,15 @@ services:
       # address on this port answers, behind the same policy filter as everything else.
       - SOVEREIGN_OVERLAY_ECHO_PORT=${NERONET_OVERLAY_ECHO_PORT:-9999}
       - SOVEREIGN_CONTROL_PLANE_CA=/run/secrets/control_plane_ca
+      # NeroDrop mailbox (ADR 0033): ciphertext only, on its own volume, written and read
+      # only with a ticket the console signed. Reached by the console's nginx at
+      # gateway:8788 on the internal network; never published to the host. Empty
+      # NERONET_DROP_LISTEN turns it off.
+      - SOVEREIGN_DROP_LISTEN=${NERONET_DROP_LISTEN-:8788}
+      - SOVEREIGN_DROP_DIR=/var/lib/neronet-drop
+      - SOVEREIGN_DROP_MAX_MIB=${NERONET_DROP_MAX_MIB:-256}
+      - SOVEREIGN_DROP_QUOTA_MIB=${NERONET_DROP_QUOTA_MIB:-2048}
+      - SOVEREIGN_DROP_MAX_AGE=${NERONET_DROP_MAX_AGE:-168h}
     secrets:
       - control_plane_ca
     ports:
@@ -36,6 +45,8 @@ services:
     volumes:
       # The node's identity key: keep it, or every device has to be re-issued.
       - identity-gateway:/var/lib/neronet
+      # NeroDrop ciphertext, deleted on download (one-time) or at expiry.
+      - drop-gateway:/var/lib/neronet-drop
     read_only: true
     tmpfs:
       - /tmp:size=16m
@@ -46,5 +57,11 @@ services:
       frontend:
         condition: service_healthy
 
+  # The console's limit follows the gateway's.
+  backend:
+    environment:
+      - SOVEREIGN_DROP_MAX_MIB=${NERONET_DROP_MAX_MIB:-256}
+
 volumes:
   identity-gateway:
+  drop-gateway:
