@@ -284,6 +284,12 @@ func TestOneTimeTransferIsDeletedAfterACompleteDownload(t *testing.T) {
 	if res.StatusCode != http.StatusOK || !bytes.Equal(got, body) {
 		t.Fatalf("first download: %d", res.StatusCode)
 	}
+	// The handler deletes after the last byte is written, which the client may read
+	// first: wait for it rather than race it.
+	deadline := time.Now().Add(2 * time.Second)
+	for len(f.files()) != 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
 	if left := f.files(); len(left) != 0 {
 		t.Fatalf("after a one-time download the mailbox still holds %v", left)
 	}
