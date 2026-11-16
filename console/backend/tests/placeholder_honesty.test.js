@@ -16,6 +16,7 @@ const config = require('../config/env');
 const { buildWireGuardConfig, generateQrCodeDataUrl, generateCurve25519Keypair } = require('../utils/crypto');
 
 const PLACEHOLDER = 'NeroNetServerMasterPublicKeyBase64Placeholder=';
+const ENDPOINT = 'vpn.example.com:51820';
 const REAL_KEY = crypto.randomBytes(32).toString('base64');
 
 const baseArgs = () => ({
@@ -28,11 +29,40 @@ const baseArgs = () => ({
 
 describe('D21 placeholders are never served', () => {
   let savedKey;
+  let savedEndpoint;
   before(() => {
     savedKey = config.SERVER_PUBKEY;
+    savedEndpoint = config.SERVER_ENDPOINT;
+    config.SERVER_ENDPOINT = ENDPOINT;
   });
   after(() => {
     config.SERVER_PUBKEY = savedKey;
+    config.SERVER_ENDPOINT = savedEndpoint;
+  });
+
+  test('config default endpoint is not a made-up relay host', () => {
+    assert.ok(!/neronet\.darknero/.test(String(savedEndpoint)));
+  });
+
+  test('buildWireGuardConfig refuses without a server endpoint', () => {
+    config.SERVER_PUBKEY = REAL_KEY;
+    try {
+      for (const bad of ['', 'vpn.example.com', 'vpn.example.com:0', 'vpn.example.com:99999', ':51820', 'a b:51820']) {
+        config.SERVER_ENDPOINT = bad;
+        assert.throws(
+          () => buildWireGuardConfig(baseArgs()),
+          (err) => err.status === 503 && err.code === 'server_endpoint_missing',
+          `endpoint ${JSON.stringify(bad)}`
+        );
+      }
+    } finally {
+      config.SERVER_ENDPOINT = ENDPOINT;
+    }
+  });
+
+  test('buildWireGuardConfig uses the configured endpoint', () => {
+    config.SERVER_PUBKEY = REAL_KEY;
+    assert.ok(buildWireGuardConfig(baseArgs()).includes(`Endpoint = ${ENDPOINT}`));
   });
 
   test('config default is never the placeholder', () => {
@@ -94,6 +124,7 @@ describe('D21 /api/configs/generate fails honestly', () => {
   let app;
   let token;
   let savedKey;
+  let savedEndpoint;
 
   const nodeCount = async () => {
     const res = await getPgPool().query("SELECT COUNT(*) AS c FROM nodes WHERE name = 'D21-Node'");
@@ -106,11 +137,14 @@ describe('D21 /api/configs/generate fails honestly', () => {
     dbHelper = await setupTestDatabase();
     app = createApp();
     savedKey = config.SERVER_PUBKEY;
+    savedEndpoint = config.SERVER_ENDPOINT;
+    config.SERVER_ENDPOINT = ENDPOINT;
     const res = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'admin_password' });
     token = res.body.token;
   });
   after(async () => {
     config.SERVER_PUBKEY = savedKey;
+    config.SERVER_ENDPOINT = savedEndpoint;
     if (dbHelper) await dbHelper.cleanup();
   });
 
@@ -120,6 +154,19 @@ describe('D21 /api/configs/generate fails honestly', () => {
     assert.strictEqual(res.status, 503);
     assert.strictEqual(res.body.code, 'server_key_missing');
     assert.ok(!JSON.stringify(res.body).includes('Placeholder'));
+    assert.strictEqual(await nodeCount(), 0);
+  });
+
+  test('503 server_endpoint_missing and no node is created', async () => {
+    config.SERVER_PUBKEY = REAL_KEY;
+    config.SERVER_ENDPOINT = '';
+    try {
+      const res = await generate();
+      assert.strictEqual(res.status, 503);
+      assert.strictEqual(res.body.code, 'server_endpoint_missing');
+    } finally {
+      config.SERVER_ENDPOINT = ENDPOINT;
+    }
     assert.strictEqual(await nodeCount(), 0);
   });
 

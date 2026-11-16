@@ -54,6 +54,23 @@ function requireServerPublicKey(override) {
   return key;
 }
 
+/**
+ * The relay endpoint a profile must carry (host:port), or a 503 `server_endpoint_missing`.
+ * A default naming a host nobody runs produced profiles that never connect.
+ */
+function requireServerEndpoint(override) {
+  const value = String(override || config.SERVER_ENDPOINT || '').trim();
+  const m = /^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?):(\d{1,5})$/.exec(value);
+  const port = m ? Number(m[3]) : 0;
+  if (!m || port < 1 || port > 65535) {
+    const err = new Error('SOVEREIGN_SERVER_ENDPOINT is not set to host:port');
+    err.status = 503;
+    err.code = 'server_endpoint_missing';
+    throw err;
+  }
+  return value;
+}
+
 function buildWireGuardConfig({
   deviceName = 'Sovereign-Client',
   role = 'CLIENT_ORIGIN',
@@ -68,7 +85,7 @@ function buildWireGuardConfig({
   onionRoutingEnabled = false,
   onionHops = 0
 }) {
-  const endpoint = serverEndpoint || config.SERVER_ENDPOINT || 'relay-us.neronet.darknero.com:51820';
+  const endpoint = requireServerEndpoint(serverEndpoint);
   const serverPub = requireServerPublicKey(serverPublicKey);
   const pskLine = presharedKeyBase64 ? `\nPresharedKey = ${presharedKeyBase64}` : '';
   const isOnion = Boolean(onionRoutingEnabled || onionHops > 0);
@@ -388,6 +405,7 @@ module.exports = {
   generateCurve25519Keypair,
   buildWireGuardConfig,
   requireServerPublicKey,
+  requireServerEndpoint,
   buildNoiseJsonProfile,
   generateQrCodeDataUrl,
   allocateNextVip,

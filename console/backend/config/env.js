@@ -127,7 +127,7 @@ const config = {
     .map((origin) => origin.trim()),
 
   // Mesh Relay & Master Server Public Key Configuration
-  SERVER_ENDPOINT: process.env.SOVEREIGN_SERVER_ENDPOINT || 'relay-us.neronet.darknero.com:51820',
+  SERVER_ENDPOINT: process.env.SOVEREIGN_SERVER_ENDPOINT || '',
   SERVER_PUBKEY: process.env.SOVEREIGN_SERVER_PUBKEY || '',
   CONTROL_PLANE_URL: process.env.SOVEREIGN_CONTROL_PLANE_URL || 'https://neronet.darknero.com/v4/control',
 

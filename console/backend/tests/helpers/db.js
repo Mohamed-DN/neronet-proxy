@@ -8,10 +8,13 @@ const { getDistributedLeaderService } = require('../../services/DistributedLeade
 
 const config = require('../../config/env');
 
-// Profiles refuse to be built without a real server key (D21). Give every test
-// database a well-formed one; tests of the missing-key path clear it themselves.
+// Profiles refuse to be built without a real server key and endpoint (D21). Give every
+// test database well-formed ones; tests of the missing-key path clear it themselves.
 if (!config.SERVER_PUBKEY) {
   config.SERVER_PUBKEY = Buffer.alloc(32, 7).toString('base64');
+}
+if (!config.SERVER_ENDPOINT) {
+  config.SERVER_ENDPOINT = 'vpn.example.com:51820';
 }
 
 const TEMPLATE_DB_NAME = 'neronet_test_template';

@@ -8,6 +8,7 @@ const {
   generateCurve25519Keypair,
   buildWireGuardConfig,
   requireServerPublicKey,
+  requireServerEndpoint,
   buildNoiseJsonProfile,
   generateQrCodeDataUrl,
   allocateNextVip
@@ -18,7 +19,8 @@ const { bumpNetmap } = require('../services/AclEngine');
 
 // The error handler drops `code` on 5xx, and clients map these two to a message.
 function sendHonestFailure(res, err) {
-  if (err && (err.code === 'server_key_missing' || err.code === 'qr_generation_failed')) {
+  if (err && (err.code === 'server_key_missing' ||
+      err.code === 'server_endpoint_missing' || err.code === 'qr_generation_failed')) {
     res.status(503).json({ error: err.message, code: err.code });
     return true;
   }
@@ -50,6 +52,7 @@ router.post('/generate', async (req, res, next) => {
     // Refuse before anything is allocated or stored: no node is created for a profile
     // that cannot be honest.
     requireServerPublicKey();
+    requireServerEndpoint();
 
     const kp = generateCurve25519Keypair();
     const VALID_ROLES = ['CLIENT_ORIGIN', 'EXIT_BRIDGE', 'HYBRID', 'RELAY'];
