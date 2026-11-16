@@ -20,6 +20,7 @@ import (
 	"github.com/sovereign/proxy/v4/pkg/crypto/pskepoch"
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
 	"github.com/sovereign/proxy/v4/pkg/derp"
+	"github.com/sovereign/proxy/v4/pkg/dns"
 	"github.com/sovereign/proxy/v4/pkg/nat"
 	"github.com/sovereign/proxy/v4/pkg/transport"
 )
@@ -66,6 +67,13 @@ type netmapManager struct {
 	// resolver that answers their DNS. Set once, before the first document.
 	exitEnabled bool
 	exitDNS     netip.AddrPort
+	// setMeshDNS is dev.SetMeshDNS (ADR 0034), a field for the same reason. names holds
+	// the mesh names of the last document; meshDNSEnabled is SOVEREIGN_MESH_DNS and
+	// meshDNSUpstream the resolver for every other name. Guarded by applyMu.
+	setMeshDNS      func(*dataplane.MeshDNS) error
+	names           *dns.Server
+	meshDNSEnabled  bool
+	meshDNSUpstream netip.AddrPort
 	// profileFilters holds one filter per profile device this gateway serves, keyed by
 	// node id, so a device's conntrack survives a new document. Guarded by applyMu.
 	profileFilters map[string]*acl.NetstackFilter
@@ -219,11 +227,13 @@ func newNetmapManager(
 	var setPeers func([]dataplane.Peer) error
 	var setForwarding func(*dataplane.ForwardTable)
 	var setEgress func(*dataplane.EgressTable, netip.AddrPort) error
+	var setMeshDNS func(*dataplane.MeshDNS) error
 	if dev != nil {
 		mux = dev.TransportMux()
 		setPeers = dev.SetPeers
 		setForwarding = dev.SetForwarding
 		setEgress = dev.SetEgress
+		setMeshDNS = dev.SetMeshDNS
 	}
 	return &netmapManager{
 		client:        client,
@@ -231,6 +241,7 @@ func newNetmapManager(
 		setPeers:      setPeers,
 		setForwarding: setForwarding,
 		setEgress:     setEgress,
+		setMeshDNS:    setMeshDNS,
 		netfilter:     netfilter,
 		path:          netmapPathFor(identityPath),
 		listenPort:    listenPort,
@@ -378,6 +389,7 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 	}
 	m.installForwarding(netmap.Peers, peers)
 	m.installEgress(netmap, peers)
+	m.installMeshDNS(netmap, peers)
 
 	// The filter is what decides whether a packet passes; the peer set only decides
 	// whether it can be carried. A netmap that named a peer the policy denies would
@@ -479,6 +491,7 @@ func (m *netmapManager) ApplyRevocations(keys []string, atVersion uint64) {
 	m.markRevocationPending(false)
 	m.installForwarding(current, peers)
 	m.installEgress(doc, peers)
+	m.installMeshDNS(doc, peers)
 
 	log.Printf("[SOVEREIGN-NODE] %d peer key(s) revoked: %d peer(s) remain%s", newly, len(peers), droppedNote(dropped))
 }
@@ -529,6 +542,7 @@ func (m *netmapManager) EnforceStaleness(now time.Time) bool {
 	}
 	m.installForwarding(nil, nil)
 	m.installEgress(nil, nil)
+	m.installMeshDNS(nil, nil)
 	if m.mux != nil {
 		if err := m.dev.ReconfigureTransports(nil, nil); err != nil {
 			// No peer is left for a transport to carry; reported, not retried.

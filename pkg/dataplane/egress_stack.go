@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gvisor.dev/gvisor/pkg/buffer"
@@ -38,8 +39,15 @@ type egressStack struct {
 	ep  *channel.Endpoint
 	out func([]byte) bool
 
-	dnsUpstream netip.AddrPort
+	// dnsUpstream answers ExitDNS for exit clients; SetEgress may replace it.
+	dnsUpstream atomic.Pointer[netip.AddrPort]
 	dial        func(ctx context.Context, network, address string) (net.Conn, error)
+
+	// mesh answers ExitDNS:53 from a profile device that has no exit (ADR 0034);
+	// exitClient says whether a source address has one. See meshdns.go.
+	mesh       atomic.Pointer[MeshDNS]
+	meshSlots  chan struct{}
+	exitClient func(netip.Addr) bool
 
 	closeOnce sync.Once
 }
@@ -78,12 +86,13 @@ func newEgressStack(mtu int, dnsUpstream netip.AddrPort, out func([]byte) bool) 
 		{Destination: header.IPv6EmptySubnet, NIC: egressNIC},
 	})
 	e := &egressStack{
-		s:           s,
-		ep:          ep,
-		out:         out,
-		dnsUpstream: dnsUpstream,
-		dial:        (&net.Dialer{Timeout: egressDialTimeout}).DialContext,
+		s:         s,
+		ep:        ep,
+		out:       out,
+		meshSlots: make(chan struct{}, meshDNSMaxInFlight),
+		dial:      (&net.Dialer{Timeout: egressDialTimeout}).DialContext,
 	}
+	e.dnsUpstream.Store(&dnsUpstream)
 	ep.AddNotify(e)
 	tcpFwd := tcp.NewForwarder(s, 0, egressMaxInFlight, e.handleTCP)
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpFwd.HandlePacket)
@@ -135,16 +144,28 @@ func (e *egressStack) target(id stack.TransportEndpointID) (netip.AddrPort, bool
 	}
 	dst = dst.Unmap()
 	if dst == ExitDNS {
-		if id.LocalPort != 53 || !e.dnsUpstream.IsValid() {
+		up := e.upstream()
+		if id.LocalPort != 53 || !up.IsValid() {
 			return netip.AddrPort{}, false
 		}
-		return e.dnsUpstream, true
+		return up, true
 	}
 	return netip.AddrPortFrom(dst, id.LocalPort), true
 }
 
+func (e *egressStack) upstream() netip.AddrPort {
+	if p := e.dnsUpstream.Load(); p != nil {
+		return *p
+	}
+	return netip.AddrPort{}
+}
+
 func (e *egressStack) handleTCP(r *tcp.ForwarderRequest) {
 	id := r.ID()
+	if e.isMeshDNS(id) {
+		e.serveMeshTCP(r)
+		return
+	}
 	dst, ok := e.target(id)
 	if !ok {
 		r.Complete(true)
@@ -195,6 +216,9 @@ func pipeTCP(client *gonet.TCPConn, host net.Conn) {
 
 func (e *egressStack) handleUDP(r *udp.ForwarderRequest) bool {
 	id := r.ID()
+	if e.isMeshDNS(id) {
+		return e.serveMeshUDP(r)
+	}
 	dst, ok := e.target(id)
 	if !ok {
 		return false
@@ -206,7 +230,7 @@ func (e *egressStack) handleUDP(r *udp.ForwarderRequest) bool {
 	}
 	client := gonet.NewUDPConn(&wq, ep)
 	idle := egressUDPIdle
-	if dst == e.dnsUpstream {
+	if dst == e.upstream() {
 		idle = egressDNSIdle
 	}
 	go func() {

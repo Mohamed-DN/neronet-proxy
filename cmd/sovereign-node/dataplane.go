@@ -192,6 +192,12 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		}
 	}
 
+	meshUp, _ := exitDNSUpstream()
+	manager.SetMeshDNS(meshDNSEnabled(), meshUp)
+	if !meshDNSEnabled() {
+		log.Printf("[SOVEREIGN-NODE] Mesh names for profile devices are off (SOVEREIGN_MESH_DNS)")
+	}
+
 	pskManager := pskepoch.NewManager(dev, opts.Keypair, pskepoch.DefaultRotationInterval)
 	manager.SetPSKManager(pskManager)
 
