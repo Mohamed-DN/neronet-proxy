@@ -27,7 +27,7 @@
 
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
 const { normalisePublicKeyHex } = require('../utils/crypto');
-const { effectiveSearchDomain } = require('../utils/meshNames');
+const { effectiveSearchDomain, slugLabel } = require('../utils/meshNames');
 const TransportPolicyService = require('./TransportPolicyService');
 const AclEngine = require('./AclEngine');
 const RouteEngine = require('./RouteEngine');
@@ -483,10 +483,7 @@ function sortAllowedIPs(list) {
 function computeDNSName(name, explicitDnsName, domain) {
   if (explicitDnsName) return explicitDnsName;
   if (!name) return undefined;
-  const slug = String(name)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
+  const slug = slugLabel(name);
   if (!slug) return undefined;
   return domain ? `${slug}.${domain}` : slug;
 }
@@ -676,7 +673,11 @@ async function buildNetmap(nodeId) {
       if (exitAssignment) deviceEntry.exit = ExitService.exitEntry(exitAssignment);
       if (row.name) deviceEntry.name = row.name;
       // ADR 0034: the gateway answers mesh names for its devices from this entry.
-      const deviceDNS = computeDNSName(row.name, row.dns_name, searchDomain);
+      // The stored name is unique in the organisation (migration 053); it is kept as the label
+      // and put under the search domain as it is now, so a changed domain does not leave a
+      // device under the old one. A row without a stored name gets the computed one.
+      const storedLabel = row.dns_name ? String(row.dns_name).split('.')[0] : '';
+      const deviceDNS = storedLabel ? `${storedLabel}.${searchDomain}` : computeDNSName(row.name, undefined, searchDomain);
       if (deviceDNS) deviceEntry.dns_name = deviceDNS;
       peers.push(deviceEntry);
       continue;

@@ -19,6 +19,7 @@ const AclEngine = require('../services/AclEngine');
 const ExitService = require('../services/ExitService');
 const { MESH_DNS, meshDnsEnabled, effectiveSearchDomain } = require('../utils/meshNames');
 const ProfileGatewayService = require('../services/ProfileGatewayService');
+const DeviceNameService = require('../services/DeviceNameService');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -509,23 +510,27 @@ router.post('/profile', async (req, res, next) => {
       const org = await client.query('SELECT search_domain, slug FROM organizations WHERE id = $1', [organizationId]);
       searchDomain = effectiveSearchDomain(org.rows[0] && org.rows[0].search_domain, org.rows[0] && org.rows[0].slug);
       vips = await allocateNextVip(client);
-      await client.query(
-        `INSERT INTO nodes (id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6, role,
-                            ip_class, is_healthy, is_quarantined, organization_id, device_kind, exit_node_id,
-                            gateway_node_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9, $10)`,
-        [
-          id,
-          actor.id,
-          label,
-          public_key,
-          preshared_key,
-          vips.overlayIpv4,
-          vips.overlayIpv6,
-          organizationId,
-          exit ? exit.node_id : null,
-          gateway.id
-        ]
+      // The name other devices reach this one by (ADR 0034), unique in the organisation.
+      await DeviceNameService.insertWithDnsName(client, { organizationId, name: label, searchDomain }, (dnsName) =>
+        client.query(
+          `INSERT INTO nodes (id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6, role,
+                              ip_class, is_healthy, is_quarantined, organization_id, device_kind, exit_node_id,
+                              gateway_node_id, dns_name)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9, $10, $11)`,
+          [
+            id,
+            actor.id,
+            label,
+            public_key,
+            preshared_key,
+            vips.overlayIpv4,
+            vips.overlayIpv6,
+            organizationId,
+            exit ? exit.node_id : null,
+            gateway.id,
+            dnsName
+          ]
+        )
       );
       await AclEngine.bumpNetmap(client);
     });
