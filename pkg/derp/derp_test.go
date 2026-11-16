@@ -158,7 +158,13 @@ func TestRelayClientRouting(t *testing.T) {
 		t.Fatalf("Alice did not receive reply in time")
 	}
 
+	// The router counts a packet after SendFrame returns, so the receiver can see the
+	// reply a moment before the counter moves: wait for it instead of reading it once.
 	routed, dropped := server.Router().Metrics()
+	for deadline := time.Now().Add(2 * time.Second); routed < 2 && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+		routed, dropped = server.Router().Metrics()
+	}
 	if routed < 2 {
 		t.Fatalf("Expected at least 2 routed packets, got %d (dropped %d)", routed, dropped)
 	}
