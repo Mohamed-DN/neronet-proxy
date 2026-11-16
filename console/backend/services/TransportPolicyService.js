@@ -19,7 +19,8 @@ const { normalisePublicKeyHex } = require('../utils/crypto');
 
 const KNOWN_TRANSPORTS = ['udp', 'derp'];
 const CAPABILITY = 'derp-v2';
-const KNOWN_CAPABILITIES = [CAPABILITY];
+// drop-v1: the node runs the NeroDrop mailbox (ADR 0033, pkg/drop).
+const KNOWN_CAPABILITIES = [CAPABILITY, 'drop-v1'];
 const MAX_ENABLED_RELAYS = 32; // the node refuses a document with more candidates
 const MAX_HOMES = 2; // the node refuses a peer advertising more
 const RELAY_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
