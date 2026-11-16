@@ -17,7 +17,7 @@ const { allocateNextVip, normalisePublicKeyHex, publicKeyForms } = require('../u
 const EnrollmentService = require('../services/EnrollmentService');
 const AclEngine = require('../services/AclEngine');
 const ExitService = require('../services/ExitService');
-const { MESH_DNS, meshDnsEnabled } = require('../utils/meshNames');
+const { MESH_DNS, meshDnsEnabled, effectiveSearchDomain } = require('../utils/meshNames');
 const ProfileGatewayService = require('../services/ProfileGatewayService');
 
 router.use(authenticateToken);
@@ -498,6 +498,7 @@ router.post('/profile', async (req, res, next) => {
     const id = `dev-${crypto.randomBytes(6).toString('hex')}`;
     let organizationId;
     let vips;
+    let searchDomain;
     await EnrollmentService.transaction(async (client) => {
       const actor = await EnrollmentService.authorizeConsole(
         client,
@@ -505,6 +506,8 @@ router.post('/profile', async (req, res, next) => {
         req.sessionAuthority.organizationIdAtIssue
       );
       organizationId = actor.organization_id;
+      const org = await client.query('SELECT search_domain, slug FROM organizations WHERE id = $1', [organizationId]);
+      searchDomain = effectiveSearchDomain(org.rows[0] && org.rows[0].search_domain, org.rows[0] && org.rows[0].slug);
       vips = await allocateNextVip(client);
       await client.query(
         `INSERT INTO nodes (id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6, role,
@@ -559,6 +562,8 @@ router.post('/profile', async (req, res, next) => {
       // device with an exit the rest through the exit, so no query goes around the tunnel.
       // With the mesh resolver switched off only an exit profile has anything to ask.
       dns: exit || meshDnsEnabled() ? [MESH_DNS] : [],
+      // Written after the address in the DNS line, so a stock app searches it: `phone` works.
+      search_domain: searchDomain,
       ...(exit ? { exit: { node_id: exit.node_id, name: exit.name, kind: exit.kind } } : {}),
       console_url: `https://${req.get('host')}/me`,
       strict_network: strictNetworkOf(req)

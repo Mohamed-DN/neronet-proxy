@@ -112,6 +112,31 @@ func TestRejectsWhatWouldSilentlyMisbehave(t *testing.T) {
 	}
 }
 
+func TestDNSLineCarriesAddressesAndSearchDomains(t *testing.T) {
+	text := strings.Replace(sample, "DNS = 100.64.0.1", "DNS = 100.100.100.100, Acme.Example.com, mesh", 1)
+	p, err := Parse(strings.NewReader(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.DNS) != 1 || p.DNS[0].String() != "100.100.100.100" {
+		t.Fatalf("dns addresses: %v", p.DNS)
+	}
+	if got := strings.Join(p.SearchDomains, " "); got != "acme.example.com mesh" {
+		t.Fatalf("search domains: %q", got)
+	}
+}
+
+func TestRejectsDNSEntriesThatAreNeitherAddressNorName(t *testing.T) {
+	long := strings.Repeat("a", 64) + ".example.com"
+	for _, bad := range []string{"bad domain", "-lead.example.com", "trail-.example.com", "a..b", "exa_mple.com",
+		"x;rm.example.com", "~routing.example.com", long, strings.Repeat("a.", 130) + "com", "100.64.0.999"} {
+		text := strings.Replace(sample, "DNS = 100.64.0.1", "DNS = 100.64.0.1, "+bad, 1)
+		if _, err := Parse(strings.NewReader(text)); err == nil {
+			t.Errorf("accepted DNS entry %q", bad)
+		}
+	}
+}
+
 func TestStringNeverPrintsThePrivateKey(t *testing.T) {
 	p, err := Parse(strings.NewReader(sample))
 	if err != nil {

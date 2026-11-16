@@ -33,6 +33,7 @@ const DEVICE = {
   gateway: { public_key: 'GATEWAYPUBLICKEY0000000000000000000000000=', endpoint: 'gw.example.net:51820' },
   allowed_ips: ['100.64.0.0/10'],
   dns: ['100.100.100.100'],
+  search_domain: 'acme.example.com',
   console_url: 'https://console.example.net'
 };
 
@@ -346,7 +347,7 @@ describe('AddDeviceRoute', () => {
     expect(Object.keys(sent).sort()).toEqual(['exit_node_id', 'name', 'preshared_key', 'public_key']);
     const config = String(vi.mocked(qrcode.toDataURL).mock.calls.at(-1)?.[0]);
     expect(config).toContain('AllowedIPs = 0.0.0.0/0, ::/0');
-    expect(config).toContain('DNS = 100.100.100.100');
+    expect(config).toContain('DNS = 100.100.100.100, acme.example.com');
   });
 
   it('leaves the option off unless it is ticked', async () => {

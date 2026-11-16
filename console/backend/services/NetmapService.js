@@ -27,6 +27,7 @@
 
 const { getDatabase, isPostgres, getPgPool } = require('../db/index');
 const { normalisePublicKeyHex } = require('../utils/crypto');
+const { effectiveSearchDomain } = require('../utils/meshNames');
 const TransportPolicyService = require('./TransportPolicyService');
 const AclEngine = require('./AclEngine');
 const RouteEngine = require('./RouteEngine');
@@ -514,7 +515,7 @@ async function buildNetmap(nodeId) {
 
   if (selfRows.length === 0) return null;
   const self = selfRows[0];
-  const searchDomain = self.search_domain || (self.org_slug ? `${self.org_slug}.neronet` : 'mesh');
+  const searchDomain = effectiveSearchDomain(self.search_domain, self.org_slug);
 
   const [version, policy, revokedKeys] = await Promise.all([
     getVersion(),

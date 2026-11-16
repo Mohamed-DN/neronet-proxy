@@ -17,4 +17,12 @@ function meshDnsEnabled(env = process.env) {
   return !OFF.has(String(env.SOVEREIGN_MESH_DNS || '').trim().toLowerCase());
 }
 
-module.exports = { MESH_DNS, meshDnsEnabled };
+/**
+ * The suffix of an organisation's mesh names: its search domain, else its slug under
+ * ".neronet", else "mesh". NetmapService and the profile answer must agree on it.
+ */
+function effectiveSearchDomain(searchDomain, orgSlug) {
+  return searchDomain || (orgSlug ? `${orgSlug}.neronet` : 'mesh');
+}
+
+module.exports = { MESH_DNS, meshDnsEnabled, effectiveSearchDomain };

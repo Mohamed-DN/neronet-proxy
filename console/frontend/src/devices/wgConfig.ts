@@ -14,6 +14,8 @@ export interface ProfileDeviceResponse {
   gateway: { public_key: string; endpoint: string };
   allowed_ips: string[];
   dns: string[];
+  /** ADR 0034: written after the addresses in the DNS line so the app searches it. */
+  search_domain?: string | null;
   /** ADR 0032: present when every packet leaves through this exit (AllowedIPs 0.0.0.0/0, ::/0). */
   exit?: { node_id: string; name: string; kind: 'gateway' | 'node' };
   console_url: string;
@@ -73,7 +75,11 @@ function configText(
   peer: { endpoint: string; keepalive: number; mtu?: number }
 ): string {
   const lines = ['[Interface]', `PrivateKey = ${keys.privateKey}`, `Address = ${device.overlay_ipv4}/32`];
-  if (device.dns.length > 0) lines.push(`DNS = ${device.dns.join(', ')}`);
+  if (device.dns.length > 0) {
+    // wg-quick and the stock apps read names after the addresses as search domains.
+    const entries = device.search_domain ? [...device.dns, device.search_domain] : device.dns;
+    lines.push(`DNS = ${entries.join(', ')}`);
+  }
   if (peer.mtu) lines.push(`MTU = ${peer.mtu}`);
   lines.push(
     '',

@@ -18,6 +18,7 @@ const device: ProfileDeviceResponse = {
   gateway: { public_key: 'GATEWAYPUB=', endpoint: 'gw.example.net:51820' },
   allowed_ips: ['100.64.0.0/10', 'fd7a:115c:a1e0::/48'],
   dns: ['100.100.100.100'],
+  search_domain: 'acme.example.com',
   console_url: 'https://console.example.net'
 };
 
@@ -30,7 +31,7 @@ describe('buildProfileConfig', () => {
         '[Interface]',
         'PrivateKey = PRIVKEY=',
         'Address = 100.64.0.7/32',
-        'DNS = 100.100.100.100',
+        'DNS = 100.100.100.100, acme.example.com',
         '',
         '[Peer]',
         'PublicKey = GATEWAYPUB=',
@@ -41,6 +42,18 @@ describe('buildProfileConfig', () => {
         ''
       ].join('\n')
     );
+  });
+
+  it('writes the address only when the server names no search domain', () => {
+    const text = buildProfileConfig({ privateKey: 'P=', presharedKey: 'S=' }, { ...device, search_domain: null });
+
+    expect(text.split('\n')).toContain('DNS = 100.100.100.100');
+  });
+
+  it('writes no search domain without an address to go with it', () => {
+    const text = buildProfileConfig({ privateKey: 'P=', presharedKey: 'S=' }, { ...device, dns: [] });
+
+    expect(text).not.toContain('acme.example.com');
   });
 
   it('omits the DNS line when the list is empty', () => {
@@ -94,7 +107,7 @@ describe('buildStrictNetworkConfig', () => {
       '[Interface]',
       'PrivateKey = PRIVKEY=',
       'Address = 100.64.0.7/32',
-      'DNS = 100.100.100.100',
+      'DNS = 100.100.100.100, acme.example.com',
       'MTU = 1380',
       '',
       '[Peer]',
