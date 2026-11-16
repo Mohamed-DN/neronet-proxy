@@ -477,18 +477,7 @@ func (s *Server) UpdateNetmap(self control.NetmapSelf, peers []control.NetmapPee
 		sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].NodeID < ordered[j].NodeID })
 	}
 	for _, peer := range ordered {
-		var peerV4, peerV6 net.IP
-		for _, allowed := range peer.AllowedIPs {
-			prefix, err := netip.ParsePrefix(allowed)
-			if err != nil {
-				continue
-			}
-			if prefix.Addr().Is4() && prefix.Bits() == 32 {
-				peerV4 = net.ParseIP(prefix.Addr().String())
-			} else if prefix.Addr().Is6() && prefix.Bits() == 128 {
-				peerV6 = net.ParseIP(prefix.Addr().String())
-			}
-		}
+		peerV4, peerV6 := peerHostAddresses(peer.AllowedIPs)
 		cands = append(cands, candidate{owner: peer.NodeID, short: peer.Name, dns: peer.DNSName, v4: peerV4, v6: peerV6})
 	}
 
@@ -587,4 +576,50 @@ func ipv6ToPTR(ip net.IP) string {
 	}
 	sb.WriteString("ip6.arpa")
 	return sb.String()
+}
+
+var (
+	overlayV4 = netip.MustParsePrefix("100.64.0.0/10")
+	overlayV6 = netip.MustParsePrefix("fc00::/7")
+)
+
+// peerHostAddresses picks the address a peer's name points at. A subnet router lists
+// routed prefixes, host routes among them, next to its own overlay /32, so the host
+// address inside the overlay range wins; without one, the first host address listed.
+func peerHostAddresses(allowed []string) (v4, v6 net.IP) {
+	var firstV4, firstV6 netip.Addr
+	var overV4, overV6 netip.Addr
+	for _, a := range allowed {
+		prefix, err := netip.ParsePrefix(a)
+		if err != nil {
+			continue
+		}
+		addr := prefix.Addr()
+		switch {
+		case addr.Is4() && prefix.Bits() == 32:
+			if !firstV4.IsValid() {
+				firstV4 = addr
+			}
+			if !overV4.IsValid() && overlayV4.Contains(addr) {
+				overV4 = addr
+			}
+		case addr.Is6() && prefix.Bits() == 128:
+			if !firstV6.IsValid() {
+				firstV6 = addr
+			}
+			if !overV6.IsValid() && overlayV6.Contains(addr) {
+				overV6 = addr
+			}
+		}
+	}
+	pick := func(over, first netip.Addr) net.IP {
+		if over.IsValid() {
+			return net.IP(over.AsSlice())
+		}
+		if first.IsValid() {
+			return net.IP(first.AsSlice())
+		}
+		return nil
+	}
+	return pick(overV4, firstV4), pick(overV6, firstV6)
 }

@@ -107,3 +107,24 @@ func TestWithoutSingleAnswerADuplicateNameStaysMultiAddress(t *testing.T) {
 		t.Fatalf("default behaviour changed: %d address(es), want 2", len(msg.Answers))
 	}
 }
+
+// A peer that routes a subnet lists its overlay /32 next to the routed prefixes, and a
+// routed host route can be a /32 too. The name must point at the overlay address,
+// wherever it sits in the list.
+func TestASubnetRouterNameAnswersItsOverlayAddress(t *testing.T) {
+	s := NewServer(Config{SingleAnswer: true})
+	self := control.NetmapSelf{OverlayIPv4: "100.64.0.1", Name: "gw", DNSName: "gw.example.com"}
+	peers := []control.NetmapPeer{{
+		NodeID: "router", Name: "Router", DNSName: "router.example.com",
+		AllowedIPs: []string{"100.64.0.40/32", "192.0.2.0/24", "198.51.100.7/32"},
+	}}
+	s.UpdateNetmap(self, peers, &control.DNSConfig{SearchDomains: []string{"example.com"}})
+
+	msg, _ := answerFor(t, s, "router.example.com.", dnsmessage.TypeA)
+	if len(msg.Answers) != 1 {
+		t.Fatalf("%d answer(s), want one", len(msg.Answers))
+	}
+	if got := msg.Answers[0].Body.(*dnsmessage.AResource).A; got != [4]byte{100, 64, 0, 40} {
+		t.Errorf("answered %v, want the overlay address 100.64.0.40", got)
+	}
+}
