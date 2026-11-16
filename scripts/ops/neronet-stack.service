@@ -1,0 +1,24 @@
+[Unit]
+Description=NeroNet single-host stack: start it again after a reboot
+Documentation=file://%h/neronet/scripts/ops/HEALTH.md
+# Rootless Podman does not bring back "restart: unless-stopped" containers after a
+# boot (podman-restart.service only handles "always"), so without this unit the
+# console stays down until someone runs stack.sh up by hand.
+After=default.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Optional shell file with the exports the stack needs on this host, for example
+# NERONET_EXTRA_COMPOSE_FILE. A missing file is skipped.
+ExecStart=/bin/sh -c 'f="$HOME/.config/neronet/stack.env.sh"; [ -f "$f" ] && . "$f"; exec /bin/sh "$HOME/neronet/scripts/dev/stack.sh" up'
+# Builds come from the local image cache; the first boot after a deploy may take longer.
+TimeoutStartSec=20min
+Restart=on-failure
+RestartSec=60
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=neronet-stack
+
+[Install]
+WantedBy=default.target

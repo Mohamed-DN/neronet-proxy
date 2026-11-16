@@ -31,6 +31,23 @@ Exit code 0 when all checks pass, 1 otherwise. No secrets or env values are prin
 4. Keep the timer running without an active login session:
    `sudo loginctl enable-linger "$USER"`.
 
+## Start the stack again after a reboot
+
+Rootless Podman does not restart `unless-stopped` containers at boot, so a host that
+reboots keeps the console down until `stack.sh up` runs. `neronet-stack.service` runs it
+at boot (linger must be on, step 4 above):
+
+```
+mkdir -p ~/.config/neronet
+# Exports the stack needs on this host, if any (sourced by the unit):
+echo 'export NERONET_EXTRA_COMPOSE_FILE="docker-compose.gateway.yml"' > ~/.config/neronet/stack.env.sh
+cp scripts/ops/neronet-stack.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable neronet-stack.service
+```
+
+`journalctl --user -u neronet-stack` shows the boot run.
+
 ## Read the results
 
 ```
