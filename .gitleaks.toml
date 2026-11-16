@@ -54,6 +54,11 @@ targetRules = ["generic-api-key"]
 paths = ['''^docs/adr/.*\.md$''']
 
 [[allowlists]]
+description = "NeroDrop ticket test vector: the HMAC key derived by X25519 from fixed test keys (one is 32 bytes of 0x22). tests/drop.test.js holds the same strings so the Go and JavaScript sides cannot drift apart. No deployment uses these keys."
+targetRules = ["generic-api-key"]
+paths = ['''^pkg/drop/ticket_test\.go$''']
+
+[[allowlists]]
 description = "Test fixtures and test keys in third-party carved packages (Tailscale DERP mesh keys in unit tests)."
 targetRules = ["generic-api-key"]
 paths = ['''^third_party/.*_test\.go$''']
