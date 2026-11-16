@@ -43,11 +43,11 @@ type egressStack struct {
 	dnsUpstream atomic.Pointer[netip.AddrPort]
 	dial        func(ctx context.Context, network, address string) (net.Conn, error)
 
-	// mesh answers ExitDNS:53 from a profile device that has no exit (ADR 0034);
-	// exitClient says whether a source address has one. See meshdns.go.
+	// mesh answers ExitDNS:53 from a profile device (ADR 0034); exitClient says whether
+	// a source address has an exit, and which kind. See meshdns.go.
 	mesh       atomic.Pointer[MeshDNS]
 	meshSlots  chan struct{}
-	exitClient func(netip.Addr) bool
+	exitClient func(netip.Addr) (EgressVia, bool)
 
 	closeOnce sync.Once
 }

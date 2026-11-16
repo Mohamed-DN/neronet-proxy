@@ -26,11 +26,15 @@ import (
 //
 // What a query meets, in order:
 //
-//   - from a device that has an exit selected: today's path, the exit's resolver
-//     (ADR 0032). A device with an exit does not resolve mesh names yet.
-//   - from a device without one: MeshDNS.Answer decides. A mesh name is answered from
-//     the netmap, an unknown mesh name is NXDOMAIN and is never forwarded, anything
-//     else goes to MeshDNS.Upstream.
+//   - MeshDNS.Answer decides first, for every profile device. A mesh name is answered
+//     from the netmap and an unknown mesh name is NXDOMAIN; neither is ever forwarded.
+//   - anything else from a device without an exit goes to MeshDNS.Upstream.
+//   - anything else from a device with an exit goes to the exit's resolver (ADR 0032),
+//     never to MeshDNS.Upstream: a device that chose an exit must not resolve around it.
+//     For an exit on this host that is the resolver SetEgress was given (SERVFAIL if
+//     none). For a mesh exit the gateway cannot ask that resolver itself, so it answers
+//     mesh names only for UDP queries, which it can read before relaying; those it
+//     does not answer, and every TCP query, are relayed to the exit unchanged.
 //
 // With no MeshDNS installed a non-exit device's packet to ExitDNS meets the forwarding
 // policy as any other packet and is dropped, which is what happened before.
@@ -79,7 +83,7 @@ func (d *Device) SetMeshDNS(m *MeshDNS) error {
 		if err != nil {
 			return fmt.Errorf("dataplane: userspace stack for mesh names: %w", err)
 		}
-		es.exitClient = f.hasExit
+		es.exitClient = f.exitVia
 		f.egressStack.Store(es)
 	}
 	es.mesh.Store(m)
@@ -88,18 +92,21 @@ func (d *Device) SetMeshDNS(m *MeshDNS) error {
 	return nil
 }
 
-// hasExit reports whether a client address has an exit selected.
-func (f *filteredTUN) hasExit(a netip.Addr) bool {
+// exitVia reports whether a client address has an exit selected, and which kind.
+func (f *filteredTUN) exitVia(a netip.Addr) (EgressVia, bool) {
 	t := f.egress.Load()
 	if t == nil {
-		return false
+		return EgressNone, false
 	}
-	_, ok := t.Client(a)
-	return ok
+	c, ok := t.Client(a)
+	if !ok {
+		return EgressNone, false
+	}
+	return c.Via, true
 }
 
-// meshDNSWrite takes a decrypted packet to ExitDNS:53 from a profile device that has
-// no exit and hands it to the stack. It reports whether it took the packet.
+// meshDNSWrite takes a decrypted packet to ExitDNS:53 from a profile device and hands it
+// to the stack. It reports whether it took the packet.
 func (f *filteredTUN) meshDNSWrite(raw []byte, pkt Packet) bool {
 	if pkt.Dst.Unmap() != ExitDNS || pkt.DstPort != 53 || pkt.Fragment {
 		return false
@@ -112,15 +119,62 @@ func (f *filteredTUN) meshDNSWrite(raw []byte, pkt Packet) bool {
 		return false
 	}
 	src := pkt.Src.Unmap()
-	if _, profile := ft.devices[src]; !profile || f.hasExit(src) {
+	if _, profile := ft.devices[src]; !profile {
 		return false
 	}
 	es := f.egressStack.Load()
 	if es == nil {
 		return false
 	}
+	if t := f.egress.Load(); t != nil {
+		if c, ok := t.Client(src); ok {
+			return f.meshDNSExitWrite(raw, pkt, c, es)
+		}
+	}
 	es.inject(raw)
 	return true
+}
+
+// meshDNSExitWrite is meshDNSWrite for a device that has an exit. It takes the packet
+// only when the mesh resolver may answer it; otherwise the exit path handles it as it
+// always did.
+func (f *filteredTUN) meshDNSExitWrite(raw []byte, pkt Packet, c *EgressClient, es *egressStack) bool {
+	if c.Decide(pkt) != nil {
+		return false // the exit path drops it and counts the drop
+	}
+	switch c.Via {
+	case EgressLocal:
+		es.inject(raw)
+		f.egressed.Add(1)
+		return true
+	case EgressMesh:
+		m := es.mesh.Load()
+		if m == nil || pkt.Protocol != ProtoUDP || pkt.Version != 4 {
+			return false
+		}
+		query := udpPayloadV4(raw)
+		if query == nil {
+			return false
+		}
+		if reply, forward := m.Answer(query); reply != nil && !forward {
+			es.inject(raw)
+			return true
+		}
+	}
+	return false
+}
+
+// udpPayloadV4 returns the UDP payload of an IPv4 packet that ParsePacket accepted, or nil.
+func udpPayloadV4(raw []byte) []byte {
+	if len(raw) < 28 {
+		return nil
+	}
+	ihl := int(raw[0]&0x0f) * 4
+	total := int(binary.BigEndian.Uint16(raw[2:4]))
+	if ihl < 20 || total > len(raw) || ihl+8 > total {
+		return nil
+	}
+	return raw[ihl+8 : total]
 }
 
 // isMeshDNS reports whether a flow that reached the stack is a mesh name query.
@@ -132,15 +186,23 @@ func (e *egressStack) isMeshDNS(id stack.TransportEndpointID) bool {
 	if !ok || dst.Unmap() != ExitDNS {
 		return false
 	}
-	if e.exitClient != nil {
-		if src, ok := netip.AddrFromSlice(id.RemoteAddress.AsSlice()); ok && e.exitClient(src.Unmap()) {
-			return false
-		}
-	}
 	return true
 }
 
+// exitOf says whether the flow's source has an exit, and which kind.
+func (e *egressStack) exitOf(id stack.TransportEndpointID) (EgressVia, bool) {
+	if e.exitClient == nil {
+		return EgressNone, false
+	}
+	src, ok := netip.AddrFromSlice(id.RemoteAddress.AsSlice())
+	if !ok {
+		return EgressNone, false
+	}
+	return e.exitClient(src.Unmap())
+}
+
 func (e *egressStack) serveMeshUDP(r *udp.ForwarderRequest) bool {
+	via, viaExit := e.exitOf(r.ID())
 	var wq waiter.Queue
 	ep, err := r.CreateEndpoint(&wq)
 	if err != nil {
@@ -164,7 +226,7 @@ func (e *egressStack) serveMeshUDP(r *udp.ForwarderRequest) bool {
 			}
 			go func() {
 				defer func() { <-e.meshSlots }()
-				if reply := e.meshReply(query, false); reply != nil {
+				if reply := e.meshReply(query, false, via, viaExit); reply != nil {
 					_, _ = client.Write(reply)
 				}
 			}()
@@ -174,6 +236,7 @@ func (e *egressStack) serveMeshUDP(r *udp.ForwarderRequest) bool {
 }
 
 func (e *egressStack) serveMeshTCP(r *tcp.ForwarderRequest) {
+	via, viaExit := e.exitOf(r.ID())
 	var wq waiter.Queue
 	ep, tcpErr := r.CreateEndpoint(&wq)
 	if tcpErr != nil {
@@ -199,7 +262,7 @@ func (e *egressStack) serveMeshTCP(r *tcp.ForwarderRequest) {
 			default:
 				return
 			}
-			reply := e.meshReply(query, true)
+			reply := e.meshReply(query, true, via, viaExit)
 			<-e.meshSlots
 			if reply == nil {
 				continue
@@ -214,9 +277,10 @@ func (e *egressStack) serveMeshTCP(r *tcp.ForwarderRequest) {
 	}()
 }
 
-// meshReply answers one query: from the netmap, or from the upstream resolver for a
-// name outside the mesh. It returns nil when there is nothing to send.
-func (e *egressStack) meshReply(query []byte, overTCP bool) []byte {
+// meshReply answers one query: from the netmap, or for a name outside the mesh from the
+// upstream resolver, or, for a device that has an exit, from the exit's. It returns nil
+// when there is nothing to send.
+func (e *egressStack) meshReply(query []byte, overTCP bool, via EgressVia, viaExit bool) []byte {
 	m := e.mesh.Load()
 	if m == nil {
 		return nil
@@ -225,14 +289,22 @@ func (e *egressStack) meshReply(query []byte, overTCP bool) []byte {
 	if reply == nil || !forward {
 		return reply
 	}
-	if !m.Upstream.IsValid() {
+	upstream := m.Upstream
+	if viaExit {
+		// Never the gateway's own resolver: the device chose to resolve where it exits.
+		upstream = netip.AddrPort{}
+		if via == EgressLocal {
+			upstream = e.upstream()
+		}
+	}
+	if !upstream.IsValid() {
 		return servfail(query)
 	}
 	network := "udp"
 	if overTCP {
 		network = "tcp"
 	}
-	answer, err := e.relay(network, m.Upstream, query)
+	answer, err := e.relay(network, upstream, query)
 	if err != nil {
 		return servfail(query)
 	}
