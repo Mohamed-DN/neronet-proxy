@@ -118,6 +118,9 @@ type filteredTUN struct {
 	egressed      atomic.Uint64
 	egressDropped atomic.Uint64
 
+	// Mesh names (meshdns.go). meshDNS is nil unless the gateway serves them.
+	meshDNS atomic.Pointer[MeshDNS]
+
 	// The reader switch. Until forwarding is first switched on, Read reads the
 	// backend directly, exactly as before. From then on a pump goroutine reads the
 	// backend and Read serves whichever of the pump and the forwarding queue has a
@@ -510,6 +513,12 @@ func (f *filteredTUN) Write(bufs [][]byte, offset int) (int, error) {
 			f.dummyDropped.Add(1)
 			startFiltering(i)
 			continue
+		}
+		if f.meshDNS.Load() != nil {
+			if pkt, ok := ParsePacket(raw); ok && f.meshDNSWrite(raw, pkt) {
+				startFiltering(i)
+				continue
+			}
 		}
 		if t := f.egress.Load(); t != nil {
 			if pkt, ok := ParsePacket(raw); ok && f.egressWrite(raw, pkt, t) {

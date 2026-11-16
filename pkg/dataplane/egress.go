@@ -354,7 +354,11 @@ func (d *Device) SetEgress(t *EgressTable, dnsUpstream netip.AddrPort) error {
 		if err != nil {
 			return fmt.Errorf("dataplane: userspace egress stack: %w", err)
 		}
+		es.exitClient = f.hasExit
 		f.egressStack.Store(es)
+	}
+	if es := f.egressStack.Load(); es != nil && dnsUpstream.IsValid() {
+		es.dnsUpstream.Store(&dnsUpstream)
 	}
 	t.adoptConntrack(f.egress.Load())
 	f.egress.Store(t)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -44,6 +45,13 @@ type Config struct {
 
 	// DefaultSearchDomain is appended to unqualified names (e.g. "corp.neronet").
 	DefaultSearchDomain string
+
+	// SingleAnswer makes a name resolve to exactly one device (ADR 0034). When two
+	// nodes in a netmap claim the same name, the one with the lowest node id keeps it
+	// (the node itself, listed first, before any peer) and the others do not get that
+	// name, so a name is never a multi-address record that sends a client to a
+	// different device on every lookup. Off, UpdateNetmap appends every address.
+	SingleAnswer bool
 }
 
 // Server implements a lightweight, leak-preventing MagicDNS resolver.
@@ -146,15 +154,39 @@ func (s *Server) serve() {
 	}
 }
 
-// handleQuery parses, evaluates, and responds to a DNS request.
+// handleQuery answers a datagram received on the server's own socket.
 func (s *Server) handleQuery(reqBytes []byte, remoteAddr net.Addr) {
+	reply, forward := s.Answer(reqBytes)
+	if reply == nil {
+		return
+	}
+	if forward && s.cfg.UpstreamResolver != "" {
+		s.relayUpstream(reqBytes, remoteAddr)
+		return
+	}
+	if forward {
+		s.nxDomainCount.Add(1)
+	}
+	_, _ = s.conn.WriteTo(reply, remoteAddr)
+}
+
+// Answer evaluates one DNS query without any socket, so a caller with its own
+// transport (the profile gateway's userspace stack, ADR 0034) can serve it.
+//
+// reply is the packed response, or nil when the bytes are not a query to answer. When
+// forward is true the name is not the mesh's: reply is then only the NXDOMAIN to send
+// if the caller has nowhere to forward the query, and the caller may relay the
+// original query to its resolver instead. A name under a mesh search domain, a
+// single-label name and a mesh reverse lookup are never forward: an unknown one is
+// NXDOMAIN, so it cannot leak to an upstream resolver.
+func (s *Server) Answer(reqBytes []byte) (reply []byte, forward bool) {
 	var msg dnsmessage.Message
 	if err := msg.Unpack(reqBytes); err != nil {
-		return
+		return nil, false
 	}
 
 	if len(msg.Questions) == 0 {
-		return
+		return nil, false
 	}
 
 	question := msg.Questions[0]
@@ -201,12 +233,9 @@ func (s *Server) handleQuery(reqBytes []byte, remoteAddr net.Addr) {
 				s.leaksPrevented.Add(1)
 				s.nxDomainCount.Add(1)
 				resp.Header.RCode = dnsmessage.RCodeNameError
-			} else if s.cfg.UpstreamResolver != "" {
-				s.relayUpstream(reqBytes, remoteAddr)
-				return
 			} else {
 				resp.Header.RCode = dnsmessage.RCodeNameError
-				s.nxDomainCount.Add(1)
+				forward = true
 			}
 		}
 	} else if isMeshDomain {
@@ -257,20 +286,17 @@ func (s *Server) handleQuery(reqBytes []byte, remoteAddr net.Addr) {
 			resp.Header.RCode = dnsmessage.RCodeNameError
 		}
 	} else {
-		// External domain query (e.g. google.com)
-		if s.cfg.UpstreamResolver != "" {
-			s.relayUpstream(reqBytes, remoteAddr)
-			return
-		}
-		// Split-DNS without upstream forwarder: NXDOMAIN
-		s.nxDomainCount.Add(1)
+		// External domain query (e.g. google.com). Without an upstream the caller
+		// answers NXDOMAIN (split DNS without a forwarder).
+		forward = true
 		resp.Header.RCode = dnsmessage.RCodeNameError
 	}
 
 	packed, err := resp.Pack()
-	if err == nil {
-		_, _ = s.conn.WriteTo(packed, remoteAddr)
+	if err != nil {
+		return nil, false
 	}
+	return packed, forward
 }
 
 // relayUpstream forwards an external DNS query to the configured upstream resolver.
@@ -433,33 +459,38 @@ func (s *Server) UpdateNetmap(self control.NetmapSelf, peers []control.NetmapPee
 	}
 	s.searchDomains = searchDomains
 
-	// Add self records
-	selfV4 := net.ParseIP(self.OverlayIPv4)
-	selfV6 := net.ParseIP(self.OverlayIPv6)
-
-	selfNames := extractNames(self.Name, self.DNSName, searchDomains)
-	for _, name := range selfNames {
-		s.setRecordLocked(name, selfV4, selfV6)
+	// Candidates in the order they claim a name. Self is listed first; the peers
+	// follow by node id when SingleAnswer is on, so the winner of a duplicate name is
+	// the same on every node and across netmap documents.
+	type candidate struct {
+		owner      string
+		short, dns string
+		v4, v6     net.IP
+	}
+	cands := []candidate{{
+		owner: "<self>", short: self.Name, dns: self.DNSName,
+		v4: net.ParseIP(self.OverlayIPv4), v6: net.ParseIP(self.OverlayIPv6),
+	}}
+	ordered := peers
+	if s.cfg.SingleAnswer {
+		ordered = append([]control.NetmapPeer(nil), peers...)
+		sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].NodeID < ordered[j].NodeID })
+	}
+	for _, peer := range ordered {
+		peerV4, peerV6 := peerHostAddresses(peer.AllowedIPs)
+		cands = append(cands, candidate{owner: peer.NodeID, short: peer.Name, dns: peer.DNSName, v4: peerV4, v6: peerV6})
 	}
 
-	// Add peer records
-	for _, peer := range peers {
-		var peerV4, peerV6 net.IP
-		for _, allowed := range peer.AllowedIPs {
-			prefix, err := netip.ParsePrefix(allowed)
-			if err != nil {
-				continue
+	claimed := make(map[string]string)
+	for _, c := range cands {
+		for _, name := range extractNames(c.short, c.dns, searchDomains) {
+			if s.cfg.SingleAnswer {
+				if holder, taken := claimed[name]; taken && holder != c.owner {
+					continue
+				}
+				claimed[name] = c.owner
 			}
-			if prefix.Addr().Is4() && prefix.Bits() == 32 {
-				peerV4 = net.ParseIP(prefix.Addr().String())
-			} else if prefix.Addr().Is6() && prefix.Bits() == 128 {
-				peerV6 = net.ParseIP(prefix.Addr().String())
-			}
-		}
-
-		peerNames := extractNames(peer.Name, peer.DNSName, searchDomains)
-		for _, name := range peerNames {
-			s.setRecordLocked(name, peerV4, peerV6)
+			s.setRecordLocked(name, c.v4, c.v6)
 		}
 	}
 }
@@ -545,4 +576,50 @@ func ipv6ToPTR(ip net.IP) string {
 	}
 	sb.WriteString("ip6.arpa")
 	return sb.String()
+}
+
+var (
+	overlayV4 = netip.MustParsePrefix("100.64.0.0/10")
+	overlayV6 = netip.MustParsePrefix("fc00::/7")
+)
+
+// peerHostAddresses picks the address a peer's name points at. A subnet router lists
+// routed prefixes, host routes among them, next to its own overlay /32, so the host
+// address inside the overlay range wins; without one, the first host address listed.
+func peerHostAddresses(allowed []string) (v4, v6 net.IP) {
+	var firstV4, firstV6 netip.Addr
+	var overV4, overV6 netip.Addr
+	for _, a := range allowed {
+		prefix, err := netip.ParsePrefix(a)
+		if err != nil {
+			continue
+		}
+		addr := prefix.Addr()
+		switch {
+		case addr.Is4() && prefix.Bits() == 32:
+			if !firstV4.IsValid() {
+				firstV4 = addr
+			}
+			if !overV4.IsValid() && overlayV4.Contains(addr) {
+				overV4 = addr
+			}
+		case addr.Is6() && prefix.Bits() == 128:
+			if !firstV6.IsValid() {
+				firstV6 = addr
+			}
+			if !overV6.IsValid() && overlayV6.Contains(addr) {
+				overV6 = addr
+			}
+		}
+	}
+	pick := func(over, first netip.Addr) net.IP {
+		if over.IsValid() {
+			return net.IP(over.AsSlice())
+		}
+		if first.IsValid() {
+			return net.IP(first.AsSlice())
+		}
+		return nil
+	}
+	return pick(overV4, firstV4), pick(overV6, firstV6)
 }
