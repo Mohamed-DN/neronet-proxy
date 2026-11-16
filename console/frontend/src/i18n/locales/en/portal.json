@@ -25,7 +25,8 @@
       "copyAddress": "Copy the address of {{name}}",
       "remove": "Remove",
       "removeLabel": "Remove {{name}}",
-      "copied": "Address copied."
+      "copied": "Address copied.",
+      "reachableAs": "Reachable as"
     },
     "status": {
       "blocked": "Blocked by an administrator",

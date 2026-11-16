@@ -25,7 +25,8 @@
       "copyAddress": "Copia l'indirizzo di {{name}}",
       "remove": "Rimuovi",
       "removeLabel": "Rimuovi {{name}}",
-      "copied": "Indirizzo copiato."
+      "copied": "Indirizzo copiato.",
+      "reachableAs": "Raggiungibile come"
     },
     "status": {
       "blocked": "Bloccato da un amministratore",

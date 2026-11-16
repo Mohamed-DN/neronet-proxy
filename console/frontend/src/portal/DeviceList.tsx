@@ -79,6 +79,12 @@ export function DeviceList({ devices, now, onRemove }: DeviceListProps) {
               <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
                 {address ? <CodeText>{address}</CodeText> : <NotMeasured />}
               </div>
+              {node.dns_name && (
+                <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 text-caption text-muted">
+                  <span>{t('me.row.reachableAs')}</span>
+                  <CodeText>{node.dns_name}</CodeText>
+                </p>
+              )}
               <div className="mt-1">
                 <StatusLine status={deviceStatus(node, now)} node={node} now={now} />
               </div>
