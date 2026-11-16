@@ -674,6 +674,9 @@ async function buildNetmap(nodeId) {
       const exitAssignment = exitPlan && exitPlan.devices.get(row.id);
       if (exitAssignment) deviceEntry.exit = ExitService.exitEntry(exitAssignment);
       if (row.name) deviceEntry.name = row.name;
+      // ADR 0034: the gateway answers mesh names for its devices from this entry.
+      const deviceDNS = computeDNSName(row.name, row.dns_name, searchDomain);
+      if (deviceDNS) deviceEntry.dns_name = deviceDNS;
       peers.push(deviceEntry);
       continue;
     }
