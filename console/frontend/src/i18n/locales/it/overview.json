@@ -1,42 +1,47 @@
 {
   "title": "Panoramica della rete",
-  "description": "Quanti dispositivi sono online, quanti dati passano e dove si trovano i dispositivi.",
+  "description": "La rete come una mappa: ogni sotto-rete è una linea, ogni dispositivo una fermata.",
   "unreachable": "Impossibile contattare il server della rete. Riprova tra poco.",
-  "staleWarning": "I numeri qui sotto potrebbero non essere aggiornati.",
+  "staleWarning": "I dati del traffico potrebbero non essere aggiornati.",
   "openMap": "Apri la mappa della rete",
-  "addDevice": "Aggiungi dispositivo",
-  "answering": "Dispositivi che rispondono",
-  "blocked": "Bloccati",
-  "usersConnected": "Utenti connessi",
-  "trafficNow": "Traffico in questo momento",
-  "rateHint": "Serve un secondo dato per calcolare la velocità",
-  "status": {
-    "none": "Nessun dispositivo registrato.",
-    "all_one": "Il dispositivo risponde.",
-    "all_other": "Tutti i {{count}} dispositivi rispondono.",
-    "some_one": "{{down}} dispositivo su {{total}} non risponde.",
-    "some_other": "{{down}} dispositivi su {{total}} non rispondono.",
-    "noneAnswering": "Nessun dispositivo risponde.",
-    "unknown": "Il server di controllo non ha risposto: lo stato dei dispositivi non è noto."
+  "addDevice": "Aggiungi un dispositivo",
+  "map": {
+    "title": "Mappa della rete",
+    "description": "Ogni linea è una sotto-rete e ogni fermata è un dispositivo. Scegli una fermata per aprire il dispositivo.",
+    "thisNetwork": "Questa rete",
+    "noSubnet": "Senza sotto-rete",
+    "deviceCount_one": "{{count}} dispositivo",
+    "deviceCount_other": "{{count}} dispositivi",
+    "station": "{{name}}, {{status}}",
+    "stationGateway": "{{name}}, gateway, {{status}}",
+    "stationExit": "{{name}}, uscita verso internet, {{status}}",
+    "summary": "{{count}} dispositivi, {{status}}",
+    "collapsedNote": "Ci sono molti dispositivi: ogni sotto-rete è una sola fermata. L'elenco qui sotto li mostra tutti.",
+    "listToggle": "Mostra i dispositivi come elenco",
+    "legend": "Come leggere la mappa",
+    "gateway": "Gateway",
+    "exit": "Uscita",
+    "emptyHint": "Quando aggiungi il primo dispositivo, compare qui come prima fermata della linea."
   },
-  "sketch": {
-    "title": "Dove sono i tuoi dispositivi",
-    "description_one": "Hanno risposto {{live}} su {{total}} dispositivi negli ultimi {{seconds}} secondi, in {{count}} paese.",
-    "description_other": "Hanno risposto {{live}} su {{total}} dispositivi negli ultimi {{seconds}} secondi, in {{count}} paesi.",
-    "center": "Questa rete",
-    "hollow": "Cerchio vuoto: nessun dispositivo lì ha risposto.",
-    "caption": "Le linee mostrano dove sono registrati i dispositivi. Non mostrano il traffico.",
-    "more": "+{{count}} altri"
+  "state": {
+    "service": "In servizio",
+    "interrupted": "Interrotto",
+    "unmeasured": "Non misurato",
+    "blocked": "Bloccato"
   },
-  "checks": {
-    "title": "Controlli di sicurezza",
-    "verified": "Controlli di sicurezza confermati",
-    "unverified": "Controlli non ancora confermati",
-    "nonCompliant": "Non superano i controlli di sicurezza"
-  },
-  "emptyFleet": {
-    "title": "Ancora nessun dispositivo",
-    "body": "Aggiungi il primo dispositivo per vedere qui la rete."
+  "sentence": {
+    "service_one": "{{count}} dispositivo in servizio",
+    "service_other": "{{count}} dispositivi in servizio",
+    "serviceNone": "nessun dispositivo in servizio",
+    "interrupted_one": "uno interrotto",
+    "interrupted_other": "{{count}} interrotti",
+    "interruptedNone": "nessuno interrotto",
+    "blocked_one": "uno bloccato",
+    "blocked_other": "{{count}} bloccati",
+    "blockedNone": "nessuno bloccato",
+    "unmeasured_one": "uno non misurato",
+    "unmeasured_other": "{{count}} non misurati",
+    "noDevices": "Nessun dispositivo registrato."
   },
   "timeseriesTitle": "Traffico della rete nel tempo",
   "timeseriesDesc": "Quantità di dati che entrano e escono dalla rete, misurata ogni minuto.",
@@ -46,7 +51,6 @@
   "traffic_stale": "Dati vecchi",
   "traffic_unknown": "Non ancora disponibili",
   "trafficCoverage": "Dati da {{measured}} dispositivi su {{total}} negli ultimi {{seconds}} secondi",
-  "answeringOf": "{{live}} su {{total}}",
   "noTraffic": "Nessun traffico registrato in questo periodo",
   "noTrafficDesc": "Non risulta traffico: il grafico compare quando almeno due misure rilevano dati in transito.",
   "noSamples": "Nessun dato per questo periodo",

@@ -1,11 +1,13 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isOctilinear } from '../../charts/transitLayout';
 import { storeSession, clearSession } from '../../services/authToken';
 import { createQueryClient } from '../../services/queries';
+import type { TopologyNode } from '../../services/types';
 import { renderUI, expectNoAxeViolations } from '../../test/harness';
 import { ShellProvider } from '../shell';
 import OverviewRoute from './OverviewRoute';
@@ -17,56 +19,64 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+const RECENT = () => new Date(Date.now() - 20_000).toISOString();
+const LONG_AGO = () => new Date(Date.now() - 30 * 60_000).toISOString();
+
+function device(id: string, extra: Partial<TopologyNode> = {}): TopologyNode {
+  return {
+    id,
+    name: id,
+    role: 'CLIENT_ORIGIN',
+    country: 'IT',
+    overlay_ipv4: '100.64.0.2',
+    is_healthy: true,
+    is_quarantined: false,
+    latency_ms: null,
+    compartment_id: 'cmp-lab',
+    compartment_name: 'Lab',
+    is_ghost_vault: false,
+    last_seen_at: RECENT(),
+    ...extra
+  };
+}
+
 interface Fixture {
+  nodes?: TopologyNode[];
   overview?: Record<string, unknown>;
   timeseries?: unknown[];
-  geo?: unknown[];
+  topologyStatus?: number;
 }
 
-/** Answers the three stats endpoints from one fixture. Anything else gets an empty object. */
-function stubStats({ overview, timeseries = [], geo = [] }: Fixture) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) => {
-      if (url === '/api/stats/overview') return jsonResponse(overview ?? {});
-      if (url.includes('/api/stats/timeseries')) return jsonResponse(timeseries);
-      if (url === '/api/stats/geo-matrix') return jsonResponse(geo);
-      return jsonResponse({});
-    }) as unknown as typeof fetch
-  );
+/** Answers the topology and the stats endpoints from one fixture. Anything else gets an empty object. */
+function stubApi({ nodes = [], overview = {}, timeseries = [], topologyStatus = 200 }: Fixture = {}) {
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url === '/api/stats/topology') {
+      return topologyStatus === 200
+        ? jsonResponse({ nodes, links: [] })
+        : jsonResponse({ error: 'down' }, topologyStatus);
+    }
+    if (url === '/api/stats/overview') return jsonResponse(overview);
+    if (url.includes('/api/stats/timeseries')) return jsonResponse(timeseries);
+    return jsonResponse({});
+  });
+  vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+  return fetchMock;
 }
 
-const FLEET = {
-  active_nodes: 8,
-  total_nodes: 10,
-  quarantined_nodes: 1,
-  connected_users: 5,
-  active_users: 5,
-  total_bandwidth_rx_mb_s: 42.5,
-  total_bandwidth_tx_mb_s: 28.3,
-  total_bandwidth_bytes: 10737418240,
-  network_health_score: 80,
-  posture_verified_compliant_nodes: 7,
-  posture_unverified_nodes: 1,
-  posture_non_compliant_nodes: 1,
-  liveness_window_seconds: 60,
-  traffic: {
-    source: 'wireguard-device',
-    status: 'measured',
-    total_nodes: 10,
-    measured_nodes: 10,
-    stale_nodes: 0,
-    unknown_nodes: 0,
-    unavailable_nodes: 0,
-    memory_measured_nodes: 0,
-    freshness_seconds: 60
-  }
+const COVERAGE = {
+  source: 'wireguard-device',
+  status: 'measured',
+  total_nodes: 3,
+  measured_nodes: 3,
+  stale_nodes: 0,
+  unknown_nodes: 0,
+  unavailable_nodes: 0,
+  memory_measured_nodes: 0,
+  freshness_seconds: 60
 };
+const STATS = { total_bandwidth_bytes: 10737418240, traffic: COVERAGE };
 
-const GEO = [
-  { country: 'Italy', code: 'IT', nodes: 6, live: 6, relays: 2, exits: 1, avg_latency: 14.2, status: 'Online' },
-  { country: 'Germany', code: 'DE', nodes: 4, live: 2, relays: 1, exits: 0, avg_latency: null, status: 'Degraded' }
-];
+const THREE = [device('Alpha'), device('Bravo'), device('Charlie', { last_seen_at: LONG_AGO() })];
 
 function renderOverview(theme: 'light' | 'dark' = 'light') {
   const queryClient = createQueryClient();
@@ -78,7 +88,11 @@ function renderOverview(theme: 'light' | 'dark' = 'light') {
     <QueryClientProvider client={queryClient}>
       <ShellProvider>
         <MemoryRouter initialEntries={['/']}>
-          <OverviewRoute />
+          <Routes>
+            <Route path="/" element={<OverviewRoute />} />
+            <Route path="/nodes/:id" element={<div data-testid="node-detail-route">Node detail</div>} />
+            <Route path="/nodes" element={<div data-testid="nodes-route">Devices</div>} />
+          </Routes>
         </MemoryRouter>
       </ShellProvider>
     </QueryClientProvider>,
@@ -86,7 +100,9 @@ function renderOverview(theme: 'light' | 'dark' = 'light') {
   );
 }
 
-describe('Overview page', () => {
+const map = async () => within(await screen.findByTestId('transit-map'));
+
+describe('Overview page: the network as a map', () => {
   beforeEach(() => {
     localStorage.clear();
     storeSession({ token: 'test-token' });
@@ -106,70 +122,152 @@ describe('Overview page', () => {
     vi.unstubAllGlobals();
   });
 
-  it('reads the status as one sentence: "1 of 2 devices is not answering."', async () => {
-    stubStats({ overview: { ...FLEET, active_nodes: 1, total_nodes: 2, traffic: undefined } });
+  it('says the status in one sentence, with no middle dots', async () => {
+    stubApi({ nodes: THREE, overview: STATS });
     renderOverview();
 
-    expect(await screen.findByText('1 of 2 devices is not answering.')).toBeInTheDocument();
+    expect(await screen.findByText('2 devices in service, one interrupted, none blocked.')).toBeInTheDocument();
+    expect(document.body.textContent ?? '').not.toContain('·');
   });
 
-  it('zero devices shows the empty state with Add device as the only primary button', async () => {
-    stubStats({ overview: { active_nodes: 0, total_nodes: 0, network_health_score: null } });
+  it('draws sub-networks as lines and devices as stations, each with its status in the name', async () => {
+    const nodes = [
+      device('Alpha'),
+      device('Gate', { role: 'RELAY' }),
+      device('Exit', { role: 'EXIT_BRIDGE' }),
+      device('Down', { last_seen_at: LONG_AGO() }),
+      device('Locked', { is_quarantined: true }),
+      device('Annex', { compartment_id: 'cmp-branch', compartment_name: 'Branch' })
+    ];
+    stubApi({ nodes, overview: STATS });
     const { container } = renderOverview();
 
-    expect(await screen.findByText('No devices yet')).toBeInTheDocument();
-    const primaries = Array.from(container.querySelectorAll('button')).filter((b) =>
-      /(^|\s)bg-accent(\s|$)/.test(b.className)
+    const view = await map();
+    await view.findByRole('button', { name: 'Alpha, In service' });
+    expect(view.getByRole('button', { name: 'Gate, gateway, In service' }).querySelector('svg')).toHaveAttribute(
+      'data-station',
+      'interchange'
     );
-    expect(primaries.map((b) => b.textContent)).toEqual(['Add device']);
-    expect(container.querySelector('[data-site]')).toBeNull();
+    expect(
+      view.getByRole('button', { name: 'Exit, exit to the internet, In service' }).querySelector('svg')
+    ).toHaveAttribute('data-station', 'terminus');
+    expect(view.getByRole('button', { name: 'Down, Interrupted' }).querySelector('svg')).toHaveAttribute(
+      'data-station',
+      'interrupted'
+    );
+    expect(view.getByRole('button', { name: 'Locked, Blocked' }).querySelector('svg')).toHaveAttribute(
+      'data-station',
+      'blocked'
+    );
+    // Two sub-networks, two lines, each named and counted in ink.
+    expect(view.getByText('Lab')).toBeInTheDocument();
+    expect(view.getByText('Branch')).toBeInTheDocument();
+    expect(container.querySelectorAll('path[data-line]')).toHaveLength(2);
   });
 
-  it('every figure has a label beside it', async () => {
-    stubStats({ overview: FLEET, geo: GEO });
+  it('draws every line with horizontal, vertical and 45-degree segments only', async () => {
+    const many = Array.from({ length: 30 }, (_, k) => device(`Device ${String(k).padStart(2, '0')}`));
+    stubApi({ nodes: many, overview: STATS });
     const { container } = renderOverview();
 
-    await screen.findByText('Devices answering');
-    const figures = container.querySelectorAll('dd');
-    expect(figures.length).toBeGreaterThan(0);
-    for (const figure of figures) {
-      expect(figure.parentElement?.querySelector('dt')?.textContent ?? '').not.toBe('');
+    await screen.findByRole('button', { name: 'Device 00, In service' });
+    for (const line of container.querySelectorAll('path[data-line]')) {
+      expect(isOctilinear(line.getAttribute('d') ?? '')).toBe(true);
     }
   });
 
-  it('traffic right now shows Not measured when rates are null', async () => {
-    stubStats({
-      overview: {
-        ...FLEET,
-        total_bandwidth_rx_mb_s: null,
-        total_bandwidth_tx_mb_s: null,
-        total_bandwidth_bytes: null
-      },
-      geo: GEO
-    });
+  it('opens the device when a station is chosen, from the keyboard too', async () => {
+    stubApi({ nodes: THREE, overview: STATS });
+    const user = userEvent.setup();
     renderOverview();
 
-    const row = (await screen.findByText('Traffic right now')).parentElement;
-    expect(row).toHaveTextContent('Not measured');
+    const view = await map();
+    (await view.findByRole('button', { name: 'Bravo, In service' })).focus();
+    expect(view.getByRole('button', { name: 'Bravo, In service' })).toHaveFocus();
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByTestId('node-detail-route')).toBeInTheDocument();
   });
 
-  it('draws one sketch site per geographic entry', async () => {
-    stubStats({ overview: FLEET, geo: GEO });
+  it('keeps a visible list of every device for a screen reader, with each status in words', async () => {
+    stubApi({ nodes: THREE, overview: STATS });
+    const user = userEvent.setup();
+    renderOverview();
+
+    await user.click(await screen.findByText('Show the devices as a list'));
+    const list = screen.getByRole('region', { name: 'Lab' });
+    expect(within(list).getByRole('button', { name: /Charlie/ })).toHaveTextContent('Interrupted');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(3);
+  });
+
+  it('collapses each line into one station with a count above 60 devices', async () => {
+    const lab = Array.from({ length: 50 }, (_, k) => device(`Lab ${k}`));
+    const branch = Array.from({ length: 15 }, (_, k) =>
+      device(`Branch ${k}`, { compartment_id: 'cmp-branch', compartment_name: 'Branch' })
+    );
+    stubApi({ nodes: [...lab, ...branch], overview: STATS });
+    renderOverview();
+
+    const view = await map();
+    expect(await view.findByRole('button', { name: 'Lab, 50 devices, In service' })).toBeInTheDocument();
+    expect(view.getAllByRole('button')).toHaveLength(2);
+    expect(screen.getByText(/each sub-network is a single stop/)).toBeInTheDocument();
+    expect(screen.getByText('65 devices in service, none interrupted, none blocked.')).toBeInTheDocument();
+  });
+
+  it('shows the default sub-network under its translated name', async () => {
+    stubApi({ nodes: [device('Alpha', { compartment_id: 'cmp-org', compartment_name: 'Default Compartment' })] });
+    renderOverview();
+
+    const view = await map();
+    expect(await view.findByText('Main sub-network')).toBeInTheDocument();
+    expect(view.queryByText('Default Compartment')).toBeNull();
+  });
+
+  it('with no device, draws one empty line and offers Add a device as the only primary action', async () => {
+    stubApi({ nodes: [] });
     const { container } = renderOverview();
 
-    await waitFor(() => expect(container.querySelectorAll('[data-site]')).toHaveLength(2));
-    expect(container.querySelector('[data-site="IT"]')).toHaveAttribute('data-live', 'true');
-    expect(container.querySelector('[data-site="DE"]')).toHaveAttribute('data-live', 'true');
+    expect(await screen.findByText('No devices registered yet.')).toBeInTheDocument();
+    const view = await map();
+    expect(view.getByText('This network')).toBeInTheDocument();
+    expect(view.queryAllByRole('button')).toHaveLength(0);
+    expect(container.querySelectorAll('path[data-line]')).toHaveLength(1);
+    const primaries = Array.from(container.querySelectorAll('button')).filter((b) =>
+      /(^|\s)bg-accent(\s|$)/.test(b.className)
+    );
+    expect(primaries.map((b) => b.textContent)).toEqual(['Add a device']);
+  });
+
+  it('with one device, makes it the first station of a single line and still offers Add a device', async () => {
+    stubApi({ nodes: [device('Only', { compartment_id: null, compartment_name: '' })] });
+    renderOverview();
+
+    const view = await map();
+    expect(await view.findByRole('button', { name: 'Only, In service' })).toBeInTheDocument();
+    expect(view.getByText('No sub-network')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add a device' })).toBeInTheDocument();
+    expect(screen.getByText('1 device in service, none interrupted, none blocked.')).toBeInTheDocument();
+  });
+
+  it('has no old figures list, progress bar or sketch', async () => {
+    stubApi({ nodes: THREE, overview: STATS });
+    const { container } = renderOverview();
+
+    await screen.findByTestId('transit-map');
+    expect(container.querySelector('dl')).toBeNull();
+    expect(container.querySelector('[data-testid="answering-bar"]')).toBeNull();
+    expect(container.querySelector('[data-site]')).toBeNull();
   });
 
   it('keeps the chart samples in a hidden table with the chart title as caption', async () => {
-    stubStats({
-      overview: FLEET,
+    stubApi({
+      nodes: THREE,
+      overview: STATS,
       timeseries: [
         { timestamp: '2026-09-24T06:00:00Z', time: '08:00', rx: 40.1, tx: 25.2 },
         { timestamp: '2026-09-24T07:00:00Z', time: '09:00', rx: 42.5, tx: 28.3 }
-      ],
-      geo: GEO
+      ]
     });
     const { container } = renderOverview();
 
@@ -181,14 +279,14 @@ describe('Overview page', () => {
   });
 
   it('shows a plain empty state, not a lone spike, when only one sample carried traffic', async () => {
-    stubStats({
-      overview: FLEET,
+    stubApi({
+      nodes: THREE,
+      overview: STATS,
       timeseries: [
         { timestamp: '2026-09-24T06:00:00Z', time: '08:00', rx: 0, tx: 0 },
         { timestamp: '2026-09-24T07:00:00Z', time: '09:00', rx: 12.5, tx: 0 },
         { timestamp: '2026-09-24T08:00:00Z', time: '10:00', rx: 0, tx: 0 }
-      ],
-      geo: GEO
+      ]
     });
     const { container } = renderOverview();
 
@@ -196,48 +294,29 @@ describe('Overview page', () => {
     expect(container.querySelector('path[data-series]')).toBeNull();
   });
 
-  it('shows no 3D, posture-score, latency or "Time:" wording', async () => {
-    stubStats({
-      overview: FLEET,
-      timeseries: [{ timestamp: '2026-09-24T06:00:00Z', time: '08:00', rx: 40.1, tx: 25.2 }],
-      geo: GEO
-    });
-    renderOverview();
-
-    await screen.findByText('Devices answering');
-    expect(document.body.textContent ?? '').not.toMatch(/3D|Posture Score|Avg Latency|Time:/);
-  });
-
   it.each([
     ['partial', 'Partial data'],
     ['stale', 'Old data'],
     ['unknown', 'Not available yet']
   ])('explains %s traffic coverage without inventing totals', async (status, label) => {
-    stubStats({
+    stubApi({
+      nodes: THREE,
       overview: {
-        ...FLEET,
-        active_nodes: 2,
-        total_nodes: 2,
-        total_bandwidth_rx_mb_s: null,
-        total_bandwidth_tx_mb_s: null,
         total_bandwidth_bytes: null,
         traffic: {
-          source: 'wireguard-device',
+          ...COVERAGE,
           status,
           total_nodes: 2,
           measured_nodes: status === 'partial' ? 1 : 0,
           stale_nodes: status === 'unknown' ? 0 : 1,
-          unknown_nodes: status === 'unknown' ? 2 : 0,
-          unavailable_nodes: 0,
-          memory_measured_nodes: 0,
-          freshness_seconds: 60
+          unknown_nodes: status === 'unknown' ? 2 : 0
         }
       }
     });
     renderOverview();
 
     const coverage = await screen.findByTestId('native-traffic-coverage');
-    expect(coverage).toHaveTextContent(label);
+    await waitFor(() => expect(coverage).toHaveTextContent(label));
     expect(coverage).toHaveTextContent(`Data from ${status === 'partial' ? 1 : 0} of 2 devices in the last 60 seconds`);
     expect(screen.getByText('Total transferred since measuring began:').parentElement).toHaveTextContent(
       'Not measured'
@@ -258,11 +337,7 @@ describe('Overview page', () => {
   });
 
   it('timeseries range selection requests that range', async () => {
-    const fetchSpy = vi.fn(async (url: string) => {
-      if (url === '/api/stats/overview') return jsonResponse({ active_nodes: 1, total_nodes: 1 });
-      return jsonResponse([]);
-    });
-    vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
+    const fetchSpy = stubApi({ nodes: THREE, overview: STATS });
 
     const user = userEvent.setup();
     renderOverview();
@@ -275,14 +350,14 @@ describe('Overview page', () => {
   });
 
   it.each(['light', 'dark'] as const)('has no axe violations in %s theme', async (theme) => {
-    stubStats({
-      overview: FLEET,
-      timeseries: [{ timestamp: '2026-09-24T06:00:00Z', time: '08:00', rx: 40.1, tx: 25.2 }],
-      geo: GEO
+    stubApi({
+      nodes: THREE,
+      overview: STATS,
+      timeseries: [{ timestamp: '2026-09-24T06:00:00Z', time: '08:00', rx: 40.1, tx: 25.2 }]
     });
     const { container, unmount } = renderOverview(theme);
 
-    await screen.findByRole('heading', { name: 'Network overview' });
+    await screen.findByRole('button', { name: 'Alpha, In service' });
     await expectNoAxeViolations(container, theme);
     unmount();
   });
