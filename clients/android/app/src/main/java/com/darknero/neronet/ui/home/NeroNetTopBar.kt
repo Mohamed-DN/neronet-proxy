@@ -1,6 +1,9 @@
 package com.darknero.neronet.ui.home
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Settings
@@ -12,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -19,6 +23,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.darknero.neronet.R
+import com.darknero.neronet.ui.theme.BrandMark
+import com.darknero.neronet.ui.theme.NnTextStyles
 
 /** Top bar: the profile chip (phones only) opens Profiles; the gear opens Settings. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,7 +37,11 @@ fun NeroNetTopBar(
 ) {
     TopAppBar(
         title = {
-            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BrandMark(size = 28.dp)
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(R.string.app_name), style = NnTextStyles.wordmark)
+            }
         },
         actions = {
             if (showProfileChip && profileTitle != null) {

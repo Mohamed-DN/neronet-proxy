@@ -81,7 +81,7 @@ object MapGeometry {
 }
 
 /** Colour roles from the palette (D4). The UI maps each role to a token; this file has no colours. */
-enum class ColorRole { INK, INK_MUTED, SURFACE, RELIEF, SIGNAL, ON_SIGNAL, CONNECTED, ON_CONNECTED, ALARM, OUTLINE, OUTLINE_VARIANT }
+enum class ColorRole { INK, INK_MUTED, SURFACE, RELIEF, SIGNAL, ON_SIGNAL, PROGRESS, CONNECTED, ON_CONNECTED, ALARM, OUTLINE, OUTLINE_VARIANT }
 
 data class Stroke(val role: ColorRole, val alpha: Float = 1f, val dashed: Boolean = false)
 
@@ -100,7 +100,7 @@ object MapVisuals {
     fun device(state: MapState): DeviceVisual = when (state) {
         MapState.NO_PROFILE -> DeviceVisual(ColorRole.RELIEF, ColorRole.OUTLINE, ColorRole.INK_MUTED)
         MapState.IDLE -> DeviceVisual(ColorRole.RELIEF, ColorRole.OUTLINE, ColorRole.INK)
-        MapState.CONNECTING, MapState.WAITING -> DeviceVisual(ColorRole.SIGNAL, ColorRole.SIGNAL, ColorRole.ON_SIGNAL)
+        MapState.CONNECTING, MapState.WAITING -> DeviceVisual(ColorRole.SIGNAL, ColorRole.INK, ColorRole.ON_SIGNAL)
         MapState.PROTECTED -> DeviceVisual(ColorRole.CONNECTED, ColorRole.CONNECTED, ColorRole.ON_CONNECTED)
         MapState.STALE -> DeviceVisual(ColorRole.RELIEF, ColorRole.ALARM, ColorRole.ALARM)
         MapState.DISCONNECTING -> DeviceVisual(ColorRole.RELIEF, ColorRole.OUTLINE, ColorRole.INK_MUTED)
@@ -120,8 +120,8 @@ object MapVisuals {
     fun peer(state: MapState, responded: Boolean): PeerVisual {
         val signalPending = PeerVisual(
             fill = null, fillAlpha = 0f,
-            stroke = Stroke(ColorRole.SIGNAL, alpha = 0.6f, dashed = true),
-            spoke = Stroke(ColorRole.SIGNAL, alpha = 0.4f, dashed = true),
+            stroke = Stroke(ColorRole.PROGRESS, alpha = 0.6f, dashed = true),
+            spoke = Stroke(ColorRole.PROGRESS, alpha = 0.4f, dashed = true),
         )
         return when (state) {
             MapState.NO_PROFILE -> PeerVisual(null, 0f, hiddenStroke, hiddenStroke)
@@ -132,7 +132,7 @@ object MapVisuals {
             )
             MapState.CONNECTING -> signalPending
             MapState.WAITING -> if (responded) {
-                PeerVisual(ColorRole.SIGNAL, 1f, Stroke(ColorRole.SIGNAL), Stroke(ColorRole.SIGNAL))
+                PeerVisual(ColorRole.PROGRESS, 1f, Stroke(ColorRole.PROGRESS), Stroke(ColorRole.PROGRESS))
             } else {
                 signalPending
             }
@@ -164,7 +164,7 @@ object MapVisuals {
         return when (state) {
             MapState.NO_PROFILE -> OrgVisual(hiddenStroke, null, 0f)
             MapState.IDLE, MapState.CONNECTING, MapState.STALE, MapState.DISCONNECTING, MapState.ERROR -> dashedVariant
-            MapState.WAITING -> if (gatewayResponded) OrgVisual(Stroke(ColorRole.SIGNAL), null, 0f) else dashedVariant
+            MapState.WAITING -> if (gatewayResponded) OrgVisual(Stroke(ColorRole.PROGRESS), null, 0f) else dashedVariant
             MapState.PROTECTED -> OrgVisual(Stroke(ColorRole.CONNECTED), ColorRole.CONNECTED, 0.12f)
         }
     }

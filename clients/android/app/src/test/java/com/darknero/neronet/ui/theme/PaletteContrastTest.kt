@@ -26,7 +26,7 @@ class PaletteContrastTest {
     @Test
     fun textRolesReachAaOnSurfaceAndRelief() {
         for ((name, p) in palettes) {
-            for ((role, color) in listOf("ink" to p.ink, "inkMuted" to p.inkMuted, "signal" to p.signal,
+            for ((role, color) in listOf("ink" to p.ink, "inkMuted" to p.inkMuted, "progress" to p.progress,
                 "connected" to p.connected, "alarm" to p.alarm)) {
                 assertContrast("$name $role on surface", color, p.surface, 4.5)
                 assertContrast("$name $role on relief", color, p.relief, 4.5)
@@ -52,8 +52,27 @@ class PaletteContrastTest {
     }
 
     @Test
-    fun connectedTokensArePinned() {
-        assertEquals(Color(0xFF15803D), NnPalettes.Light.connected)
-        assertEquals(Color(0xFF4ADE80), NnPalettes.Dark.connected)
+    fun brandTokensArePinned() {
+        val l = NnPalettes.Light
+        val d = NnPalettes.Dark
+        assertEquals(Color(0xFF15232D), l.ink)
+        assertEquals(Color(0xFFF2F4F3), l.surface)
+        assertEquals(Color(0xFFFFFFFF), l.relief)
+        assertEquals(Color(0xFFE8EEF0), d.ink)
+        assertEquals(Color(0xFF0E1A22), d.surface)
+        assertEquals(Color(0xFF16252F), d.relief)
+        assertEquals(Color(0xFFF5C211), l.signal)
+        assertEquals(Color(0xFFF5C211), d.signal)
+        assertEquals(Color(0xFF126E34), l.connected)
+        assertEquals(Color(0xFF4ADE80), d.connected)
+        assertEquals(Color(0xFFB71C1C), l.alarm)
+        assertEquals(Color(0xFFF87171), d.alarm)
+    }
+
+    @Test
+    fun signalIsNeverTextOnlyAFillWithInkOnIt() {
+        // The yellow is 1.5:1 on the light sheet, so it is a fill and a focus band, not a text colour.
+        assertContrast("Light ink on signal", NnPalettes.Light.onSignal, NnPalettes.Light.signal, 4.5)
+        assertContrast("Dark ink on signal", NnPalettes.Dark.onSignal, NnPalettes.Dark.signal, 4.5)
     }
 }

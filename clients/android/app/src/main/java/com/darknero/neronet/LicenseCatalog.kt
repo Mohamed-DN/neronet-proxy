@@ -43,6 +43,6 @@ object LicenseCatalog {
             "apache-2.0.txt",
             listOf("com.journeyapps", "com.google.zxing"),
         ),
-        LicenseEntry("Inter typeface", "SIL Open Font License 1.1", "OFL-Inter.txt", emptyList()),
+        LicenseEntry("Overpass typeface", "SIL Open Font License 1.1", "OFL-Overpass.txt", emptyList()),
     )
 }

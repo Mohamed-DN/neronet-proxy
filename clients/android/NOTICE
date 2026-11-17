@@ -33,10 +33,10 @@ Kotlin and kotlinx.coroutines
 ZXing and ZXing Android Embedded
   Licence: Apache License 2.0. Licence text: apache-2.0.txt.
 
-Inter typeface
+Overpass typeface
   Licence: SIL Open Font License 1.1.
-  Licence text: OFL-Inter.txt.
-  Copyright: Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+  Licence text: OFL-Overpass.txt.
+  Copyright: Copyright 2021 The Overpass Project Authors (https://github.com/RedHatOfficial/Overpass)
 
 No source code from other VPN apps is included.
 
