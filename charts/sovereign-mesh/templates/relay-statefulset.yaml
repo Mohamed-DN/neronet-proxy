@@ -46,8 +46,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: DECOY_DOMAIN
-              value: {{ .Values.relay.antiCensorship.decoyDomain | quote }}
             - name: CLUSTER_NAME
               value: {{ .Values.global.clusterName | quote }}
           resources:
@@ -55,12 +53,14 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/sovereign
+        {{- if .Values.relay.honeypot.enabled }}
+        # Needs a sovereign-honeypot image; none is built or published by this repository.
         - name: honeypot
           image: "{{ .Values.global.imageRegistry }}/sovereign-honeypot:{{ .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - name: honeypot
-              containerPort: {{ .Values.relay.antiCensorship.honeypotPort }}
+              containerPort: {{ .Values.relay.honeypot.port }}
               protocol: TCP
           securityContext:
             capabilities:
@@ -73,6 +73,7 @@ spec:
             requests:
               cpu: "50m"
               memory: "32Mi"
+        {{- end }}
       volumes:
         - name: data
           emptyDir: {}

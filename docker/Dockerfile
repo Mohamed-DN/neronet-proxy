@@ -11,7 +11,9 @@ WORKDIR /build
 # Build Sovereign Security Daemon
 COPY cmd/sovereign-security-daemon /build/cmd/sovereign-security-daemon
 WORKDIR /build/cmd/sovereign-security-daemon
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-security-daemon . || echo "Daemon Go build stub"
+# A compile gate: the build must succeed or the image build fails. The runtime stage
+# below runs the Python daemon (daemon.py), not this binary, so it is not copied over.
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-security-daemon .
 
 # --- Stage 2: Hardened Rootless Runtime ---
 FROM alpine:3.20
