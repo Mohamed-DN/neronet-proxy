@@ -1,6 +1,11 @@
 {
   "layout": {
-    "signedInAs": "Signed in as {{name}}",
+    "home": "NeroNet, my devices",
+    "account": "Account",
+    "nav": "Navigation",
+    "navDevices": "My devices",
+    "navDrop": "Send a file",
+    "adminConsole": "Admin console",
     "signOut": "Sign out"
   },
   "me": {

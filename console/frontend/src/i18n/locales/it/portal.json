@@ -1,6 +1,11 @@
 {
   "layout": {
-    "signedInAs": "Accesso come {{name}}",
+    "home": "NeroNet, i miei dispositivi",
+    "account": "Account",
+    "nav": "Navigazione",
+    "navDevices": "I miei dispositivi",
+    "navDrop": "Invia un file",
+    "adminConsole": "Console di amministrazione",
     "signOut": "Esci"
   },
   "me": {
