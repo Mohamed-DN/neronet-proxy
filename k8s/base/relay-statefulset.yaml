@@ -44,8 +44,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: DECOY_DOMAIN
-              value: "aws.amazon.com"
           resources:
             requests:
               cpu: "500m"

@@ -113,9 +113,12 @@ relay:
     metricName: "sovereign_relay_active_connections"
     query: "sum(rate(sovereign_derp_active_sockets[1m]))"
     threshold: "2500"
-  antiCensorship:
-    decoyDomain: "aws.amazon.com"
-    honeypotPort: 8080
+  # The relay binary (cmd/sovereign-derp-relay) has no decoy or anti-probing feature, so
+  # there is no decoyDomain setting here. The optional sidecar below is off because no
+  # honeypot image is built or published anywhere in this repository.
+  honeypot:
+    enabled: false
+    port: 8080
   service:
     type: LoadBalancer
     annotations: {}
@@ -128,10 +131,6 @@ relay:
         port: 3478
         targetPort: 3478
         protocol: UDP
-      - name: honeypot
-        port: 8080
-        targetPort: 8080
-        protocol: TCP
 
 edgeGateway:
   enabled: true
@@ -168,22 +167,6 @@ decoy:
   service:
     type: ClusterIP
     port: 8443
-
-honeypot:
-  enabled: true
-  replicas: 2
-  image:
-    repository: sovereign-honeypot
-    tag: "4.0.0"
-  banThreshold: 2
-  banDurationHours: 72
-  resources:
-    limits:
-      cpu: "500m"
-      memory: "256Mi"
-    requests:
-      cpu: "50m"
-      memory: "64Mi"
 
 networkPolicy:
   enabled: true

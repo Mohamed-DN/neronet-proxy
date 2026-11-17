@@ -16,10 +16,6 @@ spec:
       port: 3478
       targetPort: 3478
       protocol: UDP
-    - name: honeypot
-      port: 8080
-      targetPort: 8080
-      protocol: TCP
   selector:
     app.kubernetes.io/name: sovereign-mesh
     app.kubernetes.io/component: relay

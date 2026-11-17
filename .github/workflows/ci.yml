@@ -349,6 +349,9 @@ jobs:
       - name: Release workflow reports every failed build and signature
         run: sh scripts/dev/test-release-workflow.sh
 
+      - name: Infrastructure files claim only what exists
+        run: sh scripts/dev/test-honest-infra.sh
+
       - name: YAML syntax
         run: |
           python3 -m pip install --quiet pyyaml
@@ -394,6 +397,9 @@ jobs:
           - name: frontend
             context: console/frontend
             file: console/frontend/Dockerfile
+          - name: legacy-edge
+            context: .
+            file: docker/Dockerfile
           - name: backup
             context: docker/backup
             file: docker/backup/Dockerfile

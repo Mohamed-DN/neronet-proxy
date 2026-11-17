@@ -124,7 +124,7 @@ Line counts include tests.
 | `pkg/acl` | 1,757 | Policy compilation and packet filter | Policy is loaded; the filter sees packets only with the data plane on |
 | `pkg/dataplane` | 2,508 | WireGuard device, netstack and TUN modes, ACL filter on packets | Only with `-dataplane`; spike |
 | `pkg/nat` | 1,734 | STUN, ICE candidates, NAT classification, hole punching | No. `sovereign-cli stun-ping` and the relay's STUN server use it. Not tested against real NATs |
-| `pkg/derp` | 768 | Relay server and client, decoy web page | The relay binary runs in the compose stack. No node uses the client |
+| `pkg/derp` | 768 | Legacy relay server and client, with a static decoy web page | The relay in the compose stack is `cmd/sovereign-derp-relay`, which does not use this package and has no decoy. No node uses the client |
 | `pkg/config` | 2,586 | Flag and environment binding, schema validation | Yes |
 | `pkg/management` | 1,230 | Metrics and events for the Go control plane server | No. Imported by the server half of `pkg/control` only |
 | `pkg/posture` | 984 | Posture attestation structure | Yes. The heartbeat carries it |
