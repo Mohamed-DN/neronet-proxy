@@ -83,6 +83,9 @@ var (
 	ErrNoAddresses = errors.New("dataplane: no overlay addresses configured")
 	// ErrClosed is returned by operations on a closed Device.
 	ErrClosed = errors.New("dataplane: device is closed")
+	// ErrUnknownPeer is returned when a pre-shared key is set for a peer the device
+	// does not have.
+	ErrUnknownPeer = errors.New("dataplane: no such peer")
 )
 
 // Config describes the local end of the tunnel.
@@ -541,6 +544,7 @@ func (d *Device) SetPeers(peers []Peer) error {
 }
 
 // UpdatePeerPSK installs or rotates the WireGuard pre-shared key for a specific peer.
+// It refuses a peer the device does not have (ErrUnknownPeer).
 // This is called by the pre-shared key rotation (pkg/crypto/pskepoch) every rotation
 // interval (2 minutes). It is classical; a post-quantum source (Rosenpass) is planned.
 func (d *Device) UpdatePeerPSK(peerPubHex string, pskHex string) error {
@@ -563,8 +567,17 @@ func (d *Device) UpdatePeerPSK(peerPubHex string, pskHex string) error {
 		}
 	}
 
+	// UAPI creates a peer it has not heard of, so a key for a peer the device does
+	// not have (or just removed) would add a peer nobody configured. setMu keeps the
+	// peer set from changing between this check and the write.
+	d.setMu.Lock()
+	defer d.setMu.Unlock()
+	if _, present := d.peerKeys[pubKey]; !present {
+		return fmt.Errorf("%w: %.8s", ErrUnknownPeer, pubKey)
+	}
+
 	uapi := fmt.Sprintf("public_key=%s\npreshared_key=%s\n", pubKey, psk)
-	if err := d.wg.IpcSet(uapi); err != nil {
+	if err := d.applyUAPI(uapi); err != nil {
 		return fmt.Errorf("dataplane: updating peer %.8s PSK: %w", pubKey, err)
 	}
 	return nil

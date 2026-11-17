@@ -422,14 +422,9 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 		}
 	}
 
-	// Propagate active peers to the pre-shared key rotation manager so
-	// rotating pre-shared keys are continuously derived and installed.
-	m.mu.Lock()
-	psk := m.psk
-	m.mu.Unlock()
-	if psk != nil {
-		psk.SetPeers(rotatingPSKPeers(netmap.Peers))
-	}
+	// Propagate the peers the device now has to the pre-shared key rotation manager
+	// so rotating pre-shared keys are continuously derived and installed.
+	m.syncPSKPeers(peers)
 
 	if err := m.persist(netmap, fetchedAt); err != nil {
 		// Persistence is what lets the node come back without a control plane. Losing
@@ -489,6 +484,7 @@ func (m *netmapManager) ApplyRevocations(keys []string, atVersion uint64) {
 		return
 	}
 	m.markRevocationPending(false)
+	m.syncPSKPeers(peers)
 	m.installForwarding(current, peers)
 	m.installEgress(doc, peers)
 	m.installMeshDNS(doc, peers)
@@ -540,6 +536,7 @@ func (m *netmapManager) EnforceStaleness(now time.Time) bool {
 		log.Printf("[SOVEREIGN-NODE] Could not remove peers after the netmap went stale, retrying at the next check: %v", err)
 		return false
 	}
+	m.syncPSKPeers(nil)
 	m.installForwarding(nil, nil)
 	m.installEgress(nil, nil)
 	m.installMeshDNS(nil, nil)
@@ -730,15 +727,28 @@ func normaliseKey(key string) string {
 // device (ADR 0029) runs a standard WireGuard app that cannot compute an epoch key:
 // it keeps the static PSK its netmap entry carries, and the rotation must not
 // overwrite it.
-func rotatingPSKPeers(in []control.NetmapPeer) []string {
-	keys := make([]string, 0, len(in))
-	for _, p := range in {
+func rotatingPSKPeers(applied []dataplane.Peer) []string {
+	keys := make([]string, 0, len(applied))
+	for _, p := range applied {
 		if p.Profile {
 			continue
 		}
-		keys = append(keys, p.PublicKeyHex)
+		keys = append(keys, p.PublicKey)
 	}
 	return keys
+}
+
+// syncPSKPeers tells the pre-shared key rotation which peers the device has, after
+// the device has taken them. The document is not that list: it still names a revoked
+// or malformed peer the device never got, and a key set for one of those is refused
+// by the device and logged on every rotation.
+func (m *netmapManager) syncPSKPeers(applied []dataplane.Peer) {
+	m.mu.Lock()
+	psk := m.psk
+	m.mu.Unlock()
+	if psk != nil {
+		psk.SetPeers(rotatingPSKPeers(applied))
+	}
 }
 
 // staticPSK is a profile device's PSK, or "" when the entry carries none usable.

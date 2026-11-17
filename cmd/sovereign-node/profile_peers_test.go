@@ -52,7 +52,11 @@ func TestProfilePeerCarriesItsStaticPSK(t *testing.T) {
 }
 
 func TestProfilePeerIsLeftOutOfTheRotation(t *testing.T) {
-	keys := rotatingPSKPeers(profileDoc())
+	peers, _, err := netmapPeers(profileDoc(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := rotatingPSKPeers(peers)
 	if len(keys) != 1 || keys[0] != meshKeyHex {
 		t.Fatalf("rotating peers = %v, want only the mesh peer", keys)
 	}
