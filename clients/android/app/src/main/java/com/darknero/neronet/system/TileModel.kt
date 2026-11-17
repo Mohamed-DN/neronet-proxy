@@ -23,6 +23,8 @@ fun tileModel(machine: MachineState, hasProfiles: Boolean): TileModel = when {
     else -> when (machine.phase) {
         is TunnelPhase.Connected -> TileModel(TileStateKind.ACTIVE, R.string.tile_connected, R.drawable.ic_tile)
         is TunnelPhase.Connecting -> TileModel(TileStateKind.ACTIVE, R.string.status_connecting_title, R.drawable.ic_tile)
+        is TunnelPhase.Reconnecting ->
+            TileModel(TileStateKind.ACTIVE, R.string.status_reconnecting_title, R.drawable.ic_tile_off)
         is TunnelPhase.Disconnecting ->
             TileModel(TileStateKind.INACTIVE, R.string.status_disconnecting_title, R.drawable.ic_tile_off)
         is TunnelPhase.Error -> TileModel(TileStateKind.INACTIVE, R.string.status_error_title, R.drawable.ic_tile_off)

@@ -98,4 +98,29 @@ class ProfileSummaryTest {
         assertEquals(44, key.length)
         assertFalse(key == privateKey)
     }
+
+    @Test
+    fun reachableNameIsTheConsoleNameWhenPresent() {
+        val s = summary(head = header + "# NeroNet-DNS-Name: laptop-7.corp.example\n")
+
+        assertEquals("laptop-7.corp.example", s.deviceName)
+        assertEquals("laptop-7.corp.example", s.reachableName)
+    }
+
+    @Test
+    fun reachableNameFallsBackToTheProfileTitle() {
+        val s = summary()
+
+        assertNull(s.deviceName)
+        assertEquals(s.title, s.reachableName)
+    }
+
+    @Test
+    fun searchDomainComesFromTheDnsLine() {
+        val s = summary(ifaceText = iface().replace("DNS = 100.64.0.1", "DNS = 100.100.100.100, corp.example"))
+
+        assertEquals(listOf("corp.example"), s.searchDomains)
+        assertEquals(listOf("100.100.100.100"), s.dns)
+        assertTrue(summary().searchDomains.isEmpty())
+    }
 }

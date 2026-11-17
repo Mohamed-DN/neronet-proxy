@@ -57,6 +57,7 @@ fun ProfilesScreen(
     onDelete: (String) -> Unit,
     onAdd: () -> Unit,
     onBack: (() -> Unit)?,
+    onOptions: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var pending by remember { mutableStateOf<ProfileSummary?>(null) }
@@ -86,6 +87,7 @@ fun ProfilesScreen(
                     active = profile.id == activeId,
                     onSelect = { onSelect(profile.id) },
                     onDelete = { pending = profile },
+                    onOptions = { onOptions(profile.id) },
                 )
             }
         }
@@ -117,10 +119,11 @@ private fun ProfileRow(
     active: Boolean,
     onSelect: () -> Unit,
     onDelete: () -> Unit,
+    onOptions: () -> Unit,
 ) {
     val palette = LocalNnPalette.current
     var menuOpen by remember { mutableStateOf(false) }
-    val detail = profile.deviceId ?: profile.addresses.firstOrNull()
+    val detail = profile.deviceName ?: profile.deviceId ?: profile.addresses.firstOrNull()
 
     Row(Modifier.fillMaxWidth().heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(
@@ -156,6 +159,13 @@ private fun ProfileRow(
                 )
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.profiles_menu_options)) },
+                    onClick = {
+                        menuOpen = false
+                        onOptions()
+                    },
+                )
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.action_delete)) },
                     onClick = {

@@ -57,7 +57,7 @@ class ProfileErrorStringsTest {
         assertRejects(R.string.reason_syntax, profile(ifaceText = iface("garbage line\n")))
         assertRejects(
             R.string.reason_bad_value,
-            profile(ifaceText = iface().replace("DNS = 100.64.0.1", "DNS = corp.example")),
+            profile(ifaceText = iface().replace("DNS = 100.64.0.1", "DNS = not a name")),
         )
         assertRejects(
             R.string.reason_missing_private_key,

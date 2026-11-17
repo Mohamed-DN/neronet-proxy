@@ -3,7 +3,7 @@ package com.darknero.neronet.ui
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.Saver
 
-enum class Route { HOME, PROFILES, ADD_PROFILE, PASTE_PROFILE, SETTINGS, LICENSES }
+enum class Route { HOME, PROFILES, ADD_PROFILE, PASTE_PROFILE, SETTINGS, LICENSES, PROFILE_OPTIONS, APP_PICKER }
 
 /**
  * A back stack of routes. The bottom entry is always HOME. Survives rotation through [Saver] (route names

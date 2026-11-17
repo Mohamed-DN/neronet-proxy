@@ -88,6 +88,7 @@ class HomeViewModel(
         when (tunnels.state.value.phase) {
             is TunnelPhase.Connecting -> tunnels.cancel()
             is TunnelPhase.Connected -> tunnels.disconnect()
+            is TunnelPhase.Reconnecting -> tunnels.disconnect()
             else -> Unit
         }
     }
@@ -116,6 +117,7 @@ private fun TunnelPhase.profileIdOrNull(): String? = when (this) {
     TunnelPhase.Disconnected -> null
     is TunnelPhase.Connecting -> profileId
     is TunnelPhase.Connected -> profileId
+    is TunnelPhase.Reconnecting -> profileId
     is TunnelPhase.Disconnecting -> profileId
     is TunnelPhase.Error -> profileId
 }

@@ -86,5 +86,6 @@ class ProfilesViewModel(
 private fun activeProfileOf(phase: TunnelPhase): String? = when (phase) {
     is TunnelPhase.Connecting -> phase.profileId
     is TunnelPhase.Connected -> phase.profileId
+    is TunnelPhase.Reconnecting -> phase.profileId
     else -> null
 }

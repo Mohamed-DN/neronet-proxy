@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.VpnService
+import androidx.browser.customtabs.CustomTabsIntent
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +28,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -52,6 +55,13 @@ import com.darknero.neronet.ui.home.HomeScreen
 import com.darknero.neronet.ui.home.HomeViewModel
 import com.darknero.neronet.ui.profiles.AddProfileScreen
 import com.darknero.neronet.ui.profiles.PasteProfileScreen
+import com.darknero.neronet.ui.profiles.ProfileOptionsScreen
+import com.darknero.neronet.tunnel.AppRules
+import com.darknero.neronet.ui.apps.AppEntry
+import com.darknero.neronet.ui.apps.AppPickerScreen
+import com.darknero.neronet.ui.apps.loadLaunchableApps
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.darknero.neronet.ui.profiles.ProfilesScreen
 import com.darknero.neronet.ui.profiles.ProfilesViewModel
 import com.darknero.neronet.ui.profiles.importResultMessage
@@ -95,6 +105,8 @@ fun NeroNetRoot(app: NeroNetApplication) {
 
     // True while the last import came from the paste screen, which shows its failure under the field.
     var pasteSubmitted by remember { mutableStateOf(false) }
+    var optionsId by rememberSaveable { mutableStateOf<String?>(null) }
+    val appRules = remember { mutableStateMapOf<String, AppRules>() }
     val importMessage = lastImport?.let { importResultMessage(it) }
     LaunchedEffect(lastImport) {
         val result = lastImport ?: return@LaunchedEffect
@@ -183,6 +195,14 @@ fun NeroNetRoot(app: NeroNetApplication) {
             }
         }
     }
+    // NeroDrop opens in a Custom Tab; the page and its URL fragment are the browser's, not the app's.
+    val onOpenDrop: (String) -> Unit = { url ->
+        try {
+            CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(url))
+        } catch (e: ActivityNotFoundException) {
+            say(context.getString(R.string.no_browser))
+        }
+    }
     val onPasteImport: (String) -> Unit = { text ->
         pasteSubmitted = true
         profilesVm.import(text, AddMethod.PASTE)
@@ -198,9 +218,57 @@ fun NeroNetRoot(app: NeroNetApplication) {
             onSelect = profilesVm::select,
             onDelete = profilesVm::delete,
             onAdd = { nav.push(Route.ADD_PROFILE) },
+            onOptions = { id ->
+                optionsId = id
+                nav.push(Route.PROFILE_OPTIONS)
+            },
             onBack = back,
             modifier = modifier,
         )
+    }
+    val optionsContent: @Composable (ComposeModifier, (() -> Unit)?) -> Unit = { modifier, back ->
+        val profile = profiles.firstOrNull { it.id == optionsId }
+        if (profile == null) {
+            LaunchedEffect(Unit) { nav.popTo(Route.HOME) }
+        } else {
+            val appRulesState = appRules[profile.id] ?: app.settings.appRules(profile.id)
+            var killSwitch by remember(profile.id) {
+                mutableStateOf(app.settings.killSwitch(profile.id, default = profile.isFullTunnel))
+            }
+            ProfileOptionsScreen(
+                profile = profile,
+                killSwitch = killSwitch,
+                onKillSwitchChange = {
+                    killSwitch = it
+                    app.settings.setKillSwitch(profile.id, it)
+                },
+                onBack = back,
+                appRules = appRulesState,
+                onOpenSplit = { nav.push(Route.APP_PICKER) },
+                modifier = modifier,
+            )
+        }
+    }
+    val pickerContent: @Composable (ComposeModifier, (() -> Unit)?) -> Unit = { modifier, back ->
+        val id = optionsId
+        val installed by produceState<List<AppEntry>?>(null) {
+            value = withContext(Dispatchers.Default) { loadLaunchableApps(context.packageManager, context.packageName) }
+        }
+        if (id == null) {
+            LaunchedEffect(Unit) { nav.popTo(Route.HOME) }
+        } else {
+            val current = appRules[id] ?: app.settings.appRules(id)
+            AppPickerScreen(
+                apps = installed,
+                rules = current,
+                onRulesChange = {
+                    appRules[id] = it
+                    app.settings.setAppRules(id, it)
+                },
+                onBack = back,
+                modifier = modifier,
+            )
+        }
     }
     val addContent: @Composable (ComposeModifier, (() -> Unit)?) -> Unit = { modifier, back ->
         AddProfileScreen(
@@ -242,6 +310,7 @@ fun NeroNetRoot(app: NeroNetApplication) {
                     onErrorAction = onErrorAction,
                     onDismissError = homeVm::onDismissError,
                     onOpenConsole = onOpenConsole,
+                    onOpenDrop = onOpenDrop,
                     onCopyAddress = onCopyAddress,
                     onAdd = onAdd,
                     onProfiles = { nav.push(Route.PROFILES) },
@@ -250,6 +319,8 @@ fun NeroNetRoot(app: NeroNetApplication) {
                         when (nav.current) {
                             Route.ADD_PROFILE -> addContent(ComposeModifier, { nav.pop() })
                             Route.PASTE_PROFILE -> pasteContent(ComposeModifier, { nav.pop() })
+                            Route.PROFILE_OPTIONS -> optionsContent(ComposeModifier, { nav.pop() })
+                            Route.APP_PICKER -> pickerContent(ComposeModifier, { nav.pop() })
                             else -> profilesContent(ComposeModifier, null)
                         }
                     },
@@ -262,6 +333,7 @@ fun NeroNetRoot(app: NeroNetApplication) {
                     onErrorAction = onErrorAction,
                     onDismissError = homeVm::onDismissError,
                     onOpenConsole = onOpenConsole,
+                    onOpenDrop = onOpenDrop,
                     onCopyAddress = onCopyAddress,
                     onAdd = onAdd,
                     onProfiles = { nav.push(Route.PROFILES) },
@@ -270,6 +342,8 @@ fun NeroNetRoot(app: NeroNetApplication) {
                 )
                 nav.current == Route.PROFILES -> profilesContent(fullScreenModifier) { nav.pop() }
                 nav.current == Route.ADD_PROFILE -> addContent(fullScreenModifier) { nav.pop() }
+                nav.current == Route.PROFILE_OPTIONS -> optionsContent(fullScreenModifier) { nav.pop() }
+                nav.current == Route.APP_PICKER -> pickerContent(fullScreenModifier) { nav.pop() }
                 else -> pasteContent(fullScreenModifier) { nav.pop() }
             }
             SnackbarHost(

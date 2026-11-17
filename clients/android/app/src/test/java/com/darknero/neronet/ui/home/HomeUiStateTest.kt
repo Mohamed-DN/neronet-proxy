@@ -261,4 +261,27 @@ class HomeUiStateTest {
         assertEquals(UiText.Plural(R.plurals.details_seconds_ago, 59), handshakeAgoText(59_999))
         assertEquals(UiText.Plural(R.plurals.details_minutes_ago, 1), handshakeAgoText(60_000))
     }
+
+    @Test
+    fun reconnectingRowSaysTrafficIsBlockedAndKeepsTheSwitchOn() {
+        val state = build(TunnelPhase.Reconnecting("p1", nowElapsed, 0, nowElapsed + 3_000))
+
+        assertEquals(R.string.status_reconnecting_title, state.titleId())
+        assertEquals(R.string.status_reconnecting_line, (state.line as UiText.Res).id)
+        assertEquals(StatusTone.ALARM, state.tone)
+        assertTrue(state.switchOn)
+        assertTrue(state.switchEnabled)
+        assertNull(state.error)
+    }
+
+    @Test
+    fun dropUrlIsTheConsoleOriginPlusDrop() {
+        assertEquals("https://console.example/drop", build(TunnelPhase.Disconnected).dropUrl)
+    }
+
+    @Test
+    fun noDropUrlWithoutAConsole() {
+        assertNull(build(TunnelPhase.Disconnected, summary = profile.copy(consoleUrl = null)).dropUrl)
+        assertNull(build(TunnelPhase.Disconnected, summary = null, hasProfiles = false).dropUrl)
+    }
 }

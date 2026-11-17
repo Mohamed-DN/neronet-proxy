@@ -1,6 +1,8 @@
 package com.darknero.neronet
 
 import android.content.SharedPreferences
+import com.darknero.neronet.tunnel.AppRuleMode
+import com.darknero.neronet.tunnel.AppRules
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +34,44 @@ class SettingsStore(private val prefs: SharedPreferences) {
             prefs.edit().putBoolean(KEY_NOTIFICATIONS_ASKED, value).apply()
         }
 
+    /**
+     * The kill switch of one profile (ADR 0035). The person's choice if there is one, else [default],
+     * which callers set to "on" for full-tunnel profiles. Kept on this device only.
+     */
+    fun killSwitch(profileId: String, default: Boolean): Boolean =
+        prefs.getBoolean(KEY_KILL_SWITCH + profileId, default)
+
+    fun setKillSwitch(profileId: String, enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_KILL_SWITCH + profileId, enabled).apply()
+    }
+
+    /**
+     * The split tunnelling list of one profile (ADR 0035), by package name. Kept on this device only,
+     * never in the profile file.
+     */
+    fun appRules(profileId: String): AppRules {
+        val mode = runCatching { AppRuleMode.valueOf(prefs.getString(KEY_APP_MODE + profileId, null) ?: "") }
+            .getOrDefault(AppRuleMode.ALL)
+        val packages = prefs.getStringSet(KEY_APP_LIST + profileId, null)?.toSet().orEmpty()
+        return AppRules(mode, packages)
+    }
+
+    fun setAppRules(profileId: String, rules: AppRules) {
+        prefs.edit()
+            .putString(KEY_APP_MODE + profileId, rules.mode.name)
+            .putStringSet(KEY_APP_LIST + profileId, rules.packages.toSet())
+            .apply()
+    }
+
+    /** Forgets every per-profile choice; called when the profile is deleted. */
+    fun forgetProfile(profileId: String) {
+        prefs.edit()
+            .remove(KEY_KILL_SWITCH + profileId)
+            .remove(KEY_APP_MODE + profileId)
+            .remove(KEY_APP_LIST + profileId)
+            .apply()
+    }
+
     private fun readTheme(): ThemeMode =
         runCatching { ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "") }
             .getOrDefault(ThemeMode.SYSTEM)
@@ -41,5 +81,8 @@ class SettingsStore(private val prefs: SharedPreferences) {
         private const val KEY_THEME = "theme_mode"
         private const val KEY_LAST_PROFILE = "last_profile_id"
         private const val KEY_NOTIFICATIONS_ASKED = "notifications_asked"
+        private const val KEY_KILL_SWITCH = "kill_switch_"
+        private const val KEY_APP_MODE = "app_rules_mode_"
+        private const val KEY_APP_LIST = "app_rules_list_"
     }
 }

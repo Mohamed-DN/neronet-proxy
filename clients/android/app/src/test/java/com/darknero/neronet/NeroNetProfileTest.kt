@@ -136,10 +136,42 @@ class NeroNetProfileTest {
     }
 
     @Test
-    fun rejectsSearchDomainsAndHostNamesInDns() {
-        assertThrows(ProfileException::class.java) {
-            NeroNetProfile.parse(profile(ifaceText = iface().replace("DNS = 100.64.0.1", "DNS = 100.64.0.1, corp.example")))
+    fun rejectsDnsEntriesThatAreNeitherAnIpNorADomain() {
+        for (bad in listOf("not a name", "-bad.example", "bad-.example", "a..b", "100.64.0", "under_score.example")) {
+            assertThrows(bad, ProfileException::class.java) {
+                NeroNetProfile.parse(profile(ifaceText = iface().replace("DNS = 100.64.0.1", "DNS = 100.64.0.1, $bad")))
+            }
         }
+    }
+
+    @Test
+    fun acceptsASearchDomainAfterTheDnsServer() {
+        val p = NeroNetProfile.parse(profile(ifaceText = iface().replace("DNS = 100.64.0.1", "DNS = 100.100.100.100, corp.example")))
+
+        assertEquals(listOf("corp.example"), p.config.`interface`.dnsSearchDomains.toList())
+        assertEquals(listOf("100.100.100.100"), p.config.`interface`.dnsServers.map { it.hostAddress })
+    }
+
+    @Test
+    fun readsTheDeviceNameFromItsCommentLine() {
+        val p = NeroNetProfile.parse(profile(head = header + "# NeroNet-DNS-Name: Laptop-7.corp.example\n"))
+
+        assertEquals("laptop-7.corp.example", p.dnsName)
+    }
+
+    @Test
+    fun deviceNameIsNullWhenAbsentOrNotADnsName() {
+        assertEquals(null, NeroNetProfile.parse(profile()).dnsName)
+        assertEquals(null, NeroNetProfile.parse(profile(head = header + "# NeroNet-DNS-Name: not a name!\n")).dnsName)
+        assertEquals(null, NeroNetProfile.parse(profile(head = header + "# NeroNet-DNS-Name:\n")).dnsName)
+    }
+
+    @Test
+    fun otherNeroNetCommentKeysAreStillIgnored() {
+        val p = NeroNetProfile.parse(profile(head = header + "# NeroNet-Future-Key: whatever\n"))
+
+        assertEquals("dev-0123abcd", p.deviceId)
+        assertEquals(null, p.dnsName)
     }
 
     @Test

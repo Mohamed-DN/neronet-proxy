@@ -24,8 +24,16 @@ data class ProfileSummary(
     val consoleUrl: String?,
     val peers: List<PeerSummary>,
     val devicePublicKey: String,
+    /** The name the console gave the device (NeroNet-DNS-Name), or null. */
+    val deviceName: String? = null,
+    /** Search domains from the DNS line of the profile. */
+    val searchDomains: List<String> = emptyList(),
 ) {
     /** The single peer of a normal NeroNet profile; null when there are none or several. */
+    /** The name to show as "Reachable as": the console's name for the device, else the profile title. */
+    val reachableName: String
+        get() = deviceName ?: title
+
     val gateway: PeerSummary?
         get() = peers.singleOrNull()
 
@@ -59,6 +67,8 @@ data class ProfileSummary(
                 consoleUrl = profile.consoleUrl,
                 peers = peers,
                 devicePublicKey = profile.devicePublicKey,
+                deviceName = profile.dnsName,
+                searchDomains = config.`interface`.dnsSearchDomains.toList(),
             )
         }
 

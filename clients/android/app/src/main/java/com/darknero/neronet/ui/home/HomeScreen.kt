@@ -45,6 +45,7 @@ fun HomeScreen(
     onErrorAction: (ErrorAction) -> Unit,
     onDismissError: () -> Unit,
     onOpenConsole: (String) -> Unit,
+    onOpenDrop: (String) -> Unit = {},
     onCopyAddress: (String) -> Unit,
     onAdd: (AddMethod) -> Unit,
     onProfiles: () -> Unit,
@@ -90,6 +91,8 @@ fun HomeScreen(
                         alwaysExpanded = true,
                         onCopyAddress = onCopyAddress,
                         onOpenConsole = onOpenConsole,
+                        dropUrl = state.dropUrl,
+                        onOpenDrop = onOpenDrop,
                         modifier = Modifier.padding(top = 16.dp),
                     )
                 }
@@ -115,6 +118,8 @@ fun HomeScreen(
                         alwaysExpanded = false,
                         onCopyAddress = onCopyAddress,
                         onOpenConsole = onOpenConsole,
+                        dropUrl = state.dropUrl,
+                        onOpenDrop = onOpenDrop,
                     )
                 }
             }
