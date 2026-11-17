@@ -42,7 +42,9 @@ export function DeviceList({ devices, now, onRemove, onRebuild }: DeviceListProp
         const name = node.name ?? node.hostname ?? t('me.unnamed');
         const status = deviceStatus(node, now);
         const when = status === 'lastSeen' ? formatRelativeTime(i18n.language, seenAt(node), new Date(now)) : null;
-        const canRebuild = onRebuild && node.device_kind === 'profile';
+        // Never for a blocked device: setting it up again would replace the blocked one with
+        // a new, unblocked device and undo the administrator's decision in one click.
+        const canRebuild = onRebuild && node.device_kind === 'profile' && status !== 'blocked';
         return (
           <li key={node.id} className="flex flex-col gap-3 px-1 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">

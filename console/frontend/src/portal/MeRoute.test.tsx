@@ -314,6 +314,16 @@ describe('MeRoute', () => {
     expect(screen.queryByRole('button', { name: 'Set up Anna laptop again' })).toBeNull();
   });
 
+  it('does not offer to set up again a device an administrator blocked: that would replace it with an unblocked one', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
+    stubApi(() => json({ nodes: [{ ...ANNA_PHONE, is_quarantined: true }] }));
+
+    await renderMe();
+
+    expect(await screen.findByText('Blocked by an administrator')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set up Anna phone again' })).toBeNull();
+  });
+
   it('setting the access up again says the old one stops, removes the device and opens Add with the same name', async () => {
     auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
     const fetchMock = stubApi(() => json({ nodes: [ANNA_PHONE] }));
