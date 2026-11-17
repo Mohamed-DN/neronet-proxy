@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # NeroNet v4 - One-Command Installer (WP-601)
-# Usage: curl -fsSL https://get.neronet.io | bash
-#        bash install.sh [--profile standard|regulated]
+# Usage: bash scripts/install.sh [--profile standard|regulated]
+#
+# Run it from a checkout of the repository. The compose file builds the console, the
+# backend, the backup job and the node from the source tree and reads its TLS files
+# from certs/; a release publishes only the binaries, the Helm chart and the node
+# image, so a bare download of this script cannot start the stack. Without the source
+# tree the installer stops with an error that says so, before it changes anything.
 #
 # Rerunning it is safe: an existing .env (secrets, and the database password the data
 # volume was created with) is kept as it is. The install fails, with a non-zero exit,
@@ -88,7 +93,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=${INSTALL_DIR}
+WorkingDirectory=${SRC_DIR}
 EnvironmentFile=${INSTALL_DIR}/.env
 ExecStart=${COMPOSE_CMD} up -d --remove-orphans
 ExecStop=${COMPOSE_CMD} down
@@ -109,7 +114,7 @@ wait_healthy() {
   local end=$((SECONDS + HEALTH_TIMEOUT))
   while [[ $SECONDS -lt $end ]]; do
     # "(healthy)" only: a bare "healthy" also matches "(unhealthy)".
-    local h; h=$(${COMPOSE_CMD} -f "${INSTALL_DIR}/docker-compose.yml" ps 2>/dev/null | grep -c "(healthy)" || true)
+    local h; h=$(${COMPOSE_CMD} ps 2>/dev/null | grep -c "(healthy)" || true)
     [[ "$h" -ge "$HEALTHY_SERVICES" ]] && { success "Services healthy!"; return 0; }
     echo -n "."; sleep 5
   done
@@ -117,24 +122,34 @@ wait_healthy() {
   return 1
 }
 
+# The repository checkout the installer runs from: the stack is started from there, so
+# the relative build contexts and certs/ paths in docker-compose.yml resolve.
+require_source_tree() {
+  SRC_DIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)" || SRC_DIR=""
+  [[ -n "$SRC_DIR" && -f "$SRC_DIR/docker-compose.yml" ]]     || err "No docker-compose.yml next to the installer. Run it from a checkout of the repository: git clone <repository> && sudo bash <repository>/scripts/install.sh"
+  local ctx
+  for ctx in console/backend/Dockerfile console/frontend/Dockerfile docker/backup/Dockerfile docker/Dockerfile.node; do
+    [[ -f "$SRC_DIR/$ctx" ]]       || err "$SRC_DIR/$ctx is missing. The stack builds its images from the source tree, which a release download does not include: clone the repository and run scripts/install.sh from it."
+  done
+  local tls
+  for tls in certs/server.crt certs/server.key; do
+    [[ -f "$SRC_DIR/$tls" ]]       || err "$SRC_DIR/$tls is missing. Create the TLS files first: sh scripts/dev/gen-certs.sh"
+  done
+  COMPOSE_CMD="${COMPOSE_CMD} --project-directory ${SRC_DIR} --env-file ${INSTALL_DIR}/.env -f ${SRC_DIR}/docker-compose.yml"
+}
+
 main() {
   check_root
   detect_runtime
+  require_source_tree
   mkdir -p "${INSTALL_DIR}" "${DATA_DIR}"
-  
-  # The compose file ships next to the installer. Without it there is nothing to
-  # start, and carrying on would end in a "healthy" check of an empty directory.
-  local compose
-  compose="$(dirname "$0")/../docker-compose.yml"
-  [[ -f "$compose" ]] || err "No docker-compose.yml next to the installer ($compose)"
-  cp "$compose" "${INSTALL_DIR}/docker-compose.yml"
-  
+
   generate_env
 
   if command -v systemctl &>/dev/null; then
     install_systemd
   else
-    cd "${INSTALL_DIR}" && ${COMPOSE_CMD} up -d
+    ${COMPOSE_CMD} up -d
   fi
 
   wait_healthy || err "Installation failed: the stack did not become healthy"

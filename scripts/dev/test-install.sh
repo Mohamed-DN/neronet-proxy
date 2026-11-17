@@ -33,7 +33,16 @@ EOF
 chmod +x /fake/bin/podman
 export PATH=/fake/bin:$PATH
 
-layout() { rm -rf /inst /data /pkg; mkdir -p /pkg/scripts; cp /src/scripts/install.sh /pkg/scripts/; echo "services: {}" > /pkg/docker-compose.yml; }
+# A source checkout: the compose file builds its images from these directories and
+# reads the TLS files from certs/.
+layout() {
+  rm -rf /inst /data /pkg /work/engine.log; mkdir -p /pkg/scripts /pkg/certs
+  cp /src/scripts/install.sh /pkg/scripts/
+  echo "services: {}" > /pkg/docker-compose.yml
+  for d in console/backend console/frontend docker/backup; do mkdir -p "/pkg/$d"; echo "FROM scratch" > "/pkg/$d/Dockerfile"; done
+  echo "FROM scratch" > /pkg/docker/Dockerfile.node
+  touch /pkg/certs/server.crt /pkg/certs/server.key
+}
 run() { NERONET_INSTALL_DIR=/inst NERONET_DATA_DIR=/data NERONET_INSTALL_HEALTH_TIMEOUT=3 bash /pkg/scripts/install.sh "$@" > /work/out 2>&1; echo $? > /work/rc; }
 
 layout
@@ -70,6 +79,20 @@ layout
 rm /pkg/docker-compose.yml
 FAKE_HEALTHY=4 run
 check "no compose file next to the installer is a failed install" "[ \"\$(cat /work/rc)\" != 0 ]"
+
+layout
+rm -r /pkg/console /pkg/docker /pkg/certs
+FAKE_HEALTHY=4 run
+check "a bare download (compose file only) fails and says it needs the source tree" "[ \"\$(cat /work/rc)\" != 0 ] && grep -qi \"source\" /work/out && [ ! -e /inst/.env ] && [ ! -e /work/engine.log ]"
+
+layout
+rm -r /pkg/certs
+FAKE_HEALTHY=4 run
+check "missing TLS files are reported before anything starts" "[ \"\$(cat /work/rc)\" != 0 ] && grep -q \"certs/server.crt\" /work/out && [ ! -e /work/engine.log ]"
+
+layout
+FAKE_HEALTHY=4 run
+check "the stack starts from the checkout, not from a copied compose file" "grep -q -- \"-f /pkg/docker-compose.yml\" /work/engine.log && grep -q -- \"--project-directory /pkg\" /work/engine.log && [ ! -e /inst/docker-compose.yml ]"
 
 exit $fail
 '
