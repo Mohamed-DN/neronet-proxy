@@ -61,6 +61,8 @@ type Server struct {
 	mu            sync.RWMutex
 	records       map[string]*RecordEntry // name -> IPs (case-insensitive, without trailing dot)
 	reversePtr    map[string]string       // ip string -> FQDN
+	ptrAddr       map[string]netip.Addr   // reverse name -> the address it stands for
+	selfAddrs     map[netip.Addr]bool     // this node's own overlay addresses
 	searchDomains []string
 
 	conn   *net.UDPConn
@@ -83,6 +85,8 @@ func NewServer(cfg Config) *Server {
 		cfg:           cfg,
 		records:       make(map[string]*RecordEntry),
 		reversePtr:    make(map[string]string),
+		ptrAddr:       make(map[string]netip.Addr),
+		selfAddrs:     make(map[netip.Addr]bool),
 		searchDomains: []string{"mesh", "neronet", strings.Trim(cfg.DefaultSearchDomain, ".")},
 	}
 	return s
@@ -180,6 +184,18 @@ func (s *Server) handleQuery(reqBytes []byte, remoteAddr net.Addr) {
 // single-label name and a mesh reverse lookup are never forward: an unknown one is
 // NXDOMAIN, so it cannot leak to an upstream resolver.
 func (s *Server) Answer(reqBytes []byte) (reply []byte, forward bool) {
+	return s.AnswerFor(reqBytes, nil)
+}
+
+// AnswerFor is Answer for one asker. visible, when not nil, says whether the asker may
+// learn that an address exists (ADR 0034): the dataplane passes the source device's
+// policy, and this package stays ignorant of what a policy is. A name none of whose
+// addresses is visible, and a reverse lookup of an address that is not, are answered
+// with the very NXDOMAIN an unknown name gets, so the answer does not reveal that the
+// name exists. This server's own addresses are always visible. A visible name still
+// lists only its visible addresses. The filter runs on every query and nothing is
+// cached, so a policy change shows on the next one.
+func (s *Server) AnswerFor(reqBytes []byte, visible func(target netip.Addr) bool) (reply []byte, forward bool) {
 	var msg dnsmessage.Message
 	if err := msg.Unpack(reqBytes); err != nil {
 		return nil, false
@@ -213,6 +229,9 @@ func (s *Server) Answer(reqBytes []byte) (reply []byte, forward bool) {
 
 	if isReverse {
 		ptr, found := s.lookupPTR(qName)
+		if found && !s.addrVisible(s.ptrTarget(qName), visible) {
+			found = false
+		}
 		if found {
 			s.meshHits.Add(1)
 			ptrName, err := dnsmessage.NewName(ptr + ".")
@@ -241,6 +260,10 @@ func (s *Server) Answer(reqBytes []byte) (reply []byte, forward bool) {
 	} else if isMeshDomain {
 		// In-mesh forward query
 		entry, found := s.lookupName(qName)
+		if found {
+			entry = s.visibleEntry(entry, visible)
+			found = entry != nil
+		}
 		if found {
 			s.meshHits.Add(1)
 			if qType == dnsmessage.TypeA || qType == dnsmessage.TypeALL {
@@ -389,6 +412,47 @@ func (s *Server) lookupName(name string) (*RecordEntry, bool) {
 	return nil, false
 }
 
+// ptrTarget returns the address a reverse name stands for.
+func (s *Server) ptrTarget(ptrQuery string) netip.Addr {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ptrAddr[strings.ToLower(ptrQuery)]
+}
+
+// addrVisible applies the asker's filter to one address. No filter, or one of this
+// server's own addresses, is always visible.
+func (s *Server) addrVisible(a netip.Addr, visible func(netip.Addr) bool) bool {
+	if visible == nil {
+		return true
+	}
+	s.mu.RLock()
+	self := s.selfAddrs[a]
+	s.mu.RUnlock()
+	return self || visible(a)
+}
+
+// visibleEntry returns the entry cut down to the addresses the asker may see, or nil
+// when none is left.
+func (s *Server) visibleEntry(e *RecordEntry, visible func(netip.Addr) bool) *RecordEntry {
+	if visible == nil {
+		return e
+	}
+	out := &RecordEntry{}
+	keep := func(ips []net.IP) (kept []net.IP) {
+		for _, ip := range ips {
+			if a, ok := netip.AddrFromSlice(ip); ok && s.addrVisible(a.Unmap(), visible) {
+				kept = append(kept, ip)
+			}
+		}
+		return kept
+	}
+	out.IPv4, out.IPv6 = keep(e.IPv4), keep(e.IPv6)
+	if len(out.IPv4) == 0 && len(out.IPv6) == 0 {
+		return nil
+	}
+	return out
+}
+
 // lookupPTR returns the FQDN for a reverse DNS query name.
 func (s *Server) lookupPTR(ptrQuery string) (string, bool) {
 	s.mu.RLock()
@@ -421,6 +485,7 @@ func (s *Server) setRecordLocked(name string, ipv4 net.IP, ipv6 net.IP) {
 		if ptrName != "" {
 			if _, exists := s.reversePtr[ptrName]; !exists {
 				s.reversePtr[ptrName] = lower
+				s.recordPTRAddr(ptrName, ipv4)
 			}
 		}
 	}
@@ -431,8 +496,17 @@ func (s *Server) setRecordLocked(name string, ipv4 net.IP, ipv6 net.IP) {
 		if ptrName != "" {
 			if _, exists := s.reversePtr[ptrName]; !exists {
 				s.reversePtr[ptrName] = lower
+				s.recordPTRAddr(ptrName, ipv6)
 			}
 		}
+	}
+}
+
+// recordPTRAddr remembers which address a reverse name stands for, so a filtered
+// reverse lookup can ask about the address.
+func (s *Server) recordPTRAddr(ptrName string, ip net.IP) {
+	if addr, ok := netip.AddrFromSlice(ip); ok {
+		s.ptrAddr[ptrName] = addr.Unmap()
 	}
 }
 
@@ -444,6 +518,13 @@ func (s *Server) UpdateNetmap(self control.NetmapSelf, peers []control.NetmapPee
 	// Reset records while preserving structure
 	s.records = make(map[string]*RecordEntry)
 	s.reversePtr = make(map[string]string)
+	s.ptrAddr = make(map[string]netip.Addr)
+	s.selfAddrs = make(map[netip.Addr]bool)
+	for _, a := range []string{self.OverlayIPv4, self.OverlayIPv6} {
+		if addr, err := netip.ParseAddr(a); err == nil {
+			s.selfAddrs[addr.Unmap()] = true
+		}
+	}
 
 	var searchDomains []string
 	if dnsConfig != nil && len(dnsConfig.SearchDomains) > 0 {

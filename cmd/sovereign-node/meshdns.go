@@ -64,7 +64,7 @@ func (m *netmapManager) installMeshDNS(doc *control.NetmapResponse, kept []datap
 		m.names = dns.NewServer(dns.Config{SingleAnswer: true})
 	}
 	m.names.UpdateNetmap(doc.Self, peers, doc.DNS)
-	if err := m.setMeshDNS(&dataplane.MeshDNS{Answer: m.names.Answer, Upstream: m.meshDNSUpstream}); err != nil {
+	if err := m.setMeshDNS(&dataplane.MeshDNS{Answer: m.names.AnswerFor, Upstream: m.meshDNSUpstream}); err != nil {
 		// The names stop resolving; nothing that carries traffic depends on them.
 		log.Printf("[SOVEREIGN-NODE] Mesh names: could not install the resolver: %v", err)
 	}

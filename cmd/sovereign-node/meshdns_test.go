@@ -59,7 +59,7 @@ func resolve(t *testing.T, m *dataplane.MeshDNS, name string) (dnsmessage.Messag
 		Header:    dnsmessage.Header{ID: 1, RecursionDesired: true},
 		Questions: []dnsmessage.Question{{Name: n, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET}},
 	}).Pack()
-	reply, forward := m.Answer(q)
+	reply, forward := m.Answer(q, nil)
 	var out dnsmessage.Message
 	if err := out.Unpack(reply); err != nil {
 		t.Fatalf("%s: reply does not unpack: %v", name, err)

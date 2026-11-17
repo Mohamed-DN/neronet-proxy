@@ -129,7 +129,7 @@ func meshNames(t *testing.T, upstream netip.AddrPort) *MeshDNS {
 		},
 		&control.DNSConfig{SearchDomains: []string{"example.com", "mesh", "neronet"}},
 	)
-	return &MeshDNS{Answer: srv.Answer, Upstream: upstream}
+	return &MeshDNS{Answer: srv.AnswerFor, Upstream: upstream}
 }
 
 // meshDNSPair is gateway G serving device D (no exit) as a profile device.
@@ -216,6 +216,7 @@ func aOf(t *testing.T, m dnsmessage.Message) []netip.Addr {
 
 func TestMeshDNSResolvesAProfileDeviceNameThroughTheGatewayNetstack(t *testing.T) {
 	g, d := meshDNSPair(t)
+	allowAllNames(g)
 	up := newStubResolver(t, [4]byte{192, 0, 2, 77})
 	if err := g.dev.SetMeshDNS(meshNames(t, up.addr)); err != nil {
 		t.Fatal(err)
@@ -260,6 +261,7 @@ func TestMeshDNSUnknownMeshNameIsNXDOMAINAndNeverForwarded(t *testing.T) {
 
 func TestMeshDNSDuplicateNameAnswersOneDeterministicAddress(t *testing.T) {
 	g, d := meshDNSPair(t)
+	allowAllNames(g)
 	if err := g.dev.SetMeshDNS(meshNames(t, netip.AddrPort{})); err != nil {
 		t.Fatal(err)
 	}
@@ -328,13 +330,17 @@ func TestMeshDNSDeviceWithAnExitKeepsUsingTheExitsResolver(t *testing.T) {
 	if meshUp.queries.Load() != 0 {
 		t.Fatalf("a device with an exit used the gateway's own upstream %d time(s)", meshUp.queries.Load())
 	}
-	if exitUp.queries.Load() != 2 {
-		t.Fatalf("the exit's resolver saw %d queries, want 2", exitUp.queries.Load())
+	// At least one query per transport. A loaded machine can make the UDP client resend,
+	// so the exit may see a retransmission; what must hold exactly is that the gateway's
+	// own upstream saw none (checked above).
+	if exitUp.queries.Load() < 2 {
+		t.Fatalf("the exit's resolver saw %d queries, want at least 2", exitUp.queries.Load())
 	}
 }
 
 func TestMeshDNSDeviceWithAnExitResolvesMeshNamesLocally(t *testing.T) {
 	g, d := meshDNSPair(t)
+	allowAllNames(g)
 	meshUp := newStubResolver(t, [4]byte{192, 0, 2, 77})
 	exitUp := newStubResolver(t, [4]byte{198, 51, 100, 5})
 	if err := g.dev.SetMeshDNS(meshNames(t, meshUp.addr)); err != nil {
@@ -405,7 +411,9 @@ func TestMeshDNSDeviceBehindAMeshExitResolvesMeshNamesLocallyOverUDP(t *testing.
 	meshUp := newStubResolver(t, [4]byte{192, 0, 2, 77})
 	exitUp := newStubResolver(t, [4]byte{198, 51, 100, 5})
 	ft := NewForwardTable()
-	ft.AddDevice(netip.MustParseAddr(deviceAddr), acl.NewNetstackFilter())
+	nf := acl.NewNetstackFilter()
+	allowOnly(nf, laptopAddr)
+	ft.AddDevice(netip.MustParseAddr(deviceAddr), nf)
 	m.g.dev.SetForwarding(ft)
 	if err := m.g.dev.SetMeshDNS(meshNames(t, meshUp.addr)); err != nil {
 		t.Fatal(err)
@@ -473,4 +481,12 @@ func TestMeshDNSIsNotServedToAnAddressThatIsNotAProfileDevice(t *testing.T) {
 	if _, err := ask(t, d.dev, "udp", "laptop.example.com.", 4*time.Second); err == nil {
 		t.Fatal("a peer that is not a profile device was answered")
 	}
+}
+
+// allowAllNames lets the device reach every host meshNames defines, so a test about
+// resolution, not about visibility, is not hidden by the default-deny policy of
+// meshDNSPair (phase 3 hides a name the policy would not let the device reach).
+func allowAllNames(g *testNode) {
+	ft := g.dev.filter.forward.Load()
+	allowOnly(ft.devices[netip.MustParseAddr(deviceAddr)], laptopAddr, tabletAddr, "100.64.0.12")
 }

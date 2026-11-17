@@ -28,6 +28,8 @@ import (
 //
 //   - MeshDNS.Answer decides first, for every profile device. A mesh name is answered
 //     from the netmap and an unknown mesh name is NXDOMAIN; neither is ever forwarded.
+//     A name the asking device's policy would not let it reach is NXDOMAIN too, the
+//     same bytes as an unknown name (ADR 0034 phase 3).
 //   - anything else from a device without an exit goes to MeshDNS.Upstream.
 //   - anything else from a device with an exit goes to the exit's resolver (ADR 0032),
 //     never to MeshDNS.Upstream: a device that chose an exit must not resolve around it.
@@ -41,10 +43,13 @@ import (
 
 // MeshDNS is the resolver a gateway installs with SetMeshDNS.
 type MeshDNS struct {
-	// Answer evaluates one packed query. reply is nil for bytes that are not a query to
-	// answer. forward true says the name is not the mesh's and reply is only the
-	// fallback if the query cannot be relayed.
-	Answer func(query []byte) (reply []byte, forward bool)
+	// Answer evaluates one packed query for one asker. reply is nil for bytes that are
+	// not a query to answer. forward true says the name is not the mesh's and reply is
+	// only the fallback if the query cannot be relayed. visible, when not nil, says
+	// whether the asker's policy lets it learn that an address exists; a name whose
+	// addresses are all hidden is answered NXDOMAIN like an unknown one (see
+	// nameVisibility). dns.Server.AnswerFor has this shape.
+	Answer func(query []byte, visible func(target netip.Addr) bool) (reply []byte, forward bool)
 	// Upstream is the resolver for names outside the mesh. Invalid means none: the
 	// device then gets SERVFAIL for them.
 	Upstream netip.AddrPort
@@ -84,12 +89,27 @@ func (d *Device) SetMeshDNS(m *MeshDNS) error {
 			return fmt.Errorf("dataplane: userspace stack for mesh names: %w", err)
 		}
 		es.exitClient = f.exitVia
+		es.visibility = f.nameVisibility
 		f.egressStack.Store(es)
 	}
 	es.mesh.Store(m)
 	f.meshDNS.Store(m)
 	f.wakeIfDirect()
 	return nil
+}
+
+// nameVisibility returns the filter for the mesh names a profile device may learn: a
+// target is visible when the forwarding policy would let the device open a connection
+// to it on some protocol and port (ForwardTable.CanOpen, the check Decide builds on),
+// and always when it is the device's own address. The gateway's own address is
+// exempted in pkg/dns, which knows it. The table is read at each query, so a netmap
+// that changes the policy changes the answer to the next query.
+func (f *filteredTUN) nameVisibility(src netip.Addr) func(netip.Addr) bool {
+	src = src.Unmap()
+	return func(target netip.Addr) bool {
+		target = target.Unmap()
+		return target == src || f.forward.Load().CanOpen(src, target)
+	}
 }
 
 // exitVia reports whether a client address has an exit selected, and which kind.
@@ -156,7 +176,7 @@ func (f *filteredTUN) meshDNSExitWrite(raw []byte, pkt Packet, c *EgressClient, 
 		if query == nil {
 			return false
 		}
-		if reply, forward := m.Answer(query); reply != nil && !forward {
+		if reply, forward := m.Answer(query, f.nameVisibility(pkt.Src)); reply != nil && !forward {
 			es.inject(raw)
 			return true
 		}
@@ -201,7 +221,23 @@ func (e *egressStack) exitOf(id stack.TransportEndpointID) (EgressVia, bool) {
 	return e.exitClient(src.Unmap())
 }
 
+// visibleTo is the name filter for a flow's source. With no policy source it fails
+// closed: nothing is visible.
+func (e *egressStack) visibleTo(src netip.Addr) func(netip.Addr) bool {
+	if e.visibility == nil {
+		return func(netip.Addr) bool { return false }
+	}
+	return e.visibility(src)
+}
+
+// sourceOf is the flow's source address.
+func sourceOf(id stack.TransportEndpointID) netip.Addr {
+	src, _ := netip.AddrFromSlice(id.RemoteAddress.AsSlice())
+	return src.Unmap()
+}
+
 func (e *egressStack) serveMeshUDP(r *udp.ForwarderRequest) bool {
+	src := sourceOf(r.ID())
 	via, viaExit := e.exitOf(r.ID())
 	var wq waiter.Queue
 	ep, err := r.CreateEndpoint(&wq)
@@ -226,7 +262,7 @@ func (e *egressStack) serveMeshUDP(r *udp.ForwarderRequest) bool {
 			}
 			go func() {
 				defer func() { <-e.meshSlots }()
-				if reply := e.meshReply(query, false, via, viaExit); reply != nil {
+				if reply := e.meshReply(query, src, false, via, viaExit); reply != nil {
 					_, _ = client.Write(reply)
 				}
 			}()
@@ -236,6 +272,7 @@ func (e *egressStack) serveMeshUDP(r *udp.ForwarderRequest) bool {
 }
 
 func (e *egressStack) serveMeshTCP(r *tcp.ForwarderRequest) {
+	src := sourceOf(r.ID())
 	via, viaExit := e.exitOf(r.ID())
 	var wq waiter.Queue
 	ep, tcpErr := r.CreateEndpoint(&wq)
@@ -262,7 +299,7 @@ func (e *egressStack) serveMeshTCP(r *tcp.ForwarderRequest) {
 			default:
 				return
 			}
-			reply := e.meshReply(query, true, via, viaExit)
+			reply := e.meshReply(query, src, true, via, viaExit)
 			<-e.meshSlots
 			if reply == nil {
 				continue
@@ -280,12 +317,12 @@ func (e *egressStack) serveMeshTCP(r *tcp.ForwarderRequest) {
 // meshReply answers one query: from the netmap, or for a name outside the mesh from the
 // upstream resolver, or, for a device that has an exit, from the exit's. It returns nil
 // when there is nothing to send.
-func (e *egressStack) meshReply(query []byte, overTCP bool, via EgressVia, viaExit bool) []byte {
+func (e *egressStack) meshReply(query []byte, src netip.Addr, overTCP bool, via EgressVia, viaExit bool) []byte {
 	m := e.mesh.Load()
 	if m == nil {
 		return nil
 	}
-	reply, forward := m.Answer(query)
+	reply, forward := m.Answer(query, e.visibleTo(src))
 	if reply == nil || !forward {
 		return reply
 	}

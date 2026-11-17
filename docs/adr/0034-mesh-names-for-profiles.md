@@ -1,6 +1,6 @@
-# ADR 0034: Mesh names for profile devices, phases 1 and 2
+# ADR 0034: Mesh names for profile devices, phases 1 to 3
 
-**Status:** Accepted (phase 1 and phase 2; per-device name visibility is open)
+**Status:** Accepted (phases 1, 2 and 3 delivered; see Phase 3 for what remains)
 **Date:** 2026-11-16
 **Deciders:** owner, lead engineer
 
@@ -61,8 +61,9 @@ the console already sends it each device's name in the netmap.
   names, and, being forwarded, other names too. Neither needs a client of ours.
 - Names are unique per organisation from phase 2 (migration 053). The gateway's lowest-node-id
   tiebreak stays as a safety net for documents that predate it.
-- Every name of the organisation is visible to every profile device on the gateway: a device
-  that may not reach a node can still learn that its name exists and its address.
+- Phases 1 and 2 left every name of the organisation visible to every profile device on the
+  gateway: a device that may not reach a node could still learn that its name exists and its
+  address. Phase 3 closes that.
 - Queries are not logged and not rate limited per device beyond the in-flight bound.
 
 ## Phase 2 (delivered)
@@ -92,10 +93,42 @@ the console already sends it each device's name in the netmap.
   resolver and never to the gateway's own upstream; with no exit resolver the device gets SERVFAIL.
 - **P2.5. Visible name.** The portal's device list shows `Reachable as <name>`.
 
-## Phase 3 (open)
+## Phase 3 (delivered): per-device name visibility
 
-1. Per-device name policy: the gateway answers a device only for the names it may reach under its
-   compiled policy (today every name is visible to every device, D4).
-2. Mesh-exit TCP DNS (truncated answers) is not answered locally; a gateway-side relay to the exit
+- **P1. Same decision as forwarding.** A query from profile device S for a mesh name whose
+  address is A is answered only if the gateway's policy would let S open a connection to A on at
+  least one protocol and port: `ForwardTable.CanOpen(S, A)`, built on the same compiled rules
+  `Decide` applies (S's outbound rules by first match, plus A's inbound rules when A is a profile
+  device too). `NetstackFilter.CanOpenTo` and `CanBeOpenedBy` record no conntrack or answer state,
+  so asking costs no flow. The check runs per query against the table installed at that moment.
+- **Same bytes as a name that does not exist.** A hidden name takes the code path of an unknown
+  one in `pkg/dns` (`Server.AnswerFor`): NXDOMAIN, authoritative, no answers, no authority, same
+  TTL-less shape. Tests compare the header and section counts of a hidden name with a made-up one,
+  over UDP and TCP, in single-label, search-domain and FQDN forms. A hidden name is never
+  forwarded.
+- **P2. Always answered.** S's own address and the gateway's own addresses, whatever the policy.
+- **P3. Scope.** A and AAAA, and the reverse (PTR) lookup of a hidden address, which would
+  otherwise name it. A name with several addresses lists only the visible ones and is hidden when
+  none is. Names outside the mesh are unchanged.
+- **P4. No stale answers.** `pkg/dns` has no answer cache and the dataplane keeps none: the filter
+  is evaluated on every query, so a netmap that changes the policy changes the next answer.
+- **P5. Exit devices.** The same filter applies to an exit on the gateway (UDP and TCP) and to a
+  mesh exit (UDP, which the gateway answers locally; names it does not answer still go to the exit).
+- **API.** `dns.Server.AnswerFor(query, visible func(netip.Addr) bool)` is `Answer` with a filter
+  supplied per query, `nil` meaning everything; `pkg/dns` knows nothing about policies.
+  `dataplane.MeshDNS.Answer` gained the same parameter and the dataplane fills it for the source
+  device. With no policy source the stack fails closed (nothing visible).
+- **Effect on existing setups.** A profile device whose policy has no rule towards a node no
+  longer resolves that node's name, which is the point. A device with no policy loaded sees only
+  its own name and the gateway's.
+
+## Phase 3 follow-ups (open)
+
+1. Mesh-exit TCP DNS (truncated answers) is not answered locally; a gateway-side relay to the exit
    would close it.
-3. A rename route for profile devices, with the new name checked for uniqueness.
+2. A rename route for profile devices, with the new name checked for uniqueness.
+3. The check is by address: an IPv6 address is judged by rules for that IPv6 address. If the
+   control plane compiles rules for the IPv4 overlay only, AAAA records are hidden and the name
+   answers A only.
+4. A device can still probe for a hidden host by connecting to guessed addresses; names are not
+   the access control, the policy is.

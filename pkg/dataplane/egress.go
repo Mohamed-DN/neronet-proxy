@@ -355,6 +355,7 @@ func (d *Device) SetEgress(t *EgressTable, dnsUpstream netip.AddrPort) error {
 			return fmt.Errorf("dataplane: userspace egress stack: %w", err)
 		}
 		es.exitClient = f.exitVia
+		es.visibility = f.nameVisibility
 		f.egressStack.Store(es)
 	}
 	if es := f.egressStack.Load(); es != nil && dnsUpstream.IsValid() {
