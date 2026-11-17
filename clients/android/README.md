@@ -115,6 +115,15 @@ Static checks (run before each release): no `netbird` or `tailscale` text in `ap
 `build.sh :app:dependencies --configuration releaseRuntimeClasspath` lists no `gms` or `firebase`
 artifact.
 
+### Release signing (supplied outside the repository)
+
+No keystore, key alias or password is ever committed; `.gitignore` also excludes `*.jks`, `*.keystore` and
+`keystore.properties`. When the release key exists, CI will supply it at build time only: the keystore as a
+base64 secret decoded to a temporary file, and `NERONET_KEYSTORE_PATH`, `NERONET_KEYSTORE_PASSWORD`,
+`NERONET_KEY_ALIAS` and `NERONET_KEY_PASSWORD` as masked environment variables. The release build type will read
+those four variables and sign only when all are set; without them the build stays unsigned, as it is today.
+This wiring is not in `app/build.gradle.kts` yet.
+
 ## Manual checks on the owner's tablet
 
 These need the device; the container cannot run them. Run them on the tablet in landscape and portrait.
