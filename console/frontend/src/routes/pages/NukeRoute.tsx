@@ -36,6 +36,9 @@ import {
 } from '../../ui';
 import { PageFrame } from '../PageFrame';
 
+/** What the backend's /owner-dms/trigger compares; the UI shows a translated phrase and sends this one. */
+const SERVER_PURGE_PHRASE = 'DESTROY EVERYTHING PERMANENTLY';
+
 export default function NukeRoute() {
   const { t } = useTranslation(['nuke', 'ui']);
 
@@ -122,6 +125,9 @@ export default function NukeRoute() {
 
   // Form states: DMS Heartbeat
   const [dmsPassphrase, setDmsPassphrase] = useState('');
+  // The phrases the person types are shown in their language and compared as shown.
+  const requestPhrase = t('dualAuth.requestModal.phrase');
+  const purgeTypedPhrase = t('dms.emergencyModal.phrase');
   const [dmsMsg, setDmsMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   // Form states: Emergency Purge
@@ -308,8 +314,8 @@ export default function NukeRoute() {
     e.preventDefault();
     setReqError(null);
 
-    if (reqConfirmation.trim() !== 'CONFIRM DESTRUCTION') {
-      setReqError(t('errors.phraseMismatch'));
+    if (reqConfirmation.trim() !== requestPhrase) {
+      setReqError(t('errors.phraseMismatch', { phrase: requestPhrase }));
       return;
     }
 
@@ -427,8 +433,8 @@ export default function NukeRoute() {
     e.preventDefault();
     setPurgeError(null);
 
-    if (purgePhrase !== 'DESTROY EVERYTHING PERMANENTLY') {
-      setPurgeError(t('purge.phraseMismatch'));
+    if (purgePhrase !== purgeTypedPhrase) {
+      setPurgeError(t('purge.phraseMismatch', { phrase: purgeTypedPhrase }));
       return;
     }
     if (!purgePassword) {
@@ -438,7 +444,8 @@ export default function NukeRoute() {
 
     try {
       await purgeMutation.mutateAsync({
-        confirmation_phrase: purgePhrase,
+        // The backend compares this fixed phrase; the person types the translated one.
+        confirmation_phrase: SERVER_PURGE_PHRASE,
         password: purgePassword
       });
       setPurgeModalOpen(false);
@@ -755,7 +762,7 @@ FISA court orders, or requests demanding backdoors.
               <Button
                 variant="danger"
                 onClick={handleRequestSubmit}
-                disabled={reqConfirmation.trim() !== 'CONFIRM DESTRUCTION' || !reqTargetId.trim()}
+                disabled={reqConfirmation.trim() !== requestPhrase || !reqTargetId.trim()}
               >
                 {t('dualAuth.requestModal.submit')}
               </Button>
@@ -794,13 +801,13 @@ FISA court orders, or requests demanding backdoors.
             </FormField>
 
             <FormField
-              label={t('dualAuth.requestModal.confirmation')}
-              hint={t('dualAuth.requestModal.confirmationHint')}
+              label={t('dualAuth.requestModal.confirmation', { phrase: requestPhrase })}
+              hint={t('dualAuth.requestModal.confirmationHint', { phrase: requestPhrase })}
               error={reqError}
               required
             >
               <Input
-                placeholder="CONFIRM DESTRUCTION"
+                placeholder={requestPhrase}
                 value={reqConfirmation}
                 onChange={(e) => setReqConfirmation(e.target.value)}
                 required
@@ -1058,7 +1065,7 @@ FISA court orders, or requests demanding backdoors.
               <Button
                 variant="danger"
                 onClick={handlePurgeSubmit}
-                disabled={purgePhrase !== 'DESTROY EVERYTHING PERMANENTLY' || !purgePassword}
+                disabled={purgePhrase !== purgeTypedPhrase || !purgePassword}
               >
                 {t('dms.emergencyModal.confirm')}
               </Button>
@@ -1070,9 +1077,13 @@ FISA court orders, or requests demanding backdoors.
               {t('dms.emergencyModal.warning')}
             </div>
 
-            <FormField label={t('dms.emergencyModal.phrasePrompt')} hint={t('dms.emergencyModal.phraseHint')} required>
+            <FormField
+              label={t('dms.emergencyModal.phrasePrompt', { phrase: purgeTypedPhrase })}
+              hint={t('dms.emergencyModal.phraseHint', { phrase: purgeTypedPhrase })}
+              required
+            >
               <Input
-                placeholder="DESTROY EVERYTHING PERMANENTLY"
+                placeholder={purgeTypedPhrase}
                 value={purgePhrase}
                 onChange={(e) => setPurgePhrase(e.target.value)}
                 required

@@ -73,8 +73,9 @@
       "targetIdPlaceholder": "Per esempio org-123",
       "comment": "Motivo (resta nel registro)",
       "commentPlaceholder": "Motivo o numero del ticket...",
-      "confirmation": "Scrivi CONFIRM DESTRUCTION per confermare la richiesta",
-      "confirmationHint": "Scrivi esattamente così: CONFIRM DESTRUCTION",
+      "confirmation": "Scrivi {{phrase}} per confermare la richiesta",
+      "phrase": "CONFERMA CANCELLAZIONE",
+      "confirmationHint": "Scrivi esattamente così: {{phrase}}",
       "cancel": "Annulla",
       "submit": "Invia la richiesta di cancellazione"
     },
@@ -169,8 +170,9 @@
     "emergencyModal": {
       "title": "Cancellare tutti i dati della rete?",
       "warning": "Verranno cancellati per sempre i dati di tutte le organizzazioni della rete. Non si può annullare.",
-      "phrasePrompt": "Scrivi esattamente DESTROY EVERYTHING PERMANENTLY per confermare:",
-      "phraseHint": "Scrivi esattamente così: DESTROY EVERYTHING PERMANENTLY",
+      "phrasePrompt": "Scrivi esattamente {{phrase}} per confermare:",
+      "phrase": "CANCELLA TUTTO PER SEMPRE",
+      "phraseHint": "Scrivi esattamente così: {{phrase}}",
       "passwordPrompt": "Password del super-amministratore:",
       "passwordPlaceholder": "Password del super-amministratore...",
       "cancel": "Chiudi senza cancellare",
@@ -179,7 +181,7 @@
   },
   "purge": {
     "done": "Cancellazione globale avviata.",
-    "phraseMismatch": "Scrivi esattamente DESTROY EVERYTHING PERMANENTLY per confermare.",
+    "phraseMismatch": "Scrivi esattamente {{phrase}} per confermare.",
     "passwordRequired": "Inserisci la password del super-amministratore."
   },
   "errors": {
@@ -190,7 +192,7 @@
     "reject": "La richiesta non è stata rifiutata. Riprova.",
     "passphrase": "Password del proprietario non corretta. Riprova.",
     "purge": "Il server ha rifiutato la cancellazione. Controlla la password e riprova.",
-    "phraseMismatch": "La frase non corrisponde. Scrivi esattamente CONFIRM DESTRUCTION.",
+    "phraseMismatch": "La frase non corrisponde. Scrivi esattamente {{phrase}}.",
     "targetRequired": "Inserisci l'ID dell'organizzazione.",
     "certifyRequired": "Spunta la casella per confermare di essere un amministratore diverso.",
     "reasonRequired": "Inserisci il motivo legale o il numero dell'ordine."

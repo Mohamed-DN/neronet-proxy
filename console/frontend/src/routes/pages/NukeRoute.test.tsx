@@ -472,7 +472,7 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     expect(alertSpy).not.toHaveBeenCalled();
   });
 
-  it('14. Italian keeps CONFIRM DESTRUCTION in English inside the request dialog', async () => {
+  it('14. Italian shows and accepts the translated request phrase', async () => {
     const user = userEvent.setup();
     await i18n.changeLanguage('it');
     try {
@@ -486,11 +486,49 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
       renderNuke();
       await user.click(await screen.findByRole('button', { name: /richiedi la cancellazione/i }));
       const dialog = await screen.findByRole('dialog');
-      expect(within(dialog).getAllByText(/CONFIRM DESTRUCTION/).length).toBeGreaterThan(0);
+      expect(within(dialog).getAllByText(/CONFERMA CANCELLAZIONE/).length).toBeGreaterThan(0);
+      expect(within(dialog).queryByText(/CONFIRM DESTRUCTION/)).toBeNull();
+      // The phrase shown is the phrase compared: the English one no longer passes.
+      await user.type(within(dialog).getByPlaceholderText('CONFERMA CANCELLAZIONE'), 'CONFIRM DESTRUCTION');
+      await user.type(within(dialog).getByPlaceholderText(/org-123/), 'org-x');
+      await user.click(within(dialog).getByRole('button', { name: /invia la richiesta/i }));
+      expect(await within(dialog).findByText(/CONFERMA CANCELLAZIONE/, { selector: '[role="alert"], p' })).toBeTruthy();
     } finally {
       await i18n.changeLanguage('en');
     }
   });
+  it('15b. Italian shows the translated erasure phrase but sends the phrase the server expects', async () => {
+    const user = userEvent.setup();
+    await i18n.changeLanguage('it');
+    let sent: Record<string, unknown> | null = null;
+    try {
+      vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+        const url = String(input);
+        const method = init?.method || 'GET';
+        if (url.includes('/nuke/owner-dms/trigger') && method === 'POST') {
+          sent = JSON.parse(String(init?.body));
+          return jsonResponse({ success: true });
+        }
+        if (url.includes('/nuke/status')) return jsonResponse(mockOverview);
+        if (url.includes('/nuke/legal-hold')) return jsonResponse({ legal_holds: holdsState });
+        if (url.includes('/nuke/dual-auth')) return jsonResponse({ authorizations: authState });
+        return jsonResponse({});
+      });
+      renderNuke();
+      await user.click(await screen.findByRole('tab', { name: /controllo di presenza/i }));
+      await user.click(screen.getByRole('button', { name: /cancella tutti i dati ora/i }));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).queryByPlaceholderText('DESTROY EVERYTHING PERMANENTLY')).toBeNull();
+      await user.type(within(dialog).getByPlaceholderText('CANCELLA TUTTO PER SEMPRE'), 'CANCELLA TUTTO PER SEMPRE');
+      await user.type(within(dialog).getByPlaceholderText(/password/i), 'super-secret-2026');
+      await user.click(within(dialog).getByRole('button', { name: /cancella tutto adesso/i }));
+      await waitFor(() => expect(sent).not.toBeNull());
+      expect(sent).toMatchObject({ confirmation_phrase: 'DESTROY EVERYTHING PERMANENTLY' });
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
   it('15. A started global erasure is a toast, and window.alert is never called', async () => {
     const user = userEvent.setup();
     const alertSpy = vi.fn();
