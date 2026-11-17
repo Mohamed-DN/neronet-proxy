@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Navigate, useSearchParams } from 'react-router';
+import { Navigate, useLocation, useSearchParams } from 'react-router';
 
 import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../services/apiClient';
@@ -54,6 +54,7 @@ export default function LoginRoute() {
   const { t } = useTranslation('chrome');
   const { login, completeMfaSignIn, isAuthenticated } = useAuth();
   const [params] = useSearchParams();
+  const location = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<PlainError | null>(null);
@@ -80,7 +81,8 @@ export default function LoginRoute() {
   }, [mfa, useRecovery]);
 
   if (isAuthenticated) {
-    return <Navigate to={next} replace />;
+    // The fragment (a NeroDrop link) is re-attached here; it never went to the server.
+    return <Navigate to={`${next}${location.hash}`} replace />;
   }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

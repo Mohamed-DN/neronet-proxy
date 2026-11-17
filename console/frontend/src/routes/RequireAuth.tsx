@@ -30,7 +30,9 @@ export function RequireAuth() {
 
   if (!isAuthenticated) {
     const next = `${location.pathname}${location.search}`;
-    return <Navigate to={`${LOGIN_PATH}?${NEXT_PARAM}=${encodeURIComponent(next)}`} replace />;
+    // The fragment (a NeroDrop link's key) rides in the sign-in address's own fragment: it must
+    // never enter the query string, which reaches the reverse proxy's access log.
+    return <Navigate to={`${LOGIN_PATH}?${NEXT_PARAM}=${encodeURIComponent(next)}${location.hash}`} replace />;
   }
 
   return <Outlet />;
