@@ -3,7 +3,7 @@
   "description": "La rete come una mappa: ogni sotto-rete è una linea, ogni dispositivo una fermata.",
   "unreachable": "Impossibile contattare il server della rete. Riprova tra poco.",
   "staleWarning": "I dati del traffico potrebbero non essere aggiornati.",
-  "openMap": "Apri la mappa della rete",
+  "openMap": "Apri la mappa completa",
   "addDevice": "Aggiungi un dispositivo",
   "map": {
     "title": "Mappa della rete",

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Globe2, Plus } from 'lucide-react';
+import { ArrowRight, Plus } from 'lucide-react';
 
 import { PageFrame } from '../PageFrame';
 import { ROUTES, nodePath, type RouteId } from '../paths';
@@ -10,12 +10,19 @@ import { useStatsOverview, useStatsTimeseries } from '../../services/queries/sta
 import { isDefaultCompartment, useCompartmentLabel } from '../../services/compartmentLabel';
 import { useTopology } from '../../services/queries';
 import { LineChart } from '../../charts/LineChart';
-import { TransitMap, mapTone, type MapLine, type MapStation } from '../../charts/TransitMap';
+import { TransitMap, mapTone, type MapHub, type MapLine, type MapStation } from '../../charts/TransitMap';
 import { Button } from '../../ui/Button';
 import { PageHeader } from '../../ui/PageHeader';
 import { StationStatus, StationSymbol } from '../../ui/StationSymbol';
 import { EmptyState, ErrorState, NotMeasured, Skeleton } from '../../ui/States';
-import { COLLAPSE_ABOVE, buildTransit, worstStatus, type StationStatusKind, type Tally } from './transitModel';
+import {
+  COLLAPSE_ABOVE,
+  buildTransit,
+  worstStatus,
+  type StationStatusKind,
+  type Tally,
+  type TransitStationModel
+} from './transitModel';
 
 const RANGES = ['1h', '6h', '24h', '7d'] as const;
 const STATUS_ORDER = ['service', 'interrupted', 'unmeasured', 'blocked'] as const;
@@ -60,7 +67,10 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
   const nodes = topologyQuery.data?.nodes;
   // "Now" is when the inventory arrived, so a device's state does not tick between refreshes.
   const now = topologyQuery.dataUpdatedAt || 0;
+  const links = topologyQuery.data?.links;
   const noSubnetLabel = t('map.noSubnet');
+  // Above the collapse threshold each line is one stop, so nothing is shared.
+  const shareHubs = (nodes?.length ?? 0) <= COLLAPSE_ABOVE;
   const model = useMemo(
     () =>
       buildTransit(
@@ -70,9 +80,9 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
             : node
         ),
         now,
-        { noSubnetLabel }
+        { noSubnetLabel, shareHubs, links }
       ),
-    [nodes, now, labelOf, noSubnetLabel]
+    [nodes, now, labelOf, noSubnetLabel, shareHubs, links]
   );
 
   const total = model.tally.total;
@@ -100,11 +110,27 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
     else navigate(nodePath(id));
   };
 
-  const mapLines: MapLine[] = useMemo(() => {
-    if (total === 0) {
-      return [{ key: '__empty__', heading: t('map.thisNetwork'), colour: 'blue', stations: [] }];
-    }
-    return model.lines.map((line) => {
+  const describe = (station: { name: string; role: TransitStationModel['role']; status: StationStatusKind }) => {
+    const status = statusWord(station.status);
+    return station.role === 'gateway'
+      ? t('map.stationGateway', { name: station.name, status })
+      : station.role === 'exit'
+        ? t('map.stationExit', { name: station.name, status })
+        : t('map.station', { name: station.name, status });
+  };
+
+  const { mapLines, mapHubs } = useMemo(() => {
+    const hubs: MapHub[] = model.hubs.map((hub) => ({
+      id: hub.id,
+      label: hub.name,
+      symbol: hub.symbol,
+      tone: mapTone(hub.symbol),
+      description: describe(hub),
+      kind: hub.kind,
+      lineKeys: hub.lineKeys
+    }));
+    const inHub = new Set(hubs.flatMap((hub) => hub.lineKeys));
+    const lines: MapLine[] = model.lines.flatMap((line): MapLine[] => {
       const count = t('map.deviceCount', { count: line.stations.length });
       if (collapsed) {
         const status = worstStatus(line.tally);
@@ -117,42 +143,39 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
           tone: mapTone(kind),
           description: `${line.label}, ${words}`
         };
-        return { key: line.key, heading: line.label, colour: line.colour, stations: [station] };
+        return [{ key: line.key, heading: line.label, colour: line.colour, stations: [station] }];
       }
-      return {
-        key: line.key,
-        heading: line.label,
-        detail: count,
-        colour: line.colour,
-        stations: line.stations.map((station): MapStation => {
-          const status = statusWord(station.status);
-          const description =
-            station.role === 'gateway'
-              ? t('map.stationGateway', { name: station.name, status })
-              : station.role === 'exit'
-                ? t('map.stationExit', { name: station.name, status })
-                : t('map.station', { name: station.name, status });
-          return {
-            id: station.id,
-            label: station.name,
-            symbol: station.symbol,
-            tone: mapTone(station.symbol),
-            description
-          };
+      // A gateway that serves this line alone comes first, an exit that ends it last; shared ones are drawn apart.
+      const rank = (role: TransitStationModel['role']) => (role === 'gateway' ? 0 : role === 'exit' ? 2 : 1);
+      const drawn = line.stations.filter((station) => !station.shared);
+      const ordered = drawn.map((station, index) => ({ station, index }));
+      ordered.sort((a, b) => rank(a.station.role) - rank(b.station.role) || a.index - b.index);
+      if (ordered.length === 0 && !inHub.has(line.key)) return [];
+      const stations = ordered.map(
+        ({ station }): MapStation => ({
+          id: station.id,
+          label: station.name,
+          symbol: station.symbol,
+          tone: mapTone(station.symbol),
+          description: describe(station)
         })
-      };
+      );
+      const last = ordered.at(-1)?.station;
+      return [
+        {
+          key: line.key,
+          heading: line.label,
+          detail: count,
+          colour: line.colour,
+          stations,
+          endId: last?.role === 'exit' ? last.id : undefined
+        }
+      ];
     });
-    // statusWord and t change together with the language.
+    return { mapLines: lines, mapHubs: hubs };
+    // statusWord, describe and t change together with the language.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, total, collapsed, t]);
-
-  const handleOpenMap = () => {
-    if (onNavigateTab) {
-      onNavigateTab('topology');
-    } else {
-      navigate(ROUTES.topology);
-    }
-  };
+  }, [model, collapsed, t]);
 
   const chartSeries = [
     {
@@ -174,20 +197,11 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
   const sampledTraffic = chartSeries.some((s) => s.values.filter((v) => v !== null && v > 0).length >= 2);
 
   const unreachable = topologyQuery.isError && !topologyQuery.data;
-  const sparse = total <= 1;
 
   return (
     <PageFrame>
       <div className="space-y-8">
-        <PageHeader
-          title={t('title')}
-          description={t('description')}
-          actions={
-            <Button variant="secondary" icon={Globe2} onClick={handleOpenMap}>
-              {t('openMap')}
-            </Button>
-          }
-        />
+        <PageHeader title={t('title')} description={t('description')} />
 
         {loadError && !unreachable && (
           <div role="alert" className="flex flex-col gap-1 border-l-2 border-danger pl-3 text-body text-ink">
@@ -205,24 +219,42 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
             onRetry={() => void topologyQuery.refetch()}
           />
         ) : (
-          <section aria-labelledby="overview-map-title" className="space-y-4">
-            <div>
-              <h2 id="overview-map-title" className="text-title font-semibold text-ink">
-                {t('map.title')}
-              </h2>
-              <p className="mt-1 max-w-[65ch] text-body text-ink-muted">{t('map.description')}</p>
+          <section aria-label={t('map.title')} className="space-y-4">
+            <p className="max-w-[65ch] text-body text-ink-muted">{t('map.description')}</p>
+
+            <div className="relative rounded-plate border border-rule bg-sheet px-2 py-3">
+              <div className="mb-1 flex justify-end sm:absolute sm:right-3 sm:top-3 sm:z-10 sm:mb-0">
+                <Link
+                  to={ROUTES.topology}
+                  onClick={(event) => {
+                    if (onNavigateTab) {
+                      event.preventDefault();
+                      onNavigateTab('topology');
+                    }
+                  }}
+                  className="inline-flex min-h-8 items-center gap-1.5 rounded-control px-1.5 text-body font-medium text-ink underline underline-offset-4 hover:bg-surface-hover focus-visible:outline-focus"
+                >
+                  {t('openMap')}
+                  <ArrowRight aria-hidden="true" size={16} />
+                </Link>
+              </div>
+              {total === 0 ? (
+                <div className="flex flex-col items-start gap-3 px-3 py-6">
+                  <p className="max-w-[55ch] text-body text-ink-muted">{t('map.emptyHint')}</p>
+                  <Button variant="primary" icon={Plus} onClick={shell.openEnroll}>
+                    {t('addDevice')}
+                  </Button>
+                </div>
+              ) : (
+                <TransitMap lines={mapLines} hubs={mapHubs} onOpenStation={openStation} label={t('map.title')} />
+              )}
             </div>
 
-            <div className="rounded-plate border border-rule bg-sheet px-2 py-3">
-              <TransitMap lines={mapLines} onOpenStation={openStation} label={t('map.title')} />
-            </div>
-
-            {sparse && (
+            {total === 1 && (
               <div className="flex flex-wrap items-center gap-4">
                 <Button variant="primary" icon={Plus} onClick={shell.openEnroll}>
                   {t('addDevice')}
                 </Button>
-                {total === 0 && <p className="text-body text-ink-muted">{t('map.emptyHint')}</p>}
               </div>
             )}
 

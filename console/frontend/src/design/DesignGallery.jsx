@@ -101,15 +101,13 @@ const MAP_LINES = [
     colour: 'blue',
     stations: [
       { id: 'a', label: 'laptop-anna', symbol: 'service', description: 'laptop-anna, in service' },
-      { id: 'b', label: 'gateway-nord', symbol: 'interchange', description: 'gateway-nord, gateway, in service' },
       {
         id: 'c',
         label: 'phone-luca',
         symbol: 'unmeasured',
         tone: STATION_TONE.unmeasured,
         description: 'phone-luca, not measured'
-      },
-      { id: 'd', label: 'exit-milano', symbol: 'terminus', description: 'exit-milano, exit, in service' }
+      }
     ]
   },
   {
@@ -148,6 +146,27 @@ const MAP_LINES = [
       tone: k === 6 ? STATION_TONE.interrupted : undefined,
       description: `desk-${k + 1}, ${k === 6 ? 'interrupted' : 'in service'}`
     }))
+  }
+];
+
+// A gateway that serves two lines is one interchange they both pass through; an exit that serves
+// them is the terminus they both end on.
+const MAP_HUBS = [
+  {
+    id: 'b',
+    label: 'gateway-nord',
+    symbol: 'interchange',
+    kind: 'interchange',
+    lineKeys: ['main', 'office'],
+    description: 'gateway-nord, gateway, in service'
+  },
+  {
+    id: 'd',
+    label: 'exit-milano',
+    symbol: 'terminus',
+    kind: 'terminus',
+    lineKeys: ['main', 'office'],
+    description: 'exit-milano, exit to the internet, in service'
   }
 ];
 
@@ -502,10 +521,10 @@ export function DesignGallery() {
         <Section
           id="map"
           title="The map"
-          description="Sub-networks are lines in the six line colours, devices are stations. Labels are horizontal ink; segments are 0, 45 or 90 degrees."
+          description="Sub-networks are lines in the six line colours, devices are stations, a gateway is an interchange the lines pass through, an exit is the terminus they end on. Labels are horizontal ink; segments are 0, 45 or 90 degrees."
         >
           <div className="rounded-plate border border-rule bg-sheet px-2 py-3">
-            <TransitMap lines={MAP_LINES} onOpenStation={() => {}} label="Example network map" />
+            <TransitMap lines={MAP_LINES} hubs={MAP_HUBS} onOpenStation={() => {}} label="Example network map" />
           </div>
         </Section>
 

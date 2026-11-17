@@ -3,7 +3,7 @@
   "description": "The network as a map: every sub-network is a line, every device a stop.",
   "unreachable": "Cannot reach the network server. Try again shortly.",
   "staleWarning": "The traffic data may be out of date.",
-  "openMap": "Open the network map",
+  "openMap": "Open the full map",
   "addDevice": "Add a device",
   "map": {
     "title": "Network map",

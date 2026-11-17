@@ -45,15 +45,14 @@ interface Fixture {
   overview?: Record<string, unknown>;
   timeseries?: unknown[];
   topologyStatus?: number;
+  links?: unknown[];
 }
 
 /** Answers the topology and the stats endpoints from one fixture. Anything else gets an empty object. */
-function stubApi({ nodes = [], overview = {}, timeseries = [], topologyStatus = 200 }: Fixture = {}) {
+function stubApi({ nodes = [], overview = {}, timeseries = [], topologyStatus = 200, links = [] }: Fixture = {}) {
   const fetchMock = vi.fn(async (url: string) => {
     if (url === '/api/stats/topology') {
-      return topologyStatus === 200
-        ? jsonResponse({ nodes, links: [] })
-        : jsonResponse({ error: 'down' }, topologyStatus);
+      return topologyStatus === 200 ? jsonResponse({ nodes, links }) : jsonResponse({ error: 'down' }, topologyStatus);
     }
     if (url === '/api/stats/overview') return jsonResponse(overview);
     if (url.includes('/api/stats/timeseries')) return jsonResponse(timeseries);
@@ -224,30 +223,67 @@ describe('Overview page: the network as a map', () => {
     expect(view.queryByText('Default Compartment')).toBeNull();
   });
 
-  it('with no device, draws one empty line and offers Add a device as the only primary action', async () => {
+  it('with no device, draws no line at all and offers Add a device as the only primary action', async () => {
     stubApi({ nodes: [] });
     const { container } = renderOverview();
 
     expect(await screen.findByText('No devices registered yet.')).toBeInTheDocument();
-    const view = await map();
-    expect(view.getByText('This network')).toBeInTheDocument();
-    expect(view.queryAllByRole('button')).toHaveLength(0);
-    expect(container.querySelectorAll('path[data-line]')).toHaveLength(1);
+    expect(screen.queryByTestId('transit-map')).toBeNull();
+    expect(container.querySelectorAll('path[data-line]')).toHaveLength(0);
+    expect(screen.queryByText('This network')).toBeNull();
     const primaries = Array.from(container.querySelectorAll('button')).filter((b) =>
       /(^|\s)bg-accent(\s|$)/.test(b.className)
     );
     expect(primaries.map((b) => b.textContent)).toEqual(['Add a device']);
   });
 
-  it('with one device, makes it the first station of a single line and still offers Add a device', async () => {
+  it('with one device, draws a short line capped at both ends with the station in the middle', async () => {
     stubApi({ nodes: [device('Only', { compartment_id: null, compartment_name: '' })] });
-    renderOverview();
+    const { container } = renderOverview();
 
     const view = await map();
     expect(await view.findByRole('button', { name: 'Only, In service' })).toBeInTheDocument();
     expect(view.getByText('No sub-network')).toBeInTheDocument();
+    expect(container.querySelectorAll('path[data-cap]')).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Add a device' })).toBeInTheDocument();
     expect(screen.getByText('1 device in service, none interrupted, none blocked.')).toBeInTheDocument();
+  });
+
+  it('shares a gateway between the lines it serves and ends an exit where its lines end', async () => {
+    const nodes = [
+      device('Gate', { is_profile_gateway: true, role: 'RELAY' }),
+      device('Alpha', { device_kind: 'profile', gateway_node_id: 'Gate' }),
+      device('Bravo', { device_kind: 'profile', gateway_node_id: 'Gate' }),
+      device('Annex', { compartment_id: 'cmp-branch', compartment_name: 'Branch', gateway_node_id: 'Gate' }),
+      device('Door', { role: 'EXIT_BRIDGE', compartment_id: 'cmp-branch', compartment_name: 'Branch' })
+    ];
+    stubApi({
+      nodes,
+      overview: STATS,
+      links: [{ source: 'Alpha', target: 'Annex', relay_id: 'Door' }]
+    });
+    const { container } = renderOverview();
+
+    const view = await map();
+    const gate = await view.findByRole('button', { name: 'Gate, gateway, In service' });
+    const door = view.getByRole('button', { name: 'Door, exit to the internet, In service' });
+    expect(gate).toHaveAttribute('data-shared', 'true');
+    expect(door).toHaveAttribute('data-shared', 'true');
+    expect(view.getAllByRole('button', { name: 'Gate, gateway, In service' })).toHaveLength(1);
+    expect(container.querySelectorAll('path[data-line]')).toHaveLength(2);
+    for (const line of container.querySelectorAll('path[data-line]')) {
+      expect(isOctilinear(line.getAttribute('d') ?? '')).toBe(true);
+    }
+  });
+
+  it('has one way into the full map: a link at the plate, no second button in the header', async () => {
+    stubApi({ nodes: THREE, overview: STATS });
+    renderOverview();
+
+    const link = await screen.findByRole('link', { name: 'Open the full map' });
+    expect(link).toHaveAttribute('href', '/topology');
+    expect(screen.queryByRole('button', { name: /open the (full|network) map/i })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Network map' })).toBeNull();
   });
 
   it('has no old figures list, progress bar or sketch', async () => {
