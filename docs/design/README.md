@@ -16,11 +16,11 @@ separates policy connections from observed paths and lists its current limits.
 
 Three files hold the system:
 
-| File | What it holds |
-|---|---|
+| File                                     | What it holds                                                                                                   |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `console/frontend/src/styles/tokens.css` | Every colour, space, radius, elevation, type size and z-index, as custom properties, in a light and a dark set. |
-| `console/frontend/tailwind.config.js` | The mapping from a Tailwind utility to a token. Nothing here invents a value. |
-| `console/frontend/src/ui/` | The primitives. Controls, surfaces, overlays and the states below. |
+| `console/frontend/tailwind.config.js`    | The mapping from a Tailwind utility to a token. Nothing here invents a value.                                   |
+| `console/frontend/src/ui/`               | The primitives. Controls, surfaces, overlays and the states below.                                              |
 
 [`tokens.md`](tokens.md) is generated from the token file by
 `scripts/design/contrast.mjs` and lists every colour pair with its measured
@@ -49,7 +49,8 @@ node scripts/design/contrast.mjs --write  # also regenerate tokens.md
 3. **Status is colour, shape and word together.** Never colour alone. The
    station symbols are a filled ring (in service), a hollow ring (not measured),
    a ring with a bar (blocked) and a dashed ring (interrupted). Use
-   `StatusBadge`; it cannot be built without a word.
+   `StationStatus` (symbol and word); it cannot be built without a word. A
+   status is never a pill and a number is never in a coloured box.
 4. **Plates, not shadows.** A plate (panel, table body, dialog) is flat, 8px
    rounded and separated by a 1px rule. Controls are 4px. The one shadow token
    is for things that float above the page: a menu, a dialog, a toast. No
@@ -75,13 +76,13 @@ Every surface that shows data can be in one of five states besides showing it.
 They are different facts and must not blur into one another; the copy and the
 colour of each are fixed by the primitives, not chosen per page.
 
-| State | Meaning | Primitive | Role |
-|---|---|---|---|
-| loading | The request is in flight. Nothing is known yet. | `Skeleton`, plus a live region saying "Loading" | muted |
-| empty | The request answered, and the answer is "none". | `EmptyState` | muted |
-| error | The request failed. The operator can retry, and sees the real failure. | `ErrorState` | danger |
-| not measured | The thing exists and no measurement of it has ever arrived. | `NotMeasured`, `Stat` with a `null` value, `StatusBadge status="not-measured"` | info |
-| not implemented | The feature is absent, or behind a flag that is off. No amount of waiting produces data. | `NotImplementedState` | muted |
+| State           | Meaning                                                                                  | Primitive                                                                      | Role   |
+| --------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------ |
+| loading         | The request is in flight. Nothing is known yet.                                          | `Skeleton`, plus a live region saying "Loading"                                | muted  |
+| empty           | The request answered, and the answer is "none".                                          | `EmptyState`                                                                   | muted  |
+| error           | The request failed. The operator can retry, and sees the real failure.                   | `ErrorState`                                                                   | danger |
+| not measured    | The thing exists and no measurement of it has ever arrived.                              | `NotMeasured`, `Stat` with a `null` value, `StatusBadge status="not-measured"` | info   |
+| not implemented | The feature is absent, or behind a flag that is off. No amount of waiting produces data. | `NotImplementedState`                                                          | muted  |
 
 **Not measured is the one that matters.** The control plane knows about things
 it has never measured: a node's disk encryption, a circuit count, a throughput
@@ -97,19 +98,46 @@ never as a dash, never as a healthy green tick.
 arrived and could not be classified. A node whose posture was never reported
 is not a node with unknown posture.
 
+## Station symbols and the map (wave 2)
+
+`StationSymbol` (`src/ui/StationSymbol.tsx`) draws the six symbols in
+`currentColor`: filled ring (in service), hollow ring (not measured), ring with a
+bar (blocked), dashed ring (interrupted), rounded-square double ring (interchange,
+a gateway) and ring with an outward tick (terminus, an exit). It is decorative
+unless given a `label`, and sits beside a visible word. `StationStatus` pairs the
+symbol, in its status colour, with the word in ink. The Devices table, the map
+page's list, device panel and legend, and the top-bar status line use it.
+
+The overview (`routes/pages/OverviewRoute.tsx`) is the map. `transitModel.ts`
+turns the topology page's own inventory into lines (sub-networks, one of the six
+line tokens each, by sorted key) and stations (a gateway is an interchange, an
+exit a terminus, a device that is not in service takes its status symbol).
+`charts/transitLayout.ts` is the pure geometry: horizontal, vertical and 45
+degree segments only, labels above and below in turn, a long line wrapping with
+45 degree chamfers, stations spread up to 128px apart when the map is sparse.
+`charts/TransitMap.tsx` draws the lines as SVG and the stations as real buttons
+over it, each named with its status in words. Above 60 devices each line is one
+station with a count; a `details` list of every device is the fallback for a
+screen reader. The lines draw themselves once on first load, only under
+`prefers-reduced-motion: no-preference`. With one device or none the page shows
+a single line and "Add a device".
+
+`Segmented` is a radio group with arrow keys, Home and End, for one choice out of
+a few (the Devices filter). `Table density="signage"` is the 52px row rhythm.
+
 ## The shell
 
 There is no left rail. A top bar (`src/components/TopBar.tsx`) carries the
-wordmark (it links to the overview), four task groups, search, language, theme,
-notifications and the account, and under them one line that says in words how
+wordmark (it links to the overview), four task groups, search,
+notifications and the account (which holds language and theme), and under them one line that says in words how
 the network is doing:
 
-| Group | Pages |
-|---|---|
-| Network | Map, Devices, Sub-networks, Virtual computers (only when its feature flag is on) |
-| Access | Rules, People, Federation |
-| Security | Risk, Log, Data erasure, Three-stop routes |
-| Settings | a link, not a menu |
+| Group    | Pages                                                                            |
+| -------- | -------------------------------------------------------------------------------- |
+| Network  | Map, Devices, Sub-networks, Virtual computers (only when its feature flag is on) |
+| Access   | Rules, People, Federation                                                        |
+| Security | Risk, Log, Data erasure, Three-stop routes                                       |
+| Settings | a link, not a menu                                                               |
 
 `src/routes/navModel.ts` is the only place the groups are defined. It reads
 `services/roles.ts` (`ACCESS`), so a role never sees an entry for a page it

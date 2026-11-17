@@ -104,7 +104,8 @@ export function layoutTransit(lines: LayoutLine[], width: number): TransitLayout
           id: line.stationIds[index]!,
           x: forward ? FIRST_X + k * step : rightX - k * step,
           y,
-          side: index % 2 === 0 ? 'above' : 'below'
+          // A lone station takes its label below, clear of the line's heading.
+          side: count > 1 && index % 2 === 0 ? 'above' : 'below'
         });
       }
       const dir = forward ? 1 : -1;
