@@ -14,8 +14,8 @@ import { setLanguage } from '../../i18n';
 // The page used to keep every setting in local state and pretend to apply it. It now
 // reads the organisation from the control plane and saves with PUT.
 
-function authFor(role: string) {
-  const user = { id: 'u1', username: 'owner', role, organization_id: 'org-a' };
+function authFor(role: string, withOrg = true) {
+  const user = { id: 'u1', username: 'owner', role, ...(withOrg ? { organization_id: 'org-a' } : {}) };
   const auth: AuthValue = {
     user,
     role,
@@ -85,6 +85,8 @@ interface RenderOptions {
   nodes?: unknown[];
   gateways?: unknown[];
   deleteAnswer?: { status: number; body: unknown };
+  withOrg?: boolean;
+  modulesFail?: boolean;
 }
 
 function render({
@@ -92,7 +94,9 @@ function render({
   role = 'user',
   nodes = [gatewayNode, branchNode, spareNode, phoneNode],
   gateways = GATEWAYS,
-  deleteAnswer = { status: 200, body: { removed: 'node-gw2' } }
+  deleteAnswer = { status: 200, body: { removed: 'node-gw2' } },
+  withOrg = true,
+  modulesFail = false
 }: RenderOptions = {}) {
   const puts: unknown[] = [];
   const gatewayPuts: unknown[] = [];
@@ -134,6 +138,7 @@ function render({
           }
         });
       }
+      if (url === '/api/organizations/org-a/modules' && modulesFail) return json({ error: 'boom' }, 500);
       if (url === '/api/organizations/org-a/modules') return json({ modules: [{ module_id: 'nuke', enabled: false }] });
       if (url === '/api/nodes') return json({ nodes });
       return json({});
@@ -142,7 +147,7 @@ function render({
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false, refetchOnWindowFocus: false } });
   const result = renderUI(
-    <AuthContext.Provider value={authFor(role)}>
+    <AuthContext.Provider value={authFor(role, withOrg)}>
       <QueryClientProvider client={client}>
         <ShellProvider>
           <MemoryRouter initialEntries={['/settings']}>
@@ -184,6 +189,21 @@ describe('SettingsRoute', () => {
     await u.type(input, '600');
     await u.click(screen.getByRole('button', { name: 'Save settings' }));
     await waitFor(() => expect(puts).toEqual([{ default_policy: 'deny', max_netmap_staleness_seconds: 600 }]));
+  });
+
+  it('refuses to save, and calls nothing, when the session has no organisation', async () => {
+    const { calls } = render({ withOrg: false });
+    expect(await screen.findByText(/not linked to an organisation/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save settings' })).toBeNull();
+    const urls = (fetch as unknown as { mock: { calls: [string][] } }).mock.calls.map(([u]) => u);
+    expect(urls.some((u) => u.includes('org-default'))).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  it('shows an error with retry when the feature list cannot be loaded', async () => {
+    render({ modulesFail: true });
+    await screen.findByDisplayValue('300');
+    expect(await screen.findByText('Could not load the features. Try again.')).toBeInTheDocument();
   });
 
   it('says so when the caller may not change the settings', async () => {

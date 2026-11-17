@@ -34,11 +34,12 @@ export default function SettingsRoute() {
   const { t } = useTranslation(['settings', 'ui']);
   const { user } = useAuth();
   const { notify } = useToast();
-  const orgId = (user?.organization_id as string | undefined) || 'org-default';
+  // No fallback org: a session without one must not read or write a hard-coded organisation.
+  const orgId = (user?.organization_id as string | undefined) || null;
 
   const org = useOrganization(orgId);
   const modules = useOrganizationModules(orgId);
-  const update = useUpdateOrganizationSettings(orgId);
+  const update = useUpdateOrganizationSettings(orgId ?? '');
 
   const [policy, setPolicy] = useState<'open' | 'deny'>('deny');
   const [staleness, setStaleness] = useState('');
@@ -55,7 +56,7 @@ export default function SettingsRoute() {
 
   const save = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (stalenessInvalid) return;
+    if (!orgId || stalenessInvalid) return;
     try {
       await update.mutateAsync({
         default_policy: policy,
@@ -67,6 +68,20 @@ export default function SettingsRoute() {
       notify(message, { tone: 'danger' });
     }
   };
+
+  if (!orgId) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title={t('title')} description={t('description')} />
+        <p
+          role="alert"
+          className="rounded-control border border-danger/40 bg-danger-subtle p-3 text-caption text-danger"
+        >
+          {t('noOrganization')}
+        </p>
+      </div>
+    );
+  }
 
   if (org.isError) {
     return (
@@ -143,6 +158,12 @@ export default function SettingsRoute() {
               <CardHeader as="h2" title={t('sectionModules')} />
               {modules.isLoading ? (
                 <Skeleton lines={3} />
+              ) : modules.isError ? (
+                <ErrorState
+                  title={t('modulesError')}
+                  detail={modules.error.message}
+                  onRetry={() => modules.refetch()}
+                />
               ) : (
                 <ul className="space-y-2">
                   {(modules.data ?? []).map((m) => (
