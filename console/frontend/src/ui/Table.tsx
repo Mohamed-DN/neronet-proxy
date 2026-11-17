@@ -26,7 +26,8 @@ export interface TableColumn<Row> {
   headerLabel?: string;
 }
 
-export type TableDensity = 'comfortable' | 'compact';
+/** `signage` is the rhythm of a station sign: rows at least 52px tall. */
+export type TableDensity = 'comfortable' | 'compact' | 'signage';
 
 export interface TableProps<Row> {
   columns: Array<TableColumn<Row>>;
@@ -50,6 +51,7 @@ export interface TableProps<Row> {
 
 const DENSITY_PADDING: Record<TableDensity, string> = {
   comfortable: 'px-3 py-2.5',
+  signage: 'px-3 py-3',
   compact: 'px-3 py-1'
 };
 
@@ -224,6 +226,7 @@ export function Table<Row>({
                   data-selected={isSelected || undefined}
                   className={cn(
                     'border-b border-border-subtle last:border-b-0 hover:bg-surface-hover',
+                    density === 'signage' && 'h-[52px]',
                     isSelected && 'bg-accent-subtle'
                   )}
                 >

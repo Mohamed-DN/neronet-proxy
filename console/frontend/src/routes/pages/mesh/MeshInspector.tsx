@@ -4,19 +4,11 @@ import type { TopologyLink, TopologyNode } from '../../../services/types';
 import { Badge } from '../../../ui/Badge';
 import { Button } from '../../../ui/Button';
 import { CodeText } from '../../../ui/CodeText';
-import { StatusBadge, type Status } from '../../../ui/StatusBadge';
+import { StationStatus } from '../../../ui/StationSymbol';
 import { GlossaryHint } from '../../GlossaryHint';
 import { formatRelativeTime } from '../../../i18n/format';
-import type { LinkState, NodeKind, NodeState } from '../topologyGraph';
+import { STATE_STATION, type LinkState, type NodeKind, type NodeState } from '../topologyGraph';
 import { KindSample, LinkSample } from './glyphs';
-
-const STATUS: Record<NodeState, Status> = {
-  online: 'ok',
-  degraded: 'warning',
-  offline: 'unknown',
-  quarantined: 'critical',
-  unmeasured: 'not-measured'
-};
 
 export interface PeerRow {
   node: TopologyNode;
@@ -93,7 +85,7 @@ export function DeviceDetails(props: DeviceDetailsProps) {
         <h2>{node.name || node.id}</h2>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge status={STATUS[state]} label={t(stateLabelKey(state))} />
+        <StationStatus kind={STATE_STATION[state]}>{t(stateLabelKey(state))}</StationStatus>
         {node.is_ghost_vault && <Badge tone="warning">{t('nodeDrawer.ghostVaultNode')}</Badge>}
       </div>
       {node.overlay_ipv4 && (

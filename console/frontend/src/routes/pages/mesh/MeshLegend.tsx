@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import type { GroupGeometry, LinkState, NodeKind } from '../topologyGraph';
 import { LINK_STATES, NODE_KINDS } from '../topologyGraph';
+import { StationStatus } from '../../../ui/StationSymbol';
 import { KindSample, LinkSample } from './glyphs';
 
 interface MeshLegendProps {
@@ -97,6 +98,15 @@ export function MeshLegend(props: MeshLegendProps) {
         ))}
       </ul>
       <p className="mesh-legend-note">{t('legend.kindNote')}</p>
+
+      <h2 className="mesh-legend-subheading">{t('legend.states')}</h2>
+      <ul className="mesh-legend-states">
+        {(['service', 'interrupted', 'unmeasured', 'blocked'] as const).map((kind) => (
+          <li key={kind}>
+            <StationStatus kind={kind}>{t(`legend.station.${kind}`)}</StationStatus>
+          </li>
+        ))}
+      </ul>
 
       <h2 className="mesh-legend-subheading">{t('legend.links')}</h2>
       <ul className="mesh-legend-toggles">

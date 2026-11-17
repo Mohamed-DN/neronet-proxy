@@ -117,10 +117,10 @@
     "gateway": "Gateway o uscita"
   },
   "nodeState": {
-    "online": "Funziona bene",
-    "degraded": "Ha problemi",
-    "offline": "Spento",
-    "quarantined": "Isolato",
+    "online": "In servizio",
+    "degraded": "Interrotto",
+    "offline": "Interrotto",
+    "quarantined": "Bloccato",
     "unmeasured": "Non misurato"
   },
   "linkState": {
@@ -136,7 +136,14 @@
     "kinds": "Dispositivi",
     "links": "Collegamenti",
     "kindNote": "Un dispositivo con profilo è un telefono o un computer con un profilo WireGuard: entra nella rete tramite un gateway.",
-    "notMeasured": "I percorsi diretti e tramite relay non sono ancora misurati: per questo compare “—”."
+    "notMeasured": "I percorsi diretti e tramite relay non sono ancora misurati: per questo compare “—”.",
+    "states": "Stato dei dispositivi",
+    "station": {
+      "service": "In servizio",
+      "interrupted": "Interrotto",
+      "unmeasured": "Non misurato",
+      "blocked": "Bloccato"
+    }
   },
   "notice": {
     "dense": "Le regole permettono quasi tutti i collegamenti: la mappa mostra solo le eccezioni.",

@@ -29,7 +29,7 @@ import { Input } from '../../ui/Input';
 import { Select } from '../../ui/Select';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { EmptyState, ErrorState, NotMeasured, Skeleton } from '../../ui/States';
-import { StatusBadge } from '../../ui/StatusBadge';
+import { StationStatus } from '../../ui/StationSymbol';
 import { Table, type TableColumn } from '../../ui/Table';
 
 import {
@@ -62,6 +62,7 @@ import {
   type ViewTransform,
   LINK_STATES,
   NODE_KINDS,
+  STATE_STATION,
   UNFOLD_SCALE
 } from './topologyGraph';
 import {
@@ -705,15 +706,7 @@ export function TopologyRoute() {
       header: t('columns.status'),
       cell: (row) => {
         const state = stateOf.get(row.id) ?? 'unmeasured';
-        const status =
-          state === 'online'
-            ? 'ok'
-            : state === 'degraded'
-              ? 'warning'
-              : state === 'quarantined'
-                ? 'critical'
-                : 'not-measured';
-        return <StatusBadge status={status} label={t(stateLabelKey(state))} />;
+        return <StationStatus kind={STATE_STATION[state]}>{t(stateLabelKey(state))}</StationStatus>;
       }
     }
   ];

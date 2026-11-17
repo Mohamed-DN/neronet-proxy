@@ -226,10 +226,10 @@ describe('Devices page', () => {
 
     const row = async (name: string) =>
       (await within(await screen.findByRole('table')).findByText(name)).closest('tr') as HTMLElement;
-    expect(within(await row('Fresh Phone')).getByText('Reachable')).toBeInTheDocument();
+    expect(within(await row('Fresh Phone')).getByText('In service')).toBeInTheDocument();
     expect(within(await row('Stale Phone')).getByText('Last connected 10 minutes ago')).toBeInTheDocument();
     expect(within(await row('Never Phone')).getByText('Not measured')).toBeInTheDocument();
-    expect(within(listTable()).queryByText('Unreachable')).toBeNull();
+    expect(within(listTable()).queryByText('Interrupted')).toBeNull();
   });
 
   it('labels the gateway and profile devices in Italian', async () => {
@@ -309,6 +309,26 @@ describe('Devices page', () => {
     ).toBeInTheDocument();
   });
 
+  it('sets each row in signage rhythm: a station symbol first, the status in words, and a risk number with a word band', async () => {
+    vi.stubGlobal('fetch', fleetFetch(mockNodes));
+    renderNodes();
+
+    const table = await screen.findByRole('table');
+    const row = within(table).getByText('Rome Gateway Alpha').closest('tr') as HTMLElement;
+    const firstCell = row.querySelector('td') as HTMLElement;
+    expect(firstCell.firstElementChild?.firstElementChild).toHaveAttribute('data-station', 'service');
+    expect(within(firstCell).getByText('In service')).toBeInTheDocument();
+    expect(row).toHaveClass('h-[52px]');
+    // 15 is a plain number, with its band beside it and no coloured box around either.
+    const risk = within(row).getByText('15');
+    expect(risk.parentElement).toHaveTextContent('15low');
+    expect(`${risk.className} ${risk.parentElement?.className}`).not.toMatch(/(bg-|border)/);
+    // The blocked device is a different symbol, not a different colour.
+    const blocked = within(table).getByText('Paris Client Charlie').closest('tr') as HTMLElement;
+    expect(blocked.querySelector('svg[data-station]')).toHaveAttribute('data-station', 'blocked');
+    expect(within(blocked).getByText('Blocked')).toBeInTheDocument();
+  });
+
   it('filters by search and by block status', async () => {
     vi.stubGlobal('fetch', fleetFetch(mockNodes));
 
@@ -324,7 +344,7 @@ describe('Devices page', () => {
     expect(within(listTable()).queryByText('Rome Gateway Alpha')).not.toBeInTheDocument();
 
     await user.clear(screen.getByRole('textbox'));
-    await user.click(screen.getByRole('button', { name: 'Blocked' }));
+    await user.click(screen.getByRole('radio', { name: 'Blocked' }));
     expect(within(listTable()).getByText('Paris Client Charlie')).toBeInTheDocument();
     expect(within(listTable()).queryByText('Berlin Relay Bravo')).not.toBeInTheDocument();
   });

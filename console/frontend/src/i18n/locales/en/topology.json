@@ -117,10 +117,10 @@
     "gateway": "Gateway or exit"
   },
   "nodeState": {
-    "online": "Working well",
-    "degraded": "Has problems",
-    "offline": "Switched off",
-    "quarantined": "Isolated",
+    "online": "In service",
+    "degraded": "Interrupted",
+    "offline": "Interrupted",
+    "quarantined": "Blocked",
     "unmeasured": "Not measured"
   },
   "linkState": {
@@ -136,7 +136,14 @@
     "kinds": "Devices",
     "links": "Connections",
     "kindNote": "A profile device is a phone or computer with a WireGuard profile; it reaches the network through a gateway.",
-    "notMeasured": "Direct and relayed paths are not measured yet, so they show “—”."
+    "notMeasured": "Direct and relayed paths are not measured yet, so they show “—”.",
+    "states": "Device status",
+    "station": {
+      "service": "In service",
+      "interrupted": "Interrupted",
+      "unmeasured": "Not measured",
+      "blocked": "Blocked"
+    }
   },
   "notice": {
     "dense": "The rules allow almost every connection, so the map shows only the exceptions.",

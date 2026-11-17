@@ -8,7 +8,8 @@
     "reachable": "Raggiungibili",
     "blocked": "Bloccati",
     "unverified": "Controlli non confermati",
-    "highRisk": "Rischio alto"
+    "highRisk": "Rischio alto",
+    "label": "Filtra i dispositivi"
   },
   "counts": {
     "total": "Dispositivi registrati",
@@ -35,8 +36,8 @@
     "unverified": "Non confermati"
   },
   "reachability": {
-    "online": "Raggiungibile",
-    "offline": "Non raggiungibile",
+    "online": "In servizio",
+    "offline": "Interrotto",
     "blocked": "Bloccato",
     "lastConnected": "Ultimo collegamento {{when}}",
     "notMeasured": "Non misurato"
@@ -120,5 +121,10 @@
     "noOther": "Non ci sono altri gateway. Aggiungine uno in Impostazioni.",
     "onlyAdmin": "Solo un amministratore può spostare un dispositivo su un altro gateway.",
     "loadFailed": "Non è stato possibile caricare i gateway."
+  },
+  "risk": {
+    "low": "basso",
+    "medium": "medio",
+    "high": "alto"
   }
 }

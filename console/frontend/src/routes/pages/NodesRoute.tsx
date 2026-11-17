@@ -21,7 +21,6 @@ import {
   useRevokeNode
 } from '../../services/queries/nodes';
 import type { MeshNode } from '../../services/types';
-import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { Card, CardHeader } from '../../ui/Card';
 import { CodeText } from '../../ui/CodeText';
@@ -32,10 +31,14 @@ import { Input } from '../../ui/Input';
 import { PageHeader } from '../../ui/PageHeader';
 import { EmptyState, ErrorState, FilteredEmptyState, Skeleton } from '../../ui/States';
 import { Stat } from '../../ui/Stat';
+import { Segmented } from '../../ui/Segmented';
+import { STATION_TONE, StationSymbol, type StationKind } from '../../ui/StationSymbol';
 import { StatusBadge } from '../../ui/StatusBadge';
 import { Table, type TableColumn } from '../../ui/Table';
 
 export type FilterKey = 'ALL' | 'ACTIVE' | 'QUARANTINED' | 'UNVERIFIED' | 'HIGH_RISK';
+
+const FILTER_KEYS: FilterKey[] = ['ALL', 'ACTIVE', 'QUARANTINED', 'UNVERIFIED', 'HIGH_RISK'];
 
 const KNOWN_ROLES = ['EXIT_BRIDGE', 'CLIENT_ORIGIN', 'RELAY', 'HYBRID'] as const;
 
@@ -183,16 +186,43 @@ export default function NodesRoute() {
     }
   };
 
+  /** The station a row stands for, and the word that goes with it. */
+  const stationOf = (n: MeshNode): { kind: StationKind; word: string } => {
+    if (n.is_quarantined) return { kind: 'blocked', word: t('reachability.blocked') };
+    if (isReachable(n)) return { kind: 'service', word: t('reachability.online') };
+    // A WireGuard-app device never heartbeats; only its gateway-reported handshake
+    // says anything, and without one nothing has been measured.
+    if (n.device_kind === 'profile') {
+      const when = formatRelativeTime(i18n.language, n.last_handshake_at);
+      if (!when) return { kind: 'unmeasured', word: t('reachability.notMeasured') };
+      return { kind: 'interrupted', word: t('reachability.lastConnected', { when }) };
+    }
+    return { kind: 'interrupted', word: t('reachability.offline') };
+  };
+
+  const riskBand = (score: number) => (score > 75 ? 'high' : score > 30 ? 'medium' : 'low');
+
   const columns: TableColumn<MeshNode>[] = [
     {
       id: 'device',
       header: t('columns.device'),
-      cell: (n) => (
-        <div className="flex flex-col gap-0.5">
-          <span className="font-semibold text-text">{n.name || n.hostname || n.id}</span>
-          <span className="text-xs text-muted font-mono">{n.id}</span>
-        </div>
-      )
+      cell: (n) => {
+        const { kind, word } = stationOf(n);
+        return (
+          <div className="flex items-center gap-3">
+            <StationSymbol kind={kind} size={18} className={STATION_TONE[kind]} />
+            <div className="flex min-w-0 flex-col">
+              <span className="font-semibold text-ink">{n.name || n.hostname || n.id}</span>
+              <span
+                data-state={kind === 'unmeasured' ? 'not-measured' : undefined}
+                className="text-caption text-ink-muted"
+              >
+                {word}
+              </span>
+            </div>
+          </div>
+        );
+      }
     },
     {
       id: 'address',
@@ -206,7 +236,7 @@ export default function NodesRoute() {
         n.overlay_ipv4 ? (
           <CodeText copyable>{n.overlay_ipv4}</CodeText>
         ) : (
-          <span data-state="not-measured" className="text-muted">
+          <span data-state="not-measured" className="text-ink-muted">
             —
           </span>
         )
@@ -214,7 +244,7 @@ export default function NodesRoute() {
     {
       id: 'type',
       header: t('columns.type'),
-      cell: (n) => <Badge tone="neutral">{typeLabel(n)}</Badge>
+      cell: (n) => <span className="text-ink-muted">{typeLabel(n)}</span>
     },
     {
       id: 'checks',
@@ -226,52 +256,26 @@ export default function NodesRoute() {
       ),
       cell: (n) => {
         if (n.posture_status === 'verified_compliant') {
-          return <StatusBadge status="ok" label={t('posture.passed')} />;
+          return <span className="text-ink-muted">{t('posture.passed')}</span>;
         }
         if (n.posture_status === 'non_compliant') {
-          return <StatusBadge status="critical" label={t('posture.failed')} />;
+          return <span className="font-semibold text-ink">{t('posture.failed')}</span>;
         }
         // When no device has reported, the page says so once above the table and
         // the rows stay quiet; the word is still there for a screen reader.
         if (allUnverified) {
           return (
-            <span data-state="not-measured" className="text-muted">
+            <span data-state="not-measured" className="text-ink-muted">
               <span aria-hidden="true">—</span>
               <span className="sr-only">{t('posture.unverified')}</span>
             </span>
           );
         }
         return (
-          <span data-state="not-measured">
-            <StatusBadge status="not-measured" label={t('posture.unverified')} />
+          <span data-state="not-measured" className="text-ink-muted">
+            {t('posture.unverified')}
           </span>
         );
-      }
-    },
-    {
-      id: 'reachability',
-      header: t('columns.reachability'),
-      cell: (n) => {
-        if (n.is_quarantined) {
-          return <StatusBadge status="critical" label={t('reachability.blocked')} />;
-        }
-        if (isReachable(n)) {
-          return <StatusBadge status="ok" label={t('reachability.online')} />;
-        }
-        // A WireGuard-app device never heartbeats; only its gateway-reported handshake
-        // says anything, and without one nothing has been measured.
-        if (n.device_kind === 'profile') {
-          const when = formatRelativeTime(i18n.language, n.last_handshake_at);
-          if (!when) {
-            return (
-              <span data-state="not-measured">
-                <StatusBadge status="not-measured" label={t('reachability.notMeasured')} />
-              </span>
-            );
-          }
-          return <StatusBadge status="unknown" label={t('reachability.lastConnected', { when })} />;
-        }
-        return <StatusBadge status="unknown" label={t('reachability.offline')} />;
       }
     },
     {
@@ -280,11 +284,16 @@ export default function NodesRoute() {
       numeric: true,
       cell: (n) => {
         if (typeof n.risk_score === 'number') {
-          const tone = n.risk_score > 75 ? 'danger' : n.risk_score > 30 ? 'warning' : 'success';
-          return <Badge tone={tone}>{n.risk_score}</Badge>;
+          // A plain number and a short word for its band; no coloured box.
+          return (
+            <span className="inline-flex items-baseline gap-2">
+              <span className="tabular-nums text-ink">{n.risk_score}</span>
+              <span className="text-caption text-ink-muted">{t(`risk.${riskBand(n.risk_score)}`)}</span>
+            </span>
+          );
         }
         return (
-          <span data-state="not-measured" className="text-muted">
+          <span data-state="not-measured" className="text-ink-muted">
             —
           </span>
         );
@@ -366,19 +375,12 @@ export default function NodesRoute() {
               />
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-              {(['ALL', 'ACTIVE', 'QUARANTINED', 'UNVERIFIED', 'HIGH_RISK'] as FilterKey[]).map((key) => (
-                <Button
-                  key={key}
-                  variant={filter === key ? 'primary' : 'ghost'}
-                  size="sm"
-                  aria-pressed={filter === key}
-                  onClick={() => setFilter(key)}
-                >
-                  {filterLabels[key]}
-                </Button>
-              ))}
-            </div>
+            <Segmented
+              label={t('filter.label')}
+              value={filter}
+              onChange={setFilter}
+              options={FILTER_KEYS.map((key) => ({ value: key, label: filterLabels[key] }))}
+            />
           </div>
         </Card>
 
@@ -414,7 +416,7 @@ export default function NodesRoute() {
           />
         ) : (
           <Card className="p-0 overflow-hidden">
-            <Table columns={columns} rows={filteredNodes} rowKey={(n) => n.id} caption={t('title')} />
+            <Table columns={columns} rows={filteredNodes} rowKey={(n) => n.id} caption={t('title')} density="signage" />
           </Card>
         )}
       </div>

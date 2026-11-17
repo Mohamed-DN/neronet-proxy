@@ -346,6 +346,15 @@ export type NodeKind = 'device' | 'profile' | 'gateway';
 export type NodeState = 'online' | 'degraded' | 'offline' | 'quarantined' | 'unmeasured';
 export type LinkState = 'direct' | 'relayed' | 'unmeasured' | 'offline' | 'quarantined' | 'blocked';
 
+/** The station symbol that draws each state: a device that is switched off or unwell is interrupted. */
+export const STATE_STATION: Record<NodeState, 'service' | 'interrupted' | 'blocked' | 'unmeasured'> = {
+  online: 'service',
+  degraded: 'interrupted',
+  offline: 'interrupted',
+  quarantined: 'blocked',
+  unmeasured: 'unmeasured'
+};
+
 export const NODE_KINDS: NodeKind[] = ['device', 'profile', 'gateway'];
 export const LINK_STATES: LinkState[] = ['unmeasured', 'direct', 'relayed', 'offline', 'quarantined', 'blocked'];
 

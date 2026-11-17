@@ -385,7 +385,7 @@ describe('Network map: readable, honest and keyboard-first', () => {
     const { container } = renderTopology();
     expect(await mirrorButton('Gateway')).toHaveAccessibleName(/Gateway or exit/);
     expect(await mirrorButton('Phone')).toHaveAccessibleName(/Profile device, Not measured/);
-    expect(await mirrorButton('Laptop')).toHaveAccessibleName(/, Device, Working well/);
+    expect(await mirrorButton('Laptop')).toHaveAccessibleName(/, Device, In service/);
     expect(shapeOf(container, 'gw')).toMatch(/^M [-\d.e]+ [-\d.e]+ L /);
     expect(shapeOf(container, 'phone')).toMatch(/ H /);
     expect(shapeOf(container, 'laptop')).toMatch(/ A /);
@@ -398,9 +398,9 @@ describe('Network map: readable, honest and keyboard-first', () => {
     const user = userEvent.setup();
     renderTopology();
     const inspector = await openDevice(user, 'Rome Gateway Alpha');
-    expect(within(inspector).getByText('Has problems')).toBeInTheDocument();
+    expect(within(inspector).getByText('Interrupted')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^List$/i }));
-    expect(screen.getByText('Has problems')).toBeInTheDocument();
+    expect(screen.getByText('Interrupted')).toBeInTheDocument();
   });
 
   it('draws each six-device pair once with a modest curve', async () => {

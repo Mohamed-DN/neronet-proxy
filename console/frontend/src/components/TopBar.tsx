@@ -9,7 +9,7 @@ import { canSeeRoute, locate, visibleGroups, type NavGroupKey } from '../routes/
 import { useStatsOverview } from '../services/queries';
 import { effectiveRole } from '../services/roles';
 import type { Features } from '../services/types';
-import { Disclosure, MENU_CONTENT, MENU_ITEM, NotMeasured, cn } from '../ui';
+import { Disclosure, MENU_CONTENT, MENU_ITEM, NotMeasured, StationSymbol, cn } from '../ui';
 import Header from './Header';
 
 export interface TopBarProps {
@@ -22,25 +22,6 @@ export interface TopBarProps {
   nukeScheduledAt?: string | null;
   onExecuteWipe?: () => void;
   onOpenEnrollModal?: () => void;
-}
-
-/*
- * Station symbols, drawn in the transit-map manner: a filled ring is "in
- * service", a ring with a bar is "blocked". Colour comes from the text colour
- * around them and the word always sits beside them, so a status is never a
- * bare dot.
- */
-function Station({ kind }: { kind: 'service' | 'blocked' }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" className="shrink-0">
-      <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      {kind === 'service' ? (
-        <circle cx="7" cy="7" r="2.75" fill="currentColor" />
-      ) : (
-        <path d="M2.5 7h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      )}
-    </svg>
-  );
 }
 
 /** The wordmark's glyph: a line with a station at each end, the far one "you are here". */
@@ -187,7 +168,7 @@ export default function TopBar({
                       </span>
                       {count !== undefined && <span className="text-caption tabular-nums text-muted">{count}</span>}
                       {alert > 0 && (
-                        <span className="rounded-control border border-danger/40 bg-danger-subtle px-1.5 text-caption font-semibold tabular-nums text-danger">
+                        <span className="text-caption font-semibold tabular-nums text-ink">
                           {alert}
                           <span className="sr-only"> {t('nav.alertCount', { count: alert })}</span>
                         </span>
@@ -231,7 +212,7 @@ export default function TopBar({
           )}
 
           <span className="flex items-center gap-1.5 text-content">
-            <Station kind="service" />
+            <StationSymbol kind="service" size={14} className="text-success" />
             {nodeCount === 0
               ? t('status.noDevices')
               : t('status.inService', { reachable: reachableCount, total: nodeCount })}
@@ -242,7 +223,7 @@ export default function TopBar({
               to={ROUTES.nodes}
               className="flex items-center gap-1.5 rounded-control font-medium text-danger underline focus-visible:outline-focus"
             >
-              <Station kind="blocked" />
+              <StationSymbol kind="blocked" size={14} />
               {t('status.blocked', { count: quarantinedCount })}
             </Link>
           ) : (
