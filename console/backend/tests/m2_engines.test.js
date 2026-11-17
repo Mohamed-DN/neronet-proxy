@@ -728,7 +728,7 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
       assert.ok(projRes.body.signaling_url.includes('selkies'));
       assert.ok(Array.isArray(projRes.body.ice_servers));
       assert.ok(projRes.body.ice_servers.some((s) => s.urls.includes('stun:')));
-      assert.ok(projRes.body.ice_servers.some((s) => s.urls.includes('turn:')));
+      assert.ok(projRes.body.ice_servers.every((s) => !String(s.urls).includes('turn') && s.credential === undefined));
 
       // 2. Cross-tenant access is forbidden (403)
       const hijackRes = await request(app)
