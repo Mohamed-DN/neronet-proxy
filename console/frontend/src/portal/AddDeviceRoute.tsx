@@ -24,7 +24,7 @@ const NAME_MAX = 64;
 const SECONDARY_LARGE =
   'inline-flex h-11 items-center justify-center gap-2 rounded-control border border-border-strong bg-surface-raised px-4 text-body font-medium text-content hover:bg-surface-hover focus-visible:outline-focus';
 
-type AlertKind = 'noCrypto' | 'noGateway' | 'keyInUse' | 'exitNotPermitted' | 'exitGone' | 'generic';
+type AlertKind = 'noCrypto' | 'noGateway' | 'blockedOwner' | 'keyInUse' | 'exitNotPermitted' | 'exitGone' | 'generic';
 
 function alertKindFor(error: unknown): AlertKind {
   if (error instanceof KeyGenerationUnavailable) return 'noCrypto';
@@ -35,6 +35,7 @@ function alertKindFor(error: unknown): AlertKind {
     // Older servers name the reason only in `error`; the message is that same word then.
     const reason = error.code ?? error.message;
     if (reason === 'no_profile_gateway') return 'noGateway';
+    if (reason === 'owner_has_blocked_device') return 'blockedOwner';
     // Only a taken key is "key already in use"; any other conflict is a plain retry.
     return reason === 'public_key_in_use' ? 'keyInUse' : 'generic';
   }

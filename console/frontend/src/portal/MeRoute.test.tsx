@@ -164,6 +164,28 @@ describe('MeRoute', () => {
     expect(within(row).getByText('Connected')).toBeInTheDocument();
   });
 
+  it('says a blocked device is kept by an administrator when the server refuses the removal', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/nodes') && init?.method === 'DELETE') {
+        return json({ code: 'device_blocked', error: 'device_blocked', message: 'blocked' }, 409);
+      }
+      if (url.includes('/nodes')) return json({ nodes: [ANNA_LAPTOP] });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await renderMe();
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove Anna laptop' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove device' }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'This device was blocked by an administrator: ask them to unblock or remove it.'
+    );
+  });
+
   it('says why the gateway cannot be removed when the server refuses it', async () => {
     auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'admin' };
     // The list loads; the server refuses the DELETE because the node serves the profiles.

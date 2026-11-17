@@ -45,7 +45,8 @@
       "confirm": "Rimuovi dispositivo",
       "done": "{{name}} rimosso.",
       "failed": "{{name}} non è stato rimosso. Riprova tra poco.",
-      "gatewayInUse": "{{name}} serve a collegare gli altri dispositivi e non si può rimuovere da qui. Chiedi a un amministratore."
+      "gatewayInUse": "{{name}} serve a collegare gli altri dispositivi e non si può rimuovere da qui. Chiedi a un amministratore.",
+      "deviceBlocked": "Questo dispositivo è stato bloccato da un amministratore: chiedigli di sbloccarlo o rimuoverlo."
     },
     "rebuild": {
       "title": "Rifare l'accesso di {{name}}?",
@@ -160,6 +161,7 @@
     "error": {
       "noGateway": "La tua organizzazione non è ancora pronta per aggiungere dispositivi. Chiedi a un amministratore di completare la configurazione.",
       "keyInUse": "Questo accesso era già in uso. Riprova a crearlo.",
+      "blockedOwner": "Hai un dispositivo bloccato: un amministratore deve sbloccarlo prima che tu ne aggiunga altri.",
       "generic": "Non siamo riusciti a creare l'accesso. Riprova.",
       "noCrypto": "Questo browser non riesce a proteggere l'accesso. Apri la pagina con una versione recente di Chrome, Firefox, Safari o Edge.",
       "exitNotPermitted": "Solo un amministratore può far passare tutto il traffico dalla rete: chiedi a lui, oppure crea l'accesso senza questa opzione.",

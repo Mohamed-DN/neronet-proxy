@@ -545,6 +545,20 @@ describe('AddDeviceRoute, failures', () => {
     expect(await alertWith(/Ask an administrator to finish the setup/)).toBeInTheDocument();
   });
 
+  it('409 owner_has_blocked_device tells the person an administrator must unblock their device', async () => {
+    setUserAgent(UA.iphone);
+    stubApi({
+      registerStatus: 409,
+      registerBody: { error: 'owner_has_blocked_device', code: 'owner_has_blocked_device' }
+    });
+    renderAdd();
+
+    await createFor(null);
+
+    const alert = await alertWith(/You have a blocked device: an administrator must unblock it before you add another/);
+    expect(alert).toHaveFocus();
+  });
+
   it('a 409 with another reason is a generic retry, not "already in use"', async () => {
     setUserAgent(UA.iphone);
     stubApi({ registerStatus: 409, registerBody: { error: 'conflict', code: 'device_limit_reached' } });

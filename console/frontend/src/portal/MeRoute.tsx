@@ -35,7 +35,7 @@ export default function MeRoute() {
   const navigate = useNavigate();
   // The same confirmation serves both actions: removing a device, and making its access again.
   const [removing, setRemoving] = useState<{ node: MeshNode; rebuild: boolean } | null>(null);
-  const [removeFailed, setRemoveFailed] = useState<'failed' | 'gatewayInUse' | null>(null);
+  const [removeFailed, setRemoveFailed] = useState<'failed' | 'gatewayInUse' | 'deviceBlocked' | null>(null);
   const removingNode = removing?.node ?? null;
   const rebuild = removing?.rebuild === true;
   const removingName = removingNode ? (removingNode.name ?? removingNode.hostname ?? t('me.unnamed')) : '';
@@ -54,7 +54,11 @@ export default function MeRoute() {
       },
       onError: (error) =>
         setRemoveFailed(
-          error instanceof ApiError && error.code === 'profile_gateway_in_use' ? 'gatewayInUse' : 'failed'
+          error instanceof ApiError && error.code === 'profile_gateway_in_use'
+            ? 'gatewayInUse'
+            : error instanceof ApiError && error.code === 'device_blocked'
+              ? 'deviceBlocked'
+              : 'failed'
         )
     });
   };
@@ -140,7 +144,7 @@ export default function MeRoute() {
             role="alert"
             className="rounded-control border border-danger/40 bg-danger-subtle p-3 text-caption text-danger"
           >
-            {t(removeFailed === 'gatewayInUse' ? 'me.remove.gatewayInUse' : 'me.remove.failed', {
+            {t(`me.remove.${removeFailed}`, {
               name: removingName
             })}
           </p>
