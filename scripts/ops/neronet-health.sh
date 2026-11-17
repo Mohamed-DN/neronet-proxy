@@ -10,6 +10,9 @@
 #   COMPOSE_PROJECT_NAME  compose project name (default neronet-gw)
 #   NERONET_CONSOLE_URL   console base URL (default https://127.0.0.1:8443)
 #   NERONET_PUBLIC_URL    public URL; enables the public HTTP and TLS checks
+#   NERONET_PUBLIC_CONNECT_TO  address to connect to for the public HTTP and TLS checks,
+#                         keeping the public name for Host and SNI: for a router without
+#                         hairpin NAT, point it at the LAN reverse proxy
 #   NERONET_DNS_NAMES     space-separated public names; enables the DNS check (each A
 #                         record must equal this line's public IPv4, asked of two sources)
 #   NERONET_MEMINFO       meminfo file (default /proc/meminfo; for tests)
@@ -19,6 +22,8 @@ PROJECT=${COMPOSE_PROJECT_NAME:-neronet-gw}
 CONSOLE_URL=${NERONET_CONSOLE_URL:-https://127.0.0.1:8443}
 PUBLIC_URL=${NERONET_PUBLIC_URL:-}
 DNS_NAMES=${NERONET_DNS_NAMES:-}
+CONNECT_TO=${NERONET_PUBLIC_CONNECT_TO:-}
+case $CONNECT_TO in *[!0-9A-Za-z.:-]*) echo "invalid NERONET_PUBLIC_CONNECT_TO" >&2; exit 1 ;; esac
 MEMINFO=${NERONET_MEMINFO:-/proc/meminfo}
 GATEWAY="${PROJECT}-gateway-1"
 FAILS=0
@@ -95,7 +100,15 @@ check_wireguard_port() {
 
 # 4. Optional public HTTP check.
 check_public_http() {
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${PUBLIC_URL}/api/health" 2>/dev/null)
+  if [ -n "$CONNECT_TO" ]; then
+    hp=${PUBLIC_URL#*://}
+    hp=${hp%%/*}
+    case $hp in *:*) port=${hp##*:} ;; *) port=443 ;; esac
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+      --resolve "${hp%%:*}:${port}:${CONNECT_TO}" "${PUBLIC_URL}/api/health" 2>/dev/null)
+  else
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${PUBLIC_URL}/api/health" 2>/dev/null)
+  fi
   if [ "$code" = 200 ]; then
     ok public-http
   else
@@ -112,6 +125,9 @@ check_tls() {
     *) hostport="${hostport}:443" ;;
   esac
   host=${hostport%%:*}
+  if [ -n "$CONNECT_TO" ]; then
+    hostport="${CONNECT_TO}:${hostport##*:}"
+  fi
   if openssl s_client -servername "$host" -connect "$hostport" </dev/null 2>/dev/null \
     | openssl x509 -checkend 1209600 -noout >/dev/null 2>&1; then
     ok tls-expiry

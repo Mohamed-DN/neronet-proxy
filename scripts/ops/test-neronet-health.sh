@@ -15,6 +15,7 @@ cat >"$STUBS/curl" <<'EOF'
 #!/bin/sh
 # Public check passes -w; console check does not. DNS-over-HTTPS and the public IP
 # sources answer from FAKE_DNS_A and FAKE_PUBLIC_IP.
+[ -n "${CURL_LOG:-}" ] && printf '%s\n' "$*" >>"$CURL_LOG"
 case " $* " in
   *dns-query*) printf '{"Status":0,"Answer":[{"type":1,"data":"%s"}]}' "${FAKE_DNS_A:-192.0.2.10}" ;;
   *ipify* | *ifconfig*) printf '%s\n' "${FAKE_PUBLIC_IP:-192.0.2.10}" ;;
@@ -37,6 +38,7 @@ EOF
 cat >"$STUBS/openssl" <<'EOF'
 #!/bin/sh
 # s_client prints nothing; x509 -checkend exits with FAKE_CERT_RC (0 = more than 14 days left).
+[ -n "${OPENSSL_LOG:-}" ] && printf '%s\n' "$*" >>"$OPENSSL_LOG"
 case "$1" in
   x509) exit "${FAKE_CERT_RC:-0}" ;;
   *) exit 0 ;;
@@ -107,6 +109,25 @@ elif ! grep -q ' FAIL public-dns neronet.example.test points to 192.0.2.10, this
   echo "FAIL case 3: missing public-dns FAIL line" >&2; status=1
 else
   echo "PASS case 3: stale DNS record detected"
+fi
+
+# Case 4: a router without hairpin NAT. NERONET_PUBLIC_CONNECT_TO sends the public
+# HTTP and TLS checks to the LAN proxy, keeping the public name for Host and SNI.
+out4="$WORK/connect.out"
+set +e
+PATH="$STUBS:$PATH" NERONET_MEMINFO="$MEMINFO" NERONET_PUBLIC_URL="https://neronet.example.test" \
+  NERONET_PUBLIC_CONNECT_TO=10.0.0.5 CURL_LOG="$WORK/curl.log" OPENSSL_LOG="$WORK/openssl.log" \
+  COMPOSE_PROJECT_NAME=neronet-gw sh "$CHECK" >"$out4" 2>&1
+rc4=$?
+set -e
+if [ "$rc4" -ne 0 ]; then
+  echo "FAIL case 4: expected exit 0, got $rc4" >&2; status=1
+elif ! grep -q -- '--resolve neronet.example.test:443:10.0.0.5' "$WORK/curl.log"; then
+  echo "FAIL case 4: public HTTP check did not connect to the LAN proxy" >&2; status=1
+elif ! grep -q -- '-servername neronet.example.test -connect 10.0.0.5:443' "$WORK/openssl.log"; then
+  echo "FAIL case 4: TLS check did not connect to the LAN proxy with the public name" >&2; status=1
+else
+  echo "PASS case 4: public checks go to the LAN proxy with the public name"
 fi
 
 exit "$status"

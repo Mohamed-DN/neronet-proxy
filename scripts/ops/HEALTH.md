@@ -20,8 +20,14 @@ Exit code 0 when all checks pass, 1 otherwise. No secrets or env values are prin
    ```
    COMPOSE_PROJECT_NAME=neronet-gw
    NERONET_PUBLIC_URL=https://example.org
-   NERONET_DNS_NAMES=example.org gw.example.org
+   NERONET_DNS_NAMES="example.org gw.example.org"
+   NERONET_PUBLIC_CONNECT_TO=10.0.0.5
    ```
+   `NERONET_PUBLIC_CONNECT_TO` sends the public HTTP and TLS checks to that address (the
+   LAN reverse proxy) while keeping the public name for Host and SNI. Use it when the
+   router does not loop traffic for its own public address back inside (no hairpin NAT):
+   without it both checks fail from inside although the site works from outside. The
+   `public-dns` check still covers the part this skips, the record pointing at the line.
    `NERONET_DNS_NAMES` turns on the `public-dns` check: each name's A record (asked of
    Cloudflare's DNS-over-HTTPS) must equal this line's public IPv4 (asked of two sources
    that must agree). On a home line the address can change after a power cut or a router
