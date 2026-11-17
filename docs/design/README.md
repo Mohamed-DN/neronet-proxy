@@ -5,6 +5,12 @@ sober, dense and calm: a screen an operator reads for eight hours, not a demo.
 Data comes first, colour carries meaning and nothing else, and a figure that
 was never measured says so.
 
+Its look is the one in [`DIRECTION-2026-11.md`](DIRECTION-2026-11.md): the network
+as a transit map. Where that file and this one differ on appearance (palette,
+type, shape, layout), the direction wins; the system rules below (tokens only,
+status is colour and shape and word, five data states, "not measured" is never
+zero) are unchanged. This file describes what is built, wave by wave.
+
 The [radial mesh topology](mesh-topology.md) describes how the network map
 separates policy connections from observed paths and lists its current limits.
 
@@ -27,23 +33,41 @@ node scripts/design/contrast.mjs --write  # also regenerate tokens.md
 
 ## Rules
 
-1. **No literal colours.** Not a hex, not a Tailwind palette shade. Every colour
-   is a role: `bg-surface-raised`, `text-muted`, `border-border-strong`. A page
+1. **No literal colours.** Not a hex, not a Tailwind palette shade, not
+   `bg-white`. Every colour is a role: `bg-plate`, `text-ink-muted`,
+   `border-border-strong`. The new names are `sheet`, `plate`, `ink`,
+   `ink-muted`, `rule`, `signal` and `line-*`; the older `surface`,
+   `content`, `accent`, `border` and `focus` stay as aliases of them. A page
    that needs a colour the roles do not cover needs a new role, discussed, not a
-   local exception.
+   local exception. (`paper` exists because a QR code needs a white ground.)
 2. **Colour means status, never decoration.** Green, amber, red and violet are
-   reserved for `success`, `warning`, `danger` and `info`. Blue is the one
-   accent: primary actions, links, selection. Nothing else is coloured.
-3. **Status is colour, icon and word together.** Never colour alone. Use
+   reserved for `success`, `warning`, `danger` and `info`. The primary action
+   is an ink plate with sheet text. The one yellow, the `signal`, marks the
+   focus ring, "you are here" and the selected station, and is never text. The
+   six line colours tell sub-networks and groups apart, never status, and their
+   labels stay ink.
+3. **Status is colour, shape and word together.** Never colour alone. The
+   station symbols are a filled ring (in service), a hollow ring (not measured),
+   a ring with a bar (blocked) and a dashed ring (interrupted). Use
    `StatusBadge`; it cannot be built without a word.
-4. **Borders, not shadows.** Data surfaces are flat and separated by a border.
-   A shadow means the thing floats above the page: a dialog, a menu, a toast.
+4. **Plates, not shadows.** A plate (panel, table body, dialog) is flat, 8px
+   rounded and separated by a 1px rule. Controls are 4px. The one shadow token
+   is for things that float above the page: a menu, a dialog, a toast. No
+   gradients.
 5. **Numbers are tabular.** Every figure in a table or a metric lines up.
    Identifiers, addresses and keys are mono, through `CodeText`.
 6. **Motion is functional.** It shows that something is loading or where a
    surface came from. Everything stops under `prefers-reduced-motion`.
-7. **One focus ring.** `--color-focus`, applied by `:focus-visible` globally.
-   Nothing removes an outline without drawing one of its own.
+7. **One focus ring, two-tone.** `:focus-visible` draws a 2px ink band against
+   the control and a 2px `signal` ring outside it (`.focus-ring` does the same
+   where an outline would be clipped). The signal alone is 1.5:1 on the light
+   sheet; the ink band is what holds 3:1 in both themes. A highlighted option in
+   a Select or a menu draws the same pair inside its own box (`.option-ring`),
+   because the hover tint is 1.1:1 against the plate. Nothing removes an outline
+   without drawing one of its own.
+8. **A busy button keeps focus.** `Button loading` is `aria-disabled`, not
+   `disabled`, and swallows the click and the form submission: a keyboard user
+   who pressed it does not lose their place.
 
 ## The five states
 
@@ -73,6 +97,39 @@ never as a dash, never as a healthy green tick.
 arrived and could not be classified. A node whose posture was never reported
 is not a node with unknown posture.
 
+## The shell
+
+There is no left rail. A top bar (`src/components/TopBar.tsx`) carries the
+wordmark (it links to the overview), four task groups, search, language, theme,
+notifications and the account, and under them one line that says in words how
+the network is doing:
+
+| Group | Pages |
+|---|---|
+| Network | Map, Devices, Sub-networks, Virtual computers (only when its feature flag is on) |
+| Access | Rules, People, Federation |
+| Security | Risk, Log, Data erasure, Three-stop routes |
+| Settings | a link, not a menu |
+
+`src/routes/navModel.ts` is the only place the groups are defined. It reads
+`services/roles.ts` (`ACCESS`), so a role never sees an entry for a page it
+cannot use, and a group with nothing in it for a role is not drawn. The account
+menu holds "My devices" (the member portal), "Send a file", the glossary and
+sign-out. The armed data erasure and the blocked-device count are indicators in
+the status line, each with its words.
+
+The groups and the account are disclosure menus (`src/ui/Disclosure.tsx`, the
+WAI-ARIA disclosure pattern for navigation): Enter or Space opens one, the arrow
+keys, Home and End move through it, Escape closes it and returns focus to the
+trigger, and a click outside or tabbing out closes it. Choosing a page closes it
+and leaves focus to the page's own heading. The notifications panel is the same
+component as a dialog. Radix menu and popover were tried first and cost 27 KB
+gzip in the entry chunk, over the bundle budget, for what is a toggle, a list and
+Escape.
+
+The page title block (`PageHeader`) draws the breadcrumb the shell provides
+("Network > Map"), so a page never spells out its own.
+
 ## Themes and density
 
 Light and dark, both meeting WCAG 2.1 AA. The choice is light, dark, or
@@ -88,10 +145,19 @@ Table density is comfortable or compact, stored beside the theme.
 
 ## Typography
 
-Inter for the interface, JetBrains Mono for anything a machine produced. Both
-are served from this origin under the SIL Open Font Licence; the files and the
-licence texts are in `console/frontend/public/fonts`. Only the Latin and Latin
-Extended subsets are shipped, which cover English and Italian.
+Overpass, the open typeface derived from highway signage, for everything;
+Overpass Mono for keys, addresses and codes only (`CodeText`). Both are variable
+fonts from the `@fontsource-variable` packages, bundled by Vite and served from
+this origin under the SIL Open Font Licence; the licence texts are in
+`console/frontend/public/fonts`. Only the Latin and Latin Extended subsets are
+declared (`src/styles/fonts.css`), which cover English and Italian.
+
+The scale is in rem on a 16px root: caption 0.75, body 0.875, lead 1, title
+1.25, page title 1.75 and the single overview figure 2.5. The older `micro`,
+`label`, `heading`, `display` and `metric` sizes resolve onto it, and nothing is
+set below the caption: no `text-[10px]` or `text-[11px]`. Sentence case
+everywhere: no uppercase transform, no tracked caps, no eyebrows. Prose lines
+stay at 75 characters or fewer.
 
 No font may be loaded from a third party. It would put the address of every
 operator who opens the console in a foreign log, and the strict
@@ -130,6 +196,11 @@ WCAG 2.1 AA is the target, and parts of it are enforced rather than intended:
   on its accessible name, role and state, and is run through `axe-core` in both
   themes.
 - A skip link is the first element in the tab order.
+
+`scripts/design/contrast.mjs` gates 204 pairs per run across both themes: text
+on the sheet, plate, wells and hover surfaces, every status colour on those and
+on its `/10` and `/15` tints, line colours at 3:1, and the focus pairs. It
+exits 1 on any miss.
 
 The pages are not there yet. They carry the accessibility backlog measured on
 2026-09-19 - eight ARIA attributes across twelve thousand lines - and each page

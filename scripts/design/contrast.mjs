@@ -272,11 +272,15 @@ function markdown(themes) {
   lines.push('# Console colour tokens');
   lines.push('');
   lines.push(
-    'The values live in `console/frontend/src/styles/tokens.css` and are the single source of truth. Tailwind maps every colour utility onto them, so a token change reaches the whole console. Re-generate this file with `node scripts/design/contrast.mjs --write`.'
+    'The values live in `console/frontend/src/styles/tokens.css` and are the single source of truth. Tailwind maps every colour utility onto them, so a token change reaches the whole console. The palette is the transit-map direction in [`DIRECTION-2026-11.md`](DIRECTION-2026-11.md): the new roles are `sheet`, `plate`, `ink`, `ink-muted`, `rule` and `signal`, plus six line colours; the older names (`surface`, `content`, `accent`, `border`, `focus`) are aliases that resolve onto them, and a pair listed under an alias is measured on the value it resolves to. Re-generate this file with `node scripts/design/contrast.mjs --write`.'
   );
   lines.push('');
   lines.push(
-    'Targets follow WCAG 2.1 AA: 4.5:1 for text, 3:1 for the boundary of a user interface component and for a chart series against its plot background. Pairs marked `-` separate two areas that are already distinguishable without them; they carry no information and are listed for review only.'
+    'Targets follow WCAG 2.1 AA: 4.5:1 for text, 3:1 for the boundary of a user interface component, for a focus indicator, for a line colour and for a chart series against its plot background. A background written `danger@10/plate` is the danger colour at 10% opacity over the plate, which is what `bg-danger/10` paints. Pairs marked `-` separate two areas that are already distinguishable without them, or (the signal alone on the light sheet) are shown to explain a design decision; they cannot fail the run. Any other pair below its target exits 1.'
+  );
+  lines.push('');
+  lines.push(
+    'The signal (`#F5C211`) is 1.5:1 on the light sheet, so it cannot be a focus ring by itself. Every focus ring and every highlighted option is two-tone: a 2px ink band against the control, then a 2px signal ring outside it. The ink band is what holds 3:1 in both themes; in the dark theme the signal holds it too.'
   );
   lines.push('');
 
@@ -313,30 +317,31 @@ function markdown(themes) {
   lines.push('| Role | Meaning |');
   lines.push('|---|---|');
   const roles = [
-    ['`surface`', 'The page behind everything else.'],
-    ['`surface-raised`', 'Cards, panels, table bodies, menus.'],
+    ['`sheet` (`surface`)', 'The page behind everything else. Cool, never cream.'],
+    ['`plate` (`surface-raised`)', 'Raised surfaces: panels, table bodies, menus, dialogs.'],
     ['`surface-sunken`', 'Inputs, wells, code blocks, table headers.'],
     ['`surface-hover`', 'Hover tint for rows and menu items.'],
-    ['`surface-inverse`', 'Tooltips and other deliberately inverted areas.'],
-    ['`border`', 'Card outlines and separators.'],
-    ['`border-subtle`', 'Separators inside a card.'],
-    ['`border-strong`', 'The boundary of an interactive control. Holds 3:1.'],
-    ['`content`', 'Primary text.'],
-    ['`content-muted`', 'Secondary text: units, captions, column headers.'],
+    ['`ink` (`content`, `accent`)', 'Text, and the primary button: an ink plate with sheet text.'],
+    ['`ink-muted` (`content-muted`)', 'Secondary text: units, captions, column headers.'],
     ['`content-subtle`', 'Hints and placeholders.'],
-    ['`accent`', 'The one non-status colour: primary actions, links, selection.'],
-    ['`success`', 'Status only: the thing is working.'],
-    ['`warning`', 'Status only: the thing is degraded or needs attention.'],
-    ['`danger`', 'Status only: the thing is broken, or the action destroys data.'],
+    ['`rule` (`border`)', 'Plate outlines, dividers, the map grid. Carries no information.'],
+    ['`border-subtle`', 'Separators inside a plate.'],
+    ['`border-strong`', 'The boundary of an interactive control. Holds 3:1.'],
+    ['`signal` (`focus`)', 'The one accent: the focus ring, "you are here", the selected station. Never text.'],
+    ['`on-signal`', 'Text on a signal fill, such as selected text.'],
+    ['`line-red` … `line-sky`', 'Six line colours for sub-networks and groups. Never status. Labels stay ink.'],
+    ['`paper`', 'A printed surface: the ground of a QR code, white in both themes.'],
+    ['`success`', 'Status only: in service.'],
+    ['`warning`', 'Status only: degraded or needs attention.'],
+    ['`danger`', 'Status only: broken, blocked, or the action destroys data.'],
     ['`info`', 'Status only: neutral information, or a value that is not measured.'],
-    ['`focus`', 'The keyboard focus ring. One colour everywhere.'],
     ['`chart-1` … `chart-8`', 'Categorical chart series, in order of first use.'],
     ['`ramp-1` … `ramp-6`', 'Sequential ramp for density and heat maps.']
   ];
   for (const [role, meaning] of roles) lines.push(`| ${role} | ${meaning} |`);
   lines.push('');
   lines.push(
-    'Status is never carried by colour alone. Every status in the console is a colour, an icon and a word together; see `StatusBadge` in `console/frontend/src/ui/`.'
+    'Status is never carried by colour alone. Every status in the console is a colour, a shape and a word together; see `StatusBadge` in `console/frontend/src/ui/`.'
   );
   lines.push('');
   return lines.join('\n');

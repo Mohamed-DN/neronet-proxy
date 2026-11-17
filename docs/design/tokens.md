@@ -2,59 +2,119 @@
 
 # Console colour tokens
 
-The values live in `console/frontend/src/styles/tokens.css` and are the single source of truth. Tailwind maps every colour utility onto them, so a token change reaches the whole console. Re-generate this file with `node scripts/design/contrast.mjs --write`.
+The values live in `console/frontend/src/styles/tokens.css` and are the single source of truth. Tailwind maps every colour utility onto them, so a token change reaches the whole console. The palette is the transit-map direction in [`DIRECTION-2026-11.md`](DIRECTION-2026-11.md): the new roles are `sheet`, `plate`, `ink`, `ink-muted`, `rule` and `signal`, plus six line colours; the older names (`surface`, `content`, `accent`, `border`, `focus`) are aliases that resolve onto them, and a pair listed under an alias is measured on the value it resolves to. Re-generate this file with `node scripts/design/contrast.mjs --write`.
 
-Targets follow WCAG 2.1 AA: 4.5:1 for text, 3:1 for the boundary of a user interface component and for a chart series against its plot background. Pairs marked `-` separate two areas that are already distinguishable without them; they carry no information and are listed for review only.
+Targets follow WCAG 2.1 AA: 4.5:1 for text, 3:1 for the boundary of a user interface component, for a focus indicator, for a line colour and for a chart series against its plot background. A background written `danger@10/plate` is the danger colour at 10% opacity over the plate, which is what `bg-danger/10` paints. Pairs marked `-` separate two areas that are already distinguishable without them, or (the signal alone on the light sheet) are shown to explain a design decision; they cannot fail the run. Any other pair below its target exits 1.
+
+The signal (`#F5C211`) is 1.5:1 on the light sheet, so it cannot be a focus ring by itself. Every focus ring and every highlighted option is two-tone: a 2px ink band against the control, then a 2px signal ring outside it. The ink band is what holds 3:1 in both themes; in the dark theme the signal holds it too.
 
 ## Light theme
 
 | Foreground | Background | Value | On | Ratio | Target | Result | Used for |
 |---|---|---|---|---:|---:|---|---|
-| `content` | `surface` | `#0f172a` | `#f8fafc` | 17.06:1 | 4.5:1 | pass | Body text on the page |
-| `content` | `surface-raised` | `#0f172a` | `#ffffff` | 17.85:1 | 4.5:1 | pass | Body text on a card |
-| `content` | `surface-sunken` | `#0f172a` | `#f1f5f9` | 16.30:1 | 4.5:1 | pass | Text in an input or well |
-| `content-muted` | `surface` | `#475569` | `#f8fafc` | 7.24:1 | 4.5:1 | pass | Secondary text on the page |
-| `content-muted` | `surface-raised` | `#475569` | `#ffffff` | 7.58:1 | 4.5:1 | pass | Secondary text on a card |
-| `content-subtle` | `surface` | `#5b6a80` | `#f8fafc` | 5.26:1 | 4.5:1 | pass | Hints and placeholders on the page |
-| `content-subtle` | `surface-raised` | `#5b6a80` | `#ffffff` | 5.50:1 | 4.5:1 | pass | Hints and placeholders on a card |
-| `content-subtle` | `surface-sunken` | `#5b6a80` | `#f1f5f9` | 5.02:1 | 4.5:1 | pass | Placeholder inside an input |
-| `content-inverse` | `surface-inverse` | `#f8fafc` | `#0f172a` | 17.06:1 | 4.5:1 | pass | Text on an inverted surface |
-| `accent` | `surface` | `#1d4ed8` | `#f8fafc` | 6.41:1 | 4.5:1 | pass | Link and accent text on the page |
-| `accent` | `surface-raised` | `#1d4ed8` | `#ffffff` | 6.70:1 | 4.5:1 | pass | Link and accent text on a card |
-| `accent` | `accent-subtle` | `#1d4ed8` | `#e6eeff` | 5.76:1 | 4.5:1 | pass | Accent text on its own tint |
-| `accent-contrast` | `accent` | `#ffffff` | `#1d4ed8` | 6.70:1 | 4.5:1 | pass | Label on a primary button |
-| `accent-contrast` | `accent-strong` | `#ffffff` | `#1e40af` | 8.72:1 | 4.5:1 | pass | Label on a hovered primary button |
-| `success` | `surface-raised` | `#15803d` | `#ffffff` | 5.02:1 | 4.5:1 | pass | Healthy status text |
-| `success` | `success-subtle` | `#15803d` | `#dcfce7` | 4.57:1 | 4.5:1 | pass | Healthy status badge |
-| `success-contrast` | `success` | `#ffffff` | `#15803d` | 5.02:1 | 4.5:1 | pass | Label on a solid healthy fill |
-| `warning` | `surface-raised` | `#b45309` | `#ffffff` | 5.02:1 | 4.5:1 | pass | Degraded status text |
-| `warning` | `warning-subtle` | `#b45309` | `#fef3c7` | 4.51:1 | 4.5:1 | pass | Degraded status badge |
-| `warning-contrast` | `warning` | `#ffffff` | `#b45309` | 5.02:1 | 4.5:1 | pass | Label on a solid degraded fill |
-| `danger` | `surface-raised` | `#b91c1c` | `#ffffff` | 6.47:1 | 4.5:1 | pass | Critical status text |
-| `danger` | `danger-subtle` | `#b91c1c` | `#fee2e2` | 5.30:1 | 4.5:1 | pass | Critical status badge |
-| `danger-contrast` | `danger` | `#ffffff` | `#b91c1c` | 6.47:1 | 4.5:1 | pass | Label on a destructive button |
-| `info` | `surface-raised` | `#6d28d9` | `#ffffff` | 7.10:1 | 4.5:1 | pass | Informational status text |
-| `info` | `info-subtle` | `#6d28d9` | `#ede9fe` | 5.98:1 | 4.5:1 | pass | Informational status badge |
-| `info-contrast` | `info` | `#ffffff` | `#6d28d9` | 7.10:1 | 4.5:1 | pass | Label on a solid informational fill |
-| `border-strong` | `surface` | `#64748b` | `#f8fafc` | 4.55:1 | 3:1 | pass | Control outline on the page |
-| `border-strong` | `surface-raised` | `#64748b` | `#ffffff` | 4.76:1 | 3:1 | pass | Control outline on a card |
-| `border-strong` | `surface-sunken` | `#64748b` | `#f1f5f9` | 4.34:1 | 3:1 | pass | Control outline on a well |
-| `focus` | `surface` | `#1d4ed8` | `#f8fafc` | 6.41:1 | 3:1 | pass | Focus ring on the page |
-| `focus` | `surface-raised` | `#1d4ed8` | `#ffffff` | 6.70:1 | 3:1 | pass | Focus ring on a card |
-| `focus` | `surface-sunken` | `#1d4ed8` | `#f1f5f9` | 6.12:1 | 3:1 | pass | Focus ring on a well |
-| `accent` | `surface-sunken` | `#1d4ed8` | `#f1f5f9` | 6.12:1 | 3:1 | pass | Selected control fill on a well |
-| `chart-1` | `surface-raised` | `#1d4ed8` | `#ffffff` | 6.70:1 | 3:1 | pass | Chart series 1 |
-| `chart-2` | `surface-raised` | `#d97706` | `#ffffff` | 3.19:1 | 3:1 | pass | Chart series 2 |
-| `chart-3` | `surface-raised` | `#047857` | `#ffffff` | 5.48:1 | 3:1 | pass | Chart series 3 |
-| `chart-4` | `surface-raised` | `#a21caf` | `#ffffff` | 6.32:1 | 3:1 | pass | Chart series 4 |
-| `chart-5` | `surface-raised` | `#0e7490` | `#ffffff` | 5.36:1 | 3:1 | pass | Chart series 5 |
-| `chart-6` | `surface-raised` | `#dc2626` | `#ffffff` | 4.83:1 | 3:1 | pass | Chart series 6 |
-| `chart-7` | `surface-raised` | `#3f6212` | `#ffffff` | 7.08:1 | 3:1 | pass | Chart series 7 |
-| `chart-8` | `surface-raised` | `#475569` | `#ffffff` | 7.58:1 | 3:1 | pass | Chart series 8 |
-| `border` | `surface` | `#cbd5e1` | `#f8fafc` | 1.42:1 | - | n/a | Separator, carries no information |
-| `border` | `surface-raised` | `#cbd5e1` | `#ffffff` | 1.48:1 | - | n/a | Card outline, carries no information |
-| `border-subtle` | `surface-raised` | `#e2e8f0` | `#ffffff` | 1.23:1 | - | n/a | Row separator inside a card |
-| `surface-hover` | `surface-raised` | `#f1f5f9` | `#ffffff` | 1.10:1 | - | n/a | Hover tint on a row |
+| `ink` | `sheet` | `#15232d` | `#f2f4f3` | 14.51:1 | 4.5:1 | pass | Body text on the page |
+| `ink` | `plate` | `#15232d` | `#ffffff` | 16.03:1 | 4.5:1 | pass | Body text on a plate |
+| `ink` | `surface-sunken` | `#15232d` | `#e8eceb` | 13.46:1 | 4.5:1 | pass | Text in an input or well |
+| `ink` | `surface-hover` | `#15232d` | `#e6eae9` | 13.21:1 | 4.5:1 | pass | Text on a hovered row or menu item |
+| `ink-muted` | `sheet` | `#4e5d66` | `#f2f4f3` | 6.17:1 | 4.5:1 | pass | Secondary text on the page |
+| `ink-muted` | `plate` | `#4e5d66` | `#ffffff` | 6.81:1 | 4.5:1 | pass | Secondary text on a plate |
+| `ink-muted` | `surface-sunken` | `#4e5d66` | `#e8eceb` | 5.72:1 | 4.5:1 | pass | Secondary text in a well |
+| `ink-muted` | `surface-hover` | `#4e5d66` | `#e6eae9` | 5.62:1 | 4.5:1 | pass | Secondary text on a hovered row |
+| `content-subtle` | `sheet` | `#5c6b74` | `#f2f4f3` | 4.99:1 | 4.5:1 | pass | Hints and placeholders on the page |
+| `content-subtle` | `plate` | `#5c6b74` | `#ffffff` | 5.51:1 | 4.5:1 | pass | Hints and placeholders on a plate |
+| `content-subtle` | `surface-sunken` | `#5c6b74` | `#e8eceb` | 4.63:1 | 4.5:1 | pass | Placeholder inside an input |
+| `content-subtle` | `surface-hover` | `#5c6b74` | `#e6eae9` | 4.54:1 | 4.5:1 | pass | Hint on a hovered row |
+| `content-inverse` | `surface-inverse` | `#f2f4f3` | `#15232d` | 14.51:1 | 4.5:1 | pass | Text on an inverted surface (tooltip) |
+| `accent` | `accent-subtle` | `#15232d` | `#e0e6e8` | 12.71:1 | 4.5:1 | pass | Selected row and accent text on its tint |
+| `accent` | `surface-sunken` | `#15232d` | `#e8eceb` | 13.46:1 | 4.5:1 | pass | Link text in a well |
+| `accent-contrast` | `accent` | `#f2f4f3` | `#15232d` | 14.51:1 | 4.5:1 | pass | Label on a primary button (ink plate) |
+| `accent-contrast` | `accent-strong` | `#f2f4f3` | `#2f424f` | 9.44:1 | 4.5:1 | pass | Label on a hovered primary button |
+| `on-signal` | `signal` | `#15232d` | `#f5c211` | 9.62:1 | 4.5:1 | pass | Selected text, label on a signal fill |
+| `success` | `sheet` | `#126e34` | `#f2f4f3` | 5.75:1 | 4.5:1 | pass | success text on the page |
+| `success` | `plate` | `#126e34` | `#ffffff` | 6.35:1 | 4.5:1 | pass | success text on a plate |
+| `success` | `surface-sunken` | `#126e34` | `#e8eceb` | 5.33:1 | 4.5:1 | pass | success text in a well |
+| `success` | `surface-hover` | `#126e34` | `#e6eae9` | 5.24:1 | 4.5:1 | pass | success text on a hovered row |
+| `success` | `success-subtle` | `#126e34` | `#e3eee7` | 5.34:1 | 4.5:1 | pass | success badge on its tint token |
+| `success` | `success@10/sheet` | `#126e34` | `#dce7e0` | 5.01:1 | 4.5:1 | pass | success text on bg-success/10 over the page |
+| `success` | `success@10/plate` | `#126e34` | `#e7f1eb` | 5.50:1 | 4.5:1 | pass | success text on bg-success/10 over a plate |
+| `success` | `success@15/sheet` | `#126e34` | `#d0e0d6` | 4.63:1 | 4.5:1 | pass | success text on bg-success/15 over the page |
+| `success` | `success@15/plate` | `#126e34` | `#dbe9e1` | 5.07:1 | 4.5:1 | pass | success text on bg-success/15 over a plate |
+| `success-contrast` | `success` | `#ffffff` | `#126e34` | 6.35:1 | 4.5:1 | pass | Label on a solid success fill |
+| `success-contrast` | `success-strong` | `#ffffff` | `#0e5a2a` | 8.35:1 | 4.5:1 | pass | Label on a hovered solid success fill |
+| `warning` | `sheet` | `#9b4708` | `#f2f4f3` | 5.76:1 | 4.5:1 | pass | warning text on the page |
+| `warning` | `plate` | `#9b4708` | `#ffffff` | 6.37:1 | 4.5:1 | pass | warning text on a plate |
+| `warning` | `surface-sunken` | `#9b4708` | `#e8eceb` | 5.34:1 | 4.5:1 | pass | warning text in a well |
+| `warning` | `surface-hover` | `#9b4708` | `#e6eae9` | 5.25:1 | 4.5:1 | pass | warning text on a hovered row |
+| `warning` | `warning-subtle` | `#9b4708` | `#f3e9e1` | 5.32:1 | 4.5:1 | pass | warning badge on its tint token |
+| `warning` | `warning@10/sheet` | `#9b4708` | `#e9e3dc` | 5.00:1 | 4.5:1 | pass | warning text on bg-warning/10 over the page |
+| `warning` | `warning@10/plate` | `#9b4708` | `#f5ede6` | 5.50:1 | 4.5:1 | pass | warning text on bg-warning/10 over a plate |
+| `warning` | `warning@15/sheet` | `#9b4708` | `#e5dad0` | 4.63:1 | 4.5:1 | pass | warning text on bg-warning/15 over the page |
+| `warning` | `warning@15/plate` | `#9b4708` | `#f0e3da` | 5.06:1 | 4.5:1 | pass | warning text on bg-warning/15 over a plate |
+| `warning-contrast` | `warning` | `#ffffff` | `#9b4708` | 6.37:1 | 4.5:1 | pass | Label on a solid warning fill |
+| `warning-contrast` | `warning-strong` | `#ffffff` | `#7c3806` | 8.66:1 | 4.5:1 | pass | Label on a hovered solid warning fill |
+| `danger` | `sheet` | `#b71c1c` | `#f2f4f3` | 5.95:1 | 4.5:1 | pass | danger text on the page |
+| `danger` | `plate` | `#b71c1c` | `#ffffff` | 6.57:1 | 4.5:1 | pass | danger text on a plate |
+| `danger` | `surface-sunken` | `#b71c1c` | `#e8eceb` | 5.52:1 | 4.5:1 | pass | danger text in a well |
+| `danger` | `surface-hover` | `#b71c1c` | `#e6eae9` | 5.42:1 | 4.5:1 | pass | danger text on a hovered row |
+| `danger` | `danger-subtle` | `#b71c1c` | `#f6e4e4` | 5.36:1 | 4.5:1 | pass | danger badge on its tint token |
+| `danger` | `danger@10/sheet` | `#b71c1c` | `#ecdede` | 5.03:1 | 4.5:1 | pass | danger text on bg-danger/10 over the page |
+| `danger` | `danger@10/plate` | `#b71c1c` | `#f8e8e8` | 5.54:1 | 4.5:1 | pass | danger text on bg-danger/10 over a plate |
+| `danger` | `danger@15/sheet` | `#b71c1c` | `#e9d4d3` | 4.64:1 | 4.5:1 | pass | danger text on bg-danger/15 over the page |
+| `danger` | `danger@15/plate` | `#b71c1c` | `#f4dddd` | 5.08:1 | 4.5:1 | pass | danger text on bg-danger/15 over a plate |
+| `danger-contrast` | `danger` | `#ffffff` | `#b71c1c` | 6.57:1 | 4.5:1 | pass | Label on a solid danger fill |
+| `danger-contrast` | `danger-strong` | `#ffffff` | `#991b1b` | 8.31:1 | 4.5:1 | pass | Label on a hovered solid danger fill |
+| `info` | `sheet` | `#6d28d9` | `#f2f4f3` | 6.43:1 | 4.5:1 | pass | info text on the page |
+| `info` | `plate` | `#6d28d9` | `#ffffff` | 7.10:1 | 4.5:1 | pass | info text on a plate |
+| `info` | `surface-sunken` | `#6d28d9` | `#e8eceb` | 5.96:1 | 4.5:1 | pass | info text in a well |
+| `info` | `surface-hover` | `#6d28d9` | `#e6eae9` | 5.86:1 | 4.5:1 | pass | info text on a hovered row |
+| `info` | `info-subtle` | `#6d28d9` | `#ede5fa` | 5.82:1 | 4.5:1 | pass | info badge on its tint token |
+| `info` | `info@10/sheet` | `#6d28d9` | `#e5e0f0` | 5.50:1 | 4.5:1 | pass | info text on bg-info/10 over the page |
+| `info` | `info@10/plate` | `#6d28d9` | `#f0eafb` | 6.04:1 | 4.5:1 | pass | info text on bg-info/10 over a plate |
+| `info` | `info@15/sheet` | `#6d28d9` | `#ded5ef` | 5.03:1 | 4.5:1 | pass | info text on bg-info/15 over the page |
+| `info` | `info@15/plate` | `#6d28d9` | `#e9dff9` | 5.54:1 | 4.5:1 | pass | info text on bg-info/15 over a plate |
+| `info-contrast` | `info` | `#ffffff` | `#6d28d9` | 7.10:1 | 4.5:1 | pass | Label on a solid info fill |
+| `info-contrast` | `info-strong` | `#ffffff` | `#5b21b6` | 8.98:1 | 4.5:1 | pass | Label on a hovered solid info fill |
+| `border-strong` | `sheet` | `#75858e` | `#f2f4f3` | 3.46:1 | 3:1 | pass | Control outline on the page |
+| `border-strong` | `plate` | `#75858e` | `#ffffff` | 3.82:1 | 3:1 | pass | Control outline on a plate |
+| `border-strong` | `surface-sunken` | `#75858e` | `#e8eceb` | 3.20:1 | 3:1 | pass | Control outline on a well |
+| `ink` | `sheet` | `#15232d` | `#f2f4f3` | 14.51:1 | 3:1 | pass | Focus ring, inner ink band, on the page |
+| `ink` | `plate` | `#15232d` | `#ffffff` | 16.03:1 | 3:1 | pass | Focus ring, inner ink band, on a plate |
+| `ink` | `surface-sunken` | `#15232d` | `#e8eceb` | 13.46:1 | 3:1 | pass | Focus ring, inner ink band, on a well |
+| `ink` | `surface-hover` | `#15232d` | `#e6eae9` | 13.21:1 | 3:1 | pass | Focus ring, inner ink band, on a hovered row |
+| `signal` | `ink` | `#f5c211` | `#15232d` | 9.62:1 | 3:1 | pass | Focus ring, signal against the ink band |
+| `signal` | `sheet` | `#f5c211` | `#f2f4f3` | 1.51:1 | - | n/a | Signal alone on the page: not enough, hence two-tone |
+| `signal` | `plate` | `#f5c211` | `#ffffff` | 1.67:1 | - | n/a | Signal alone on a plate: not enough, hence two-tone |
+| `accent` | `surface-sunken` | `#15232d` | `#e8eceb` | 13.46:1 | 3:1 | pass | Selected control fill on a well |
+| `line-red` | `sheet` | `#d1495b` | `#f2f4f3` | 3.95:1 | 3:1 | pass | Line colour red on the page |
+| `line-red` | `plate` | `#d1495b` | `#ffffff` | 4.36:1 | 3:1 | pass | Line colour red on a plate |
+| `line-red` | `surface-sunken` | `#d1495b` | `#e8eceb` | 3.66:1 | 3:1 | pass | Line colour red on a well |
+| `line-green` | `sheet` | `#1e7f6d` | `#f2f4f3` | 4.41:1 | 3:1 | pass | Line colour green on the page |
+| `line-green` | `plate` | `#1e7f6d` | `#ffffff` | 4.87:1 | 3:1 | pass | Line colour green on a plate |
+| `line-green` | `surface-sunken` | `#1e7f6d` | `#e8eceb` | 4.09:1 | 3:1 | pass | Line colour green on a well |
+| `line-blue` | `sheet` | `#2b59c3` | `#f2f4f3` | 5.73:1 | 3:1 | pass | Line colour blue on the page |
+| `line-blue` | `plate` | `#2b59c3` | `#ffffff` | 6.33:1 | 3:1 | pass | Line colour blue on a plate |
+| `line-blue` | `surface-sunken` | `#2b59c3` | `#e8eceb` | 5.31:1 | 3:1 | pass | Line colour blue on a well |
+| `line-orange` | `sheet` | `#ba7609` | `#f2f4f3` | 3.34:1 | 3:1 | pass | Line colour orange on the page |
+| `line-orange` | `plate` | `#ba7609` | `#ffffff` | 3.70:1 | 3:1 | pass | Line colour orange on a plate |
+| `line-orange` | `surface-sunken` | `#ba7609` | `#e8eceb` | 3.10:1 | 3:1 | pass | Line colour orange on a well |
+| `line-violet` | `sheet` | `#7b4bb7` | `#f2f4f3` | 5.38:1 | 3:1 | pass | Line colour violet on the page |
+| `line-violet` | `plate` | `#7b4bb7` | `#ffffff` | 5.94:1 | 3:1 | pass | Line colour violet on a plate |
+| `line-violet` | `surface-sunken` | `#7b4bb7` | `#e8eceb` | 4.99:1 | 3:1 | pass | Line colour violet on a well |
+| `line-sky` | `sheet` | `#3c8eb6` | `#f2f4f3` | 3.31:1 | 3:1 | pass | Line colour sky on the page |
+| `line-sky` | `plate` | `#3c8eb6` | `#ffffff` | 3.66:1 | 3:1 | pass | Line colour sky on a plate |
+| `line-sky` | `surface-sunken` | `#3c8eb6` | `#e8eceb` | 3.07:1 | 3:1 | pass | Line colour sky on a well |
+| `chart-1` | `plate` | `#1d4ed8` | `#ffffff` | 6.70:1 | 3:1 | pass | Chart series 1 |
+| `chart-2` | `plate` | `#d97706` | `#ffffff` | 3.19:1 | 3:1 | pass | Chart series 2 |
+| `chart-3` | `plate` | `#047857` | `#ffffff` | 5.48:1 | 3:1 | pass | Chart series 3 |
+| `chart-4` | `plate` | `#a21caf` | `#ffffff` | 6.32:1 | 3:1 | pass | Chart series 4 |
+| `chart-5` | `plate` | `#0e7490` | `#ffffff` | 5.36:1 | 3:1 | pass | Chart series 5 |
+| `chart-6` | `plate` | `#dc2626` | `#ffffff` | 4.83:1 | 3:1 | pass | Chart series 6 |
+| `chart-7` | `plate` | `#3f6212` | `#ffffff` | 7.08:1 | 3:1 | pass | Chart series 7 |
+| `chart-8` | `plate` | `#475569` | `#ffffff` | 7.58:1 | 3:1 | pass | Chart series 8 |
+| `rule` | `sheet` | `#c9d2d6` | `#f2f4f3` | 1.39:1 | - | n/a | Separator, carries no information |
+| `rule` | `plate` | `#c9d2d6` | `#ffffff` | 1.54:1 | - | n/a | Plate outline, carries no information |
+| `border-subtle` | `plate` | `#dee4e7` | `#ffffff` | 1.28:1 | - | n/a | Row separator inside a plate |
+| `surface-hover` | `plate` | `#e6eae9` | `#ffffff` | 1.21:1 | - | n/a | Hover tint on a row |
 
 ### Light: chart series separation
 
@@ -71,51 +131,109 @@ The closest pair of the eight categorical series, in CIE L\*a\*b\* distance, und
 
 | Foreground | Background | Value | On | Ratio | Target | Result | Used for |
 |---|---|---|---|---:|---:|---|---|
-| `content` | `surface` | `#f1f5f9` | `#0f172a` | 16.30:1 | 4.5:1 | pass | Body text on the page |
-| `content` | `surface-raised` | `#f1f5f9` | `#1e293b` | 13.35:1 | 4.5:1 | pass | Body text on a card |
-| `content` | `surface-sunken` | `#f1f5f9` | `#0b1220` | 17.09:1 | 4.5:1 | pass | Text in an input or well |
-| `content-muted` | `surface` | `#94a3b8` | `#0f172a` | 6.96:1 | 4.5:1 | pass | Secondary text on the page |
-| `content-muted` | `surface-raised` | `#94a3b8` | `#1e293b` | 5.71:1 | 4.5:1 | pass | Secondary text on a card |
-| `content-subtle` | `surface` | `#8494ab` | `#0f172a` | 5.79:1 | 4.5:1 | pass | Hints and placeholders on the page |
-| `content-subtle` | `surface-raised` | `#8494ab` | `#1e293b` | 4.74:1 | 4.5:1 | pass | Hints and placeholders on a card |
-| `content-subtle` | `surface-sunken` | `#8494ab` | `#0b1220` | 6.07:1 | 4.5:1 | pass | Placeholder inside an input |
-| `content-inverse` | `surface-inverse` | `#0f172a` | `#f1f5f9` | 16.30:1 | 4.5:1 | pass | Text on an inverted surface |
-| `accent` | `surface` | `#60a5fa` | `#0f172a` | 7.02:1 | 4.5:1 | pass | Link and accent text on the page |
-| `accent` | `surface-raised` | `#60a5fa` | `#1e293b` | 5.75:1 | 4.5:1 | pass | Link and accent text on a card |
-| `accent` | `accent-subtle` | `#60a5fa` | `#172554` | 5.78:1 | 4.5:1 | pass | Accent text on its own tint |
-| `accent-contrast` | `accent` | `#0f172a` | `#60a5fa` | 7.02:1 | 4.5:1 | pass | Label on a primary button |
-| `accent-contrast` | `accent-strong` | `#0f172a` | `#93c5fd` | 9.90:1 | 4.5:1 | pass | Label on a hovered primary button |
-| `success` | `surface-raised` | `#4ade80` | `#1e293b` | 8.40:1 | 4.5:1 | pass | Healthy status text |
-| `success` | `success-subtle` | `#4ade80` | `#062e1f` | 8.50:1 | 4.5:1 | pass | Healthy status badge |
-| `success-contrast` | `success` | `#052e16` | `#4ade80` | 8.55:1 | 4.5:1 | pass | Label on a solid healthy fill |
-| `warning` | `surface-raised` | `#fbbf24` | `#1e293b` | 8.76:1 | 4.5:1 | pass | Degraded status text |
-| `warning` | `warning-subtle` | `#fbbf24` | `#3a2606` | 8.62:1 | 4.5:1 | pass | Degraded status badge |
-| `warning-contrast` | `warning` | `#451a03` | `#fbbf24` | 8.97:1 | 4.5:1 | pass | Label on a solid degraded fill |
-| `danger` | `surface-raised` | `#f87171` | `#1e293b` | 5.29:1 | 4.5:1 | pass | Critical status text |
-| `danger` | `danger-subtle` | `#f87171` | `#450a0a` | 5.84:1 | 4.5:1 | pass | Critical status badge |
-| `danger-contrast` | `danger` | `#450a0a` | `#f87171` | 5.84:1 | 4.5:1 | pass | Label on a destructive button |
-| `info` | `surface-raised` | `#a78bfa` | `#1e293b` | 5.38:1 | 4.5:1 | pass | Informational status text |
-| `info` | `info-subtle` | `#a78bfa` | `#2e1065` | 5.60:1 | 4.5:1 | pass | Informational status badge |
-| `info-contrast` | `info` | `#2e1065` | `#a78bfa` | 5.60:1 | 4.5:1 | pass | Label on a solid informational fill |
-| `border-strong` | `surface` | `#64748b` | `#0f172a` | 3.75:1 | 3:1 | pass | Control outline on the page |
-| `border-strong` | `surface-raised` | `#64748b` | `#1e293b` | 3.07:1 | 3:1 | pass | Control outline on a card |
-| `border-strong` | `surface-sunken` | `#64748b` | `#0b1220` | 3.93:1 | 3:1 | pass | Control outline on a well |
-| `focus` | `surface` | `#93c5fd` | `#0f172a` | 9.90:1 | 3:1 | pass | Focus ring on the page |
-| `focus` | `surface-raised` | `#93c5fd` | `#1e293b` | 8.11:1 | 3:1 | pass | Focus ring on a card |
-| `focus` | `surface-sunken` | `#93c5fd` | `#0b1220` | 10.38:1 | 3:1 | pass | Focus ring on a well |
-| `accent` | `surface-sunken` | `#60a5fa` | `#0b1220` | 7.36:1 | 3:1 | pass | Selected control fill on a well |
-| `chart-1` | `surface-raised` | `#60a5fa` | `#1e293b` | 5.75:1 | 3:1 | pass | Chart series 1 |
-| `chart-2` | `surface-raised` | `#fbbf24` | `#1e293b` | 8.76:1 | 3:1 | pass | Chart series 2 |
-| `chart-3` | `surface-raised` | `#34d399` | `#1e293b` | 7.61:1 | 3:1 | pass | Chart series 3 |
-| `chart-4` | `surface-raised` | `#e879f9` | `#1e293b` | 5.94:1 | 3:1 | pass | Chart series 4 |
-| `chart-5` | `surface-raised` | `#67e8f9` | `#1e293b` | 10.09:1 | 3:1 | pass | Chart series 5 |
-| `chart-6` | `surface-raised` | `#f87171` | `#1e293b` | 5.29:1 | 3:1 | pass | Chart series 6 |
-| `chart-7` | `surface-raised` | `#bef264` | `#1e293b` | 11.20:1 | 3:1 | pass | Chart series 7 |
-| `chart-8` | `surface-raised` | `#94a3b8` | `#1e293b` | 5.71:1 | 3:1 | pass | Chart series 8 |
-| `border` | `surface` | `#334155` | `#0f172a` | 1.72:1 | - | n/a | Separator, carries no information |
-| `border` | `surface-raised` | `#334155` | `#1e293b` | 1.41:1 | - | n/a | Card outline, carries no information |
-| `border-subtle` | `surface-raised` | `#1e293b` | `#1e293b` | 1.00:1 | - | n/a | Row separator inside a card |
-| `surface-hover` | `surface-raised` | `#27354a` | `#1e293b` | 1.18:1 | - | n/a | Hover tint on a row |
+| `ink` | `sheet` | `#e8eef0` | `#0e1a22` | 15.06:1 | 4.5:1 | pass | Body text on the page |
+| `ink` | `plate` | `#e8eef0` | `#16252f` | 13.37:1 | 4.5:1 | pass | Body text on a plate |
+| `ink` | `surface-sunken` | `#e8eef0` | `#0a141b` | 15.87:1 | 4.5:1 | pass | Text in an input or well |
+| `ink` | `surface-hover` | `#e8eef0` | `#1f323f` | 11.30:1 | 4.5:1 | pass | Text on a hovered row or menu item |
+| `ink-muted` | `sheet` | `#a3b3ba` | `#0e1a22` | 8.17:1 | 4.5:1 | pass | Secondary text on the page |
+| `ink-muted` | `plate` | `#a3b3ba` | `#16252f` | 7.25:1 | 4.5:1 | pass | Secondary text on a plate |
+| `ink-muted` | `surface-sunken` | `#a3b3ba` | `#0a141b` | 8.61:1 | 4.5:1 | pass | Secondary text in a well |
+| `ink-muted` | `surface-hover` | `#a3b3ba` | `#1f323f` | 6.12:1 | 4.5:1 | pass | Secondary text on a hovered row |
+| `content-subtle` | `sheet` | `#8c9ea7` | `#0e1a22` | 6.36:1 | 4.5:1 | pass | Hints and placeholders on the page |
+| `content-subtle` | `plate` | `#8c9ea7` | `#16252f` | 5.65:1 | 4.5:1 | pass | Hints and placeholders on a plate |
+| `content-subtle` | `surface-sunken` | `#8c9ea7` | `#0a141b` | 6.70:1 | 4.5:1 | pass | Placeholder inside an input |
+| `content-subtle` | `surface-hover` | `#8c9ea7` | `#1f323f` | 4.77:1 | 4.5:1 | pass | Hint on a hovered row |
+| `content-inverse` | `surface-inverse` | `#0e1a22` | `#e8eef0` | 15.06:1 | 4.5:1 | pass | Text on an inverted surface (tooltip) |
+| `accent` | `accent-subtle` | `#e8eef0` | `#1f323f` | 11.30:1 | 4.5:1 | pass | Selected row and accent text on its tint |
+| `accent` | `surface-sunken` | `#e8eef0` | `#0a141b` | 15.87:1 | 4.5:1 | pass | Link text in a well |
+| `accent-contrast` | `accent` | `#0e1a22` | `#e8eef0` | 15.06:1 | 4.5:1 | pass | Label on a primary button (ink plate) |
+| `accent-contrast` | `accent-strong` | `#0e1a22` | `#cfd9dd` | 12.29:1 | 4.5:1 | pass | Label on a hovered primary button |
+| `on-signal` | `signal` | `#15232d` | `#f5c211` | 9.62:1 | 4.5:1 | pass | Selected text, label on a signal fill |
+| `success` | `sheet` | `#4ade80` | `#0e1a22` | 10.13:1 | 4.5:1 | pass | success text on the page |
+| `success` | `plate` | `#4ade80` | `#16252f` | 8.99:1 | 4.5:1 | pass | success text on a plate |
+| `success` | `surface-sunken` | `#4ade80` | `#0a141b` | 10.68:1 | 4.5:1 | pass | success text in a well |
+| `success` | `surface-hover` | `#4ade80` | `#1f323f` | 7.60:1 | 4.5:1 | pass | success text on a hovered row |
+| `success` | `success-subtle` | `#4ade80` | `#1c3b39` | 6.95:1 | 4.5:1 | pass | success badge on its tint token |
+| `success` | `success@10/sheet` | `#4ade80` | `#142e2b` | 8.28:1 | 4.5:1 | pass | success text on bg-success/10 over the page |
+| `success` | `success@10/plate` | `#4ade80` | `#1b3837` | 7.23:1 | 4.5:1 | pass | success text on bg-success/10 over a plate |
+| `success` | `success@15/sheet` | `#4ade80` | `#173730` | 7.41:1 | 4.5:1 | pass | success text on bg-success/15 over the page |
+| `success` | `success@15/plate` | `#4ade80` | `#1e413b` | 6.43:1 | 4.5:1 | pass | success text on bg-success/15 over a plate |
+| `success-contrast` | `success` | `#0e1a22` | `#4ade80` | 10.13:1 | 4.5:1 | pass | Label on a solid success fill |
+| `success-contrast` | `success-strong` | `#0e1a22` | `#86efac` | 12.57:1 | 4.5:1 | pass | Label on a hovered solid success fill |
+| `warning` | `sheet` | `#fbbf24` | `#0e1a22` | 10.58:1 | 4.5:1 | pass | warning text on the page |
+| `warning` | `plate` | `#fbbf24` | `#16252f` | 9.39:1 | 4.5:1 | pass | warning text on a plate |
+| `warning` | `surface-sunken` | `#fbbf24` | `#0a141b` | 11.14:1 | 4.5:1 | pass | warning text in a well |
+| `warning` | `surface-hover` | `#fbbf24` | `#1f323f` | 7.93:1 | 4.5:1 | pass | warning text on a hovered row |
+| `warning` | `warning-subtle` | `#fbbf24` | `#31372e` | 7.33:1 | 4.5:1 | pass | warning badge on its tint token |
+| `warning` | `warning@10/sheet` | `#fbbf24` | `#262b22` | 8.67:1 | 4.5:1 | pass | warning text on bg-warning/10 over the page |
+| `warning` | `warning@10/plate` | `#fbbf24` | `#2d342e` | 7.66:1 | 4.5:1 | pass | warning text on bg-warning/10 over a plate |
+| `warning` | `warning@15/sheet` | `#fbbf24` | `#323322` | 7.71:1 | 4.5:1 | pass | warning text on bg-warning/15 over the page |
+| `warning` | `warning@15/plate` | `#fbbf24` | `#383c2d` | 6.79:1 | 4.5:1 | pass | warning text on bg-warning/15 over a plate |
+| `warning-contrast` | `warning` | `#0e1a22` | `#fbbf24` | 10.58:1 | 4.5:1 | pass | Label on a solid warning fill |
+| `warning-contrast` | `warning-strong` | `#0e1a22` | `#fde047` | 13.39:1 | 4.5:1 | pass | Label on a hovered solid warning fill |
+| `danger` | `sheet` | `#f87171` | `#0e1a22` | 6.38:1 | 4.5:1 | pass | danger text on the page |
+| `danger` | `plate` | `#f87171` | `#16252f` | 5.67:1 | 4.5:1 | pass | danger text on a plate |
+| `danger` | `surface-sunken` | `#f87171` | `#0a141b` | 6.73:1 | 4.5:1 | pass | danger text in a well |
+| `danger` | `surface-hover` | `#f87171` | `#1f323f` | 4.79:1 | 4.5:1 | pass | danger text on a hovered row |
+| `danger` | `danger-subtle` | `#f87171` | `#312e37` | 4.82:1 | 4.5:1 | pass | danger badge on its tint token |
+| `danger` | `danger@10/sheet` | `#f87171` | `#25232a` | 5.61:1 | 4.5:1 | pass | danger text on bg-danger/10 over the page |
+| `danger` | `danger@10/plate` | `#f87171` | `#2d2d36` | 4.93:1 | 4.5:1 | pass | danger text on bg-danger/10 over a plate |
+| `danger` | `danger@15/sheet` | `#f87171` | `#31272e` | 5.20:1 | 4.5:1 | pass | danger text on bg-danger/15 over the page |
+| `danger` | `danger@15/plate` | `#f87171` | `#383039` | 4.60:1 | 4.5:1 | pass | danger text on bg-danger/15 over a plate |
+| `danger-contrast` | `danger` | `#0e1a22` | `#f87171` | 6.38:1 | 4.5:1 | pass | Label on a solid danger fill |
+| `danger-contrast` | `danger-strong` | `#0e1a22` | `#fca5a5` | 9.30:1 | 4.5:1 | pass | Label on a hovered solid danger fill |
+| `info` | `sheet` | `#aa8efa` | `#0e1a22` | 6.69:1 | 4.5:1 | pass | info text on the page |
+| `info` | `plate` | `#aa8efa` | `#16252f` | 5.94:1 | 4.5:1 | pass | info text on a plate |
+| `info` | `surface-sunken` | `#aa8efa` | `#0a141b` | 7.05:1 | 4.5:1 | pass | info text in a well |
+| `info` | `surface-hover` | `#aa8efa` | `#1f323f` | 5.02:1 | 4.5:1 | pass | info text on a hovered row |
+| `info` | `info-subtle` | `#aa8efa` | `#283247` | 4.86:1 | 4.5:1 | pass | info badge on its tint token |
+| `info` | `info@10/sheet` | `#aa8efa` | `#1e2638` | 5.73:1 | 4.5:1 | pass | info text on bg-info/10 over the page |
+| `info` | `info@10/plate` | `#aa8efa` | `#253043` | 5.03:1 | 4.5:1 | pass | info text on bg-info/10 over a plate |
+| `info` | `info@15/sheet` | `#aa8efa` | `#252b42` | 5.30:1 | 4.5:1 | pass | info text on bg-info/15 over the page |
+| `info` | `info@15/plate` | `#aa8efa` | `#2c354d` | 4.62:1 | 4.5:1 | pass | info text on bg-info/15 over a plate |
+| `info-contrast` | `info` | `#0e1a22` | `#aa8efa` | 6.69:1 | 4.5:1 | pass | Label on a solid info fill |
+| `info-contrast` | `info-strong` | `#0e1a22` | `#c8b9fd` | 9.93:1 | 4.5:1 | pass | Label on a hovered solid info fill |
+| `border-strong` | `sheet` | `#6c8290` | `#0e1a22` | 4.40:1 | 3:1 | pass | Control outline on the page |
+| `border-strong` | `plate` | `#6c8290` | `#16252f` | 3.91:1 | 3:1 | pass | Control outline on a plate |
+| `border-strong` | `surface-sunken` | `#6c8290` | `#0a141b` | 4.64:1 | 3:1 | pass | Control outline on a well |
+| `ink` | `sheet` | `#e8eef0` | `#0e1a22` | 15.06:1 | 3:1 | pass | Focus ring, inner ink band, on the page |
+| `ink` | `plate` | `#e8eef0` | `#16252f` | 13.37:1 | 3:1 | pass | Focus ring, inner ink band, on a plate |
+| `ink` | `surface-sunken` | `#e8eef0` | `#0a141b` | 15.87:1 | 3:1 | pass | Focus ring, inner ink band, on a well |
+| `ink` | `surface-hover` | `#e8eef0` | `#1f323f` | 11.30:1 | 3:1 | pass | Focus ring, inner ink band, on a hovered row |
+| `signal` | `sheet` | `#f5c211` | `#0e1a22` | 10.60:1 | 3:1 | pass | Focus ring, signal, on the page |
+| `signal` | `plate` | `#f5c211` | `#16252f` | 9.41:1 | 3:1 | pass | Focus ring, signal, on a plate |
+| `signal` | `surface-sunken` | `#f5c211` | `#0a141b` | 11.17:1 | 3:1 | pass | Focus ring, signal, on a well |
+| `accent` | `surface-sunken` | `#e8eef0` | `#0a141b` | 15.87:1 | 3:1 | pass | Selected control fill on a well |
+| `line-red` | `sheet` | `#d1495b` | `#0e1a22` | 4.05:1 | 3:1 | pass | Line colour red on the page |
+| `line-red` | `plate` | `#d1495b` | `#16252f` | 3.59:1 | 3:1 | pass | Line colour red on a plate |
+| `line-red` | `surface-sunken` | `#d1495b` | `#0a141b` | 4.27:1 | 3:1 | pass | Line colour red on a well |
+| `line-green` | `sheet` | `#1e7f6d` | `#0e1a22` | 3.62:1 | 3:1 | pass | Line colour green on the page |
+| `line-green` | `plate` | `#1e7f6d` | `#16252f` | 3.22:1 | 3:1 | pass | Line colour green on a plate |
+| `line-green` | `surface-sunken` | `#1e7f6d` | `#0a141b` | 3.82:1 | 3:1 | pass | Line colour green on a well |
+| `line-blue` | `sheet` | `#406ac9` | `#0e1a22` | 3.47:1 | 3:1 | pass | Line colour blue on the page |
+| `line-blue` | `plate` | `#406ac9` | `#16252f` | 3.08:1 | 3:1 | pass | Line colour blue on a plate |
+| `line-blue` | `surface-sunken` | `#406ac9` | `#0a141b` | 3.65:1 | 3:1 | pass | Line colour blue on a well |
+| `line-orange` | `sheet` | `#e08e0b` | `#0e1a22` | 6.76:1 | 3:1 | pass | Line colour orange on the page |
+| `line-orange` | `plate` | `#e08e0b` | `#16252f` | 6.00:1 | 3:1 | pass | Line colour orange on a plate |
+| `line-orange` | `surface-sunken` | `#e08e0b` | `#0a141b` | 7.13:1 | 3:1 | pass | Line colour orange on a well |
+| `line-violet` | `sheet` | `#8458bc` | `#0e1a22` | 3.45:1 | 3:1 | pass | Line colour violet on the page |
+| `line-violet` | `plate` | `#8458bc` | `#16252f` | 3.06:1 | 3:1 | pass | Line colour violet on a plate |
+| `line-violet` | `surface-sunken` | `#8458bc` | `#0a141b` | 3.63:1 | 3:1 | pass | Line colour violet on a well |
+| `line-sky` | `sheet` | `#3d8fb8` | `#0e1a22` | 4.89:1 | 3:1 | pass | Line colour sky on the page |
+| `line-sky` | `plate` | `#3d8fb8` | `#16252f` | 4.34:1 | 3:1 | pass | Line colour sky on a plate |
+| `line-sky` | `surface-sunken` | `#3d8fb8` | `#0a141b` | 5.16:1 | 3:1 | pass | Line colour sky on a well |
+| `chart-1` | `plate` | `#60a5fa` | `#16252f` | 6.17:1 | 3:1 | pass | Chart series 1 |
+| `chart-2` | `plate` | `#fbbf24` | `#16252f` | 9.39:1 | 3:1 | pass | Chart series 2 |
+| `chart-3` | `plate` | `#34d399` | `#16252f` | 8.15:1 | 3:1 | pass | Chart series 3 |
+| `chart-4` | `plate` | `#e879f9` | `#16252f` | 6.37:1 | 3:1 | pass | Chart series 4 |
+| `chart-5` | `plate` | `#67e8f9` | `#16252f` | 10.81:1 | 3:1 | pass | Chart series 5 |
+| `chart-6` | `plate` | `#f87171` | `#16252f` | 5.67:1 | 3:1 | pass | Chart series 6 |
+| `chart-7` | `plate` | `#bef264` | `#16252f` | 12.00:1 | 3:1 | pass | Chart series 7 |
+| `chart-8` | `plate` | `#94a3b8` | `#16252f` | 6.11:1 | 3:1 | pass | Chart series 8 |
+| `rule` | `sheet` | `#2e4250` | `#0e1a22` | 1.69:1 | - | n/a | Separator, carries no information |
+| `rule` | `plate` | `#2e4250` | `#16252f` | 1.50:1 | - | n/a | Plate outline, carries no information |
+| `border-subtle` | `plate` | `#243642` | `#16252f` | 1.25:1 | - | n/a | Row separator inside a plate |
+| `surface-hover` | `plate` | `#1f323f` | `#16252f` | 1.18:1 | - | n/a | Hover tint on a row |
 
 ### Dark: chart series separation
 
@@ -132,24 +250,25 @@ The closest pair of the eight categorical series, in CIE L\*a\*b\* distance, und
 
 | Role | Meaning |
 |---|---|
-| `surface` | The page behind everything else. |
-| `surface-raised` | Cards, panels, table bodies, menus. |
+| `sheet` (`surface`) | The page behind everything else. Cool, never cream. |
+| `plate` (`surface-raised`) | Raised surfaces: panels, table bodies, menus, dialogs. |
 | `surface-sunken` | Inputs, wells, code blocks, table headers. |
 | `surface-hover` | Hover tint for rows and menu items. |
-| `surface-inverse` | Tooltips and other deliberately inverted areas. |
-| `border` | Card outlines and separators. |
-| `border-subtle` | Separators inside a card. |
-| `border-strong` | The boundary of an interactive control. Holds 3:1. |
-| `content` | Primary text. |
-| `content-muted` | Secondary text: units, captions, column headers. |
+| `ink` (`content`, `accent`) | Text, and the primary button: an ink plate with sheet text. |
+| `ink-muted` (`content-muted`) | Secondary text: units, captions, column headers. |
 | `content-subtle` | Hints and placeholders. |
-| `accent` | The one non-status colour: primary actions, links, selection. |
-| `success` | Status only: the thing is working. |
-| `warning` | Status only: the thing is degraded or needs attention. |
-| `danger` | Status only: the thing is broken, or the action destroys data. |
+| `rule` (`border`) | Plate outlines, dividers, the map grid. Carries no information. |
+| `border-subtle` | Separators inside a plate. |
+| `border-strong` | The boundary of an interactive control. Holds 3:1. |
+| `signal` (`focus`) | The one accent: the focus ring, "you are here", the selected station. Never text. |
+| `on-signal` | Text on a signal fill, such as selected text. |
+| `line-red` … `line-sky` | Six line colours for sub-networks and groups. Never status. Labels stay ink. |
+| `paper` | A printed surface: the ground of a QR code, white in both themes. |
+| `success` | Status only: in service. |
+| `warning` | Status only: degraded or needs attention. |
+| `danger` | Status only: broken, blocked, or the action destroys data. |
 | `info` | Status only: neutral information, or a value that is not measured. |
-| `focus` | The keyboard focus ring. One colour everywhere. |
 | `chart-1` … `chart-8` | Categorical chart series, in order of first use. |
 | `ramp-1` … `ramp-6` | Sequential ramp for density and heat maps. |
 
-Status is never carried by colour alone. Every status in the console is a colour, an icon and a word together; see `StatusBadge` in `console/frontend/src/ui/`.
+Status is never carried by colour alone. Every status in the console is a colour, a shape and a word together; see `StatusBadge` in `console/frontend/src/ui/`.
