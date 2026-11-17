@@ -43,12 +43,13 @@ async function fetchNodes(signal: AbortSignal): Promise<MeshNode[]> {
  * and never refreshed ages out of the liveness window and reports the whole
  * fleet down without a single request failing.
  */
-export function useNodes(): UseQueryResult<MeshNode[], Error> {
+export function useNodes(options: { refetchIntervalMs?: number } = {}): UseQueryResult<MeshNode[], Error> {
   return useQuery({
     queryKey: queryKeys.nodes,
     queryFn: ({ signal }) => fetchNodes(signal),
     staleTime: 15_000,
-    refetchInterval: 30_000
+    // A page that is waiting for one device to appear asks for a shorter interval.
+    refetchInterval: options.refetchIntervalMs ?? 30_000
   });
 }
 

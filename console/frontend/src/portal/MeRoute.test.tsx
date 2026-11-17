@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import i18n from '../i18n';
@@ -52,6 +52,12 @@ const LUCA_LAPTOP = {
   last_heartbeat: NOW_ISO
 };
 
+/** Stands in for the Add page and shows what the rebuild carried over. */
+function AddProbe() {
+  const { state } = useLocation() as { state: { name?: string } | null };
+  return <p>{`Add page: ${state?.name ?? ''}`}</p>;
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
@@ -75,7 +81,7 @@ async function renderMe(theme: 'light' | 'dark' = 'light') {
       <MemoryRouter initialEntries={['/me']}>
         <Routes>
           <Route path="/me" element={<MeRoute />} />
-          <Route path="/me/add" element={<p>Add page</p>} />
+          <Route path="/me/add" element={<AddProbe />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -108,7 +114,7 @@ describe('MeRoute', () => {
     expect(within(list).queryByText('Luca laptop')).toBeNull();
     expect(screen.queryByText('Luca laptop')).toBeNull();
     expect(screen.queryByText('To remove a device, ask an administrator.')).toBeNull();
-    expect(screen.getByText('Uses the WireGuard app. No connection measured yet.')).toBeInTheDocument();
+    expect(screen.getByText('Not connected yet')).toBeInTheDocument();
   });
 
   it('shows the name a device is reachable by, as text, only when it has one', async () => {
@@ -177,7 +183,7 @@ describe('MeRoute', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Remove device' }));
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
-      'Anna laptop is the gateway for WireGuard profiles. Removing it would disconnect every device that uses the WireGuard app. Make another device the gateway first.'
+      'Your other devices connect through Anna laptop, so it cannot be removed from here. Ask an administrator.'
     );
   });
 
@@ -200,7 +206,7 @@ describe('MeRoute', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Remove Anna laptop' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Remove Anna laptop?' });
-    expect(dialog).toHaveTextContent('loses access to the network immediately');
+    expect(dialog).toHaveTextContent('loses access to the network straight away');
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Remove device' }));
@@ -230,23 +236,6 @@ describe('MeRoute', () => {
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Anna phone was not removed');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-  });
-
-  it('hides the sketch below tablet width and for a single device, where it repeats the list', async () => {
-    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
-    stubApi(() => json({ nodes: [ANNA_PHONE, ANNA_LAPTOP] }));
-    const { container } = await renderMe();
-    await screen.findByRole('list', { name: 'Your devices' });
-    const sketch = container.querySelector('[data-me-sketch]') as HTMLElement;
-    expect(sketch).toHaveClass('hidden', 'sm:block');
-  });
-
-  it('draws no sketch for one device', async () => {
-    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
-    stubApi(() => json({ nodes: [ANNA_LAPTOP, LUCA_LAPTOP] }));
-    const { container } = await renderMe();
-    await screen.findByRole('list', { name: 'Your devices' });
-    expect(container.querySelector('[data-me-sketch]')).toBeNull();
   });
 
   it('empty state offers Add a device', async () => {
@@ -291,19 +280,65 @@ describe('MeRoute', () => {
     expect(notice.closest('[role="status"]')).not.toBeNull();
   });
 
-  it('copy button copies the address and says so', async () => {
+  it('has one heading for the page and shows each device as a station symbol and a word', async () => {
     auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
-    stubApi(() => json({ nodes: [ANNA_PHONE] }));
-    // userEvent.setup() installs its own clipboard, so the spy must come after it.
-    const user = userEvent.setup();
-    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    stubApi(() =>
+      json({
+        nodes: [
+          { ...ANNA_PHONE, last_handshake_at: new Date().toISOString() },
+          { ...ANNA_LAPTOP, id: 'a4', name: 'Anna old laptop', is_quarantined: true }
+        ]
+      })
+    );
 
     await renderMe();
 
-    await user.click(await screen.findByRole('button', { name: 'Copy the address of Anna phone' }));
+    const list = await screen.findByRole('list', { name: 'Your devices' });
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'Your devices' })).toBeNull();
+    const phone = within(list).getByText('Anna phone').closest('li') as HTMLElement;
+    expect(phone.querySelector('[data-station="service"]')).not.toBeNull();
+    expect(within(phone).getByText('Connected')).toBeInTheDocument();
+    const old = within(list).getByText('Anna old laptop').closest('li') as HTMLElement;
+    expect(old.querySelector('[data-station="blocked"]')).not.toBeNull();
+    expect(within(old).getByText('Blocked by an administrator')).toBeInTheDocument();
+  });
 
-    expect(writeText).toHaveBeenCalledWith('100.64.0.5');
-    expect(await screen.findByText('Address copied.')).toBeInTheDocument();
+  it('offers to set the access up again only for a phone or computer that uses the WireGuard app', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
+    stubApi(() => json({ nodes: [ANNA_PHONE, ANNA_LAPTOP] }));
+
+    await renderMe();
+
+    expect(await screen.findByRole('button', { name: 'Set up Anna phone again' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set up Anna laptop again' })).toBeNull();
+  });
+
+  it('does not offer to set up again a device an administrator blocked: that would replace it with an unblocked one', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
+    stubApi(() => json({ nodes: [{ ...ANNA_PHONE, is_quarantined: true }] }));
+
+    await renderMe();
+
+    expect(await screen.findByText('Blocked by an administrator')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set up Anna phone again' })).toBeNull();
+  });
+
+  it('setting the access up again says the old one stops, removes the device and opens Add with the same name', async () => {
+    auth.user = { id: 'u1', username: 'anna', role: 'user', org_role: 'member' };
+    const fetchMock = stubApi(() => json({ nodes: [ANNA_PHONE] }));
+
+    await renderMe();
+    await userEvent.click(await screen.findByRole('button', { name: 'Set up Anna phone again' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Set up Anna phone again?' });
+    expect(dialog).toHaveTextContent('The current access stops working on Anna phone straight away');
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Yes, set it up again' }));
+
+    expect(await screen.findByText('Add page: Anna phone')).toBeInTheDocument();
+    const call = fetchMock.mock.calls.find(([, init]) => init?.method === 'DELETE');
+    expect(String(call?.[0])).toBe('/api/nodes/a1');
   });
 
   it('primary action links to /me/add', async () => {
