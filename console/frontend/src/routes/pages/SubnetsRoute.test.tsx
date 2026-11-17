@@ -126,12 +126,12 @@ describe('Sub-networks page', () => {
     expect(within(lab).getByText('Berlin')).toBeInTheDocument();
     expect(within(lab).getByText('Paris')).toBeInTheDocument();
     expect(within(lab).getByText('2 devices')).toBeInTheDocument();
-    expect(within(lab).getByText('Default Compartment')).toBeInTheDocument();
+    expect(within(lab).getByText('Main sub-network')).toBeInTheDocument();
 
     expect(within(card('Guests')).getByText('Isolated: does not communicate with other networks.')).toBeInTheDocument();
     // The default sub-network comes first and cannot be deleted.
     const regions = screen.getAllByRole('heading', { level: 2 }).map((h) => h.closest('li') as HTMLElement);
-    expect(within(regions[0]!).getByRole('heading', { name: 'Default Compartment' })).toBeInTheDocument();
+    expect(within(regions[0]!).getByRole('heading', { name: 'Main sub-network' })).toBeInTheDocument();
     expect(within(regions[0]!).queryByRole('button', { name: 'Delete sub-network' })).not.toBeInTheDocument();
 
     await expectNoAxeViolations(container);
@@ -179,7 +179,7 @@ describe('Sub-networks page', () => {
       body: { src_compartment_id: 'cmp-guests', dst_compartment_id: 'cmp-org-default', policy: 'allow' }
     });
 
-    await user.click(within(card('Lab')).getByRole('button', { name: 'Disconnect from Default Compartment' }));
+    await user.click(within(card('Lab')).getByRole('button', { name: 'Disconnect from Main sub-network' }));
     await waitFor(() => expect(calls).toHaveLength(2));
     expect(calls[1]).toMatchObject({ method: 'DELETE' });
     expect(calls[1]!.url).toContain('/api/compartments/peerings/peer-1');

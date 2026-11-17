@@ -89,5 +89,8 @@
     "title": "Nessun risultato con questi filtri",
     "body": "Cambia o togli i filtri per vedere di più.",
     "reset": "Togli i filtri"
+  },
+  "compartment": {
+    "default": "Sotto-rete principale"
   }
 }

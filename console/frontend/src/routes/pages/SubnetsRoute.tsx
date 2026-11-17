@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+import { isDefaultCompartment, useCompartmentLabel } from '../../services/compartmentLabel';
 import { Boxes, Link2, Plus, Search, Trash2, Unlink, UserPlus, X } from 'lucide-react';
 
 import { PageFrame } from '../PageFrame';
@@ -138,7 +140,13 @@ export function SubnetsRoute() {
   const connect = useConnectCompartments();
   const disconnect = useDisconnectCompartments();
 
-  const compartments = compartmentsQuery.data ?? EMPTY_COMPARTMENTS;
+  const labelOf = useCompartmentLabel();
+  const rawCompartments = compartmentsQuery.data ?? EMPTY_COMPARTMENTS;
+  // The default sub-network arrives with its database name; every name below is the displayed one.
+  const compartments = useMemo(
+    () => rawCompartments.map((c) => (isDefaultCompartment(c) ? { ...c, name: labelOf(c) } : c)),
+    [rawCompartments, labelOf]
+  );
   const nodes = topologyQuery.data?.nodes ?? EMPTY_NODES;
   const peerings = peeringsQuery.data ?? EMPTY_PEERINGS;
 

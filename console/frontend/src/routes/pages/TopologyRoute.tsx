@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { PageFrame } from '../PageFrame';
+import { isDefaultCompartment, useCompartmentLabel } from '../../services/compartmentLabel';
 import { PageHeader } from '../../ui/PageHeader';
 import { ROUTES, nodePath } from '../paths';
 import { Badge } from '../../ui/Badge';
@@ -174,7 +175,18 @@ export function TopologyRoute() {
   }, [canvasElement]);
 
   const topology = topologyQuery.data;
-  const nodes = topology?.nodes ?? EMPTY_NODES;
+  const labelOf = useCompartmentLabel();
+  const rawNodes = topology?.nodes ?? EMPTY_NODES;
+  // The default sub-network's database name never reaches the legend, map, table or detail panel.
+  const nodes = useMemo(
+    () =>
+      rawNodes.map((node) =>
+        isDefaultCompartment({ name: node.compartment_name })
+          ? { ...node, compartment_name: labelOf({ name: node.compartment_name }) }
+          : node
+      ),
+    [rawNodes, labelOf]
+  );
   const links = topology?.links ?? EMPTY_LINKS;
   const compartments = compartmentsQuery.data ?? EMPTY_COMPARTMENTS;
   const aclRules = aclRulesQuery.data?.rules ?? EMPTY_RULES;

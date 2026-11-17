@@ -89,5 +89,8 @@
     "title": "Nothing matches these filters",
     "body": "Change or clear the filters to see more.",
     "reset": "Clear filters"
+  },
+  "compartment": {
+    "default": "Main sub-network"
   }
 }
