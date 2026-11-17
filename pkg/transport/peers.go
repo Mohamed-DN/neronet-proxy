@@ -183,6 +183,85 @@ func (m *Mux) SetPeerPaths(key string, specs []PathSpec) error {
 	return nil
 }
 
+// PeerSnapshot is the Mux's record of a set of peers at one moment, enough to put
+// them back exactly as they were. It exists so a caller that changes the Mux and
+// then fails to change the thing it must agree with can undo the Mux part.
+type PeerSnapshot struct {
+	peers map[string]peerSnap
+}
+
+type peerSnap struct {
+	existed  bool
+	profile  bool
+	paths    []candidate
+	roamAddr string
+	roamEP   conn.Endpoint
+}
+
+// SnapshotPeers records the state of the given peers, including that some of them
+// do not exist yet.
+func (m *Mux) SnapshotPeers(keys []string) PeerSnapshot {
+	snap := PeerSnapshot{peers: make(map[string]peerSnap, len(keys))}
+	for _, key := range keys {
+		k, _, err := normaliseKey(key)
+		if err != nil {
+			continue
+		}
+		ps := m.peerByKey(k)
+		if ps == nil {
+			snap.peers[k] = peerSnap{}
+			continue
+		}
+		ps.mu.Lock()
+		snap.peers[k] = peerSnap{
+			existed:  true,
+			profile:  ps.profile,
+			paths:    append([]candidate(nil), ps.paths...),
+			roamAddr: ps.roamAddr,
+			roamEP:   ps.roamEP,
+		}
+		ps.mu.Unlock()
+	}
+	return snap
+}
+
+// RestorePeers puts the peers in the snapshot back: a peer that did not exist is
+// removed, one that did gets its paths, profile flag and roaming address back (and
+// is re-created if it was removed in the meantime).
+func (m *Mux) RestorePeers(snap PeerSnapshot) {
+	for k, was := range snap.peers {
+		if !was.existed {
+			m.RemovePeer(k)
+			continue
+		}
+		_, pub, err := normaliseKey(k)
+		if err != nil {
+			continue
+		}
+		m.peers.mu.Lock()
+		ps, known := m.peers.byKey[k]
+		if !known {
+			ps = &peerState{key: k, pub: pub, mac1: mac1Key(pub)}
+			m.peers.byKey[k] = ps
+		}
+		m.peers.mu.Unlock()
+
+		ps.mu.Lock()
+		ps.paths = append([]candidate(nil), was.paths...)
+		ps.profile = was.profile
+		ps.roamAddr = was.roamAddr
+		ps.roamEP = was.roamEP
+		ps.winner = ""
+		if ps.attempt != nil {
+			for _, t := range ps.attempt.timers {
+				t.Stop()
+			}
+			ps.attempt = nil
+		}
+		ps.mu.Unlock()
+	}
+}
+
 // RemovePeer forgets a peer's paths and cancels anything still scheduled for it.
 func (m *Mux) ValidatePeerPaths(key string, specs []PathSpec) error {
 	if _, _, err := normaliseKey(key); err != nil {

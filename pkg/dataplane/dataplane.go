@@ -249,6 +249,18 @@ type Device struct {
 	// Advanced even when a peer is removed and re-added between observations.
 	// WireGuard counters belong to a peer incarnation, not just its public key.
 	counterEpoch uint64
+
+	// ipcSet applies a UAPI request to the device. A field so a test can make the
+	// device refuse a request; nil means wg.IpcSet.
+	ipcSet func(string) error
+}
+
+// applyUAPI sends one UAPI request to the WireGuard device.
+func (d *Device) applyUAPI(request string) error {
+	if d.ipcSet != nil {
+		return d.ipcSet(request)
+	}
+	return d.wg.IpcSet(request)
 }
 
 // New brings up a tunnel. The device has no peers until SetPeers is called, so it
@@ -432,6 +444,26 @@ func (d *Device) SetPeers(peers []Peer) error {
 			current[p.PublicKey] = p.Endpoint
 		}
 	}
+	// The mux is changed before the device is asked to, because the endpoint handed to
+	// the device depends on the paths just declared. If anything after this point
+	// fails, the device keeps its previous peers, so the mux is put back as it was or
+	// the two disagree about who the peers are.
+	applied := false
+	if d.mux != nil {
+		touched := make([]string, 0, len(d.peerKeys)+len(peers))
+		for key := range d.peerKeys {
+			touched = append(touched, key)
+		}
+		for _, p := range peers {
+			touched = append(touched, p.PublicKey)
+		}
+		snapshot := d.mux.SnapshotPeers(touched)
+		defer func() {
+			if !applied {
+				d.mux.RestorePeers(snapshot)
+			}
+		}()
+	}
 	for key := range d.peerKeys {
 		if _, stays := seen[key]; !stays {
 			if d.mux != nil {
@@ -489,10 +521,11 @@ func (d *Device) SetPeers(peers []Peer) error {
 		// old counter baseline before it touches the device, including that case.
 		d.counterEpoch++
 	}
-	if err := d.wg.IpcSet(b.String()); err != nil {
+	if err := d.applyUAPI(b.String()); err != nil {
 		return fmt.Errorf("dataplane: applying %d peer(s): %w", len(peers), err)
 	}
 	d.peerKeys = seen
+	applied = true
 
 	if d.transportMgr != nil {
 		for _, p := range peers {
