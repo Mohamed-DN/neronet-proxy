@@ -277,3 +277,67 @@ func (nf *NetstackFilter) purgeExpiredLocked() {
 		}
 	}
 }
+
+// CanOpenTo reports whether the outbound rules would let this node open a connection
+// to dst on at least one protocol and port, by the same first-match order
+// EvaluateOutbound4Tuple applies. It records nothing, so it is safe to ask for every
+// DNS answer. No policy loaded is default deny.
+func (nf *NetstackFilter) CanOpenTo(dst net.IP) bool {
+	policy := nf.GetPolicy()
+	if policy == nil {
+		return false
+	}
+	return anyAccepted(policy.OutboundRules, dst)
+}
+
+// CanBeOpenedBy is CanOpenTo for the inbound rules: whether src may open a connection
+// to this node on at least one protocol and port.
+func (nf *NetstackFilter) CanBeOpenedBy(src net.IP) bool {
+	policy := nf.GetPolicy()
+	if policy == nil {
+		return false
+	}
+	return anyAccepted(policy.InboundRules, src)
+}
+
+// anyAccepted reports whether some (protocol, port) is accepted by the first rule that
+// matches it, among the rules naming peer. A verdict only changes at a range boundary,
+// so testing each boundary and the port after it covers every case.
+func anyAccepted(rules []CompiledFilterRule, peer net.IP) bool {
+	ports := map[uint16]bool{0: true, 1: true, 65535: true}
+	for _, r := range rules {
+		if !r.AllowedPeerVIP.Equal(peer) {
+			continue
+		}
+		for _, pr := range r.PortRanges {
+			ports[pr.Start], ports[pr.End] = true, true
+			if pr.End < 65535 {
+				ports[pr.End+1] = true
+			}
+		}
+	}
+	for _, proto := range []Protocol{ProtocolTCP, ProtocolUDP, ProtocolICMP} {
+		for port := range ports {
+			if firstMatch(rules, peer, proto, port) == ActionAccept {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// firstMatch returns the action of the first rule naming peer that covers proto and
+// port, or "" when none does.
+func firstMatch(rules []CompiledFilterRule, peer net.IP, proto Protocol, port uint16) Action {
+	for _, r := range rules {
+		if !r.AllowedPeerVIP.Equal(peer) || (r.Protocol != ProtocolALL && r.Protocol != proto) {
+			continue
+		}
+		for _, pr := range r.PortRanges {
+			if pr.Matches(port) {
+				return r.Action
+			}
+		}
+	}
+	return ""
+}
