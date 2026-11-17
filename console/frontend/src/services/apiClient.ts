@@ -112,6 +112,13 @@ let verifiedRefresh: {
   targetRevision: number;
 } | null = null;
 
+// Matched by name, not by `instanceof DOMException`: the abort a signal raises can come
+// from a different realm than the global DOMException (a test environment, an iframe),
+// and then instanceof is false although it is the same error.
+function isAbortError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError';
+}
+
 function superseded(): DOMException {
   return new DOMException('The console session changed while this request was in flight', 'AbortError');
 }
@@ -190,8 +197,7 @@ async function performBrowserRefresh(snapshot: SessionSnapshot): Promise<Refresh
     if (!body?.selected) return await recover(expected);
     return await accept(body.selected);
   } catch (error) {
-    if (!isCurrentCredential(snapshot) || (error instanceof DOMException && error.name === 'AbortError'))
-      return obsolete();
+    if (!isCurrentCredential(snapshot) || isAbortError(error)) return obsolete();
     const message = error instanceof Error ? error.message : 'Session refresh could not reach the control plane';
     reportTransportFailure(message);
     return { kind: 'unavailable', scope: snapshot, error: new ApiError(message, 0) };
@@ -246,8 +252,7 @@ async function performRefresh(snapshot: SessionSnapshot): Promise<RefreshOutcome
   } catch (error) {
     // A network failure is not proof the session ended, so nothing is cleared
     // and the next request tries again.
-    if (!isCurrentCredential(snapshot) || (error instanceof DOMException && error.name === 'AbortError'))
-      return obsolete();
+    if (!isCurrentCredential(snapshot) || isAbortError(error)) return obsolete();
     const message = error instanceof Error ? error.message : 'Session refresh could not reach the control plane';
     reportTransportFailure(message);
     return { kind: 'unavailable', scope: snapshot, error: new ApiError(message, 0) };
@@ -342,7 +347,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}, 
     requireAuthority(snapshot);
     // An aborted request is the caller's own doing, not a broken control plane:
     // reporting it as unreachable would turn every page change into an outage.
-    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    if (isAbortError(err)) throw err;
     const message = err instanceof Error ? err.message : 'the control plane could not be reached';
     reportTransportFailure(message);
     throw new ApiError(message, 0);

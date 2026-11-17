@@ -14,6 +14,14 @@ const apiTarget = process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8081';
 
 export default defineConfig({
   plugins: [react()],
+  /*
+   * Spelled out because Vitest 3 on Vite 6 resolved `react-router` to its CommonJS
+   * build (the `node` condition) while `react-router/dom` resolved to the ES build.
+   * The two builds keep separate copies of the router context, so every <Link>
+   * under a RouterProvider threw "basename of useContext(...) is null". With the
+   * `module` condition first, both entry points use the ES build, as the bundler does.
+   */
+  resolve: { conditions: ['module', 'browser', 'development|production'] },
   server: {
     host: '127.0.0.1',
     port: Number(process.env.VITE_DEV_PORT || 5173),
