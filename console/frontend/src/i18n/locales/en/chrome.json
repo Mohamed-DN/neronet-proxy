@@ -129,6 +129,12 @@
       "qrAlt": "QR code to scan with the verification app",
       "secretLabel": "If you cannot scan it, type this code into the app:",
       "recoveryIntro": "These are your recovery codes. Save them now somewhere safe: they will not be shown again. You need them if you lose your phone; each code works only once.",
+      "savedCodes": "I have saved the recovery codes",
+      "copyCodes": "Copy the codes",
+      "copied": "Recovery codes copied.",
+      "copyFailed": "The codes could not be copied. Select and copy them by hand.",
+      "discardWarning": "Going back discards these codes. New ones will be made next time, and the ones shown here will not work.",
+      "discardConfirm": "Discard the codes and go back",
       "enrolSubmit": "Confirm the code and sign in",
       "failed": "That code did not work. Check the six digits and try again."
     },
