@@ -5,29 +5,25 @@
   },
   "nav": {
     "landmark": "Main",
-    "sections": {
-      "mesh": "Network",
-      "compute": "Computers",
-      "security": "Security",
-      "danger": "System",
-      "you": "You"
+    "groups": {
+      "network": "Network",
+      "access": "Access",
+      "security": "Security"
     },
-    "collapseSection": "Collapse section",
-    "expandSection": "Expand section",
-    "collapseSidebar": "Collapse the navigation",
-    "expandSidebar": "Expand the navigation",
+    "breadcrumb": "You are here",
+    "home": "NeroNet, overview",
     "items": {
       "overview": "Overview",
-      "topology": "Network map",
+      "topology": "Map",
       "subnets": "Sub-networks",
       "nodes": "Devices",
       "onion": "Three-stop routes",
-      "peering": "Other networks",
+      "peering": "Federation",
       "cloudpc": "Virtual computers",
-      "risk": "Risk score",
-      "acls": "Access rules",
-      "audit": "Activity log",
-      "users": "Users",
+      "risk": "Risk",
+      "acls": "Rules",
+      "audit": "Log",
+      "users": "People",
       "settings": "Settings",
       "nuke": "Data erasure",
       "me": "My devices",
@@ -37,21 +33,19 @@
     "alertCount_one": "{{count}} needs attention",
     "alertCount_other": "{{count}} need attention"
   },
-  "sidebar": {
-    "nodesReachable": "{{reachable}} of {{total}} reachable",
-    "noNodes": "No devices",
-    "reachable": "Reachable: {{percent}}",
-    "reachableUnknown": "Reachable: not applicable",
-    "quarantined_one": "{{count}} blocked",
-    "quarantined_other": "{{count}} blocked",
-    "noneQuarantined": "No device blocked",
-    "reachabilityBar": "Share of devices that answered recently",
-    "armed": "Self-destruct armed",
-    "armedPinned": "Pinned",
-    "destroyNow": "Destroy now",
-    "armedInstant": "Armed, immediate",
+  "status": {
+    "label": "Network status",
+    "inService": "{{reachable}} of {{total}} devices in service",
+    "noDevices": "No devices",
+    "blocked_one": "{{count}} device blocked",
+    "blocked_other": "{{count}} devices blocked",
+    "noneBlocked": "No device blocked",
+    "highRisk_one": "{{count}} device at high risk",
+    "highRisk_other": "{{count}} devices at high risk",
+    "erasureArmed": "Data erasure armed",
+    "erasureArmedInstant": "Armed, immediate",
     "triggered": "Triggered",
-    "glossaryLink": "What do these words mean?"
+    "eraseNow": "Erase now"
   },
   "header": {
     "throughput": "Total network traffic",
@@ -65,7 +59,10 @@
     "markAllRead": "Mark all read",
     "account": "Account",
     "signOut": "Sign out of the console",
-    "noAlerts": "No alerts. Notifications are not connected to this console yet."
+    "noAlerts": "No alerts. Notifications are not connected to this console yet.",
+    "accountMenu": "Account menu",
+    "signedInAs": "Signed in as {{name}}",
+    "glossary": "What do these words mean?"
   },
   "connection": {
     "label": "Control plane",
@@ -80,7 +77,7 @@
   },
   "routeError": {
     "title": "This page could not be drawn",
-    "body": "The console kept running. The rest of it is still usable, and the navigation on the left still works.",
+    "body": "The console kept running. The rest of it is still usable, and the navigation at the top still works.",
     "appTitle": "The console could not be drawn",
     "appBody": "The failure happened above every page, so there is nothing left to show but this.",
     "retry": "Try this page again",

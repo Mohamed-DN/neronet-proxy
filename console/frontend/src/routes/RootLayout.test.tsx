@@ -91,7 +91,7 @@ describe('account wipe in the shell', () => {
     localStorage.clear();
     resetConnectionState();
     stubEnvironment();
-    // The armed control in the sidebar is the way in to the wipe.
+    // The armed control in the top bar is the way in to the wipe.
     localStorage.setItem('nukeArmed', 'true');
     storeSession({ token: 'tok' });
   });
@@ -107,7 +107,7 @@ describe('account wipe in the shell', () => {
     const alert = vi.spyOn(window, 'alert');
     renderConsole();
 
-    await userEvent.click(await screen.findByRole('button', { name: label('sidebar.destroyNow') }));
+    await userEvent.click(await screen.findByRole('button', { name: label('status.eraseNow') }));
 
     const dialog = await screen.findByRole('dialog', { name: label('wipe.title') });
     expect(dialog).toHaveTextContent(label('wipe.body'));
@@ -137,20 +137,18 @@ describe('shell height', () => {
     vi.restoreAllMocks();
   });
 
-  it('is as tall as its content: no viewport-height size on the shell or the sidebar column', async () => {
+  it('is as tall as its content: no viewport-height size on the shell, and a sticky top bar above the page', async () => {
     const { container } = renderConsole();
     await screen.findByRole('main');
 
     const root = container.querySelector('[data-shell-root]') as HTMLElement;
-    const sidebar = container.querySelector('[data-shell-sidebar]') as HTMLElement;
-    const inner = container.querySelector('[data-shell-sidebar-inner]') as HTMLElement;
+    const bar = container.querySelector('[data-shell-topbar]') as HTMLElement;
     expect(root.className).not.toMatch(/\b(min-)?h-(screen|dvh|svh|lvh)\b/);
-    // The column stretches with the page; only the sticky content is capped.
-    expect(sidebar.className).toContain('self-stretch');
-    expect(sidebar.className).not.toMatch(/\bh-screen\b/);
-    expect(inner.className).toContain('sticky');
-    expect(inner.className).toContain('max-h-screen');
-    expect(inner.className).not.toMatch(/(^|\s)h-screen\b/);
+    expect(bar.className).toContain('sticky');
+    expect(bar.className).not.toMatch(/\bh-screen\b/);
+    // The top bar comes before the page in the document, and there is no left rail.
+    expect(bar.compareDocumentPosition(screen.getByRole('main')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.querySelector('[data-shell-sidebar]')).toBeNull();
   });
 });
 
@@ -184,7 +182,7 @@ describe('narrow window', () => {
     expect(await screen.findByRole('heading', { name: label('narrow.title') })).toBeInTheDocument();
     const link = screen.getByRole('link', { name: label('narrow.portalLink') });
     expect(link).toHaveAttribute('href', '/me');
-    // No sidebar, no top bar and no page behind the message.
+    // No top bar and no page behind the message.
     expect(screen.queryByRole('navigation')).toBeNull();
     expect(screen.queryByRole('banner')).toBeNull();
     expect(screen.queryByText('Overview body')).toBeNull();

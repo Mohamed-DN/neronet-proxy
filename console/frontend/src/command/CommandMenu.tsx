@@ -9,7 +9,7 @@ import { canSee, effectiveRole, roleTier } from '../services/roles';
 import { nodePath, ROUTES, type RouteId } from '../routes/paths';
 import { Dialog } from '../ui';
 
-/** The pages in sidebar order. The menu lists only the ones this role may see. */
+/** The pages in navigation order. The menu lists only the ones this role may see. */
 const PAGE_IDS: readonly RouteId[] = [
   'overview',
   'topology',
@@ -77,11 +77,14 @@ export default function CommandMenu({ onAddDevice }: CommandMenuProps) {
         onClick={() => setOpen(true)}
         aria-label={t('open')}
         aria-haspopup="dialog"
-        className="inline-flex min-h-9 items-center gap-2 rounded-control border border-border bg-surface-sunken px-3 text-caption text-muted transition-colors hover:text-content focus-visible:outline-focus"
+        className="inline-flex min-h-9 items-center justify-center gap-2 rounded-control border border-border bg-surface-sunken px-2.5 text-caption text-muted transition-colors hover:text-content focus-visible:outline-focus"
       >
         <Search aria-hidden="true" className="h-3.5 w-3.5" />
-        <span>{t('trigger')}</span>
-        <kbd aria-hidden="true" className="rounded-control border border-border px-1 text-micro text-subtle">
+        <span className="hidden xl:inline">{t('trigger')}</span>
+        <kbd
+          aria-hidden="true"
+          className="hidden rounded-control border border-border px-1 text-micro text-subtle xl:inline"
+        >
           {shortcut}
         </kbd>
       </button>

@@ -1,5 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -45,9 +46,33 @@ describe('Header', () => {
     expect(screen.getByRole('button', { name: i18n.t('header.enrol', { ns: 'chrome' }) })).toBeInTheDocument();
   });
 
-  it('shows the role label from the organisation role', () => {
+  it('shows the role label from the organisation role in the account menu', async () => {
     renderHeader('owner');
 
-    expect(screen.getByText(i18n.t('roles.owner.term', { ns: 'glossary' }))).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /^Account menu/ }));
+    expect(await screen.findByText(i18n.t('roles.owner.term', { ns: 'glossary' }))).toBeInTheDocument();
+  });
+
+  it('closes the notifications popover with Escape and returns focus to the bell', async () => {
+    renderHeader('owner');
+    const bell = screen.getByRole('button', { name: i18n.t('header.notifications', { ns: 'chrome' }) });
+
+    await userEvent.click(bell);
+    const popover = await screen.findByRole('dialog', { name: i18n.t('header.alerts', { ns: 'chrome' }) });
+    expect(popover).toContainElement(document.activeElement as HTMLElement);
+
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(bell).toHaveFocus();
+  });
+
+  it('closes the notifications popover on a click outside it', async () => {
+    renderHeader('owner');
+
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('header.notifications', { ns: 'chrome' }) }));
+    await screen.findByRole('dialog');
+
+    await userEvent.click(document.body);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

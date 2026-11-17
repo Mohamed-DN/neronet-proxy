@@ -39,7 +39,9 @@ export {
   type NotImplementedStateProps
 } from './States';
 export { RowList, Row, type RowListProps, type RowProps, type RowDensity } from './RowList';
-export { PageHeader, type PageHeaderProps } from './PageHeader';
+export { PageHeader, BreadcrumbContext, type PageHeaderProps, type Breadcrumb } from './PageHeader';
+export { Disclosure, type DisclosureProps } from './Disclosure';
+export { MENU_CONTENT, MENU_ITEM } from './menuStyles';
 export { CodeText, type CodeTextProps } from './CodeText';
 export { ThemeToggle } from './ThemeToggle';
 export { LanguageSwitcher } from './LanguageSwitcher';

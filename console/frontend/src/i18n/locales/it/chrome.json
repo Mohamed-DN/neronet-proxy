@@ -5,31 +5,27 @@
   },
   "nav": {
     "landmark": "Principale",
-    "sections": {
-      "mesh": "Rete",
-      "compute": "Computer",
-      "security": "Sicurezza",
-      "danger": "Sistema",
-      "you": "Tu"
+    "groups": {
+      "network": "Rete",
+      "access": "Accesso",
+      "security": "Sicurezza"
     },
-    "collapseSection": "Comprimi la sezione",
-    "expandSection": "Espandi la sezione",
-    "collapseSidebar": "Comprimi la navigazione",
-    "expandSidebar": "Espandi la navigazione",
+    "breadcrumb": "Sei qui",
+    "home": "NeroNet, panoramica",
     "items": {
       "overview": "Panoramica",
-      "topology": "Mappa della rete",
+      "topology": "Mappa",
       "subnets": "Sotto-reti",
       "nodes": "Dispositivi",
       "onion": "Percorsi a tre tappe",
-      "peering": "Altre reti",
+      "peering": "Federazione",
       "cloudpc": "Computer virtuali",
-      "risk": "Punteggio di rischio",
-      "acls": "Regole di accesso",
-      "audit": "Registro attività",
-      "users": "Utenti",
+      "risk": "Rischio",
+      "acls": "Regole",
+      "audit": "Registro",
+      "users": "Persone",
       "settings": "Impostazioni",
-      "nuke": "Cancellazione dati",
+      "nuke": "Cancellazione dei dati",
       "me": "I miei dispositivi",
       "drop": "Invia un file",
       "glossary": "Glossario"
@@ -37,21 +33,19 @@
     "alertCount_one": "{{count}} richiede attenzione",
     "alertCount_other": "{{count}} richiedono attenzione"
   },
-  "sidebar": {
-    "nodesReachable": "{{reachable}} di {{total}} raggiungibili",
-    "noNodes": "Nessun dispositivo",
-    "reachable": "Raggiungibili: {{percent}}",
-    "reachableUnknown": "Raggiungibili: non applicabile",
-    "quarantined_one": "{{count}} bloccato",
-    "quarantined_other": "{{count}} bloccati",
-    "noneQuarantined": "Nessun dispositivo bloccato",
-    "reachabilityBar": "Percentuale di dispositivi che hanno risposto di recente",
-    "armed": "Autodistruzione armata",
-    "armedPinned": "Fissata",
-    "destroyNow": "Distruggi ora",
-    "armedInstant": "Armata, immediata",
+  "status": {
+    "label": "Stato della rete",
+    "inService": "{{reachable}} di {{total}} dispositivi in servizio",
+    "noDevices": "Nessun dispositivo",
+    "blocked_one": "{{count}} dispositivo bloccato",
+    "blocked_other": "{{count}} dispositivi bloccati",
+    "noneBlocked": "Nessun dispositivo bloccato",
+    "highRisk_one": "{{count}} dispositivo a rischio alto",
+    "highRisk_other": "{{count}} dispositivi a rischio alto",
+    "erasureArmed": "Cancellazione dei dati armata",
+    "erasureArmedInstant": "Armata, immediata",
     "triggered": "Attivata",
-    "glossaryLink": "Cosa significano queste parole?"
+    "eraseNow": "Cancella ora"
   },
   "header": {
     "throughput": "Traffico totale della rete",
@@ -65,7 +59,10 @@
     "markAllRead": "Segna tutte come lette",
     "account": "Account",
     "signOut": "Esci dalla console",
-    "noAlerts": "Nessun avviso. Le notifiche non sono ancora collegate a questa console."
+    "noAlerts": "Nessun avviso. Le notifiche non sono ancora collegate a questa console.",
+    "accountMenu": "Menu dell’account",
+    "signedInAs": "Accesso come {{name}}",
+    "glossary": "Cosa significano queste parole?"
   },
   "connection": {
     "label": "Piano di controllo",
@@ -80,7 +77,7 @@
   },
   "routeError": {
     "title": "Impossibile disegnare questa pagina",
-    "body": "La console e rimasta in funzione. Il resto e ancora utilizzabile e la navigazione a sinistra funziona.",
+    "body": "La console è rimasta in funzione. Il resto è ancora utilizzabile e la navigazione in alto funziona.",
     "appTitle": "Impossibile disegnare la console",
     "appBody": "L'errore si e verificato sopra ogni pagina, quindi non resta altro da mostrare.",
     "retry": "Riprova questa pagina",

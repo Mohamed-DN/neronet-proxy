@@ -212,16 +212,13 @@ describe('the shell', () => {
     expect(router.state.location.search).toBe(`?next=${encodeURIComponent('/nodes/svrn-node-abc')}`);
   });
 
-  it('renders the page a deep link asks for, with the navigation beside it', async () => {
+  it('renders the page a deep link asks for, with the navigation above it', async () => {
     storeSession({ token: 'tok' });
     renderAt([ROUTES.nodes]);
 
     expect(await screen.findByRole('heading', { name: label('nav.items.nodes') })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: new RegExp(label('nav.items.overview')) })).toHaveAttribute(
-      'href',
-      ROUTES.overview
-    );
+    expect(screen.getByRole('link', { name: label('nav.home') })).toHaveAttribute('href', ROUTES.overview);
   });
 
   it('sets the document title from the route', async () => {
@@ -237,7 +234,7 @@ describe('the shell', () => {
     renderAt([ROUTES.overview]);
     const heading = await screen.findByRole('heading', { name: label('nav.items.overview') });
 
-    // Moving focus into the content on load would put the whole sidebar behind
+    // Moving focus into the content on load would put the whole top bar behind
     // the operator, with no skip link ahead of them to get back to it.
     await waitFor(() => expect(document.title).toBe(`${label('nav.items.overview')} - NeroNet console`));
     expect(heading).not.toHaveFocus();
@@ -248,9 +245,13 @@ describe('the shell', () => {
     const { router } = renderAt([ROUTES.overview]);
     await screen.findByRole('heading', { name: label('nav.items.overview') });
 
-    const link = screen.getByRole('link', { name: new RegExp(label('nav.items.nodes')) });
-    link.focus();
-    expect(link).toHaveFocus();
+    // Network group, then Devices: Enter opens it, the first ArrowDown enters
+    // the list on Map, the second moves to Devices, Enter follows the link.
+    screen.getByRole('button', { name: label('nav.groups.network') }).focus();
+    await userEvent.keyboard('{Enter}');
+    const link = await screen.findByRole('link', { name: new RegExp(label('nav.items.nodes')) });
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}');
+    await waitFor(() => expect(link).toHaveFocus());
     await userEvent.keyboard('{Enter}');
 
     const heading = await screen.findByRole('heading', { name: label('nav.items.nodes') });
@@ -263,7 +264,8 @@ describe('the shell', () => {
     const { router } = renderAt([ROUTES.overview]);
     await screen.findByRole('heading', { name: label('nav.items.overview') });
 
-    await userEvent.click(screen.getByRole('link', { name: new RegExp(label('nav.items.nodes')) }));
+    await userEvent.click(screen.getByRole('button', { name: label('nav.groups.network') }));
+    await userEvent.click(await screen.findByRole('link', { name: new RegExp(label('nav.items.nodes')) }));
     await screen.findByRole('heading', { name: label('nav.items.nodes') });
 
     router.navigate(-1);
@@ -286,8 +288,8 @@ describe('the shell', () => {
     expect(screen.getByText(/^[0-9A-F]{8}$/)).toBeInTheDocument();
     expect(logged).toHaveBeenCalled();
 
-    // The sidebar survived, and still navigates.
-    const link = screen.getByRole('link', { name: new RegExp(label('nav.items.overview')) });
+    // The top bar survived, and still navigates.
+    const link = screen.getByRole('link', { name: label('nav.home') });
     await userEvent.click(link);
 
     expect(await screen.findByRole('heading', { name: label('nav.items.overview') })).toBeInTheDocument();
@@ -295,17 +297,13 @@ describe('the shell', () => {
     logged.mockRestore();
   });
 
-  it('keeps the sidebar collapse across mounts', async () => {
+  it('has a top bar and no collapsible left rail', async () => {
     storeSession({ token: 'tok' });
-    const first = renderAt([ROUTES.overview]);
+    renderAt([ROUTES.overview]);
     await screen.findByRole('heading', { name: label('nav.items.overview') });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Collapse the navigation' }));
-    expect(screen.getByRole('button', { name: 'Expand the navigation' })).toBeInTheDocument();
-    first.unmount();
-
-    renderAt([ROUTES.overview]);
-    expect(await screen.findByRole('button', { name: 'Expand the navigation' })).toBeInTheDocument();
+    expect(screen.getByRole('banner')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /collapse the navigation/i })).toBeNull();
   });
 });
 
@@ -380,7 +378,7 @@ describe('the real routes by role', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(ROUTES.me));
   });
 
-  it('/me renders without the console sidebar', async () => {
+  it('/me renders without the console top bar', async () => {
     stubSignedInAs({ id: 'u2', username: 'mina', role: 'user', org_role: 'member' });
     renderRealRoutes([ROUTES.me]);
 
