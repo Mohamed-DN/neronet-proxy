@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { getPgPool } = require('../db/index');
 const { authenticateToken } = require('../middleware/auth');
 const { logAuditEvent } = require('../utils/audit');
+const { isAdministrator } = require('../utils/quarantine');
 const { allocateNextVip, generateCurve25519Keypair, publicKeyForms } = require('../utils/crypto');
 const { broadcastNodeEvent } = require('../services/TopologySync');
 const { derivePostureStatus } = require('../utils/posture');
@@ -503,6 +504,27 @@ router.delete('/:id', async (req, res, next) => {
       return res.status(access.error).json({ error: access.message });
     }
     if (refuseProfileGateway(node, res)) return;
+
+    // A member cannot remove a blocked device: removing it, then adding a new one, would
+    // undo the administrator's block. An administrator still can.
+    if (node.is_quarantined && !isAdministrator(req.user)) {
+      logAuditEvent({
+        eventType: 'NODE_REMOVE_REFUSED',
+        organizationId: node.organization_id || 'org-default',
+        severity: 'warn',
+        actorUserId: req.user.id,
+        actorUsername: req.user.username,
+        targetId: node.id,
+        targetType: 'node',
+        message: `Removal of blocked device ${node.name} (${node.id}) refused for a non-administrator`,
+        ipAddress: req.ip
+      });
+      return res.status(409).json({
+        error: 'device_blocked',
+        code: 'device_blocked',
+        message: 'This device was blocked by an administrator; ask them to unblock or remove it.'
+      });
+    }
 
     // 1. Write public key to revoked_keys table and bump the policy epoch.
     //    Every peer receives the revocation on its next heartbeat (≤20 s) and

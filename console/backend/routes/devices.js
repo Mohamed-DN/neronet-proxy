@@ -13,6 +13,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { resolveUserOrg } = require('../middleware/rbac');
 const { getPgPool } = require('../db/index');
 const { logAuditEvent } = require('../utils/audit');
+const { AUTO_QUARANTINE_REASON, isAdministrator } = require('../utils/quarantine');
 const { allocateNextVip, normalisePublicKeyHex, publicKeyForms } = require('../utils/crypto');
 const EnrollmentService = require('../services/EnrollmentService');
 const AclEngine = require('../services/AclEngine');
@@ -450,6 +451,23 @@ router.post('/profile', async (req, res, next) => {
     if (!label || label.length > 64) return res.status(400).json({ error: 'name must be 1 to 64 characters' });
     if (!isKey(public_key)) return res.status(400).json({ error: 'public_key must be a 32-byte base64 key' });
     if (!isKey(preshared_key)) return res.status(400).json({ error: 'preshared_key must be a 32-byte base64 key' });
+
+    // A member whose device an administrator blocked cannot add another: it would undo the
+    // block. A block the risk engine set by itself does not count (the score can recover).
+    if (!isAdministrator(req.user)) {
+      const blocked = await getPgPool().query(
+        `SELECT 1 FROM nodes WHERE user_id = $1 AND COALESCE(organization_id, 'org-default') = $2
+            AND is_quarantined AND COALESCE(quarantine_reason, '') <> $3 LIMIT 1`,
+        [req.user.id, orgOf(req), AUTO_QUARANTINE_REASON]
+      );
+      if (blocked.rows.length > 0) {
+        return res.status(409).json({
+          error: 'owner_has_blocked_device',
+          code: 'owner_has_blocked_device',
+          message: 'You have a blocked device; an administrator must unblock it before you add another.'
+        });
+      }
+    }
 
     // The default gateway, unless an administrator chose another of the organisation's.
     let gateway;

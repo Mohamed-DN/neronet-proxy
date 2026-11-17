@@ -17,6 +17,7 @@ const { publishTopologyEvent } = require('../db/valkey');
 const { broadcastNodeEvent } = require('./TopologySync');
 const { bumpNetmap } = require('./AclEngine');
 const logger = require('../utils/logger');
+const { AUTO_QUARANTINE_REASON } = require('../utils/quarantine');
 
 const EARTH_RADIUS_KM = 6371.0;
 
@@ -245,7 +246,7 @@ async function ingestTelemetry(nodeId, telemetry) {
       [
         finalRiskScore,
         isQuarantined,
-        shouldQuarantine ? 'Behavioral Risk Score > 75 (Impossible travel / network anomaly)' : node.quarantine_reason,
+        shouldQuarantine && !node.is_quarantined ? AUTO_QUARANTINE_REASON : node.quarantine_reason,
         newOverlayIp,
         rtt,
         impossibleTravel,
@@ -278,7 +279,7 @@ async function ingestTelemetry(nodeId, telemetry) {
     ).run(
       finalRiskScore,
       isQuarantined ? 1 : 0,
-      shouldQuarantine ? 'Behavioral Risk Score > 75 (Impossible travel / network anomaly)' : node.quarantine_reason,
+      shouldQuarantine && !node.is_quarantined ? AUTO_QUARANTINE_REASON : node.quarantine_reason,
       newOverlayIp,
       rtt,
       impossibleTravel ? 1 : 0,
@@ -324,7 +325,7 @@ async function ingestTelemetry(nodeId, telemetry) {
         risk_score: finalRiskScore,
         overlay_ipv4: newOverlayIp,
         is_quarantined: true,
-        quarantine_reason: 'Behavioral Risk Score > 75 (Impossible travel / network anomaly)'
+        quarantine_reason: AUTO_QUARANTINE_REASON
       }
     };
     publishTopologyEvent('neronet:topology:events', eventPayload);
