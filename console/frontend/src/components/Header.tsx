@@ -1,46 +1,36 @@
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { Bell, ChevronDown, HelpCircle, LogOut, PlusCircle, Send, Smartphone } from 'lucide-react';
+import { Bell, ChevronDown, HelpCircle, LogOut, Send, Smartphone } from 'lucide-react';
 
 import CommandMenu from '../command/CommandMenu';
 import { useAuth } from '../context/AuthContext';
 import { ROUTES } from '../routes/paths';
 import { canSeeRoute } from '../routes/navModel';
-import { effectiveRole, roleTier } from '../services/roles';
-import { Button, Disclosure, LanguageSwitcher, MENU_CONTENT, MENU_ITEM, ThemeToggle } from '../ui';
+import { effectiveRole } from '../services/roles';
+import { Disclosure, LanguageSwitcher, MENU_CONTENT, MENU_ITEM, ThemeToggle } from '../ui';
 
 export interface HeaderProps {
   onOpenEnrollModal?: () => void;
 }
 
 /**
- * The end of the top bar: search, add a device, language, theme, notifications
- * and the account menu. It is a cluster inside the bar's banner, not a banner
- * of its own.
+ * The end of the top bar: search, notifications and the account menu. Language
+ * and theme live in the account menu, and adding a device is the primary action
+ * of the pages that list devices (and a command in the search). It is a cluster
+ * inside the bar's banner, not a banner of its own.
  */
 export default function Header({ onOpenEnrollModal }: HeaderProps) {
   const { t } = useTranslation('chrome');
   const { t: tGlossary } = useTranslation('glossary');
+  const { t: tUi } = useTranslation('ui');
   const { user, logout } = useAuth();
 
   const role = effectiveRole(user);
-  // A read-only role has nothing to add, so the action is not offered to it.
-  const canAdd = roleTier(role) !== 'read';
   const name = user?.username ?? '';
 
   return (
     <div className="flex min-w-0 items-center gap-2">
       <CommandMenu onAddDevice={onOpenEnrollModal} />
-
-      {canAdd && (
-        <Button variant="secondary" size="sm" onClick={onOpenEnrollModal} aria-label={t('header.enrol')}>
-          <PlusCircle aria-hidden="true" className="h-3.5 w-3.5" />
-          <span className="hidden xl:inline">{t('header.enrol')}</span>
-        </Button>
-      )}
-
-      <LanguageSwitcher />
-      <ThemeToggle />
 
       {/* A panel, not a bare toggle: Escape and a click outside close it, focus
           moves into it when it opens and returns to the bell when it closes. */}
@@ -87,6 +77,16 @@ export default function Header({ onOpenEnrollModal }: HeaderProps) {
         <div className="px-3 py-2">
           <div className="text-body font-medium text-ink">{name}</div>
           {role && <div className="text-caption text-muted">{tGlossary(`roles.${role}.term`)}</div>}
+        </div>
+        <hr className="my-1 border-rule" />
+        {/* Preferences. They change a setting and leave the menu open. */}
+        <div data-keep-open="" className="flex items-center justify-between gap-3 px-3 py-1.5">
+          <span className="text-caption text-muted">{tUi('language.label')}</span>
+          <LanguageSwitcher variant="buttons" />
+        </div>
+        <div data-keep-open="" className="flex items-center justify-between gap-3 px-3 py-1.5">
+          <span className="text-caption text-muted">{tUi('theme.label')}</span>
+          <ThemeToggle />
         </div>
         <hr className="my-1 border-rule" />
         {/* The member's own space: every role has one, and it is where a phone is

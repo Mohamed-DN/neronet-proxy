@@ -23,7 +23,7 @@ export interface DisclosureProps {
   children: React.ReactNode;
 }
 
-const FOCUSABLE = 'a[href], button:not([disabled])';
+const FOCUSABLE = 'a[href], button:not([disabled]), select';
 
 /**
  * A button that shows and hides a panel: the WAI-ARIA disclosure pattern, which
@@ -114,7 +114,15 @@ export function Disclosure({
     // the link leads to moves it to its own heading.
     const onClick = (event: MouseEvent) => {
       const target = event.target as Element;
-      if (kind === 'menu' && panel.current?.contains(target) && target.closest(FOCUSABLE)) setOpen(false);
+      // A control inside `data-keep-open` (a language or theme choice) changes a
+      // setting and leaves the menu where it is.
+      if (
+        kind === 'menu' &&
+        panel.current?.contains(target) &&
+        target.closest(FOCUSABLE) &&
+        !target.closest('[data-keep-open]')
+      )
+        setOpen(false);
     };
 
     element.addEventListener('keydown', onKeyDown);

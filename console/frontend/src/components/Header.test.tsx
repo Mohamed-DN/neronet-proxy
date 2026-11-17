@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -34,16 +34,24 @@ describe('Header', () => {
     expect(screen.queryByRole('searchbox')).toBeNull();
   });
 
-  it('hides Add device for an auditor, who can only read', () => {
-    renderHeader('auditor');
-
-    expect(screen.queryByRole('button', { name: i18n.t('header.enrol', { ns: 'chrome' }) })).toBeNull();
-  });
-
-  it('shows Add device for an owner', () => {
+  it('has no add-device button in the bar and no language or theme control outside the account menu', () => {
     renderHeader('owner');
 
-    expect(screen.getByRole('button', { name: i18n.t('header.enrol', { ns: 'chrome' }) })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add device|aggiungi dispositivo/i })).toBeNull();
+    expect(screen.queryByRole('radiogroup')).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('keeps language and theme in the account menu, and a choice there leaves the menu open', async () => {
+    renderHeader('owner');
+
+    await userEvent.click(screen.getByRole('button', { name: /^Account menu/ }));
+    const theme = await screen.findByRole('radiogroup', { name: i18n.t('theme.label', { ns: 'ui' }) });
+    expect(screen.getByRole('group', { name: i18n.t('language.label', { ns: 'ui' }) })).toBeInTheDocument();
+
+    await userEvent.click(within(theme).getByRole('radio', { name: i18n.t('theme.dark', { ns: 'ui' }) }));
+    expect(within(theme).getByRole('radio', { name: i18n.t('theme.dark', { ns: 'ui' }) })).toBeChecked();
+    expect(screen.getByRole('radiogroup', { name: i18n.t('theme.label', { ns: 'ui' }) })).toBeInTheDocument();
   });
 
   it('shows the role label from the organisation role in the account menu', async () => {
