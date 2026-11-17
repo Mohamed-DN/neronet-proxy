@@ -5,7 +5,8 @@
 #   - a Dockerfile that hides a failed Go build behind `|| echo` or `|| true`;
 #   - the Helm chart shipping the `honeypot` sidecar, whose image is built nowhere,
 #     in its default render;
-#   - the relay manifests passing DECOY_DOMAIN, which no relay binary reads.
+#   - the relay manifests passing DECOY_DOMAIN, which no relay binary reads;
+#   - config keys and docs that claim a relay decoy (anti-probing), which is not built.
 set -eu
 cd "$(dirname "$0")/../.."
 fail=0
@@ -31,6 +32,13 @@ for f in "$sts" k8s/base/relay-statefulset.yaml; do
     echo "FAIL  $f passes DECOY_DOMAIN, which no relay binary reads"; fail=1
   fi
 done
+
+if grep -nE '^SOVEREIGN_DECOY_(DOMAIN|TITLE)=' .env.example; then
+  echo "FAIL  .env.example sets a relay decoy key that nothing reads"; fail=1
+fi
+if grep -nE 'active probing decoy' BUSINESS_AND_ROADMAP.md; then
+  echo "FAIL  BUSINESS_AND_ROADMAP.md claims a relay probing decoy that is not built"; fail=1
+fi
 
 [ "$fail" = 0 ] && echo "PASS  infrastructure files make no claim the repository does not back"
 exit "$fail"

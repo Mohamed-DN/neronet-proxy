@@ -783,7 +783,7 @@ The client routes application bundle traffic through the local userspace netstac
 
 $$\text{Throughput} \ge 940\text{ Mbps}, \quad \text{Tunnel Overhead} \le 2.1\%$$
 
-All payload data is encrypted end-to-end with ChaCha20-Poly1305 over UDP direct peer paths (or camouflaged DERP-v4 relays on port 443 with active probing decoy when direct NAT traversal is restricted).
+All payload data is encrypted end-to-end with ChaCha20-Poly1305 over UDP direct peer paths (or DERP-v4 relays on port 443 when direct NAT traversal is restricted; the relay has no anti-probing decoy yet, it is planned).
 
 ---
 
