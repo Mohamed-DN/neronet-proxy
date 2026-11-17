@@ -559,6 +559,7 @@ module.exports = {
   expireRelayHomes,
   reconcileCeiling,
   planFor,
+  enabledRelays,
   udpReachable,
   listRelays,
   createRelay,

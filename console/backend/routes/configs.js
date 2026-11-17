@@ -16,6 +16,7 @@ const {
 const { broadcastNodeEvent } = require('../services/TopologySync');
 const EnrollmentService = require('../services/EnrollmentService');
 const { bumpNetmap } = require('../services/AclEngine');
+const TransportPolicyService = require('../services/TransportPolicyService');
 
 // The error handler drops `code` on 5xx, and clients map these two to a message.
 function sendHonestFailure(res, err) {
@@ -133,7 +134,8 @@ router.post('/generate', async (req, res, next) => {
         role: nodeRole,
         countryCode: nodeCountry,
         onionHops: hops,
-        onionRoutingEnabled: onionEnabled
+        onionRoutingEnabled: onionEnabled,
+        relays: await TransportPolicyService.enabledRelays(client)
       });
 
       qrCodeDataUrl = await generateQrCodeDataUrl(wgConf);
@@ -247,7 +249,8 @@ router.get('/noise/:id', async (req, res, next) => {
       role: node.role,
       countryCode: node.country_code,
       onionHops: hops,
-      onionRoutingEnabled: onionEnabled
+      onionRoutingEnabled: onionEnabled,
+      relays: await TransportPolicyService.enabledRelays()
     });
 
     return res.status(200).json({

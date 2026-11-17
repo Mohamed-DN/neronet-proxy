@@ -125,7 +125,8 @@ function buildNoiseJsonProfile({
   countryCode = 'US',
   authToken,
   onionHops,
-  onionRoutingEnabled
+  onionRoutingEnabled,
+  relays = []
 }) {
   let hops = 0;
   if (onionHops !== undefined) {
@@ -156,32 +157,7 @@ function buildNoiseJsonProfile({
       psk_hex: presharedKeyHex,
       rekey_interval_sec: 3600
     },
-    relays: [
-      {
-        relay_id: 'relay-oci-us-ashburn',
-        hostname: 'relay-us.neronet.darknero.com',
-        region: 'us-ashburn-1',
-        tcp_port: 443,
-        udp_port: 3478,
-        supports_http3: true
-      },
-      {
-        relay_id: 'relay-hetzner-eu-fsn',
-        hostname: 'relay-eu.neronet.darknero.com',
-        region: 'eu-central-1',
-        tcp_port: 443,
-        udp_port: 3478,
-        supports_http3: true
-      },
-      {
-        relay_id: 'relay-oci-ap-tokyo',
-        hostname: 'relay-ap.neronet.darknero.com',
-        region: 'ap-tokyo-1',
-        tcp_port: 443,
-        udp_port: 3478,
-        supports_http3: true
-      }
-    ],
+    relays: (Array.isArray(relays) ? relays : []).map((r) => ({ relay_id: r.relay_id, url: r.url })),
     routing: {
       egress_mode: role || 'CLIENT_ORIGIN',
       preferred_countries: countryCode ? [countryCode, 'US', 'DE'] : ['US', 'DE', 'CH'],
