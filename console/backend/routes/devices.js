@@ -500,6 +500,7 @@ router.post('/profile', async (req, res, next) => {
     let organizationId;
     let vips;
     let searchDomain;
+    let storedDnsName;
     await EnrollmentService.transaction(async (client) => {
       const actor = await EnrollmentService.authorizeConsole(
         client,
@@ -511,26 +512,29 @@ router.post('/profile', async (req, res, next) => {
       searchDomain = effectiveSearchDomain(org.rows[0] && org.rows[0].search_domain, org.rows[0] && org.rows[0].slug);
       vips = await allocateNextVip(client);
       // The name other devices reach this one by (ADR 0034), unique in the organisation.
-      await DeviceNameService.insertWithDnsName(client, { organizationId, name: label, searchDomain }, (dnsName) =>
-        client.query(
-          `INSERT INTO nodes (id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6, role,
+      storedDnsName = await DeviceNameService.insertWithDnsName(
+        client,
+        { organizationId, name: label, searchDomain },
+        (dnsName) =>
+          client.query(
+            `INSERT INTO nodes (id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6, role,
                               ip_class, is_healthy, is_quarantined, organization_id, device_kind, exit_node_id,
                               gateway_node_id, dns_name)
            VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9, $10, $11)`,
-          [
-            id,
-            actor.id,
-            label,
-            public_key,
-            preshared_key,
-            vips.overlayIpv4,
-            vips.overlayIpv6,
-            organizationId,
-            exit ? exit.node_id : null,
-            gateway.id,
-            dnsName
-          ]
-        )
+            [
+              id,
+              actor.id,
+              label,
+              public_key,
+              preshared_key,
+              vips.overlayIpv4,
+              vips.overlayIpv6,
+              organizationId,
+              exit ? exit.node_id : null,
+              gateway.id,
+              dnsName
+            ]
+          )
       );
       await AclEngine.bumpNetmap(client);
     });
@@ -571,6 +575,7 @@ router.post('/profile', async (req, res, next) => {
       search_domain: searchDomain,
       ...(exit ? { exit: { node_id: exit.node_id, name: exit.name, kind: exit.kind } } : {}),
       console_url: `https://${req.get('host')}/me`,
+      dns_name: storedDnsName,
       strict_network: strictNetworkOf(req)
     });
   } catch (err) {

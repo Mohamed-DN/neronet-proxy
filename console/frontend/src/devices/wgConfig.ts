@@ -19,6 +19,8 @@ export interface ProfileDeviceResponse {
   /** ADR 0032: present when every packet leaves through this exit (AllowedIPs 0.0.0.0/0, ::/0). */
   exit?: { node_id: string; name: string; kind: 'gateway' | 'node' };
   console_url: string;
+  /** ADR 0034: the stored mesh name, unique in the organisation; null or absent when the device has none. */
+  dns_name?: string | null;
   /**
    * The strict-network tunnel (WireGuard inside a WebSocket on port 443), when the
    * installation runs it. path_prefix is a per-installation secret, given only to a
@@ -69,12 +71,35 @@ export function buildStrictNetworkConfig(
   });
 }
 
+/**
+ * ADR 0029: NeroNet metadata as comment lines before [Interface]. Stock WireGuard apps
+ * ignore them; the NeroNet apps read the device name, the console and the NeroDrop button
+ * from them. The console is written as its origin and only when it is https.
+ */
+function metadataLines(device: ProfileDeviceResponse): string[] {
+  const lines = ['# NeroNet-Profile: 1'];
+  try {
+    const url = new URL(device.console_url);
+    if (url.protocol === 'https:') lines.push(`# NeroNet-Console: ${url.origin}`);
+  } catch {
+    // Not an address: leave the line out rather than write a value the apps would refuse.
+  }
+  lines.push(`# NeroNet-Device: ${device.device_id}`);
+  if (device.dns_name) lines.push(`# NeroNet-DNS-Name: ${device.dns_name}`);
+  return lines;
+}
+
 function configText(
   keys: { privateKey: string; presharedKey: string },
   device: ProfileDeviceResponse,
   peer: { endpoint: string; keepalive: number; mtu?: number }
 ): string {
-  const lines = ['[Interface]', `PrivateKey = ${keys.privateKey}`, `Address = ${device.overlay_ipv4}/32`];
+  const lines = [
+    ...metadataLines(device),
+    '[Interface]',
+    `PrivateKey = ${keys.privateKey}`,
+    `Address = ${device.overlay_ipv4}/32`
+  ];
   if (device.dns.length > 0) {
     // wg-quick and the stock apps read names after the addresses as search domains.
     const entries = device.search_domain ? [...device.dns, device.search_domain] : device.dns;
