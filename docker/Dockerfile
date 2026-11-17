@@ -4,7 +4,10 @@
 # ==============================================================================
 
 # --- Stage 1: Build & Package Binaries ---
-FROM golang:1.26.11-alpine AS builder
+# Built on the build host's own platform and cross-compiled, so a multi-arch build never
+# runs the Go toolchain under emulation (the console bundle hung that way, 16 Nov 2026).
+FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine AS builder
+ARG TARGETARCH
 
 WORKDIR /build
 
@@ -13,7 +16,7 @@ COPY cmd/sovereign-security-daemon /build/cmd/sovereign-security-daemon
 WORKDIR /build/cmd/sovereign-security-daemon
 # A compile gate: the build must succeed or the image build fails. The runtime stage
 # below runs the Python daemon (daemon.py), not this binary, so it is not copied over.
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-security-daemon .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -ldflags="-s -w" -o /build/bin/sovereign-security-daemon .
 
 # --- Stage 2: Hardened Rootless Runtime ---
 FROM alpine:3.20
