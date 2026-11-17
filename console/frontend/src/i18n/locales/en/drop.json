@@ -59,6 +59,11 @@
       "title": "Nothing received",
       "body": "Files sent to you appear here until they expire. To open one you need the link from the person who sent it."
     },
+    "error": {
+      "title": "Received files could not be loaded",
+      "body": "Check the connection and try again. Your files are not lost."
+    },
+    "needsLink": "To open it, paste the link from the sender below. The key is only in that link.",
     "from": "From {{name}}",
     "code": "Code",
     "details": "{{size}} encrypted, until {{date}}",
