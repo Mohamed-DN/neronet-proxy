@@ -46,7 +46,7 @@
   "traffic_stale": "Dati vecchi",
   "traffic_unknown": "Non ancora disponibili",
   "trafficCoverage": "Dati da {{measured}} dispositivi su {{total}} negli ultimi {{seconds}} secondi",
-  "answeringOf": "{live} su {total}",
+  "answeringOf": "{{live}} su {{total}}",
   "noTraffic": "Nessun traffico registrato in questo periodo",
   "noTrafficDesc": "Non risulta traffico: il grafico compare quando almeno due misure rilevano dati in transito.",
   "noSamples": "Nessun dato per questo periodo",

@@ -51,4 +51,18 @@ describe('locale files', () => {
   it('a key missing from a page namespace falls back to ui', () => {
     expect(i18n.t('state.notMeasured', { ns: 'nodes' })).toBe('Not measured');
   });
+
+  it('no string uses a single-brace placeholder that i18next would print as is', () => {
+    const bad: string[] = [];
+    const scan = (value: unknown, where: string) => {
+      if (typeof value === 'string') {
+        if (/(?<!\{)\{[A-Za-z_][\w.]*\}(?!\})/.test(value)) bad.push(`${where}: ${value}`);
+      } else if (value && typeof value === 'object') {
+        for (const [key, child] of Object.entries(value as Record<string, unknown>)) scan(child, `${where}.${key}`);
+      }
+    };
+    for (const [path, file] of [...Object.entries(en), ...Object.entries(itLocale)])
+      scan(file, fileName(path) + ` (${path.split('/')[2]})`);
+    expect(bad).toEqual([]);
+  });
 });
