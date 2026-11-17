@@ -52,6 +52,18 @@ describe('DownloadApps', () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/downloads\/manifest\.json$/);
   });
 
+  it('shows the well-formed apps even when another entry in the manifest is malformed', async () => {
+    const mixed = { apps: [{ platform: 'windows', version: 3 }, ...MANIFEST.apps] };
+    stubFetch(
+      () => new Response(JSON.stringify(mixed), { status: 200, headers: { 'content-type': 'application/json' } })
+    );
+
+    renderApps();
+
+    expect(await screen.findByRole('link', { name: 'Download for Android' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Download for Windows' })).toBeNull();
+  });
+
   it('an HTML answer (SPA fallback) counts as not published', async () => {
     stubFetch(
       () => new Response('<!doctype html><html></html>', { status: 200, headers: { 'content-type': 'text/html' } })

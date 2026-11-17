@@ -1,8 +1,9 @@
 /*
  * The apps the console's operators publish for a person to install. The list
  * comes from one manifest file served beside the console, so nothing in the
- * code names a download address. Until ops publish the manifest, every
- * platform reads "not published yet".
+ * code names a download address. Until ops publish the manifest (the folder
+ * served by docker-compose.downloads.yml), every platform reads "not published
+ * yet"; a platform that is in the manifest shows its download.
  */
 
 export const PUBLISHED_PLATFORMS = ['android', 'windows', 'macos', 'linux'] as const;
@@ -53,6 +54,6 @@ export async function fetchPublishedApps(fetchImpl: typeof fetch = fetch): Promi
     return [];
   }
   if (typeof body !== 'object' || body === null || !Array.isArray((body as { apps?: unknown }).apps)) return [];
-  const apps = (body as { apps: unknown[] }).apps;
-  return apps.every(isPublishedApp) ? apps : [];
+  // One malformed entry must not hide the others: keep every well-formed app.
+  return (body as { apps: unknown[] }).apps.filter(isPublishedApp);
 }
