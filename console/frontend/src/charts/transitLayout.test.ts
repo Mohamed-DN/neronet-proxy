@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { STEP, isOctilinear, layoutTransit, stationsPerRow } from './transitLayout';
+import { MAX_STEP, STEP, isOctilinear, layoutTransit, stationsPerRow } from './transitLayout';
 
 const ids = (n: number, prefix = 's') => Array.from({ length: n }, (_, k) => `${prefix}${k}`);
 
@@ -39,9 +39,17 @@ describe('layoutTransit', () => {
   });
 
   it('alternates labels above and below so neighbours have room, and keeps stations a step apart', () => {
-    const [line] = layoutTransit([{ key: 'a', stationIds: ids(4) }], 900).lines;
+    const layout = layoutTransit([{ key: 'a', stationIds: ids(4) }], 900);
+    const [line] = layout.lines;
     expect(line!.stations.map((s) => s.side)).toEqual(['above', 'below', 'above', 'below']);
-    expect(line!.stations[1]!.x - line!.stations[0]!.x).toBe(STEP);
+    expect(line!.stations[1]!.x - line!.stations[0]!.x).toBe(layout.step);
+  });
+
+  it('spreads a sparse map to use the width, never closer than STEP nor wider than MAX_STEP', () => {
+    expect(layoutTransit([{ key: 'a', stationIds: ids(3) }], 1300).step).toBe(MAX_STEP);
+    expect(layoutTransit([{ key: 'a', stationIds: ids(12) }], 1000).step).toBeGreaterThanOrEqual(STEP);
+    expect(layoutTransit([{ key: 'a', stationIds: ids(40) }], 1000).step).toBe(STEP);
+    expect(layoutTransit([{ key: 'a', stationIds: ids(1) }], 1000).step).toBe(STEP);
   });
 
   it('gives lanes their own vertical space and grows the drawing with them', () => {

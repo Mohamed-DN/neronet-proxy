@@ -20,7 +20,12 @@ import {
   NotMeasured,
   PageHeader,
   Select,
+  STATION_KINDS,
+  STATION_TONE,
+  Segmented,
   Skeleton,
+  StationStatus,
+  StationSymbol,
   Stat,
   StatusBadge,
   Switch,
@@ -32,6 +37,7 @@ import {
   useToast
 } from '../ui';
 import { useTheme } from '../theme/ThemeProvider';
+import { TransitMap } from '../charts/TransitMap';
 
 /*
  * Every primitive, in every state, on one page.
@@ -43,10 +49,12 @@ import { useTheme } from '../theme/ThemeProvider';
  */
 
 const TOKEN_GROUPS = [
-  { name: 'Surfaces', tokens: ['surface', 'surface-raised', 'surface-sunken', 'surface-hover', 'surface-inverse'] },
-  { name: 'Lines', tokens: ['border-subtle', 'border', 'border-strong'] },
-  { name: 'Text', tokens: ['content', 'content-muted', 'content-subtle', 'content-inverse'] },
-  { name: 'Accent', tokens: ['accent-subtle', 'accent', 'accent-strong', 'accent-contrast'] },
+  { name: 'Sheet, plate and ink', tokens: ['sheet', 'plate', 'ink', 'ink-muted', 'rule'] },
+  { name: 'Signal (the one accent)', tokens: ['signal', 'on-signal'] },
+  {
+    name: 'Lines (sub-networks, never status)',
+    tokens: ['line-red', 'line-green', 'line-blue', 'line-orange', 'line-violet', 'line-sky']
+  },
   { name: 'Success', tokens: ['success-subtle', 'success', 'success-strong'] },
   { name: 'Warning', tokens: ['warning-subtle', 'warning', 'warning-strong'] },
   { name: 'Danger', tokens: ['danger-subtle', 'danger', 'danger-strong'] },
@@ -61,20 +69,86 @@ const TOKEN_GROUPS = [
 // Written out rather than composed, because Tailwind scans the source for
 // complete class names and would not emit a class built at run time.
 const TYPE_SCALE = [
-  ['text-display', 'Display 24px'],
-  ['text-title', 'Title 18px'],
-  ['text-heading', 'Heading 16px'],
+  ['text-figure', 'Figure 40px, the single overview figure'],
+  ['text-page', 'Page title 28px'],
+  ['text-title', 'Title 20px'],
+  ['text-lead', 'Lead 16px'],
   ['text-body', 'Body 14px'],
-  ['text-label', 'Label 13px'],
-  ['text-caption', 'Caption 12px'],
-  ['text-micro', 'Micro 11px']
+  ['text-caption', 'Caption 12px']
 ];
 
+const STATION_WORDS = {
+  service: 'In service',
+  unmeasured: 'Not measured',
+  blocked: 'Blocked',
+  interrupted: 'Interrupted',
+  interchange: 'Gateway (interchange)',
+  terminus: 'Exit (terminus)'
+};
+
 const NODES = [
-  { id: 'relay-de', region: 'Frankfurt', risk: 12, status: 'ok' },
-  { id: 'relay-fr', region: 'Paris', risk: null, status: 'not-measured' },
-  { id: 'client-es', region: 'Madrid', risk: 78, status: 'critical' },
-  { id: 'derp-eu', region: 'Amsterdam', risk: 41, status: 'warning' }
+  { id: 'laptop-anna', region: 'Milano', risk: 12, status: 'service' },
+  { id: 'phone-luca', region: 'Roma', risk: null, status: 'unmeasured' },
+  { id: 'tablet-sala', region: 'Torino', risk: 78, status: 'blocked' },
+  { id: 'gateway-nord', region: 'Bologna', risk: 41, status: 'interrupted' }
+];
+
+const MAP_LINES = [
+  {
+    key: 'main',
+    heading: 'Main sub-network',
+    detail: '4 devices',
+    colour: 'blue',
+    stations: [
+      { id: 'a', label: 'laptop-anna', symbol: 'service', description: 'laptop-anna, in service' },
+      { id: 'b', label: 'gateway-nord', symbol: 'interchange', description: 'gateway-nord, gateway, in service' },
+      {
+        id: 'c',
+        label: 'phone-luca',
+        symbol: 'unmeasured',
+        tone: STATION_TONE.unmeasured,
+        description: 'phone-luca, not measured'
+      },
+      { id: 'd', label: 'exit-milano', symbol: 'terminus', description: 'exit-milano, exit, in service' }
+    ]
+  },
+  {
+    key: 'office',
+    heading: 'Office',
+    detail: '3 devices',
+    colour: 'green',
+    stations: [
+      {
+        id: 'e',
+        label: 'tablet-sala',
+        symbol: 'blocked',
+        tone: STATION_TONE.blocked,
+        description: 'tablet-sala, blocked'
+      },
+      {
+        id: 'f',
+        label: 'printer-hub',
+        symbol: 'interrupted',
+        tone: STATION_TONE.interrupted,
+        description: 'printer-hub, interrupted'
+      },
+      { id: 'g', label: 'laptop-marta', symbol: 'service', description: 'laptop-marta, in service' }
+    ]
+  },
+  {
+    // A long line wraps at the right edge with two 45-degree chamfers and runs back.
+    key: 'branch',
+    heading: 'Branch offices',
+    detail: '16 devices',
+    colour: 'orange',
+    stations: Array.from({ length: 16 }, (_, k) => ({
+      id: `b${k}`,
+      label: `desk-${String(k + 1).padStart(2, '0')}`,
+      symbol: k === 6 ? 'interrupted' : 'service',
+      tone: k === 6 ? STATION_TONE.interrupted : undefined,
+      description: `desk-${k + 1}, ${k === 6 ? 'interrupted' : 'in service'}`
+    }))
+  }
 ];
 
 function Section({ id, title, description, children }) {
@@ -124,14 +198,14 @@ function Controls() {
         <CardHeader title="Buttons" />
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" icon={Plus}>
-            Enrol device
+            Add a device
           </Button>
           <Button variant="secondary" icon={RefreshCw}>
             Refresh
           </Button>
           <Button variant="ghost">Cancel</Button>
           <Button variant="danger" icon={Trash2}>
-            Revoke
+            Disconnect
           </Button>
           <Button variant="primary" loading loadingLabel="Saving">
             Saving
@@ -148,8 +222,8 @@ function Controls() {
       <Card>
         <CardHeader title="Fields" />
         <div className="flex flex-col gap-4">
-          <FormField label="Node name" hint="Shown in the fleet list" required>
-            <Input placeholder="relay-de" />
+          <FormField label="Device name" hint="Shown in the devices list" required>
+            <Input placeholder="laptop-anna" />
           </FormField>
           <FormField label="Overlay address" error="Outside the assigned range">
             <Input mono defaultValue="10.0.0.1" />
@@ -166,16 +240,24 @@ function Controls() {
             />
           </FormField>
           <Checkbox
-            label="Quarantine on a failed posture check"
+            label="Block a device that fails a security check"
             checked={checked}
             onChange={(e) => setChecked(e.target.checked)}
           />
-          <Switch checked={onion} onCheckedChange={setOnion} label="Onion routing" description="Three-hop circuits" />
+          <Switch
+            checked={onion}
+            onCheckedChange={setOnion}
+            label="Private routing"
+            description="Traffic passes through three relays"
+          />
         </div>
       </Card>
 
       <Card>
-        <CardHeader title="Badges and status" description="Status is colour, icon and word together." />
+        <CardHeader
+          title="Badges"
+          description="Badges tag a kind of thing. A status is never a badge: it is a station symbol and a word."
+        />
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status="ok" />
           <StatusBadge status="warning" />
@@ -200,14 +282,16 @@ function Controls() {
       <Card>
         <CardHeader title="Metrics" description="A value that was never reported says so." />
         <div className="grid grid-cols-2 gap-4">
-          <Stat label="Enrolled nodes" value={124} unit="nodes" delta={{ value: 6, label: '+6 this week' }} />
-          <Stat label="Reachable" value={118} unit="nodes" delta={{ value: -2, label: '-2 this week' }} />
-          <Stat label="Circuits built" value={null} hint="Circuits are not counted anywhere." />
-          <Stat label="Quarantined" value={0} unit="nodes" />
+          <Stat label="Registered devices" value={124} unit="devices" delta={{ value: 6, label: '+6 this week' }} />
+          <Stat label="In service" value={118} unit="devices" delta={{ value: -2, label: '-2 this week' }} />
+          <Stat label="Traffic now" value={null} hint="A second reading is needed to calculate speed." />
+          <Stat label="Blocked" value={0} unit="devices" />
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button onClick={() => notify('Access rules saved', { tone: 'success' })}>Show a confirmation</Button>
-          <Button onClick={() => notify('Revocation failed: 502 from the control plane', { tone: 'danger' })}>
+          <Button onClick={() => notify('Rules saved', { tone: 'success' })}>Show a confirmation</Button>
+          <Button
+            onClick={() => notify('The device was not disconnected: the server did not answer', { tone: 'danger' })}
+          >
             Show a failure
           </Button>
         </div>
@@ -238,16 +322,16 @@ function Overlays() {
         <Dialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
-          title="Cryptographic profile"
-          description="The enrolment token is shown once."
+          title="Connection profile"
+          description="The setup code is shown once."
           footer={
             <Button variant="primary" onClick={() => setDialogOpen(false)}>
               Done
             </Button>
           }
         >
-          <FormField label="Node name">
-            <Input placeholder="relay-de" />
+          <FormField label="Device name">
+            <Input placeholder="laptop-anna" />
           </FormField>
         </Dialog>
 
@@ -255,9 +339,9 @@ function Overlays() {
           open={confirmOpen}
           onOpenChange={setConfirmOpen}
           tone="danger"
-          title="Revoke relay-de"
-          description="The node loses its key and has to enrol again."
-          confirmPhrase="relay-de"
+          title="Disconnect laptop-anna"
+          description="The device loses its access and has to be added again."
+          confirmPhrase="laptop-anna"
           onConfirm={() => setConfirmOpen(false)}
         />
       </Card>
@@ -265,18 +349,18 @@ function Overlays() {
       <Card>
         <CardHeader title="Tabs" />
         <Tabs
-          label="Node detail"
+          label="Device detail"
           value={tab}
           onValueChange={setTab}
           items={[
             { value: 'routes', label: 'Routes', content: <p className="text-body text-muted">Route table</p> },
             {
               value: 'acls',
-              label: 'ACLs',
+              label: 'Rules',
               badge: <Badge>12</Badge>,
               content: <p className="text-body text-muted">Access rules</p>
             },
-            { value: 'audit', label: 'Audit', content: <p className="text-body text-muted">Audit log</p> }
+            { value: 'audit', label: 'Log', content: <p className="text-body text-muted">Event log</p> }
           ]}
         />
       </Card>
@@ -297,7 +381,7 @@ function DataStates() {
       </Card>
       <Card>
         <CardHeader title="Error" />
-        <ErrorState detail="502 from the control plane" onRetry={() => {}} />
+        <ErrorState detail="The server did not answer" onRetry={() => {}} />
       </Card>
       <Card>
         <CardHeader title="Not measured and not implemented" />
@@ -312,13 +396,17 @@ function DataStates() {
 
 function Tables() {
   const [sort, setSort] = useState({ columnId: 'id', direction: 'asc' });
-  const [selected, setSelected] = useState(['relay-de']);
-  const [density, setDensity] = useState('comfortable');
+  const [selected, setSelected] = useState(['laptop-anna']);
+  const [density, setDensity] = useState('signage');
 
   const columns = [
-    { id: 'id', header: 'Node', sortable: true, cell: (row) => <CodeText>{row.id}</CodeText> },
-    { id: 'region', header: 'Region', sortable: true, cell: (row) => row.region },
-    { id: 'status', header: 'Status', cell: (row) => <StatusBadge status={row.status} /> },
+    { id: 'id', header: 'Device', sortable: true, cell: (row) => <CodeText>{row.id}</CodeText> },
+    { id: 'region', header: 'City', sortable: true, cell: (row) => row.region },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (row) => <StationStatus kind={row.status}>{STATION_WORDS[row.status]}</StationStatus>
+    },
     {
       id: 'risk',
       header: 'Risk',
@@ -333,12 +421,19 @@ function Tables() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}>
-          Density: {density}
-        </Button>
+        <Segmented
+          label="Row density"
+          value={density}
+          onChange={setDensity}
+          options={[
+            { value: 'compact', label: 'Compact' },
+            { value: 'comfortable', label: 'Comfortable' },
+            { value: 'signage', label: 'Signage (52px rows)' }
+          ]}
+        />
       </div>
       <Table
-        caption="Enrolled nodes"
+        caption="Devices"
         showCaption
         columns={columns}
         rows={rows}
@@ -349,13 +444,13 @@ function Tables() {
         selectedKeys={selected}
         onSelectionChange={setSelected}
       />
-      <Table caption="Nodes, loading" columns={columns} rows={[]} rowKey={(row) => row.id} loading />
+      <Table caption="Devices, loading" columns={columns} rows={[]} rowKey={(row) => row.id} loading />
       <Table
-        caption="Nodes, failed"
+        caption="Devices, failed"
         columns={columns}
         rows={[]}
         rowKey={(row) => row.id}
-        error="502 from the control plane"
+        error="The server did not answer"
         onRetry={() => {}}
       />
     </div>
@@ -366,8 +461,8 @@ export function DesignGallery() {
   const { theme } = useTheme();
 
   return (
-    <div className="min-h-screen bg-surface text-content">
-      <header className="sticky top-0 z-sticky flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-raised px-6 py-3">
+    <div className="min-h-screen bg-sheet text-ink">
+      <header className="sticky top-0 z-sticky flex flex-wrap items-center justify-between gap-3 border-b border-rule bg-plate px-6 py-3">
         <div>
           <h1 className="text-title font-semibold">Design system</h1>
           <p className="text-caption text-subtle">
@@ -388,18 +483,47 @@ export function DesignGallery() {
         />
 
         <Section
+          id="stations"
+          title="Station symbols"
+          description="The only way a status or a kind of place is drawn. Each differs in shape, and always sits beside a word."
+        >
+          <Card>
+            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {STATION_KINDS.map((kind) => (
+                <li key={kind} className="flex items-center gap-3">
+                  <StationSymbol kind={kind} size={24} className={STATION_TONE[kind]} />
+                  <span className="text-body text-ink">{STATION_WORDS[kind]}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </Section>
+
+        <Section
+          id="map"
+          title="The map"
+          description="Sub-networks are lines in the six line colours, devices are stations. Labels are horizontal ink; segments are 0, 45 or 90 degrees."
+        >
+          <div className="rounded-plate border border-rule bg-sheet px-2 py-3">
+            <TransitMap lines={MAP_LINES} onOpenStation={() => {}} label="Example network map" />
+          </div>
+        </Section>
+
+        <Section
           id="typography"
           title="Typography"
-          description="Inter for the interface, JetBrains Mono for anything a machine produced."
+          description="Overpass for the interface, Overpass Mono for keys, addresses and codes."
         >
           <Card>
             <div className="flex flex-col gap-2">
               {TYPE_SCALE.map(([className, sample]) => (
                 <p key={className} className={`${className} text-content`}>
-                  {sample} &mdash; 0123456789 relay-de 100.64.0.12
+                  {sample} &mdash; 0123456789 laptop-anna 100.64.0.12
                 </p>
               ))}
-              <p className="font-mono text-body text-content">Mono 14px &mdash; 0123456789 Il1O0 100.64.0.12</p>
+              <p className="font-mono text-body text-content">
+                Overpass Mono 14px &mdash; 0123456789 Il1O0 100.64.0.12
+              </p>
             </div>
           </Card>
         </Section>
@@ -407,7 +531,7 @@ export function DesignGallery() {
         <Section
           id="colour"
           title="Colour"
-          description="Roles, not hues. Contrast is gated by scripts/design/contrast.mjs."
+          description="Roles, not hues: sheet, plate, ink, rule, one signal, six line colours. Contrast is gated by scripts/design/contrast.mjs."
         >
           <Swatches />
         </Section>

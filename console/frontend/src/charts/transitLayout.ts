@@ -36,6 +36,8 @@ export interface PlacedLine {
 }
 
 export interface TransitLayout {
+  /** Distance between two stations along a row, after widening for a sparse map. */
+  step: number;
   width: number;
   height: number;
   lines: PlacedLine[];
@@ -44,16 +46,18 @@ export interface TransitLayout {
 export const PAD = 20;
 /** Horizontal run of the starting 45-degree ramp, which is also its rise. */
 export const RAMP = 14;
-/** Distance between two stations along a row. */
+/** The least distance between two stations along a row. */
 export const STEP = 76;
+/** The most a sparse map spreads its stations, so a short line does not stretch across the page. */
+export const MAX_STEP = 128;
 /** Distance between two rows of one line. */
-export const ROW_GAP = 76;
+export const ROW_GAP = 92;
 /** Chamfer size at a wrap. */
 export const CHAMFER = 12;
 /** Line run past the last station of a row before it turns or ends. */
 export const TAIL = 28;
 
-const HEADING_HEIGHT = 26;
+const HEADING_HEIGHT = 34;
 // Room for a label above the first row of a lane, and below the last.
 const LABEL_ABOVE = 26;
 const LABEL_BELOW = 30;
@@ -70,7 +74,13 @@ export function stationsPerRow(width: number): number {
 
 export function layoutTransit(lines: LayoutLine[], width: number): TransitLayout {
   const perRow = stationsPerRow(width);
-  const rightX = FIRST_X + (perRow - 1) * STEP;
+  // When the longest line fits on one row, the stations spread to use the width
+  // (up to MAX_STEP); otherwise they sit STEP apart and long lines wrap.
+  const longest = lines.reduce((most, line) => Math.max(most, line.stationIds.length), 0);
+  const room = width - FIRST_X - (TAIL + CHAMFER + PAD);
+  const step =
+    longest > 1 && longest <= perRow ? Math.min(MAX_STEP, Math.max(STEP, Math.floor(room / (longest - 1)))) : STEP;
+  const rightX = FIRST_X + (perRow - 1) * step;
   const leftTurn = FIRST_X - TAIL;
   const rightTurn = rightX + TAIL;
 
@@ -92,14 +102,14 @@ export function layoutTransit(lines: LayoutLine[], width: number): TransitLayout
         const index = row * perRow + k;
         stations.push({
           id: line.stationIds[index]!,
-          x: forward ? FIRST_X + k * STEP : rightX - k * STEP,
+          x: forward ? FIRST_X + k * step : rightX - k * step,
           y,
           side: index % 2 === 0 ? 'above' : 'below'
         });
       }
       const dir = forward ? 1 : -1;
       if (row === rows - 1) {
-        const span = Math.max(0, inRow - 1) * STEP;
+        const span = Math.max(0, inRow - 1) * step;
         const lastX = forward ? FIRST_X + span : rightX - span;
         path += ` H ${lastX + dir * TAIL}`;
       } else {
@@ -113,7 +123,7 @@ export function layoutTransit(lines: LayoutLine[], width: number): TransitLayout
     top = firstY + (rows - 1) * ROW_GAP + LABEL_BELOW + LANE_GAP;
   }
 
-  return { width, height: Math.ceil(top + PAD / 2), lines: placed };
+  return { step, width, height: Math.ceil(top + PAD / 2), lines: placed };
 }
 
 /** True when every move of a path is horizontal, vertical or at 45 degrees (used by the tests). */
