@@ -189,7 +189,7 @@ export default function UsersRoute() {
       setSelectedUserForRevoke(null);
     } catch {
       setSelectedUserForRevoke(null);
-      setActionError(t('revokeDialog.failed', 'The user was not signed out. Try again.'));
+      setActionError(t('revokeDialog.failed'));
     }
   };
 
@@ -201,7 +201,7 @@ export default function UsersRoute() {
       setSelectedUserForDelete(null);
     } catch {
       setSelectedUserForDelete(null);
-      setActionError(t('deleteDialog.failed', 'The account was not deleted. Try again.'));
+      setActionError(t('deleteDialog.failed'));
     }
   };
 
@@ -241,7 +241,7 @@ export default function UsersRoute() {
     () => [
       {
         id: 'username',
-        header: t('colUsername', 'Username'),
+        header: t('colUsername'),
         cell: (u) => (
           <div className="flex items-center gap-2">
             <CodeText>{u.username}</CodeText>
@@ -251,46 +251,42 @@ export default function UsersRoute() {
       },
       {
         id: 'email',
-        header: t('colEmail', 'Email'),
+        header: t('colEmail'),
         cell: (u) => <span className="text-muted">{u.email || '—'}</span>
       },
       {
         id: 'role',
-        header: t('colRole', 'Role'),
+        header: t('colRole'),
         cell: (u) => <Badge tone={getRoleBadgeTone(u.role)}>{roleLabel(u.role)}</Badge>
       },
       {
         id: 'status',
-        header: t('colStatus', 'Status'),
+        header: t('colStatus'),
         cell: (u) => <StatusBadge status={u.status === 'active' ? 'ok' : 'warning'} label={u.status} />
       },
       {
         id: 'bypass',
-        header: t('colBypass', 'Split Tunneling'),
+        header: t('colBypass'),
         cell: (u) => (
           <span className="text-xs font-mono text-muted">
             {Array.isArray(u.bypass_apps) && u.bypass_apps.length > 0
               ? t('bypassCount', { count: u.bypass_apps.length })
-              : t('bypassNone', 'All traffic goes through the VPN')}
+              : t('bypassNone')}
           </span>
         )
       },
       {
         id: 'actions',
-        header: t('colActions', 'Actions'),
+        header: t('colActions'),
         cell: (u) => (
           <div className="flex items-center gap-1">
-            <IconButton icon={Sliders} label={t('actionSplit', 'Split Tunnel')} onClick={() => handleOpenSplit(u)} />
-            <IconButton
-              icon={Lock}
-              label={t('actionRevoke', 'Revoke Sessions')}
-              onClick={() => setSelectedUserForRevoke(u)}
-            />
+            <IconButton icon={Sliders} label={t('actionSplit')} onClick={() => handleOpenSplit(u)} />
+            <IconButton icon={Lock} label={t('actionRevoke')} onClick={() => setSelectedUserForRevoke(u)} />
             {canAddUsers && (
               <IconButton
                 icon={Trash2}
                 variant="danger"
-                label={t('actionDelete', 'Delete User')}
+                label={t('actionDelete')}
                 onClick={() => setSelectedUserForDelete(u)}
               />
             )}
@@ -306,7 +302,7 @@ export default function UsersRoute() {
     () => [
       {
         id: 'name',
-        header: t('organizations.colName', 'Organization Name'),
+        header: t('organizations.colName'),
         cell: (o) => (
           <div className="flex items-center gap-2 font-semibold text-content">
             <Building2 className="h-4 w-4 text-accent" />
@@ -316,23 +312,21 @@ export default function UsersRoute() {
       },
       {
         id: 'slug',
-        header: t('organizations.colSlug', 'Slug / Identifier'),
+        header: t('organizations.colSlug'),
         cell: (o) => <CodeText>{o.slug}</CodeText>
       },
       {
         id: 'policy',
-        header: t('organizations.colPolicy', 'Default Policy'),
+        header: t('organizations.colPolicy'),
         cell: (o) => (
           <Badge tone={o.default_policy === 'deny' ? 'warning' : 'success'}>
-            {o.default_policy === 'deny'
-              ? t('organizations.policyDeny', 'Zero-Trust (Deny All)')
-              : t('organizations.policyOpen', 'Open (Allow All)')}
+            {o.default_policy === 'deny' ? t('organizations.policyDeny') : t('organizations.policyOpen')}
           </Badge>
         )
       },
       {
         id: 'staleness',
-        header: t('organizations.colStaleness', 'Max Staleness'),
+        header: t('organizations.colStaleness'),
         numeric: true,
         cell: (o) => <span className="text-muted font-mono">{o.max_netmap_staleness_seconds ?? 60}s</span>
       }
@@ -347,7 +341,7 @@ export default function UsersRoute() {
       label: (
         <span className="flex items-center gap-2">
           <Users className="h-4 w-4" />
-          <span>{t('tabDirectory', 'Directory & RBAC')}</span>
+          <span>{t('tabDirectory')}</span>
         </span>
       ),
       badge: (
@@ -364,23 +358,23 @@ export default function UsersRoute() {
                 id={searchInputId}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('searchPlaceholder', 'Filter by username, email, or role...')}
+                placeholder={t('searchPlaceholder')}
                 className="pl-9"
-                aria-label={t('searchPlaceholder', 'Filter by username, email, or role...')}
+                aria-label={t('searchPlaceholder')}
               />
             </div>
             <div className="text-xs text-muted font-mono">
-              {filteredUsers.length} / {users.length} {t('tableTitle', 'Tenants')}
+              {filteredUsers.length} / {users.length} {t('tableTitle')}
             </div>
           </div>
 
           <Table<UserAccount>
-            caption={t('tableTitle', 'Registered Tenants')}
+            caption={t('tableTitle')}
             columns={userColumns}
             rows={filteredUsers}
             rowKey={(u) => u.id}
             loading={isLoadingUsers}
-            error={isUsersError ? t('error.body', 'Could not load users.') : null}
+            error={isUsersError ? t('error.body') : null}
             onRetry={() => refetchUsers()}
           />
         </Card>
@@ -401,7 +395,7 @@ export default function UsersRoute() {
       label: (
         <span className="flex items-center gap-2">
           <Building2 className="h-4 w-4" />
-          <span>{t('tabOrganizations', 'Organizations')}</span>
+          <span>{t('tabOrganizations')}</span>
         </span>
       ),
       badge: (
@@ -413,12 +407,8 @@ export default function UsersRoute() {
         <Card className="space-y-4">
           <div className="flex items-center justify-between pb-4 border-b border-border">
             <div>
-              <h3 className="text-base font-bold text-content">
-                {t('organizations.tableTitle', 'Active Organizations')}
-              </h3>
-              <p className="text-xs text-muted">
-                {t('organizations.subtitle', 'Isolated organizational units and default mesh policies.')}
-              </p>
+              <h3 className="text-base font-bold text-content">{t('organizations.tableTitle')}</h3>
+              <p className="text-xs text-muted">{t('organizations.subtitle')}</p>
             </div>
             <Button
               variant="secondary"
@@ -431,12 +421,12 @@ export default function UsersRoute() {
                 setIsCreateOrgOpen(true);
               }}
             >
-              {t('organizations.btnCreate', 'New Organization')}
+              {t('organizations.btnCreate')}
             </Button>
           </div>
 
           <Table<Organization>
-            caption={t('organizations.tableTitle', 'Active Organizations')}
+            caption={t('organizations.tableTitle')}
             columns={orgColumns}
             rows={orgs}
             rowKey={(o) => o.id}
@@ -451,7 +441,7 @@ export default function UsersRoute() {
       label: (
         <span className="flex items-center gap-2">
           <Shield className="h-4 w-4" />
-          <span>{t('tabSso', 'SSO & Identity')}</span>
+          <span>{t('tabSso')}</span>
         </span>
       ),
       content: (
@@ -459,25 +449,19 @@ export default function UsersRoute() {
           <div className="flex items-center gap-3">
             <Shield className="h-5 w-5 text-accent" />
             <div>
-              <h3 className="text-base font-bold text-content">{t('sso.title', 'Company single sign-on (SSO)')}</h3>
-              <p className="text-xs text-muted">
-                {t('sso.body', 'Company login systems check the password and pass the groups to the console.')}
-              </p>
+              <h3 className="text-base font-bold text-content">{t('sso.title')}</h3>
+              <p className="text-xs text-muted">{t('sso.body')}</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <div className="p-4 rounded-xl bg-surface border border-border space-y-2">
-              <div className="text-xs font-bold text-muted">{t('sso.status', 'Connection status')}</div>
+              <div className="text-xs font-bold text-muted">{t('sso.status')}</div>
               <NotMeasured />
             </div>
             <div className="p-4 rounded-xl bg-surface border border-border space-y-2">
-              <div className="text-xs font-bold text-muted">
-                {t('sso.groupsTitle', 'How company groups become roles')}
-              </div>
-              <p className="text-xs text-muted">
-                {t('sso.groupsBody', 'Each organisation maps its groups to roles in its own settings.')}
-              </p>
+              <div className="text-xs font-bold text-muted">{t('sso.groupsTitle')}</div>
+              <p className="text-xs text-muted">{t('sso.groupsBody')}</p>
             </div>
           </div>
         </Card>
@@ -489,13 +473,13 @@ export default function UsersRoute() {
     <div className="space-y-6">
       {/* Header */}
       <PageHeader
-        title={t('title', 'User Directory & Access Control')}
+        title={t('title')}
         description={t('description')}
         actions={
           <div className="flex items-center gap-3">
             <IconButton
               icon={RefreshCw}
-              label={t('common.refresh')}
+              label={t('common.refresh', { ns: 'ui' })}
               onClick={() => {
                 refetchUsers();
                 refetchOrgs();
@@ -516,12 +500,10 @@ export default function UsersRoute() {
             )}
             {canAddUsers ? (
               <Button variant="secondary" size="md" icon={UserPlus} onClick={handleOpenProvision}>
-                {t('btnProvision', 'Add user')}
+                {t('btnProvision')}
               </Button>
             ) : (
-              <p className="max-w-xs text-right text-xs text-muted">
-                {t('addOnlySuperAdmin', 'Only a platform administrator can add users.')}
-              </p>
+              <p className="max-w-xs text-right text-xs text-muted">{t('addOnlySuperAdmin')}</p>
             )}
           </div>
         }
@@ -565,56 +547,50 @@ export default function UsersRoute() {
       <Dialog
         open={isProvisionOpen}
         onOpenChange={setIsProvisionOpen}
-        title={t('provisionDialog.title', 'Provision New Tenant Account')}
-        description={t(
-          'provisionDialog.desc',
-          'Create a new user account with role-based permissions and initial WireGuard profile credentials.'
-        )}
+        title={t('provisionDialog.title')}
+        description={t('provisionDialog.desc')}
       >
         <form onSubmit={handleCreateUserSubmit} className="space-y-4 pt-2">
-          <FormField label={t('provisionDialog.username', 'Username')} required>
+          <FormField label={t('provisionDialog.username')} required>
             <Input
               value={newUsername}
               onChange={(e) => setNewUsername(e.target.value)}
-              placeholder={t('provisionDialog.usernamePlaceholder', 'E.g. operator_alpha')}
+              placeholder={t('provisionDialog.usernamePlaceholder')}
               required
             />
           </FormField>
 
-          <FormField label={t('provisionDialog.email', 'Email Address')}>
+          <FormField label={t('provisionDialog.email')}>
             <Input
               type="email"
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
-              placeholder={t('provisionDialog.emailPlaceholder', 'E.g. name@example.org')}
+              placeholder={t('provisionDialog.emailPlaceholder')}
             />
           </FormField>
 
-          <FormField label={t('provisionDialog.password', 'Starting password')} required>
+          <FormField label={t('provisionDialog.password')} required>
             <Input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder={t('provisionDialog.passwordPlaceholder', 'Choose a starting password')}
+              placeholder={t('provisionDialog.passwordPlaceholder')}
             />
           </FormField>
 
-          <FormField
-            label={t('provisionDialog.role', 'Role')}
-            hint={t('provisionDialog.roleHint', 'Organisation roles are set in the member list of the organisation.')}
-          >
+          <FormField label={t('provisionDialog.role')} hint={t('provisionDialog.roleHint')}>
             <Select
               value={newRole}
               onValueChange={(val) => setNewRole(val as any)}
               options={[
-                { value: 'user', label: t('roleUser', 'User') },
-                { value: 'super-admin', label: t('roleSuperAdmin', 'Platform administrator') }
+                { value: 'user', label: t('roleUser') },
+                { value: 'super-admin', label: t('roleSuperAdmin') }
               ]}
             />
           </FormField>
 
           {orgs.length > 0 && (
-            <FormField label={t('provisionDialog.org', 'Organization')}>
+            <FormField label={t('provisionDialog.org')}>
               <Select
                 value={newOrgId}
                 onValueChange={setNewOrgId}
@@ -625,16 +601,14 @@ export default function UsersRoute() {
 
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <Button type="button" variant="secondary" onClick={() => setIsProvisionOpen(false)}>
-              {t('provisionDialog.cancel', 'Cancel')}
+              {t('provisionDialog.cancel')}
             </Button>
             <Button
               type="submit"
               variant="primary"
               disabled={createUserMutation.isPending || !newUsername.trim() || !newPassword}
             >
-              {createUserMutation.isPending
-                ? t('loading.label', 'Creating...')
-                : t('provisionDialog.submit', 'Create User')}
+              {createUserMutation.isPending ? t('creating') : t('provisionDialog.submit')}
             </Button>
           </div>
         </form>
@@ -646,11 +620,8 @@ export default function UsersRoute() {
         onOpenChange={(open) => {
           if (!open) setSelectedUserForSplit(null);
         }}
-        title={t('splitDialog.title', 'Split Tunneling App Bypass')}
-        description={t(
-          'splitDialog.desc',
-          'Select application bundle IDs that bypass the encrypted WireGuard mesh tunnel for direct internet access.'
-        )}
+        title={t('splitDialog.title')}
+        description={t('splitDialog.desc')}
       >
         <div className="space-y-4 pt-2">
           <div className="flex gap-2">
@@ -659,23 +630,23 @@ export default function UsersRoute() {
                 id={newAppInputId}
                 value={newAppInput}
                 onChange={(e) => setNewAppInput(e.target.value)}
-                placeholder={t('splitDialog.newAppPlaceholder', 'e.g. com.spotify.client')}
+                placeholder={t('splitDialog.newAppPlaceholder')}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     handleAddApp();
                   }
                 }}
-                aria-label={t('splitDialog.newApp', 'Add Application Identifier')}
+                aria-label={t('splitDialog.newApp')}
               />
             </div>
             <Button type="button" variant="secondary" size="md" onClick={handleAddApp}>
-              {t('splitDialog.btnAdd', 'Add App')}
+              {t('splitDialog.btnAdd')}
             </Button>
           </div>
 
           <div className="space-y-2">
-            <div className="text-xs font-bold text-muted">{t('splitDialog.presets', 'Common Presets')}</div>
+            <div className="text-xs font-bold text-muted">{t('splitDialog.presets')}</div>
             <div className="flex flex-wrap gap-2">
               {PRESET_BYPASS_APPS.map((preset) => (
                 <button
@@ -692,11 +663,11 @@ export default function UsersRoute() {
 
           <div className="space-y-2">
             <div className="text-xs font-bold text-muted">
-              {t('splitDialog.activeApps', 'Bypassed Applications')} ({bypassApps.length})
+              {t('splitDialog.activeApps')} ({bypassApps.length})
             </div>
             {bypassApps.length === 0 ? (
               <div className="p-4 text-center text-xs text-muted border border-dashed border-border rounded-xl">
-                No apps currently bypassed. All application traffic routes through the mesh tunnel.
+                {t('splitDialog.noApps')}
               </div>
             ) : (
               <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-2 rounded-xl bg-surface border border-border">
@@ -710,7 +681,7 @@ export default function UsersRoute() {
                       type="button"
                       onClick={() => handleRemoveApp(app)}
                       className="text-muted hover:text-danger ml-1"
-                      aria-label={`Remove ${app}`}
+                      aria-label={t('splitDialog.removeApp', { app })}
                     >
                       ×
                     </button>
@@ -722,12 +693,10 @@ export default function UsersRoute() {
 
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <Button type="button" variant="secondary" onClick={() => setSelectedUserForSplit(null)}>
-              {t('splitDialog.cancel', 'Cancel')}
+              {t('splitDialog.cancel')}
             </Button>
             <Button type="button" variant="primary" onClick={handleSaveSplit} disabled={updateSplitMutation.isPending}>
-              {updateSplitMutation.isPending
-                ? t('splitDialog.saving', 'Saving...')
-                : t('splitDialog.save', 'Save Changes')}
+              {updateSplitMutation.isPending ? t('splitDialog.saving') : t('splitDialog.save')}
             </Button>
           </div>
         </div>
@@ -737,12 +706,9 @@ export default function UsersRoute() {
       <ConfirmDialog
         open={Boolean(selectedUserForRevoke)}
         onOpenChange={(open) => !open && setSelectedUserForRevoke(null)}
-        title={t('revokeDialog.title', 'Sign the user out of all devices?')}
-        description={t(
-          'revokeDialog.desc',
-          'The user is signed out everywhere and must sign in again on each device. The account is not deleted.'
-        )}
-        confirmLabel={t('revokeDialog.confirm', 'Sign out of all devices')}
+        title={t('revokeDialog.title')}
+        description={t('revokeDialog.desc')}
+        confirmLabel={t('revokeDialog.confirm')}
         tone="danger"
         busy={revokeSessionsMutation.isPending}
         onConfirm={handleConfirmRevoke}
@@ -752,14 +718,11 @@ export default function UsersRoute() {
       <ConfirmDialog
         open={Boolean(selectedUserForDelete)}
         onOpenChange={(open) => !open && setSelectedUserForDelete(null)}
-        title={t('deleteDialog.title', 'Delete the account of {{name}}?', {
+        title={t('deleteDialog.title', {
           name: selectedUserForDelete?.username ?? ''
         })}
-        description={t(
-          'deleteDialog.desc',
-          "The account and the keys of all its devices are erased. This cannot be undone: the user's devices will stop working."
-        )}
-        confirmLabel={t('deleteDialog.confirm', 'Permanently delete the account')}
+        description={t('deleteDialog.desc')}
+        confirmLabel={t('deleteDialog.confirm')}
         tone="danger"
         busy={deleteUserMutation.isPending}
         onConfirm={handleConfirmDelete}
@@ -769,14 +732,11 @@ export default function UsersRoute() {
       <Dialog
         open={isCreateOrgOpen}
         onOpenChange={setIsCreateOrgOpen}
-        title={t('organizations.createDialog.title', 'Create Multi-Tenant Organization')}
-        description={t(
-          'organizations.createDialog.desc',
-          'Create a separate organisation with its own devices and default rule.'
-        )}
+        title={t('organizations.createDialog.title')}
+        description={t('organizations.createDialog.desc')}
       >
         <form onSubmit={handleCreateOrgSubmit} className="space-y-4 pt-2">
-          <FormField label={t('organizations.createDialog.name', 'Organization Name')} required>
+          <FormField label={t('organizations.createDialog.name')} required>
             <Input
               value={newOrgName}
               onChange={(e) => {
@@ -785,34 +745,36 @@ export default function UsersRoute() {
                   setNewOrgSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '-'));
                 }
               }}
-              placeholder="e.g. Acme Defense Cyber"
+              placeholder={t('organizations.createDialog.namePlaceholder')}
               required
             />
           </FormField>
 
-          <FormField label={t('organizations.createDialog.slug', 'Slug Identifier')}>
-            <Input value={newOrgSlug} onChange={(e) => setNewOrgSlug(e.target.value)} placeholder="e.g. acme-defense" />
+          <FormField label={t('organizations.createDialog.slug')}>
+            <Input
+              value={newOrgSlug}
+              onChange={(e) => setNewOrgSlug(e.target.value)}
+              placeholder={t('organizations.createDialog.slugPlaceholder')}
+            />
           </FormField>
 
-          <FormField label={t('organizations.createDialog.defaultPolicy', 'Default Mesh Policy')}>
+          <FormField label={t('organizations.createDialog.defaultPolicy')}>
             <Select
               value={newOrgPolicy}
               onValueChange={(val) => setNewOrgPolicy(val as any)}
               options={[
-                { value: 'open', label: t('organizations.policyOpen', 'Open (Allow All)') },
-                { value: 'deny', label: t('organizations.policyDeny', 'Zero-Trust (Deny All)') }
+                { value: 'open', label: t('organizations.policyOpen') },
+                { value: 'deny', label: t('organizations.policyDeny') }
               ]}
             />
           </FormField>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <Button type="button" variant="secondary" onClick={() => setIsCreateOrgOpen(false)}>
-              {t('organizations.createDialog.cancel', 'Cancel')}
+              {t('organizations.createDialog.cancel')}
             </Button>
             <Button type="submit" variant="primary" disabled={createOrgMutation.isPending || !newOrgName.trim()}>
-              {createOrgMutation.isPending
-                ? t('loading.label', 'Creating...')
-                : t('organizations.createDialog.submit', 'Create Organization')}
+              {createOrgMutation.isPending ? t('creating') : t('organizations.createDialog.submit')}
             </Button>
           </div>
         </form>
