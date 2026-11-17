@@ -48,10 +48,35 @@ function secretsMatch(provided, expected) {
 
   return crypto.timingSafeEqual(a, b);
 }
-const DEFAULT_ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'turn:turn.internal.darknero.com:3478', username: 'neronet', credential: 'turn_secret_token' }
-];
+
+/** STUN carries no credential. TURN is added only when configured (see buildIceServers). */
+const DEFAULT_ICE_SERVERS = Object.freeze([Object.freeze({ urls: 'stun:stun.l.google.com:19302' })]);
+
+const DEFAULT_TURN_TTL_SECONDS = 3600;
+
+/**
+ * ICE servers for one session. TURN needs SOVEREIGN_TURN_URLS (comma separated) and
+ * SOVEREIGN_TURN_SECRET (coturn static-auth-secret); with either missing the answer
+ * is STUN only. The credential follows the coturn use-auth-secret REST scheme:
+ * username "<expiry-unix>:<session-id>", credential base64(HMAC-SHA1(secret, username)).
+ * It is bound to the session and expires, so a leaked one is not a standing TURN login.
+ */
+function buildIceServers(sessionId, nowSeconds = Math.floor(Date.now() / 1000)) {
+  const urls = String(process.env.SOVEREIGN_TURN_URLS || '')
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean);
+  const secret = process.env.SOVEREIGN_TURN_SECRET || '';
+  if (urls.length === 0 || secret === '') {
+    return DEFAULT_ICE_SERVERS.map((s) => ({ ...s }));
+  }
+
+  const ttl = Number(process.env.SOVEREIGN_TURN_TTL_SECONDS);
+  const lifetime = Number.isInteger(ttl) && ttl > 0 && ttl <= 86400 ? ttl : DEFAULT_TURN_TTL_SECONDS;
+  const username = `${nowSeconds + lifetime}:${sessionId}`;
+  const credential = crypto.createHmac('sha1', secret).update(username).digest('base64');
+  return [...DEFAULT_ICE_SERVERS.map((s) => ({ ...s })), { urls, username, credential }];
+}
 
 function parseJson(val, def = {}) {
   if (!val) return def;
@@ -267,7 +292,7 @@ async function projectDevice(instanceId, actor) {
     session_id,
     device_id: cpc.device_id,
     signaling_url: cpc.signaling_url || DEFAULT_SIGNALING_URL,
-    ice_servers: DEFAULT_ICE_SERVERS,
+    ice_servers: buildIceServers(session_id),
     stream_token,
     status: 'ready'
   };
@@ -450,5 +475,6 @@ module.exports = {
   authenticateGateway,
   ensureCloudPcSchema,
   DEFAULT_SIGNALING_URL,
-  DEFAULT_ICE_SERVERS
+  DEFAULT_ICE_SERVERS,
+  buildIceServers
 };
