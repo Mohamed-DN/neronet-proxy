@@ -1,6 +1,7 @@
 package com.darknero.neronet.ui.home
 
 import androidx.annotation.StringRes
+import com.darknero.neronet.NeroDrop
 import com.darknero.neronet.PeerSummary
 import com.darknero.neronet.ProfileSummary
 import com.darknero.neronet.R
@@ -50,6 +51,8 @@ data class HomeUiState(
     val errorAction: ErrorAction?,
     val details: List<DetailRow>,
     val consoleUrl: String?,
+    /** The NeroDrop page (console origin plus /drop); null when the profile has no console. */
+    val dropUrl: String?,
 )
 
 /** One row of the plan's status table. */
@@ -128,6 +131,7 @@ fun buildHomeUiState(
         errorAction = error?.second,
         details = profile?.let { detailRows(it, phase is TunnelPhase.Connected, stats, latestAge) }.orEmpty(),
         consoleUrl = profile?.consoleUrl,
+        dropUrl = NeroDrop.url(profile?.consoleUrl),
     )
 }
 

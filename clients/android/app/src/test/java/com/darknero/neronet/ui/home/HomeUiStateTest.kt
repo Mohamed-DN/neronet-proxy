@@ -273,4 +273,15 @@ class HomeUiStateTest {
         assertTrue(state.switchEnabled)
         assertNull(state.error)
     }
+
+    @Test
+    fun dropUrlIsTheConsoleOriginPlusDrop() {
+        assertEquals("https://console.example/drop", build(TunnelPhase.Disconnected).dropUrl)
+    }
+
+    @Test
+    fun noDropUrlWithoutAConsole() {
+        assertNull(build(TunnelPhase.Disconnected, summary = profile.copy(consoleUrl = null)).dropUrl)
+        assertNull(build(TunnelPhase.Disconnected, summary = null, hasProfiles = false).dropUrl)
+    }
 }

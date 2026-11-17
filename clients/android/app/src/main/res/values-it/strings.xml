@@ -14,6 +14,7 @@
     <string name="action_open_vpn_settings">Apri impostazioni VPN</string>
     <string name="action_choose_profile">Scegli un profilo</string>
     <string name="action_open_console">Apri la console</string>
+    <string name="action_open_drop">Invia un file con NeroDrop</string>
     <string name="profile_chip_label">Profilo: %1$s. Cambia profilo</string>
 
     <!-- Frase di stato -->

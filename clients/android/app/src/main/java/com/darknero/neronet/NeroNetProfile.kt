@@ -143,7 +143,7 @@ class NeroNetProfile private constructor(
                         if (!isPrefix(part)) fail(line, ProfileReason.BAD_VALUE, "Address $part is not an IP prefix")
                     }
                     "interface.dns" -> commaList(value).forEach { part ->
-                        // An entry that is not an IP address is a search domain (Tailscale-style "DNS = ip, domain").
+                        // An entry that is not an IP address is a search domain ("DNS = ip, domain").
                         if (!isIp(part) && !isHostName(part)) {
                             fail(line, ProfileReason.BAD_VALUE, "DNS $part is neither an IP address nor a search domain")
                         }

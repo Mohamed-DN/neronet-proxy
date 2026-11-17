@@ -1,6 +1,6 @@
 # ADR 0035: What the Android app does on its own, and how it signs in
 
-Status: accepted (phase A), proposed (phases B and C). 17 November 2026.
+Status: accepted; phase A implemented, phases B and C proposed. 17 November 2026.
 
 ## Context
 

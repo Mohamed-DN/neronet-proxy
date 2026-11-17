@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.VpnService
+import androidx.browser.customtabs.CustomTabsIntent
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -194,6 +195,14 @@ fun NeroNetRoot(app: NeroNetApplication) {
             }
         }
     }
+    // NeroDrop opens in a Custom Tab; the page and its URL fragment are the browser's, not the app's.
+    val onOpenDrop: (String) -> Unit = { url ->
+        try {
+            CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(url))
+        } catch (e: ActivityNotFoundException) {
+            say(context.getString(R.string.no_browser))
+        }
+    }
     val onPasteImport: (String) -> Unit = { text ->
         pasteSubmitted = true
         profilesVm.import(text, AddMethod.PASTE)
@@ -301,6 +310,7 @@ fun NeroNetRoot(app: NeroNetApplication) {
                     onErrorAction = onErrorAction,
                     onDismissError = homeVm::onDismissError,
                     onOpenConsole = onOpenConsole,
+                    onOpenDrop = onOpenDrop,
                     onCopyAddress = onCopyAddress,
                     onAdd = onAdd,
                     onProfiles = { nav.push(Route.PROFILES) },
@@ -323,6 +333,7 @@ fun NeroNetRoot(app: NeroNetApplication) {
                     onErrorAction = onErrorAction,
                     onDismissError = homeVm::onDismissError,
                     onOpenConsole = onOpenConsole,
+                    onOpenDrop = onOpenDrop,
                     onCopyAddress = onCopyAddress,
                     onAdd = onAdd,
                     onProfiles = { nav.push(Route.PROFILES) },

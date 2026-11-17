@@ -48,6 +48,8 @@ fun DetailsPanel(
     alwaysExpanded: Boolean,
     onCopyAddress: (String) -> Unit,
     onOpenConsole: (String) -> Unit,
+    dropUrl: String? = null,
+    onOpenDrop: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val reducedMotion = rememberReducedMotion()
@@ -89,6 +91,14 @@ fun DetailsPanel(
                         modifier = Modifier.padding(vertical = 8.dp).heightIn(min = 48.dp),
                     ) {
                         Text(stringResource(R.string.action_open_console))
+                    }
+                }
+                if (dropUrl != null) {
+                    OutlinedButton(
+                        onClick = { onOpenDrop(dropUrl) },
+                        modifier = Modifier.padding(bottom = 8.dp).heightIn(min = 48.dp),
+                    ) {
+                        Text(stringResource(R.string.action_open_drop))
                     }
                 }
             }
