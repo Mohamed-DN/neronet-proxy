@@ -48,6 +48,8 @@ type egressStack struct {
 	mesh       atomic.Pointer[MeshDNS]
 	meshSlots  chan struct{}
 	exitClient func(netip.Addr) (EgressVia, bool)
+	// visibility returns, for a source device, the filter for the mesh names it may learn.
+	visibility func(src netip.Addr) func(target netip.Addr) bool
 
 	closeOnce sync.Once
 }

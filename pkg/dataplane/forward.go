@@ -185,3 +185,23 @@ func (d *Device) SetForwarding(t *ForwardTable) {
 	// to the path that also serves the forwarding queue.
 	d.filter.wakeIfDirect()
 }
+
+// CanOpen reports whether the policy would let profile device src open a connection to
+// dst on at least one protocol and port: src's outbound rules must allow it and, when
+// dst is a profile device too, so must dst's inbound rules. It is Decide without a
+// packet and without recording any state, and mesh names use it to decide what a
+// device may learn exists (ADR 0034).
+func (t *ForwardTable) CanOpen(src, dst netip.Addr) bool {
+	if t == nil {
+		return false
+	}
+	src, dst = src.Unmap(), dst.Unmap()
+	srcFilter, ok := t.devices[src]
+	if !ok || !srcFilter.CanOpenTo(toNetIP(dst)) {
+		return false
+	}
+	if dstFilter, toDevice := t.devices[dst]; toDevice && !dstFilter.CanBeOpenedBy(toNetIP(src)) {
+		return false
+	}
+	return true
+}
