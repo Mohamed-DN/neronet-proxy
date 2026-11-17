@@ -257,9 +257,10 @@ describe('MeRoute', () => {
 
     expect(await screen.findByText('No devices yet')).toBeInTheDocument();
     expect(screen.getByText("Add this phone or computer to reach your team's resources.")).toBeInTheDocument();
+    // One call to action, not the empty state's plus a fixed bar repeating it.
     const links = screen.getAllByRole('link', { name: 'Add a device' });
-    expect(links.length).toBeGreaterThan(0);
-    for (const link of links) expect(link).toHaveAttribute('href', '/me/add');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '/me/add');
   });
 
   it('error state differs from empty', async () => {

@@ -70,6 +70,8 @@ export default function MeRoute() {
     live: status === 'connected' ? 1 : 0
   }));
 
+  const hasList = !nodes.isPending && !nodes.isError && mine.length > 0;
+
   const addLink = (
     <Link to="/me/add" className={PRIMARY_LARGE}>
       {t('me.add')}
@@ -174,18 +176,25 @@ export default function MeRoute() {
 
       <DownloadApps />
 
-      <div
-        className={cn(
-          'fixed inset-x-0 bottom-0 z-sticky border-t border-border-subtle bg-surface-raised p-4',
-          'pb-[max(1rem,env(safe-area-inset-bottom))] sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:pt-8'
-        )}
-      >
-        <div className="mx-auto flex w-full max-w-xl sm:justify-end">
-          <Link to="/me/add" className={cn(PRIMARY_LARGE, 'w-full sm:w-auto')}>
-            {t('me.add')}
-          </Link>
-        </div>
-      </div>
+      {/* The fixed bar repeats the empty state's own call to action, so it exists only with a list. */}
+      {hasList && (
+        <>
+          {/* Room for the fixed bar on a phone, so it never covers the last thing on the page. */}
+          <div aria-hidden="true" className="h-20 sm:hidden" />
+          <div
+            className={cn(
+              'fixed inset-x-0 bottom-0 z-sticky border-t border-border-subtle bg-surface-raised p-4',
+              'pb-[max(1rem,env(safe-area-inset-bottom))] sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:pt-8'
+            )}
+          >
+            <div className="mx-auto flex w-full max-w-xl sm:justify-end">
+              <Link to="/me/add" className={cn(PRIMARY_LARGE, 'w-full sm:w-auto')}>
+                {t('me.add')}
+              </Link>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
