@@ -15,6 +15,14 @@
         android:required="false"
         tools:replace="android:required" />
 
+    <!-- Lets the app list apps that have a launcher icon, for split tunnelling. No broad package permission. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".NeroNetApplication"
         android:allowBackup="false"

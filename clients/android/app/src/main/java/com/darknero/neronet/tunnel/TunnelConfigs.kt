@@ -33,6 +33,29 @@ object TunnelConfigs {
         return Config.Builder().setInterface(iface).addPeer(peer).build()
     }
 
+    /**
+     * [config] with the per-app rules applied through the library's own include and exclude lists, which it
+     * hands to VpnService.Builder (addAllowedApplication, addDisallowedApplication). A new Config is built;
+     * the profile and its file are not touched. Without an active rule [config] is returned as it is.
+     */
+    fun withAppRules(config: Config, rules: AppRules): Config {
+        if (!rules.active) return config
+        val source = config.`interface`
+        val builder = Interface.Builder()
+            .setKeyPair(source.keyPair)
+            .addAddresses(source.addresses)
+            .addDnsServers(source.dnsServers)
+            .addDnsSearchDomains(source.dnsSearchDomains)
+        source.listenPort.ifPresent { builder.setListenPort(it) }
+        source.mtu.ifPresent { builder.setMtu(it) }
+        when (rules.mode) {
+            AppRuleMode.INCLUDE_ONLY -> builder.includeApplications(rules.packages)
+            AppRuleMode.EXCLUDE -> builder.excludeApplications(rules.packages)
+            AppRuleMode.ALL -> Unit
+        }
+        return Config.Builder().setInterface(builder.build()).addPeers(config.peers).build()
+    }
+
     /** The prefixes the interface of [config] routes into the tunnel, as written in the config. */
     fun routesOf(config: Config): List<String> =
         config.peers.flatMap { peer -> peer.allowedIps.map { it.toString() } }

@@ -4,6 +4,7 @@ import com.darknero.neronet.NeroNetProfile
 import com.wireguard.config.InetNetwork
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Base64
@@ -61,5 +62,63 @@ class TunnelConfigsTest {
         val first = TunnelConfigs.blocking(real).peers.single().publicKey
         val second = TunnelConfigs.blocking(real).peers.single().publicKey
         assertNotEquals(first, second)
+    }
+
+    // Split tunnelling (ADR 0035)
+
+    @Test
+    fun includeOnlyListGoesIntoTheInterface() {
+        val rules = AppRules(AppRuleMode.INCLUDE_ONLY, setOf("org.example.mail", "org.example.chat"))
+
+        val config = TunnelConfigs.withAppRules(real, rules)
+
+        assertEquals(setOf("org.example.mail", "org.example.chat"), config.`interface`.includedApplications)
+        assertTrue(config.`interface`.excludedApplications.isEmpty())
+    }
+
+    @Test
+    fun excludeListGoesIntoTheInterface() {
+        val rules = AppRules(AppRuleMode.EXCLUDE, setOf("org.example.bank"))
+
+        val config = TunnelConfigs.withAppRules(real, rules)
+
+        assertEquals(setOf("org.example.bank"), config.`interface`.excludedApplications)
+        assertTrue(config.`interface`.includedApplications.isEmpty())
+    }
+
+    @Test
+    fun rulesChangeNothingElseInTheConfig() {
+        val config = TunnelConfigs.withAppRules(real, AppRules(AppRuleMode.EXCLUDE, setOf("org.example.bank")))
+
+        assertEquals(real.`interface`.keyPair.publicKey, config.`interface`.keyPair.publicKey)
+        assertEquals(real.`interface`.addresses, config.`interface`.addresses)
+        assertEquals(real.`interface`.dnsServers, config.`interface`.dnsServers)
+        assertEquals(real.peers, config.peers)
+    }
+
+    @Test
+    fun noRuleAndEmptyListsReturnTheConfigAsItIs() {
+        assertSame(real, TunnelConfigs.withAppRules(real, AppRules.NONE))
+        assertSame(real, TunnelConfigs.withAppRules(real, AppRules(AppRuleMode.EXCLUDE, emptySet())))
+        // An include-only mode without apps would mean "all apps" to Android, so it is no rule either.
+        assertSame(real, TunnelConfigs.withAppRules(real, AppRules(AppRuleMode.INCLUDE_ONLY, emptySet())))
+        assertSame(real, TunnelConfigs.withAppRules(real, AppRules(AppRuleMode.ALL, setOf("org.example.mail"))))
+    }
+
+    @Test
+    fun theOriginalConfigIsNotChanged() {
+        TunnelConfigs.withAppRules(real, AppRules(AppRuleMode.INCLUDE_ONLY, setOf("org.example.mail")))
+
+        assertTrue(real.`interface`.includedApplications.isEmpty())
+        assertTrue(real.`interface`.excludedApplications.isEmpty())
+    }
+
+    @Test
+    fun theBlockingInterfaceKeepsTheAppRules() {
+        val config = TunnelConfigs.withAppRules(real, AppRules(AppRuleMode.EXCLUDE, setOf("org.example.bank")))
+
+        val block = TunnelConfigs.blocking(config)
+
+        assertEquals(setOf("org.example.bank"), block.`interface`.excludedApplications)
     }
 }

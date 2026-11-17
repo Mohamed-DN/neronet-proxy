@@ -8,6 +8,7 @@ import com.darknero.neronet.tunnel.Clock
 import com.darknero.neronet.tunnel.GoTunnelEngine
 import com.darknero.neronet.tunnel.SystemClockSource
 import com.darknero.neronet.tunnel.TunnelEngine
+import com.darknero.neronet.tunnel.TunnelConfigs
 import com.darknero.neronet.tunnel.TunnelRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,7 @@ open class NeroNetApplication : Application() {
             profileLookup = { id -> profiles.profile(id) },
             clock = clock,
             scope = applicationScope,
+            configFor = { id, profile -> TunnelConfigs.withAppRules(profile.config, settings.appRules(id)) },
             killSwitchFor = { id ->
                 profiles.summary(id)?.let { settings.killSwitch(id, default = it.isFullTunnel) } ?: false
             },

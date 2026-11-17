@@ -1,6 +1,7 @@
 package com.darknero.neronet.tunnel
 
 import com.darknero.neronet.NeroNetProfile
+import com.wireguard.config.Config
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -22,6 +23,8 @@ class TunnelRepository(
     private val scope: CoroutineScope,
     /** True when the profile's kill switch is on right now (the setting, or its default for full-tunnel profiles). */
     private val killSwitchFor: (String) -> Boolean = { false },
+    /** The configuration to bring up for a profile: its own, plus the per-app rules kept on the device. */
+    private val configFor: (String, NeroNetProfile) -> Config = { _, profile -> profile.config },
 ) {
     private val lock = Any()
     private val machine = MutableStateFlow(MachineState())
@@ -103,7 +106,7 @@ class TunnelRepository(
                     return
                 }
                 try {
-                    engine.up(effect.profileId, profile.config)
+                    engine.up(effect.profileId, configFor(effect.profileId, profile))
                     dispatch(TunnelEvent.BackendUp(effect.profileId, clock.elapsedMs()))
                 } catch (e: CancellationException) {
                     throw e
@@ -118,7 +121,7 @@ class TunnelRepository(
                     return
                 }
                 try {
-                    engine.block(effect.profileId, TunnelConfigs.blocking(profile.config))
+                    engine.block(effect.profileId, TunnelConfigs.blocking(configFor(effect.profileId, profile)))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -132,7 +135,7 @@ class TunnelRepository(
                     return
                 }
                 try {
-                    engine.up(effect.profileId, profile.config)
+                    engine.up(effect.profileId, configFor(effect.profileId, profile))
                     dispatch(TunnelEvent.TunnelRestored(effect.profileId, clock.elapsedMs()))
                 } catch (e: CancellationException) {
                     throw e

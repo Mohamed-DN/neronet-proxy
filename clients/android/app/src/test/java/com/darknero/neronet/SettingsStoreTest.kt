@@ -3,6 +3,8 @@ package com.darknero.neronet
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.darknero.neronet.tunnel.AppRuleMode
+import com.darknero.neronet.tunnel.AppRules
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
@@ -64,5 +66,27 @@ class SettingsStoreTest {
         store.forgetProfile("p1")
 
         assertEquals(true, store.killSwitch("p1", default = true))
+    }
+
+    @Test
+    fun appRulesDefaultToNoRuleAndRoundTrip() {
+        val store = SettingsStore(prefs())
+        assertEquals(AppRules.NONE, store.appRules("p1"))
+
+        val rules = AppRules(AppRuleMode.EXCLUDE, setOf("org.example.bank", "org.example.mail"))
+        store.setAppRules("p1", rules)
+
+        assertEquals(rules, SettingsStore(prefs()).appRules("p1"))
+        assertEquals(AppRules.NONE, SettingsStore(prefs()).appRules("p2"))
+    }
+
+    @Test
+    fun forgettingAProfileDropsItsAppRules() {
+        val store = SettingsStore(prefs())
+        store.setAppRules("p1", AppRules(AppRuleMode.INCLUDE_ONLY, setOf("org.example.mail")))
+
+        store.forgetProfile("p1")
+
+        assertEquals(AppRules.NONE, store.appRules("p1"))
     }
 }

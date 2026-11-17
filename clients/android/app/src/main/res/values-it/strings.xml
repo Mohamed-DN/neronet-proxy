@@ -77,6 +77,24 @@
     <string name="state_off">Disattivo</string>
     <string name="kill_switch_title">Kill switch</string>
     <string name="kill_switch_body">Se il tunnel cade, NeroNet blocca tutto il traffico finché non torna o finché non spegni il tunnel. Attivo di default per i profili che fanno passare tutto il traffico da NeroNet. \"Blocca connessioni senza VPN\" di Android protegge ancora di più; vedi Impostazioni.</string>
+    <string name="split_title">Tunnel per app</string>
+    <string name="split_mode_all">Tutte le app usano NeroNet</string>
+    <string name="split_mode_include">Solo le app che scelgo usano NeroNet</string>
+    <string name="split_mode_exclude">Tutte le app tranne quelle che scelgo</string>
+    <string name="split_applies_next">Le modifiche valgono dalla prossima volta che il tunnel parte. Questa scelta resta su questo dispositivo e non fa parte del profilo.</string>
+    <string name="split_search">Cerca app</string>
+    <string name="split_empty_include">Nessuna app scelta: per ora tutte le app usano NeroNet.</string>
+    <string name="split_loading">Caricamento delle app</string>
+    <string name="split_no_match">Nessuna app corrisponde alla ricerca.</string>
+    <string name="split_summary_all">Tutte le app usano NeroNet</string>
+    <plurals name="split_summary_include">
+        <item quantity="one">Solo %d app usa NeroNet</item>
+        <item quantity="other">Solo %d app usano NeroNet</item>
+    </plurals>
+    <plurals name="split_summary_exclude">
+        <item quantity="one">Tutte le app tranne %d</item>
+        <item quantity="other">Tutte le app tranne %d</item>
+    </plurals>
     <string name="delete_title">Eliminare %1$s?</string>
     <string name="delete_message">Il profilo e la sua chiave privata vengono rimossi da questo dispositivo. Per ricollegarti dovrai importarlo di nuovo dalla console.</string>
     <string name="delete_message_connected">Prima si chiude la connessione. Il profilo e la sua chiave privata vengono rimossi da questo dispositivo; per ricollegarti dovrai importarlo di nuovo dalla console.</string>
