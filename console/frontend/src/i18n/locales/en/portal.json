@@ -10,12 +10,11 @@
   },
   "me": {
     "title": "My devices",
-    "description": "Your phones and computers on the network, and how to add a new one.",
+    "description": "Your phones and computers connected to the network, and how to add a new one.",
     "add": "Add a device",
-    "drop": "Send a file to a colleague",
     "listLabel": "Your devices",
     "loading": "Loading your devices…",
-    "unnamed": "Device without a name",
+    "unnamed": "Unnamed device",
     "empty": {
       "title": "No devices yet",
       "body": "Add this phone or computer to reach your team's resources."
@@ -27,35 +26,32 @@
     "blocked_one": "{{count}} of your devices is blocked. Ask an administrator why.",
     "blocked_other": "{{count}} of your devices are blocked. Ask an administrator why.",
     "row": {
-      "copyAddress": "Copy the address of {{name}}",
+      "reachableAs": "Reachable as",
+      "rebuild": "Set it up again",
+      "rebuildLabel": "Set up {{name}} again",
       "remove": "Remove",
-      "removeLabel": "Remove {{name}}",
-      "copied": "Address copied.",
-      "reachableAs": "Reachable as"
+      "removeLabel": "Remove {{name}}"
     },
     "status": {
       "blocked": "Blocked by an administrator",
-      "profile": "Uses the WireGuard app. No connection measured yet.",
+      "profile": "Not connected yet",
       "connected": "Connected",
-      "lastSeen": "Last seen {{when}}",
+      "lastSeen": "Not connected, seen {{when}}",
       "never": "Never connected"
     },
     "remove": {
       "title": "Remove {{name}}?",
-      "body": "{{name}} loses access to the network immediately and its key is revoked. To use it again you will have to add it as a new device. This cannot be undone.",
+      "body": "{{name}} loses access to the network straight away. To use it again you will have to add it as a new device. This cannot be undone.",
       "confirm": "Remove device",
       "done": "{{name}} removed.",
       "failed": "{{name}} was not removed. Try again in a moment.",
-      "gatewayInUse": "{{name}} is the gateway for WireGuard profiles. Removing it would disconnect every device that uses the WireGuard app. Make another device the gateway first."
+      "gatewayInUse": "Your other devices connect through {{name}}, so it cannot be removed from here. Ask an administrator."
     },
-    "sketch": {
-      "title": "Your devices in the network",
-      "description": "{{connected}} of {{total}} connected right now.",
-      "center": "Your organisation",
-      "hollow": "Hollow circle: not connected.",
-      "more": "+{{count}} more"
-    },
-    "consoleLink": "Open the admin console"
+    "rebuild": {
+      "title": "Set up {{name}} again?",
+      "body": "The current access stops working on {{name}} straight away. Right after, you make a new one with the same name.",
+      "confirm": "Yes, set it up again"
+    }
   },
   "downloads": {
     "title": "Download apps",
@@ -71,8 +67,8 @@
     "download": "Download for {{platform}}",
     "checksum": "Check code (SHA-256): {{sha}}",
     "notPublished": "NeroNet for {{platform}} is not published yet. Use the WireGuard app for now.",
-    "ios": "On iPhone and iPad, install the official WireGuard app, then scan the code from Add a device.",
-    "wireguard": "The official WireGuard app works on every platform with the code from Add a device.",
+    "ios": "On iPhone and iPad, install the official WireGuard app, then add the device from here.",
+    "wireguard": "The official WireGuard app works on every kind of device.",
     "link": {
       "ios": "WireGuard on the App Store",
       "android": "WireGuard on Google Play",

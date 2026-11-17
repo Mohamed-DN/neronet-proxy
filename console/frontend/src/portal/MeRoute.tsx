@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
-import { Send, TriangleAlert } from 'lucide-react';
+import { Link, useNavigate } from 'react-router';
+import { TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-import { NetworkSketch, type SketchSite } from '../charts/NetworkSketch';
 import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../services/apiClient';
 import { isProfileGateway, useDeleteOwnDevice, useNodes } from '../services/queries/nodes';
@@ -33,18 +32,25 @@ export default function MeRoute() {
   const now = Date.now();
   const { notify } = useToast();
   const removeDevice = useDeleteOwnDevice();
-  const [removing, setRemoving] = useState<MeshNode | null>(null);
+  const navigate = useNavigate();
+  // The same confirmation serves both actions: removing a device, and making its access again.
+  const [removing, setRemoving] = useState<{ node: MeshNode; rebuild: boolean } | null>(null);
   const [removeFailed, setRemoveFailed] = useState<'failed' | 'gatewayInUse' | null>(null);
-  const removingName = removing ? (removing.name ?? removing.hostname ?? t('me.unnamed')) : '';
+  const removingNode = removing?.node ?? null;
+  const rebuild = removing?.rebuild === true;
+  const removingName = removingNode ? (removingNode.name ?? removingNode.hostname ?? t('me.unnamed')) : '';
 
   const confirmRemove = () => {
-    if (!removing) return;
+    if (!removingNode) return;
     const name = removingName;
     setRemoveFailed(null);
-    removeDevice.mutate(removing.id, {
+    removeDevice.mutate(removingNode.id, {
       onSuccess: () => {
         setRemoving(null);
-        notify(t('me.remove.done', { name }), { tone: 'success' });
+        // There is no way to issue a new access for an existing device yet, so making it again
+        // is removing it and adding it with the same name; the old access is gone either way.
+        if (rebuild) navigate('/me/add', { state: { name } });
+        else notify(t('me.remove.done', { name }), { tone: 'success' });
       },
       onError: (error) =>
         setRemoveFailed(
@@ -61,14 +67,6 @@ export default function MeRoute() {
   );
   const statuses = mine.map((node) => ({ node, status: deviceStatus(node, now) }));
   const blocked = statuses.filter((s) => s.status === 'blocked').length;
-  const connected = statuses.filter((s) => s.status === 'connected').length;
-
-  const sites: SketchSite[] = statuses.map(({ node, status }) => ({
-    id: node.id,
-    label: node.name ?? node.hostname ?? t('me.unnamed'),
-    total: 1,
-    live: status === 'connected' ? 1 : 0
-  }));
 
   const hasList = !nodes.isPending && !nodes.isError && mine.length > 0;
 
@@ -110,33 +108,18 @@ export default function MeRoute() {
             </p>
           )}
 
-          {/* The picture adds nothing for a single device, and on a phone it only
-              repeats the list below it, so it appears from tablet width and
-              from two devices. */}
-          {mine.length >= 2 && (
-            <div data-me-sketch className="mb-8 hidden sm:block">
-              <NetworkSketch
-                title={t('me.sketch.title')}
-                description={t('me.sketch.description', { connected, total: mine.length })}
-                centerLabel={t('me.sketch.center')}
-                sites={sites}
-                moreLabel={(hidden) => t('me.sketch.more', { count: hidden })}
-                hollowLegend={t('me.sketch.hollow')}
-              />
-            </div>
-          )}
-
-          <h2 className="text-heading font-medium text-content">{t('me.listLabel')}</h2>
-          <div className="mt-3">
-            <DeviceList
-              devices={mine}
-              now={now}
-              onRemove={(node) => {
-                setRemoveFailed(null);
-                setRemoving(node);
-              }}
-            />
-          </div>
+          <DeviceList
+            devices={mine}
+            now={now}
+            onRemove={(node) => {
+              setRemoveFailed(null);
+              setRemoving({ node, rebuild: false });
+            }}
+            onRebuild={(node) => {
+              setRemoveFailed(null);
+              setRemoving({ node, rebuild: true });
+            }}
+          />
         </>
       )}
 
@@ -145,9 +128,9 @@ export default function MeRoute() {
         onOpenChange={(open) => {
           if (!open && !removeDevice.isPending) setRemoving(null);
         }}
-        title={t('me.remove.title', { name: removingName })}
-        description={t('me.remove.body', { name: removingName })}
-        confirmLabel={t('me.remove.confirm')}
+        title={t(rebuild ? 'me.rebuild.title' : 'me.remove.title', { name: removingName })}
+        description={t(rebuild ? 'me.rebuild.body' : 'me.remove.body', { name: removingName })}
+        confirmLabel={t(rebuild ? 'me.rebuild.confirm' : 'me.remove.confirm')}
         tone="danger"
         busy={removeDevice.isPending}
         onConfirm={confirmRemove}
@@ -164,16 +147,6 @@ export default function MeRoute() {
         )}
       </ConfirmDialog>
 
-      <p className="mt-8">
-        <Link
-          to="/drop"
-          className="inline-flex min-h-11 items-center gap-2 rounded-sm text-body text-content underline focus-visible:outline-focus"
-        >
-          <Send aria-hidden="true" className="h-4 w-4 shrink-0" />
-          {t('me.drop')}
-        </Link>
-      </p>
-
       <DownloadApps />
 
       {/* The fixed bar repeats the empty state's own call to action, so it exists only with a list. */}
@@ -187,7 +160,7 @@ export default function MeRoute() {
               'pb-[max(1rem,env(safe-area-inset-bottom))] sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:pt-8'
             )}
           >
-            <div className="mx-auto flex w-full max-w-xl sm:justify-end">
+            <div className="mx-auto flex w-full max-w-[640px] sm:justify-end">
               <Link to="/me/add" className={cn(PRIMARY_LARGE, 'w-full sm:w-auto')}>
                 {t('me.add')}
               </Link>

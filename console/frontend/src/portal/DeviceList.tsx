@@ -1,14 +1,12 @@
-import { CheckCircle2, ShieldOff, Copy, Trash2 } from 'lucide-react';
+import { RefreshCw, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { formatRelativeTime } from '../i18n/format';
 import type { MeshNode } from '../services/types';
 import { Button } from '../ui/Button';
 import { CodeText } from '../ui/CodeText';
-import { IconButton } from '../ui/IconButton';
-import { NotMeasured } from '../ui/States';
 import { RowList } from '../ui/RowList';
-import { useToast } from '../ui/Toast';
+import { StationStatus, type StationKind } from '../ui/StationSymbol';
 import { deviceStatus, seenAt, type DeviceStatus } from './deviceStatus';
 
 export interface DeviceListProps {
@@ -18,98 +16,73 @@ export interface DeviceListProps {
   now: number;
   /** Asks to remove one device. The page owns the confirmation. */
   onRemove?: (node: MeshNode) => void;
+  /** Asks to make a new access for a phone or computer that uses the WireGuard app. The page owns the confirmation. */
+  onRebuild?: (node: MeshNode) => void;
 }
 
-/** One line of text per status, with an icon where the status needs a sign as well as a word. */
-function StatusLine({ status, node, now }: { status: DeviceStatus; node: MeshNode; now: number }) {
-  const { t, i18n } = useTranslation('portal');
-  if (status === 'blocked') {
-    return (
-      <p className="flex items-center gap-1.5 text-caption text-danger">
-        <ShieldOff aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-        {t('me.status.blocked')}
-      </p>
-    );
-  }
-  if (status === 'connected') {
-    return (
-      <p className="flex items-center gap-1.5 text-caption text-success">
-        <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-        {t('me.status.connected')}
-      </p>
-    );
-  }
-  if (status === 'lastSeen') {
-    const when = formatRelativeTime(i18n.language, seenAt(node), new Date(now));
-    return <p className="text-caption text-muted">{t('me.status.lastSeen', { when: when ?? '' })}</p>;
-  }
-  if (status === 'profile') return <p className="text-caption text-muted">{t('me.status.profile')}</p>;
-  return <p className="text-caption text-muted">{t('me.status.never')}</p>;
-}
+/** The station symbol that goes with each status; the word beside it says the same thing. */
+const STATION: Record<DeviceStatus, StationKind> = {
+  blocked: 'blocked',
+  connected: 'service',
+  lastSeen: 'interrupted',
+  profile: 'unmeasured',
+  never: 'unmeasured'
+};
 
 /**
- * The person's devices as hairline rows: name, address (with a copy button
- * when the server sent one), and one sentence about the connection.
+ * The person's devices as hairline rows: a station symbol and one word for how
+ * the device is doing, its name, and the name the network gives it.
  */
-export function DeviceList({ devices, now, onRemove }: DeviceListProps) {
-  const { t } = useTranslation('portal');
-  const { notify } = useToast();
-
-  async function copyAddress(address: string) {
-    try {
-      await navigator.clipboard.writeText(address);
-      notify(t('me.row.copied'), { tone: 'success' });
-    } catch {
-      notify(t('code.copyFailed', { ns: 'ui' }), { tone: 'danger' });
-    }
-  }
+export function DeviceList({ devices, now, onRemove, onRebuild }: DeviceListProps) {
+  const { t, i18n } = useTranslation('portal');
 
   return (
     <RowList label={t('me.listLabel')}>
       {devices.map((node) => {
         const name = node.name ?? node.hostname ?? t('me.unnamed');
-        const address = node.overlay_ipv4 ?? null;
+        const status = deviceStatus(node, now);
+        const when = status === 'lastSeen' ? formatRelativeTime(i18n.language, seenAt(node), new Date(now)) : null;
+        const canRebuild = onRebuild && node.device_kind === 'profile';
         return (
-          <li
-            key={node.id}
-            className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-1 py-3"
-          >
+          <li key={node.id} className="flex flex-col gap-3 px-1 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="break-words text-body font-medium text-content">{name}</p>
-              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-                {address ? <CodeText>{address}</CodeText> : <NotMeasured />}
-              </div>
+              <p className="mt-1">
+                <StationStatus kind={STATION[status]}>{t(`me.status.${status}`, { when: when ?? '' })}</StationStatus>
+              </p>
               {node.dns_name && (
                 <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 text-caption text-muted">
                   <span>{t('me.row.reachableAs')}</span>
                   <CodeText>{node.dns_name}</CodeText>
                 </p>
               )}
-              <div className="mt-1">
-                <StatusLine status={deviceStatus(node, now)} node={node} now={now} />
+            </div>
+            {(canRebuild || onRemove) && (
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {canRebuild && (
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    icon={RefreshCw}
+                    aria-label={t('me.row.rebuildLabel', { name })}
+                    onClick={() => onRebuild(node)}
+                  >
+                    {t('me.row.rebuild')}
+                  </Button>
+                )}
+                {onRemove && (
+                  <Button
+                    variant="ghost"
+                    size="lg"
+                    icon={Trash2}
+                    aria-label={t('me.row.removeLabel', { name })}
+                    onClick={() => onRemove(node)}
+                  >
+                    {t('me.row.remove')}
+                  </Button>
+                )}
               </div>
-            </div>
-            <div className="flex items-center gap-1">
-              {address && (
-                <IconButton
-                  icon={Copy}
-                  label={t('me.row.copyAddress', { name })}
-                  onClick={() => void copyAddress(address)}
-                  className="h-11 w-11"
-                />
-              )}
-              {onRemove && (
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  icon={Trash2}
-                  aria-label={t('me.row.removeLabel', { name })}
-                  onClick={() => onRemove(node)}
-                >
-                  {t('me.row.remove')}
-                </Button>
-              )}
-            </div>
+            )}
           </li>
         );
       })}
