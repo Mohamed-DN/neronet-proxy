@@ -7,7 +7,7 @@ import { ROUTES } from '../routes/paths';
 import { effectiveRole, roleTier } from '../services/roles';
 import { cn } from '../ui/cn';
 import { Disclosure } from '../ui/Disclosure';
-import { Glyph } from '../ui/Glyph';
+import { Logo } from '../ui/Logo';
 import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 import { MENU_CONTENT, MENU_ITEM } from '../ui/menuStyles';
 import { SkipLink } from '../ui/SkipLink';
@@ -47,8 +47,7 @@ export default function PortalLayout() {
             aria-label={t('layout.home')}
             className="inline-flex min-h-11 items-center gap-2 rounded-control text-body font-semibold text-content focus-visible:outline-focus"
           >
-            <Glyph />
-            <span>{'NeroNet'}</span>
+            <Logo wordmark size="md" decorative />
           </Link>
 
           <Disclosure

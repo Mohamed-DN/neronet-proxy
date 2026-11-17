@@ -16,6 +16,7 @@ import {
   IconButton,
   Input,
   LanguageSwitcher,
+  Logo,
   NotImplementedState,
   NotMeasured,
   PageHeader,
@@ -476,6 +477,72 @@ function Tables() {
   );
 }
 
+function BrandDoDont() {
+  const rules = [
+    ['Do', "Leave half the mark's width clear on every side; keep it at 16 px or larger."],
+    ['Do', 'Use ink on sheet or sheet on ink; the yellow dot stays yellow.'],
+    ['Do', 'Use the small variant (no lower ring, heavier line) at 24 px and below.'],
+    ["Don't", 'Recolour the line, add gradients or shadows, rotate or outline the mark.'],
+    ["Don't", 'Move the yellow dot, or add a second yellow to the same screen.'],
+    ["Don't", 'Split the word or change its weight or colour: NeroNet is one word.']
+  ];
+  return (
+    <ul className="grid gap-2 sm:grid-cols-2">
+      {rules.map(([kind, text]) => (
+        <li key={text} className="flex gap-3 text-body text-ink">
+          <span className="w-12 shrink-0 font-semibold">{kind}</span>
+          <span>{text}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Brand() {
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <div className="flex flex-wrap items-end gap-8">
+          {[16, 20, 24, 28, 40, 72].map((px) => (
+            <figure key={px} className="flex flex-col items-center gap-2">
+              <Logo size={px} />
+              <figcaption className="text-micro text-subtle">{px} px</figcaption>
+            </figure>
+          ))}
+        </div>
+      </Card>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="flex items-center justify-center rounded-plate border border-rule bg-sheet p-6">
+          <Logo wordmark size={40} />
+        </div>
+        <div className="flex items-center justify-center rounded-plate border border-rule bg-plate p-6">
+          <Logo wordmark size={40} ground="plate" />
+        </div>
+        <div
+          data-theme="dark"
+          className="flex items-center justify-center rounded-plate border border-rule bg-sheet p-6"
+        >
+          <Logo wordmark size={40} />
+        </div>
+      </div>
+      <Card>
+        <div className="flex flex-wrap items-center gap-6">
+          <img src="/brand/app-icon.svg" alt="NeroNet app icon" width="96" height="96" className="rounded-plate" />
+          <img src="/brand/favicon-32.png" alt="Favicon, 32 px" width="32" height="32" />
+          <img src="/brand/apple-touch-icon.png" alt="Touch icon, 180 px" width="90" height="90" />
+          <p className="max-w-prose text-caption text-subtle">
+            The app icon is the mark in sheet colour on an ink square. Files are in public/brand/; the rules are in
+            docs/brand/BRAND.md.
+          </p>
+        </div>
+      </Card>
+      <Card>
+        <BrandDoDont />
+      </Card>
+    </div>
+  );
+}
+
 export function DesignGallery() {
   const { theme } = useTheme();
 
@@ -500,6 +567,14 @@ export function DesignGallery() {
           description="Every primitive in every state. Switch the theme and the language above; nothing on this page should change except colour and words."
           meta={<Badge tone="accent">dev</Badge>}
         />
+
+        <Section
+          id="brand"
+          title="Brand"
+          description="The N as a transit line with a terminus at each end, the upper one signal yellow. Sizes, wordmark on each ground, app icon and the rules."
+        >
+          <Brand />
+        </Section>
 
         <Section
           id="stations"

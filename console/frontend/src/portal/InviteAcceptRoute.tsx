@@ -12,6 +12,7 @@ import { Button } from '../ui/Button';
 import { FormField } from '../ui/FormField';
 import { Input } from '../ui/Input';
 import { LanguageSwitcher } from '../ui/LanguageSwitcher';
+import { Logo } from '../ui/Logo';
 import { ThemeToggle } from '../ui/ThemeToggle';
 
 // The same shapes the server checks (services/InvitationService.js), so most mistakes
@@ -239,7 +240,7 @@ export default function InviteAcceptRoute() {
     <div className="flex min-h-dvh items-start justify-center bg-surface px-4 py-8 font-sans sm:items-center">
       <main className="w-full max-w-md space-y-6 rounded-card border border-border bg-surface-raised p-6 sm:p-8">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-body font-semibold text-content">{'NeroNet'}</span>
+          <Logo wordmark size="md" />
           <div className="flex items-center gap-1">
             <LanguageSwitcher />
             <ThemeToggle />

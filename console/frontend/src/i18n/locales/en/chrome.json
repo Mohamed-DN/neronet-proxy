@@ -96,7 +96,7 @@
     "portalLink": "Open my devices"
   },
   "page": {
-    "title": "{{page}} - NeroNet console",
+    "title": "{{page}} - NeroNet",
     "loading": "Loading the page",
     "announce": "{{page}}"
   },
@@ -104,8 +104,9 @@
     "title": "Node"
   },
   "login": {
-    "title": "NeroNet Enterprise",
-    "subtitle": "NeroNet network management console",
+    "title": "NeroNet",
+    "brandLabel": "NeroNet",
+    "subtitle": "Your network, line by line.",
     "username": "Username",
     "password": "Password",
     "submit": "Sign in to the console",

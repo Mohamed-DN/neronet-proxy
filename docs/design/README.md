@@ -11,6 +11,9 @@ type, shape, layout), the direction wins; the system rules below (tokens only,
 status is colour and shape and word, five data states, "not measured" is never
 zero) are unchanged. This file describes what is built, wave by wave.
 
+The mark, the wordmark, the app icon and the voice are in the [brand guide](../brand/BRAND.md); the
+`Logo` primitive in `src/ui/Logo.tsx` draws them, and the dev gallery (`/__design`) has a Brand section.
+
 The [radial mesh topology](mesh-topology.md) describes how the network map
 separates policy connections from observed paths and lists its current limits.
 

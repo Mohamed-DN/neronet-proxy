@@ -1,0 +1,32 @@
+/*
+ * The sign-in screen's brand panel. From 1024px it is a night-coloured panel in
+ * both themes, so the tokens are re-declared here with the dark set (the values
+ * in styles/tokens.css, [data-theme='dark']). Only the direct role tokens are
+ * redeclared: the aliases (surface, content, muted) are resolved on :root and
+ * would not follow, so the panel uses sheet, ink, ink-muted and rule only.
+ */
+@media (min-width: 1024px) {
+  .login-brand {
+    color-scheme: dark;
+    --color-sheet: 14 26 34;
+    --color-plate: 22 37 47;
+    --color-ink: 232 238 240;
+    --color-ink-muted: 163 179 186;
+    --color-rule: 46 66 80;
+    --color-line-blue: 64 106 201;
+  }
+}
+
+/* The decorative map: the lines draw once (TransitMap.css, one moment of motion),
+   then the stations appear. Under reduced motion nothing runs and it is all there. */
+@media (prefers-reduced-motion: no-preference) {
+  .login-map-stations {
+    opacity: 0;
+    animation: login-map-stations 400ms ease-out 1000ms forwards;
+  }
+  @keyframes login-map-stations {
+    to {
+      opacity: 1;
+    }
+  }
+}
