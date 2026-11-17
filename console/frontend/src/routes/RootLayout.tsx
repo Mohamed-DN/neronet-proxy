@@ -32,7 +32,7 @@ function usePageTitle(): void {
   useEffect(() => {
     const match = [...matches].reverse().find((entry) => (entry.handle as RouteHandle | undefined)?.titleKey);
     const titleKey = (match?.handle as RouteHandle | undefined)?.titleKey;
-    document.title = titleKey ? t('page.title', { page: t(titleKey) }) : 'NeroNet Console';
+    document.title = titleKey ? t('page.title', { page: t(titleKey) }) : 'NeroNet';
   }, [matches, t]);
 }
 

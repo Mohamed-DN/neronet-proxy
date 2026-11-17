@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { isRouteErrorResponse, useNavigate, useRouteError } from 'react-router';
 import { AlertOctagon } from 'lucide-react';
 
-import { Button, Card, CodeText } from '../ui';
+import { Button, Card, CodeText, Logo } from '../ui';
 import { newErrorId, reportError } from './errorId';
 import { DEFAULT_PATH } from './paths';
 import { isStaleBundleError, reloadOnceForStaleBundle } from './staleBundle';
@@ -39,7 +39,8 @@ export function RouteError() {
   return (
     <Card className="mx-auto max-w-2xl">
       <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
-        <AlertOctagon aria-hidden="true" className="h-6 w-6 text-danger" />
+        <Logo wordmark size="md" ground="plate" />
+        {!isNotFound && <AlertOctagon aria-hidden="true" className="h-6 w-6 text-danger" />}
         <h1 className="text-title font-semibold text-content" tabIndex={-1}>
           {isNotFound ? t('notFound.title') : t('routeError.title')}
         </h1>

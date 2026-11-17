@@ -226,7 +226,7 @@ describe('the shell', () => {
     renderAt([ROUTES.overview]);
 
     await screen.findByRole('heading', { name: label('nav.items.overview') });
-    await waitFor(() => expect(document.title).toBe(`${label('nav.items.overview')} - NeroNet console`));
+    await waitFor(() => expect(document.title).toBe(`${label('nav.items.overview')} - NeroNet`));
   });
 
   it('leaves focus at the top of the document on the first page, where the skip link is', async () => {
@@ -236,7 +236,7 @@ describe('the shell', () => {
 
     // Moving focus into the content on load would put the whole top bar behind
     // the operator, with no skip link ahead of them to get back to it.
-    await waitFor(() => expect(document.title).toBe(`${label('nav.items.overview')} - NeroNet console`));
+    await waitFor(() => expect(document.title).toBe(`${label('nav.items.overview')} - NeroNet`));
     expect(heading).not.toHaveFocus();
   });
 

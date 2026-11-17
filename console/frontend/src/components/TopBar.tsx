@@ -10,7 +10,7 @@ import { useStatsOverview } from '../services/queries';
 import { effectiveRole } from '../services/roles';
 import type { Features } from '../services/types';
 import { Disclosure, MENU_CONTENT, MENU_ITEM, NotMeasured, StationSymbol, cn } from '../ui';
-import { Glyph } from '../ui/Glyph';
+import { Logo } from '../ui/Logo';
 import Header from './Header';
 
 export interface TopBarProps {
@@ -116,8 +116,7 @@ export default function TopBar({
           aria-label={t('nav.home')}
           className="flex shrink-0 items-center gap-2 rounded-control text-lead font-semibold text-ink focus-visible:outline-focus"
         >
-          <Glyph />
-          <span>{t('brand.name')}</span>
+          <Logo wordmark size="md" ground="plate" decorative />
         </Link>
 
         <nav aria-label={t('nav.landmark')} className="flex items-center gap-1">
