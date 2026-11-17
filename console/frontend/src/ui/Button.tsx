@@ -11,7 +11,11 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   size?: ButtonSize;
   /** Icon drawn before the label. Decorative: the label carries the meaning. */
   icon?: LucideIcon;
-  /** Shows a spinner and disables the button. The label stays readable. */
+  /**
+   * Shows a spinner and refuses activation. The button is aria-disabled, not
+   * disabled, so a keyboard user who pressed it keeps focus on it and hears the
+   * busy state instead of losing their place.
+   */
   loading?: boolean;
   /** Announced while `loading`, for a reader that cannot see the spinner. */
   loadingLabel?: string;
@@ -49,6 +53,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     children,
     disabled,
     type = 'button',
+    onClick,
     ...props
   },
   ref
@@ -57,11 +62,21 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <button
       ref={ref}
       type={type}
-      disabled={disabled || loading}
+      disabled={disabled}
+      aria-disabled={loading || undefined}
       aria-busy={loading || undefined}
+      onClick={(event) => {
+        // A busy button swallows the click, and with it a form submission.
+        if (loading) {
+          event.preventDefault();
+          return;
+        }
+        onClick?.(event);
+      }}
       className={cn(
         'inline-flex items-center justify-center rounded-control font-medium',
         'transition-colors focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50',
+        'aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
         VARIANTS[variant],
         SIZES[size],
         fullWidth && 'w-full',

@@ -58,11 +58,39 @@ describe('Button', () => {
 
     const button = screen.getByRole('button', { name: /revoke node/i });
     expect(button).toHaveAttribute('aria-busy', 'true');
-    expect(button).toBeDisabled();
+    // aria-disabled, not disabled: a disabled button drops focus, and a
+    // keyboard user who pressed it would lose their place.
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).not.toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent('Revoking');
 
     await user.click(button);
     expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('keeps keyboard focus while it turns busy and does not submit its form', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn((event: React.FormEvent) => event.preventDefault());
+    const { rerender } = renderUI(
+      <form onSubmit={onSubmit}>
+        <Button type="submit">Save</Button>
+      </form>
+    );
+    const button = screen.getByRole('button', { name: 'Save' });
+    await user.tab();
+    expect(button).toHaveFocus();
+
+    rerender(
+      <form onSubmit={onSubmit}>
+        <Button type="submit" loading>
+          Save
+        </Button>
+      </form>
+    );
+    expect(screen.getByRole('button', { name: /save/i })).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('size lg is the 44 px touch target', () => {

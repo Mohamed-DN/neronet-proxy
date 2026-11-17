@@ -99,6 +99,28 @@ describe('Switch', () => {
 });
 
 describe('Select', () => {
+  it('marks the highlighted option with the ring, not only a tint', async () => {
+    const user = userEvent.setup();
+    renderUI(
+      <Select
+        label="Protocol"
+        value="a"
+        onValueChange={() => {}}
+        options={[
+          { value: 'a', label: 'Alpha' },
+          { value: 'b', label: 'Beta' }
+        ]}
+      />
+    );
+
+    await user.tab();
+    await user.keyboard('{Enter}{ArrowDown}');
+    const beta = await screen.findByRole('option', { name: 'Beta' });
+    await waitFor(() => expect(beta).toHaveAttribute('data-highlighted'));
+    // .option-ring draws the two-tone ring on [data-highlighted] (index.css).
+    expect(beta).toHaveClass('option-ring');
+  });
+
   it('opens, moves and commits with the keyboard only', async () => {
     const user = userEvent.setup();
 

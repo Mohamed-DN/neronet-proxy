@@ -63,6 +63,17 @@
       0 0 0 4px rgb(var(--color-signal));
   }
 
+  /* The highlighted option in a Select, or the entry with focus in a menu. A tint alone is not an
+     indicator (the hover surface is 1.1:1 against the plate), so the item draws
+     the same two-tone ring as focus, inside its own box so that a neighbour
+     cannot clip it: an ink band at the edge, the signal inside it. */
+  .option-ring[data-highlighted],
+  .option-ring:focus-visible {
+    box-shadow:
+      inset 0 0 0 2px rgb(var(--color-ink)),
+      inset 0 0 0 4px rgb(var(--color-signal));
+  }
+
   /* The first thing in the tab order: jumps past the top bar to the page body. */
   .skip-link {
     @apply sr-only;
