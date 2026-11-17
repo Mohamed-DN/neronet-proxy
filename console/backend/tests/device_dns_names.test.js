@@ -87,6 +87,16 @@ describe('unique device names (ADR 0034 phase 2)', () => {
     assert.equal(nameOf(b.body.device_id), `phone-2.${SD}`);
   });
 
+  it('returns the stored dns_name in the profile response, null when the name has none', async () => {
+    const named = await register('Tablet');
+    assert.equal(named.status, 201, JSON.stringify(named.body));
+    assert.equal(named.body.dns_name, `tablet.${SD}`);
+    assert.equal(named.body.dns_name, await stored(named.body.device_id));
+    const unnamed = await register('???');
+    assert.equal(unnamed.status, 201, JSON.stringify(unnamed.body));
+    assert.equal(unnamed.body.dns_name, null);
+  });
+
   it('skips a suffix that is already taken by a device literally named so', async () => {
     const two = await register('laptop-2');
     const first = await register('laptop');

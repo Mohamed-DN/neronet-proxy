@@ -146,3 +146,36 @@ func TestStringNeverPrintsThePrivateKey(t *testing.T) {
 		t.Fatalf("String leaks a secret: %s", s)
 	}
 }
+
+// consoleProfile is a profile exactly as the console writes it (wgConfig.ts, ADR 0029):
+// the metadata comment lines first, then the stock wg-quick file. Keep it in step with
+// console/frontend/src/devices/wgConfig.test.ts.
+const consoleProfile = `# NeroNet-Profile: 1
+# NeroNet-Console: https://console.example.com
+# NeroNet-Device: dev-1
+# NeroNet-DNS-Name: work-phone.acme.example.com
+[Interface]
+PrivateKey = ` + priv + `
+Address = 100.64.0.7/32
+DNS = 100.100.100.100, acme.example.com
+
+[Peer]
+PublicKey = ` + pub + `
+PresharedKey = ` + psk + `
+Endpoint = gw.example.com:51820
+AllowedIPs = 100.64.0.0/10, fd7a:115c:a1e0::/48
+PersistentKeepalive = 25
+`
+
+func TestParseReadsTheProfileTheConsoleWrites(t *testing.T) {
+	p, err := Parse(strings.NewReader(consoleProfile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Version != 1 || p.ConsoleURL != "https://console.example.com" || p.DeviceID != "dev-1" {
+		t.Fatalf("metadata: %+v", p)
+	}
+	if len(p.Peers) != 1 || len(p.Addresses) != 1 {
+		t.Fatalf("wireguard fields: %+v", p)
+	}
+}

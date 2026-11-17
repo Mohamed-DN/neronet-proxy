@@ -34,7 +34,8 @@ const DEVICE = {
   allowed_ips: ['100.64.0.0/10'],
   dns: ['100.100.100.100'],
   search_domain: 'acme.example.com',
-  console_url: 'https://console.example.net'
+  console_url: 'https://console.example.net',
+  dns_name: 'work-phone.acme.example.com'
 };
 
 const NO_EXITS = { can_choose: false, self_service: false, exits: [] };
@@ -112,6 +113,12 @@ describe('AddDeviceRoute', () => {
     const config = String(vi.mocked(qrcode.toDataURL).mock.calls.at(-1)?.[0]);
     const privateKey = /PrivateKey = (\S+)/.exec(config)?.[1];
     expect(privateKey).toBeTruthy();
+    expect(
+      config.startsWith(
+        '# NeroNet-Profile: 1\n# NeroNet-Console: https://console.example.net\n# NeroNet-Device: dev-1\n'
+      )
+    ).toBe(true);
+    expect(config).toContain('# NeroNet-DNS-Name: work-phone.acme.example.com\n[Interface]');
 
     // Exactly one write, with exactly the three fields the server may see.
     expect(writes(fetchMock)).toHaveLength(1);
