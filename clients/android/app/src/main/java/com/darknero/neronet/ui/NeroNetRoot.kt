@@ -52,6 +52,7 @@ import com.darknero.neronet.ui.home.HomeScreen
 import com.darknero.neronet.ui.home.HomeViewModel
 import com.darknero.neronet.ui.profiles.AddProfileScreen
 import com.darknero.neronet.ui.profiles.PasteProfileScreen
+import com.darknero.neronet.ui.profiles.ProfileOptionsScreen
 import com.darknero.neronet.ui.profiles.ProfilesScreen
 import com.darknero.neronet.ui.profiles.ProfilesViewModel
 import com.darknero.neronet.ui.profiles.importResultMessage
@@ -95,6 +96,7 @@ fun NeroNetRoot(app: NeroNetApplication) {
 
     // True while the last import came from the paste screen, which shows its failure under the field.
     var pasteSubmitted by remember { mutableStateOf(false) }
+    var optionsId by rememberSaveable { mutableStateOf<String?>(null) }
     val importMessage = lastImport?.let { importResultMessage(it) }
     LaunchedEffect(lastImport) {
         val result = lastImport ?: return@LaunchedEffect
@@ -198,9 +200,33 @@ fun NeroNetRoot(app: NeroNetApplication) {
             onSelect = profilesVm::select,
             onDelete = profilesVm::delete,
             onAdd = { nav.push(Route.ADD_PROFILE) },
+            onOptions = { id ->
+                optionsId = id
+                nav.push(Route.PROFILE_OPTIONS)
+            },
             onBack = back,
             modifier = modifier,
         )
+    }
+    val optionsContent: @Composable (ComposeModifier, (() -> Unit)?) -> Unit = { modifier, back ->
+        val profile = profiles.firstOrNull { it.id == optionsId }
+        if (profile == null) {
+            LaunchedEffect(Unit) { nav.popTo(Route.HOME) }
+        } else {
+            var killSwitch by remember(profile.id) {
+                mutableStateOf(app.settings.killSwitch(profile.id, default = profile.isFullTunnel))
+            }
+            ProfileOptionsScreen(
+                profile = profile,
+                killSwitch = killSwitch,
+                onKillSwitchChange = {
+                    killSwitch = it
+                    app.settings.setKillSwitch(profile.id, it)
+                },
+                onBack = back,
+                modifier = modifier,
+            )
+        }
     }
     val addContent: @Composable (ComposeModifier, (() -> Unit)?) -> Unit = { modifier, back ->
         AddProfileScreen(
@@ -250,6 +276,7 @@ fun NeroNetRoot(app: NeroNetApplication) {
                         when (nav.current) {
                             Route.ADD_PROFILE -> addContent(ComposeModifier, { nav.pop() })
                             Route.PASTE_PROFILE -> pasteContent(ComposeModifier, { nav.pop() })
+                            Route.PROFILE_OPTIONS -> optionsContent(ComposeModifier, { nav.pop() })
                             else -> profilesContent(ComposeModifier, null)
                         }
                     },
@@ -270,6 +297,7 @@ fun NeroNetRoot(app: NeroNetApplication) {
                 )
                 nav.current == Route.PROFILES -> profilesContent(fullScreenModifier) { nav.pop() }
                 nav.current == Route.ADD_PROFILE -> addContent(fullScreenModifier) { nav.pop() }
+                nav.current == Route.PROFILE_OPTIONS -> optionsContent(fullScreenModifier) { nav.pop() }
                 else -> pasteContent(fullScreenModifier) { nav.pop() }
             }
             SnackbarHost(

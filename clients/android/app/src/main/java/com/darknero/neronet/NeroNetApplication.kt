@@ -32,6 +32,9 @@ open class NeroNetApplication : Application() {
             profileLookup = { id -> profiles.profile(id) },
             clock = clock,
             scope = applicationScope,
+            killSwitchFor = { id ->
+                profiles.summary(id)?.let { settings.killSwitch(id, default = it.isFullTunnel) } ?: false
+            },
         )
     }
 

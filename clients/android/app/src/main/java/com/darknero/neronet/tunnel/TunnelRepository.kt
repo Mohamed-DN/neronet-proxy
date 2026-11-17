@@ -20,6 +20,8 @@ class TunnelRepository(
     private val profileLookup: (String) -> NeroNetProfile?,
     private val clock: Clock,
     private val scope: CoroutineScope,
+    /** True when the profile's kill switch is on right now (the setting, or its default for full-tunnel profiles). */
+    private val killSwitchFor: (String) -> Boolean = { false },
 ) {
     private val lock = Any()
     private val machine = MutableStateFlow(MachineState())
@@ -31,7 +33,9 @@ class TunnelRepository(
     init {
         engine.setListener { profileId, up ->
             val now = clock.elapsedMs()
-            dispatch(if (up) TunnelEvent.BackendUp(profileId, now) else TunnelEvent.BackendDown(profileId, now))
+            dispatch(
+                if (up) TunnelEvent.BackendUp(profileId, now) else TunnelEvent.BackendDown(profileId, now, killSwitchFor(profileId)),
+            )
         }
         scope.launch {
             for (effect in effects) run(effect)
@@ -75,14 +79,14 @@ class TunnelRepository(
             next
         }
         if (transition.effect != TunnelEffect.None) effects.trySend(transition.effect)
-        if (TunnelStateMachine.isPending(machine.value.phase)) startTicker()
+        if (TunnelStateMachine.needsTicks(machine.value.phase)) startTicker()
     }
 
     /** One ticker at a time, running only while a phase waits for the engine. */
     private fun startTicker() {
         if (ticker?.isActive == true) return
         ticker = scope.launch {
-            while (TunnelStateMachine.isPending(machine.value.phase)) {
+            while (TunnelStateMachine.needsTicks(machine.value.phase)) {
                 delay(TunnelTimings.TICK_MS)
                 dispatch(TunnelEvent.Tick(clock.elapsedMs()))
             }
@@ -99,12 +103,42 @@ class TunnelRepository(
                     return
                 }
                 try {
-                    engine.up(effect.profileId, profile)
+                    engine.up(effect.profileId, profile.config)
                     dispatch(TunnelEvent.BackendUp(effect.profileId, clock.elapsedMs()))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     dispatch(TunnelEvent.BackendFailed(effect.profileId, tunnelErrorOf(e)))
+                }
+            }
+            is TunnelEffect.BlockTraffic -> {
+                val profile = profileLookup(effect.profileId)
+                if (profile == null) {
+                    dispatch(TunnelEvent.BlockFailed(effect.profileId))
+                    return
+                }
+                try {
+                    engine.block(effect.profileId, TunnelConfigs.blocking(profile.config))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    dispatch(TunnelEvent.BlockFailed(effect.profileId))
+                }
+            }
+            is TunnelEffect.RetryTunnel -> {
+                val profile = profileLookup(effect.profileId)
+                if (profile == null) {
+                    dispatch(TunnelEvent.BlockFailed(effect.profileId))
+                    return
+                }
+                try {
+                    engine.up(effect.profileId, profile.config)
+                    dispatch(TunnelEvent.TunnelRestored(effect.profileId, clock.elapsedMs()))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // The library puts the blocking interface back when a start fails.
+                    dispatch(TunnelEvent.RetryFailed(effect.profileId, clock.elapsedMs()))
                 }
             }
             is TunnelEffect.StopTunnel -> {

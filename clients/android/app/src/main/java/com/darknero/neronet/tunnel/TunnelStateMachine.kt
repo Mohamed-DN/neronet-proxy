@@ -21,6 +21,19 @@ sealed interface TunnelPhase {
     data class Connected(val profileId: String, val sinceMs: Long) : TunnelPhase
     data class Disconnecting(val profileId: String, val sinceMs: Long) : TunnelPhase
     data class Error(val reason: TunnelError, val profileId: String?) : TunnelPhase
+
+    /**
+     * The kill switch is holding traffic after an unexpected drop (ADR 0035). The app keeps a VPN interface
+     * that routes everything and reaches no peer, and retries the real tunnel until it is back or the person
+     * turns the tunnel off. [attempt] counts the failed retries; [retrying] is true while one is running.
+     */
+    data class Reconnecting(
+        val profileId: String,
+        val sinceMs: Long,
+        val attempt: Int,
+        val nextRetryMs: Long,
+        val retrying: Boolean = false,
+    ) : TunnelPhase
 }
 
 /** The phase plus [wantConnected], the user's intent, which is kept apart from what the backend reports. */
@@ -37,8 +50,15 @@ sealed interface TunnelEvent {
     data class PermissionDenied(val profileId: String?) : TunnelEvent
     data class AlwaysOnStarted(val profileId: String?, val nowMs: Long) : TunnelEvent
     data class BackendUp(val profileId: String, val nowMs: Long) : TunnelEvent
-    data class BackendDown(val profileId: String, val nowMs: Long) : TunnelEvent
+
+    /** [killSwitch] is the profile's effective kill switch setting at the moment of the drop. */
+    data class BackendDown(val profileId: String, val nowMs: Long, val killSwitch: Boolean = false) : TunnelEvent
     data class BackendFailed(val profileId: String, val reason: TunnelError) : TunnelEvent
+
+    /** The kill switch could not hold the traffic (another VPN took over, or the permission is gone). */
+    data class BlockFailed(val profileId: String) : TunnelEvent
+    data class TunnelRestored(val profileId: String, val nowMs: Long) : TunnelEvent
+    data class RetryFailed(val profileId: String, val nowMs: Long) : TunnelEvent
     data class Tick(val nowMs: Long) : TunnelEvent
 }
 
@@ -47,6 +67,12 @@ sealed interface TunnelEffect {
     data object None : TunnelEffect
     data class StartTunnel(val profileId: String) : TunnelEffect
     data class StopTunnel(val profileId: String) : TunnelEffect
+
+    /** Bring up the interface with all routes and no reachable peer. */
+    data class BlockTraffic(val profileId: String) : TunnelEffect
+
+    /** Try the real tunnel again while the block is in place. */
+    data class RetryTunnel(val profileId: String) : TunnelEffect
 }
 
 data class Transition(val state: MachineState, val effect: TunnelEffect = TunnelEffect.None)
@@ -59,6 +85,12 @@ object TunnelTimings {
     const val FIRST_HANDSHAKE_GRACE_MS = 15_000L
     const val STATS_POLL_MS = 1_000L
     const val TICK_MS = 250L
+    const val RECONNECT_FIRST_MS = 3_000L
+    const val RECONNECT_MAX_MS = 30_000L
+
+    /** Wait before retry number [attempt] (0 is the first): 3, 6, 12, 24 s, then 30 s. */
+    fun reconnectDelayMs(attempt: Int): Long =
+        minOf(RECONNECT_MAX_MS, RECONNECT_FIRST_MS shl minOf(attempt, 4))
 }
 
 /**
@@ -74,19 +106,21 @@ object TunnelStateMachine {
             is TunnelEvent.UserConnect -> when {
                 phase is TunnelPhase.Disconnected || phase is TunnelPhase.Error -> start(event.profileId, event.nowMs)
                 phase is TunnelPhase.Connected && phase.profileId != event.profileId -> start(event.profileId, event.nowMs)
+                phase is TunnelPhase.Reconnecting && phase.profileId != event.profileId -> start(event.profileId, event.nowMs)
                 else -> unchanged
             }
 
-            is TunnelEvent.UserCancel ->
-                if (phase is TunnelPhase.Connecting && canCancel(phase, event.nowMs)) {
-                    stopping(phase.profileId, event.nowMs)
-                } else {
-                    unchanged
-                }
+            is TunnelEvent.UserCancel -> when {
+                phase is TunnelPhase.Connecting && canCancel(phase, event.nowMs) -> stopping(phase.profileId, event.nowMs)
+                phase is TunnelPhase.Reconnecting -> stopping(phase.profileId, event.nowMs)
+                else -> unchanged
+            }
 
             is TunnelEvent.UserDisconnect -> when {
                 phase is TunnelPhase.Connecting && canCancel(phase, event.nowMs) -> stopping(phase.profileId, event.nowMs)
                 phase is TunnelPhase.Connected -> stopping(phase.profileId, event.nowMs)
+                // Turning the tunnel off is the way out of the kill switch's block.
+                phase is TunnelPhase.Reconnecting -> stopping(phase.profileId, event.nowMs)
                 else -> unchanged
             }
 
@@ -112,10 +146,26 @@ object TunnelStateMachine {
                     Transition(MachineState(TunnelPhase.Connected(event.profileId, event.nowMs), true))
                 phase is TunnelPhase.Disconnected ->
                     Transition(MachineState(TunnelPhase.Connected(event.profileId, event.nowMs), true))
+                // While Reconnecting the backend's "up" is the blocking interface or a retry; only
+                // TunnelRestored, sent when a retry succeeds, ends the block.
                 else -> unchanged
             }
 
             is TunnelEvent.BackendDown -> when {
+                phase is TunnelPhase.Connected && phase.profileId == event.profileId && state.wantConnected && event.killSwitch ->
+                    // Dropped although the user asked for it: hold the traffic instead of letting it out.
+                    Transition(
+                        MachineState(
+                            TunnelPhase.Reconnecting(
+                                profileId = event.profileId,
+                                sinceMs = event.nowMs,
+                                attempt = 0,
+                                nextRetryMs = event.nowMs + TunnelTimings.reconnectDelayMs(0),
+                            ),
+                            true,
+                        ),
+                        TunnelEffect.BlockTraffic(event.profileId),
+                    )
                 phase is TunnelPhase.Connected && phase.profileId == event.profileId && state.wantConnected ->
                     // The tunnel went down although the user asked for it: another VPN or the system took it.
                     Transition(MachineState(TunnelPhase.Error(TunnelError.VPN_REVOKED, event.profileId), false))
@@ -135,6 +185,37 @@ object TunnelStateMachine {
                 else -> unchanged
             }
 
+            is TunnelEvent.BlockFailed ->
+                if (phase is TunnelPhase.Reconnecting && phase.profileId == event.profileId) {
+                    Transition(MachineState(TunnelPhase.Error(TunnelError.VPN_REVOKED, event.profileId), false))
+                } else {
+                    unchanged
+                }
+
+            is TunnelEvent.TunnelRestored ->
+                if (phase is TunnelPhase.Reconnecting && phase.profileId == event.profileId) {
+                    Transition(MachineState(TunnelPhase.Connected(event.profileId, event.nowMs), true))
+                } else {
+                    unchanged
+                }
+
+            is TunnelEvent.RetryFailed ->
+                if (phase is TunnelPhase.Reconnecting && phase.profileId == event.profileId) {
+                    val attempt = phase.attempt + 1
+                    Transition(
+                        MachineState(
+                            phase.copy(
+                                attempt = attempt,
+                                nextRetryMs = event.nowMs + TunnelTimings.reconnectDelayMs(attempt),
+                                retrying = false,
+                            ),
+                            true,
+                        ),
+                    )
+                } else {
+                    unchanged
+                }
+
             is TunnelEvent.Tick -> when {
                 phase is TunnelPhase.Connecting && event.nowMs - phase.sinceMs >= TunnelTimings.PENDING_TIMEOUT_MS ->
                     Transition(
@@ -143,6 +224,11 @@ object TunnelStateMachine {
                     )
                 phase is TunnelPhase.Disconnecting && event.nowMs - phase.sinceMs >= TunnelTimings.PENDING_TIMEOUT_MS ->
                     Transition(MachineState(TunnelPhase.Error(TunnelError.DISCONNECT_TIMEOUT, phase.profileId), false))
+                phase is TunnelPhase.Reconnecting && !phase.retrying && event.nowMs >= phase.nextRetryMs ->
+                    Transition(
+                        MachineState(phase.copy(retrying = true), true),
+                        TunnelEffect.RetryTunnel(phase.profileId),
+                    )
                 else -> unchanged
             }
         }
@@ -155,6 +241,9 @@ object TunnelStateMachine {
     /** Connecting and Disconnecting are the two phases that wait for the engine. */
     fun isPending(phase: TunnelPhase): Boolean =
         phase is TunnelPhase.Connecting || phase is TunnelPhase.Disconnecting
+
+    /** The repository ticks while a phase waits for the engine, and while the kill switch holds the block. */
+    fun needsTicks(phase: TunnelPhase): Boolean = isPending(phase) || phase is TunnelPhase.Reconnecting
 
     private fun start(profileId: String, nowMs: Long): Transition =
         Transition(MachineState(TunnelPhase.Connecting(profileId, nowMs), true), TunnelEffect.StartTunnel(profileId))

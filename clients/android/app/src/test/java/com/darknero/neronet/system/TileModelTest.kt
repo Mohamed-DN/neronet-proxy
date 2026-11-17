@@ -88,4 +88,15 @@ class TileModelTest {
             tileAction(machine(TunnelPhase.Error(TunnelError.TIMEOUT, "p1"), false), hasProfiles = true, needsConsent = false),
         )
     }
+
+    @Test
+    fun reconnectingStaysActiveSoTheTapTurnsTheTunnelOff() {
+        val state = machine(TunnelPhase.Reconnecting("p1", 0, 0, 3_000), true)
+
+        assertEquals(
+            TileModel(TileStateKind.ACTIVE, R.string.status_reconnecting_title, R.drawable.ic_tile_off),
+            tileModel(state, hasProfiles = true),
+        )
+        assertEquals(TileAction.DISCONNECT, tileAction(state, hasProfiles = true, needsConsent = false))
+    }
 }

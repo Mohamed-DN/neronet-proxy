@@ -42,4 +42,27 @@ class SettingsStoreTest {
         store.lastProfileId = null
         assertNull(SettingsStore(prefs()).lastProfileId)
     }
+
+    @Test
+    fun killSwitchUsesTheDefaultUntilTheChoiceIsMade() {
+        val store = SettingsStore(prefs())
+        assertEquals(true, store.killSwitch("p1", default = true))
+        assertEquals(false, store.killSwitch("p1", default = false))
+
+        store.setKillSwitch("p1", false)
+
+        assertEquals(false, SettingsStore(prefs()).killSwitch("p1", default = true))
+        // Another profile is not affected.
+        assertEquals(true, SettingsStore(prefs()).killSwitch("p2", default = true))
+    }
+
+    @Test
+    fun forgettingAProfileBringsBackTheDefault() {
+        val store = SettingsStore(prefs())
+        store.setKillSwitch("p1", false)
+
+        store.forgetProfile("p1")
+
+        assertEquals(true, store.killSwitch("p1", default = true))
+    }
 }

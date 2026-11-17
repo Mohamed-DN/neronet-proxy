@@ -174,6 +174,11 @@ private fun statusRow(
             null, StatusTone.ALARM, switchOn = true, switchEnabled = true,
         )
     }
+    is TunnelPhase.Reconnecting -> StatusRow(
+        MapState.STALE, R.string.status_reconnecting_title,
+        UiText.Res(R.string.status_reconnecting_line, listOf(gw)), null, StatusTone.ALARM,
+        switchOn = true, switchEnabled = true,
+    )
     is TunnelPhase.Disconnecting -> StatusRow(
         MapState.DISCONNECTING, R.string.status_disconnecting_title, null, null,
         StatusTone.NEUTRAL, switchOn = false, switchEnabled = false,

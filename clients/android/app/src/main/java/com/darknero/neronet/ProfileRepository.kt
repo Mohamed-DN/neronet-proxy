@@ -36,6 +36,8 @@ class ProfileRepository(
 
     fun profile(id: String): NeroNetProfile? = store.entries().firstOrNull { it.id == id }?.profile
 
+    fun summary(id: String): ProfileSummary? = all.value.firstOrNull { it.id == id }
+
     fun findByPublicKey(key: String): ProfileSummary? =
         store.findByPublicKey(key)?.let { ProfileSummary.from(it.id, it.profile) }
 
@@ -49,6 +51,7 @@ class ProfileRepository(
     fun delete(id: String) {
         store.delete(id)
         if (settings.lastProfileId == id) settings.lastProfileId = null
+        settings.forgetProfile(id)
         refresh()
     }
 }

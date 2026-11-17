@@ -32,6 +32,8 @@
     <string name="status_stale_never_line">The tunnel is on, but %1$s has not replied yet. Check your internet connection; WireGuard keeps trying every 5 seconds.</string>
     <string name="status_disconnecting_title">Disconnecting</string>
     <string name="status_error_title">Could not connect</string>
+    <string name="status_reconnecting_title">Connection lost, traffic blocked</string>
+    <string name="status_reconnecting_line">The kill switch is blocking all traffic until %1$s is back. Tap your device to turn the tunnel off.</string>
     <string name="elapsed_less_than_minute">for less than a minute</string>
     <string name="duration_less_than_minute">less than a minute</string>
 
@@ -68,6 +70,14 @@
     <string name="profiles_in_use">In use</string>
     <string name="profiles_add">Add a profile</string>
     <string name="profiles_row_menu">More options for %1$s</string>
+
+    <!-- Profile options -->
+    <string name="options_title">Profile options</string>
+    <string name="profiles_menu_options">Options</string>
+    <string name="state_on">On</string>
+    <string name="state_off">Off</string>
+    <string name="kill_switch_title">Kill switch</string>
+    <string name="kill_switch_body">If the tunnel drops, NeroNet blocks all traffic until it is back or you turn the tunnel off. On by default for profiles that send all traffic through NeroNet. Android\'s \"Block connections without VPN\" protects even more; see Settings.</string>
     <string name="delete_title">Delete %1$s?</string>
     <string name="delete_message">This removes the profile and its private key from this device. To connect again you will need to import it again from the console.</string>
     <string name="delete_message_connected">The connection closes first. This removes the profile and its private key from this device; to connect again you will need to import it again from the console.</string>

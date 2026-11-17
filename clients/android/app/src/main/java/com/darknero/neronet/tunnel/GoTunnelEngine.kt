@@ -1,7 +1,7 @@
 package com.darknero.neronet.tunnel
 
 import android.content.Context
-import com.darknero.neronet.NeroNetProfile
+import com.wireguard.config.Config
 import com.wireguard.android.backend.GoBackend
 import com.wireguard.android.backend.Tunnel
 import kotlinx.coroutines.Dispatchers
@@ -40,12 +40,17 @@ class GoTunnelEngine(context: Context, alwaysOn: () -> Unit) : TunnelEngine {
         this.listener = listener
     }
 
-    override suspend fun up(profileId: String, profile: NeroNetProfile) {
+    override suspend fun up(profileId: String, config: Config) {
         // GoBackend brings any tunnel that is already up down before this one comes up.
         withContext(backendThread) {
-            backend.setState(tunnel(profileId), Tunnel.State.UP, profile.config)
+            backend.setState(tunnel(profileId), Tunnel.State.UP, config)
             Unit
         }
+    }
+
+    override suspend fun block(profileId: String, config: Config) {
+        // Same call as up: GoBackend replaces the running interface with this one.
+        up(profileId, config)
     }
 
     override suspend fun down(profileId: String) {

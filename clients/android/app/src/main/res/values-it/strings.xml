@@ -32,6 +32,8 @@
     <string name="status_stale_never_line">Il tunnel è attivo, ma %1$s non ha ancora risposto. Controlla la connessione a internet; WireGuard riprova ogni 5 secondi.</string>
     <string name="status_disconnecting_title">Scollegamento in corso</string>
     <string name="status_error_title">Collegamento non riuscito</string>
+    <string name="status_reconnecting_title">Connessione persa, traffico bloccato</string>
+    <string name="status_reconnecting_line">Il kill switch blocca tutto il traffico finché %1$s non torna raggiungibile. Tocca il tuo dispositivo per spegnere il tunnel.</string>
     <string name="elapsed_less_than_minute">da meno di un minuto</string>
     <string name="duration_less_than_minute">meno di un minuto</string>
 
@@ -67,6 +69,14 @@
     <string name="profiles_in_use">In uso</string>
     <string name="profiles_add">Aggiungi un profilo</string>
     <string name="profiles_row_menu">Altre opzioni per %1$s</string>
+
+    <!-- Opzioni del profilo -->
+    <string name="options_title">Opzioni del profilo</string>
+    <string name="profiles_menu_options">Opzioni</string>
+    <string name="state_on">Attivo</string>
+    <string name="state_off">Disattivo</string>
+    <string name="kill_switch_title">Kill switch</string>
+    <string name="kill_switch_body">Se il tunnel cade, NeroNet blocca tutto il traffico finché non torna o finché non spegni il tunnel. Attivo di default per i profili che fanno passare tutto il traffico da NeroNet. \"Blocca connessioni senza VPN\" di Android protegge ancora di più; vedi Impostazioni.</string>
     <string name="delete_title">Eliminare %1$s?</string>
     <string name="delete_message">Il profilo e la sua chiave privata vengono rimossi da questo dispositivo. Per ricollegarti dovrai importarlo di nuovo dalla console.</string>
     <string name="delete_message_connected">Prima si chiude la connessione. Il profilo e la sua chiave privata vengono rimossi da questo dispositivo; per ricollegarti dovrai importarlo di nuovo dalla console.</string>
