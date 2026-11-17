@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Builds the debug APK and runs the JVM unit tests inside a rootless Podman container.
+# Usage: clients/android/build.sh [gradle tasks...]   (default: testDebugUnitTest assembleDebug)
+set -euo pipefail
+
+# Pinned public Android SDK image (JDK 17, Android SDK under /opt/android-sdk-linux).
+IMAGE="docker.io/mobiledevops/android-sdk-image:34.0.1"
+# Gradle caches live in a named volume of our own, so rebuilds do not re-download everything.
+GRADLE_CACHE_VOLUME="nn-android-gradle-cache"
+# Optional: heavy builds wait while a timing-sensitive network test holds this flag file.
+# Unset means no wait.
+DERP_FLAG="${NERONET_BUILD_WAIT_FLAG:-}"
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# Host path of the worktree root (Windows form under Git Bash, plain path elsewhere).
+REPO="$(cd "$HERE/../.." && (pwd -W 2>/dev/null || pwd))"
+APP_DIR="$HERE/app"
+APK="$APP_DIR/build/outputs/apk/debug/app-debug.apk"
+TASKS=("$@")
+if [ "${#TASKS[@]}" -eq 0 ]; then
+  TASKS=(testDebugUnitTest assembleDebug)
+fi
+
+# Git Bash must not rewrite the container paths (/w, /root/.gradle).
+export MSYS_NO_PATHCONV=1
+
+while [ -n "$DERP_FLAG" ] && [ -e "$DERP_FLAG" ]; do
+  echo "Waiting: $DERP_FLAG exists (a network test is running). Checking again in 60 s."
+  sleep 60
+done
+
+echo "Image: $IMAGE"
+echo "Worktree mounted at /w from: $REPO"
+podman run --rm \
+  -v "$REPO:/w" \
+  -v "$GRADLE_CACHE_VOLUME:/root/.gradle" \
+  -v "nn-android-m2-cache:/root/.m2" \
+  -w /w/clients/android \
+  --entrypoint /bin/bash \
+  "$IMAGE" \
+  -c 'set -euo pipefail
+      export ANDROID_HOME=/opt/android-sdk-linux ANDROID_SDK_ROOT=/opt/android-sdk-linux
+      SDKMANAGER="$ANDROID_HOME/cmdline-tools/bin/sdkmanager --sdk_root=$ANDROID_HOME"
+      yes | $SDKMANAGER --licenses >/dev/null 2>&1 || true
+      $SDKMANAGER --install "platforms;android-35" "build-tools;35.0.0" >/dev/null
+      sh ./gradlew --no-daemon --console=plain '"${TASKS[*]}"
+
+echo
+echo "Unit test results:"
+for f in "$APP_DIR"/build/test-results/testDebugUnitTest/*.xml; do
+  [ -e "$f" ] || continue
+  grep -o '<testsuite name="[^"]*" tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*" errors="[0-9]*"' "$f" || true
+done
+
+if [ -f "$APK" ]; then
+  echo
+  echo "APK: $APK"
+  ls -l "$APK" | awk '{ printf "Size: %.1f MB (%d bytes)\n", $5/1048576, $5 }'
+fi
+
+# APK budgets from the v1 plan: debug at most 24.0 MB, release (R8, unsigned) at most 14.0 MB.
+DEBUG_BUDGET_BYTES=25165824
+RELEASE_BUDGET_BYTES=14680064
+RELEASE_APK="$APP_DIR/build/outputs/apk/release/app-release-unsigned.apk"
+budget_failed=0
+check_budget() {
+  local file="$1" budget="$2" label="$3" size
+  [ -f "$file" ] || return 0
+  size=$(wc -c < "$file")
+  echo "Budget $label: $size bytes of $budget allowed"
+  if [ "$size" -gt "$budget" ]; then
+    echo "BUDGET EXCEEDED: the $label APK is $size bytes, over $budget. Stop and report; do not remove features." >&2
+    budget_failed=1
+  fi
+}
+check_budget "$APK" "$DEBUG_BUDGET_BYTES" debug
+check_budget "$RELEASE_APK" "$RELEASE_BUDGET_BYTES" release
+if [ "$budget_failed" -ne 0 ]; then
+  exit 1
+fi

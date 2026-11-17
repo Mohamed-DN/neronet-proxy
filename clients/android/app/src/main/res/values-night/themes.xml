@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NeroNet" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/nn_background</item>
+    </style>
+</resources>
