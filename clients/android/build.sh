@@ -7,8 +7,9 @@ set -euo pipefail
 IMAGE="docker.io/mobiledevops/android-sdk-image:34.0.1"
 # Gradle caches live in a named volume of our own, so rebuilds do not re-download everything.
 GRADLE_CACHE_VOLUME="nn-android-gradle-cache"
-# Heavy builds wait while a timing-sensitive network test holds this flag file.
-DERP_FLAG="C:/AI/NeroNet/piano/reports/logs-t0p1/DERP_RUNNING"
+# Optional: heavy builds wait while a timing-sensitive network test holds this flag file.
+# Unset means no wait.
+DERP_FLAG="${NERONET_BUILD_WAIT_FLAG:-}"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # Host path of the worktree root (Windows form under Git Bash, plain path elsewhere).
@@ -23,7 +24,7 @@ fi
 # Git Bash must not rewrite the container paths (/w, /root/.gradle).
 export MSYS_NO_PATHCONV=1
 
-while [ -e "$DERP_FLAG" ]; do
+while [ -n "$DERP_FLAG" ] && [ -e "$DERP_FLAG" ]; do
   echo "Waiting: $DERP_FLAG exists (a network test is running). Checking again in 60 s."
   sleep 60
 done

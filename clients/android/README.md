@@ -1,7 +1,7 @@
 # NeroNet for Android (version 1.0.0)
 
-A profile client for NeroNet, as described in ADR 0029 (`docs/adr/0029-device-apps-and-profile-gateway.md`)
-and in the v1 design (`piano/DESIGN_APP_NERONET_NOV09.md`). The app imports a NeroNet profile (a standard
+A profile client for NeroNet, as described in ADR 0029 (`docs/adr/0029-device-apps-and-profile-gateway.md`).
+The app imports a NeroNet profile (a standard
 `wg-quick` file with `# NeroNet-...` comment lines), brings the tunnel up with the official WireGuard
 tunnel library (`com.wireguard.android:tunnel`), and shows what the profile and the handshake prove.
 
@@ -22,7 +22,7 @@ With no arguments the script runs `testDebugUnitTest assembleDebug`. It uses the
 `docker.io/mobiledevops/android-sdk-image:34.0.1`, installs Android platform 35 and build-tools 35.0.0,
 and prints the per-class test counts and both APK sizes. Gradle caches go to the named Podman volume
 `nn-android-gradle-cache`; the Robolectric Android runtime goes to `nn-android-m2-cache`. If
-`DERP_RUNNING` exists under `piano/reports/logs-t0p1/`, the script waits until it is gone.
+`NERONET_BUILD_WAIT_FLAG` names a file that exists, the script waits until it is gone.
 
 The script fails when an APK is over budget:
 
