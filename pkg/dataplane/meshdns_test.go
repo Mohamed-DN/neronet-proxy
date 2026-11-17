@@ -330,8 +330,11 @@ func TestMeshDNSDeviceWithAnExitKeepsUsingTheExitsResolver(t *testing.T) {
 	if meshUp.queries.Load() != 0 {
 		t.Fatalf("a device with an exit used the gateway's own upstream %d time(s)", meshUp.queries.Load())
 	}
-	if exitUp.queries.Load() != 2 {
-		t.Fatalf("the exit's resolver saw %d queries, want 2", exitUp.queries.Load())
+	// At least one query per transport. A loaded machine can make the UDP client resend,
+	// so the exit may see a retransmission; what must hold exactly is that the gateway's
+	// own upstream saw none (checked above).
+	if exitUp.queries.Load() < 2 {
+		t.Fatalf("the exit's resolver saw %d queries, want at least 2", exitUp.queries.Load())
 	}
 }
 
