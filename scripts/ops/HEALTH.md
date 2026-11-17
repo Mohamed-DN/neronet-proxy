@@ -20,7 +20,14 @@ Exit code 0 when all checks pass, 1 otherwise. No secrets or env values are prin
    ```
    COMPOSE_PROJECT_NAME=neronet-gw
    NERONET_PUBLIC_URL=https://example.org
+   NERONET_DNS_NAMES=example.org gw.example.org
    ```
+   `NERONET_DNS_NAMES` turns on the `public-dns` check: each name's A record (asked of
+   Cloudflare's DNS-over-HTTPS) must equal this line's public IPv4 (asked of two sources
+   that must agree). On a home line the address can change after a power cut or a router
+   restart; everything then looks healthy from inside while nobody outside can connect.
+   Keep the records current with `scripts/ops/cloudflare-ddns/install.sh` (a timer that
+   updates them every 5 minutes); this check tells you when that is not happening.
 3. Copy the units and enable the timer:
    ```
    mkdir -p ~/.config/systemd/user

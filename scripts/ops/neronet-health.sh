@@ -10,12 +10,15 @@
 #   COMPOSE_PROJECT_NAME  compose project name (default neronet-gw)
 #   NERONET_CONSOLE_URL   console base URL (default https://127.0.0.1:8443)
 #   NERONET_PUBLIC_URL    public URL; enables the public HTTP and TLS checks
+#   NERONET_DNS_NAMES     space-separated public names; enables the DNS check (each A
+#                         record must equal this line's public IPv4, asked of two sources)
 #   NERONET_MEMINFO       meminfo file (default /proc/meminfo; for tests)
 set -u
 
 PROJECT=${COMPOSE_PROJECT_NAME:-neronet-gw}
 CONSOLE_URL=${NERONET_CONSOLE_URL:-https://127.0.0.1:8443}
 PUBLIC_URL=${NERONET_PUBLIC_URL:-}
+DNS_NAMES=${NERONET_DNS_NAMES:-}
 MEMINFO=${NERONET_MEMINFO:-/proc/meminfo}
 GATEWAY="${PROJECT}-gateway-1"
 FAILS=0
@@ -117,6 +120,41 @@ check_tls() {
   fi
 }
 
+# 5b. Optional DNS check: every public name must point at this line's current public
+# IPv4. A home line can be given a new address (after a power cut, a router restart);
+# then everything still looks healthy from inside while nobody outside can connect.
+# The public IP comes from two independent sources that must agree; the records are
+# asked of Cloudflare's DNS-over-HTTPS, so a local resolver's rewrites cannot hide it.
+public_ipv4() {
+  a=$(curl -s --max-time 8 https://api.ipify.org 2>/dev/null | tr -d '[:space:]')
+  b=$(curl -s --max-time 8 https://ifconfig.co/ip 2>/dev/null | tr -d '[:space:]')
+  case $a in '' | *[!0-9.]*) return 1 ;; esac
+  [ "$a" = "$b" ] || return 1
+  printf '%s' "$a"
+}
+
+check_public_dns() {
+  if ! mine=$(public_ipv4); then
+    fail public-dns "could not learn this line's public IPv4 from two agreeing sources"
+    return
+  fi
+  bad=0
+  for name in $DNS_NAMES; do
+    case $name in *[!A-Za-z0-9.-]* | '') fail public-dns "invalid name in NERONET_DNS_NAMES"; bad=1; continue ;; esac
+    answer=$(curl -s --max-time 8 -H 'accept: application/dns-json' \
+      "https://1.1.1.1/dns-query?name=${name}&type=A" 2>/dev/null)
+    got=$(printf '%s' "$answer" | tr ',{}' '\n\n\n' | sed -n 's/^"data":"\([0-9.]*\)"$/\1/p' | head -n 1)
+    if [ -z "$got" ]; then
+      fail public-dns "$name has no A record"
+      bad=1
+    elif [ "$got" != "$mine" ]; then
+      fail public-dns "$name points to $got, this line is $mine"
+      bad=1
+    fi
+  done
+  [ "$bad" -eq 0 ] && ok public-dns
+}
+
 # 6. Disk free on / above 10%.
 check_disk() {
   free=$(df -P / 2>/dev/null | awk 'NR == 2 && $2 > 0 { printf "%d", $4 * 100 / $2 }')
@@ -152,6 +190,9 @@ check_wireguard_port
 if [ -n "$PUBLIC_URL" ]; then
   check_public_http
   check_tls
+fi
+if [ -n "$DNS_NAMES" ]; then
+  check_public_dns
 fi
 
 check_disk

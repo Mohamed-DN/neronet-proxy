@@ -13,8 +13,11 @@ mkdir -p "$STUBS"
 
 cat >"$STUBS/curl" <<'EOF'
 #!/bin/sh
-# Public check passes -w; console check does not.
+# Public check passes -w; console check does not. DNS-over-HTTPS and the public IP
+# sources answer from FAKE_DNS_A and FAKE_PUBLIC_IP.
 case " $* " in
+  *dns-query*) printf '{"Status":0,"Answer":[{"type":1,"data":"%s"}]}' "${FAKE_DNS_A:-192.0.2.10}" ;;
+  *ipify* | *ifconfig*) printf '%s\n' "${FAKE_PUBLIC_IP:-192.0.2.10}" ;;
   *" -w "*) printf '%s' "${FAKE_PUBLIC_CODE:-200}" ;;
   *) printf '%s' '{"status":"ok","version":"4.0.0","database":"connected","valkey":"connected"}' ;;
 esac
@@ -57,6 +60,7 @@ status=0
 out1="$WORK/ok.out"
 set +e
 PATH="$STUBS:$PATH" NERONET_MEMINFO="$MEMINFO" NERONET_PUBLIC_URL="https://neronet.example.test" \
+  NERONET_DNS_NAMES="neronet.example.test gw.neronet.example.test" \
   COMPOSE_PROJECT_NAME=neronet-gw sh "$CHECK" >"$out1" 2>&1
 rc1=$?
 set -e
@@ -86,6 +90,23 @@ elif ! grep -q ' FAIL gateway not running' "$out2"; then
   echo "FAIL case 2: missing gateway FAIL line" >&2; status=1
 else
   echo "PASS case 2: gateway down, exit 1 with FAIL line"
+fi
+
+# Case 3: the line's public IP changed and DNS still has the old one -> FAIL public-dns.
+out3="$WORK/dns.out"
+set +e
+PATH="$STUBS:$PATH" NERONET_MEMINFO="$MEMINFO" NERONET_PUBLIC_URL='' \
+  NERONET_DNS_NAMES="neronet.example.test" FAKE_DNS_A=192.0.2.10 FAKE_PUBLIC_IP=198.51.100.20 \
+  COMPOSE_PROJECT_NAME=neronet-gw sh "$CHECK" >"$out3" 2>&1
+rc3=$?
+set -e
+cat "$out3"
+if [ "$rc3" -ne 1 ]; then
+  echo "FAIL case 3: expected exit 1, got $rc3" >&2; status=1
+elif ! grep -q ' FAIL public-dns neronet.example.test points to 192.0.2.10, this line is 198.51.100.20' "$out3"; then
+  echo "FAIL case 3: missing public-dns FAIL line" >&2; status=1
+else
+  echo "PASS case 3: stale DNS record detected"
 fi
 
 exit "$status"

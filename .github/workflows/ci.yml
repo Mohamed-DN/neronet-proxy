@@ -352,6 +352,9 @@ jobs:
       - name: Infrastructure files claim only what exists
         run: sh scripts/dev/test-honest-infra.sh
 
+      - name: Health check reports a stale public DNS record
+        run: sh scripts/ops/test-neronet-health.sh
+
       - name: YAML syntax
         run: |
           python3 -m pip install --quiet pyyaml
