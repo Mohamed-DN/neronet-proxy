@@ -78,6 +78,8 @@
     <string name="state_off">Off</string>
     <string name="kill_switch_title">Kill switch</string>
     <string name="kill_switch_body">If the tunnel drops, NeroNet blocks all traffic until it is back or you turn the tunnel off. On by default for profiles that send all traffic through NeroNet. Android\'s \"Block connections without VPN\" protects even more; see Settings.</string>
+    <string name="reachable_as">Reachable as %1$s</string>
+    <string name="search_domain">Search domain: %1$s</string>
     <string name="split_title">Split tunnelling</string>
     <string name="split_mode_all">All apps use NeroNet</string>
     <string name="split_mode_include">Only the apps I pick use NeroNet</string>

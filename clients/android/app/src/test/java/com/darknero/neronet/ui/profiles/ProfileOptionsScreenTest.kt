@@ -65,4 +65,33 @@ class ProfileOptionsScreenTest {
         rule.onNodeWithText("Off").assertExists()
         rule.onNodeWithTag("option_kill_switch").assertIsOff()
     }
+
+    @Test
+    fun showsTheConsoleNameAndTheSearchDomain() {
+        rule.setContent {
+            NeroNetTheme {
+                ProfileOptionsScreen(
+                    profile = profile.copy(deviceName = "laptop-7.corp.example", searchDomains = listOf("corp.example")),
+                    killSwitch = true,
+                    onKillSwitchChange = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        rule.onNodeWithText("Reachable as laptop-7.corp.example").assertExists()
+        rule.onNodeWithText("Search domain: corp.example").assertExists()
+    }
+
+    @Test
+    fun withoutAConsoleNameTheProfileTitleIsShown() {
+        rule.setContent {
+            NeroNetTheme {
+                ProfileOptionsScreen(profile = profile, killSwitch = true, onKillSwitchChange = {}, onBack = {})
+            }
+        }
+
+        rule.onNodeWithText("Reachable as example.com").assertExists()
+        rule.onNodeWithTag("search_domain").assertDoesNotExist()
+    }
 }

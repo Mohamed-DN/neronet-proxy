@@ -45,6 +45,8 @@ class NeroNetProfile private constructor(
     val consoleUrl: String?,
     /** The device identifier, from NeroNet-Device. */
     val deviceId: String?,
+    /** The name the console gave the device (NeroNet-DNS-Name), lower case; null when absent or not a DNS name. */
+    val dnsName: String?,
     /** The configuration the tunnel is brought up with. */
     val config: Config,
 ) {
@@ -56,6 +58,7 @@ class NeroNetProfile private constructor(
         private val IPV4_RE = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")
         private val IPV6_RE = Regex("^[0-9A-Fa-f:.]+$")
         private val KEEPALIVE_OFF_RE = Regex("(?i)^PersistentKeepalive\\s*=\\s*off$")
+        private val HOST_LABEL_RE = Regex("^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 
         private val INTERFACE_KEYS = setOf("privatekey", "address", "dns", "listenport", "mtu")
         private val PEER_KEYS = setOf("publickey", "presharedkey", "endpoint", "allowedips", "persistentkeepalive")
@@ -67,6 +70,7 @@ class NeroNetProfile private constructor(
             var version = 0
             var consoleUrl: String? = null
             var deviceId: String? = null
+            var dnsName: String? = null
             var section = ""
             var sawPrivateKey = false
             val peerHasKey = mutableListOf<Boolean>()
@@ -95,6 +99,7 @@ class NeroNetProfile private constructor(
                             }
                             "NeroNet-Console" -> consoleUrl = requireHttps(value)
                             "NeroNet-Device" -> deviceId = value
+                            "NeroNet-DNS-Name" -> dnsName = value.lowercase().takeIf { isHostName(it) }
                             // Other NeroNet-* lines are for newer apps; plain comments are ignored.
                         }
                     }
@@ -138,8 +143,9 @@ class NeroNetProfile private constructor(
                         if (!isPrefix(part)) fail(line, ProfileReason.BAD_VALUE, "Address $part is not an IP prefix")
                     }
                     "interface.dns" -> commaList(value).forEach { part ->
-                        if (!isIp(part)) {
-                            fail(line, ProfileReason.BAD_VALUE, "DNS $part is not an IP address (search domains and host names are not supported)")
+                        // An entry that is not an IP address is a search domain (Tailscale-style "DNS = ip, domain").
+                        if (!isIp(part) && !isHostName(part)) {
+                            fail(line, ProfileReason.BAD_VALUE, "DNS $part is neither an IP address nor a search domain")
                         }
                     }
                     "interface.listenport" -> checkRange("ListenPort", value, 0, 65535, line)
@@ -182,7 +188,7 @@ class NeroNetProfile private constructor(
             } catch (e: Exception) {
                 throw ProfileException(ProfileReason.WIREGUARD_REJECTED, "WireGuard rejected the configuration")
             }
-            return NeroNetProfile(version, consoleUrl, deviceId, config)
+            return NeroNetProfile(version, consoleUrl, deviceId, dnsName, config)
         }
 
         private fun fail(line: Int, reason: ProfileReason, why: String): Nothing =
@@ -222,6 +228,13 @@ class NeroNetProfile private constructor(
             if (port == null || port < 1 || port > 65535) {
                 fail(line, ProfileReason.BAD_VALUE, "Endpoint port must be from 1 to 65535")
             }
+        }
+
+        /** A DNS name: dot-separated labels of letters, digits and inner hyphens, not all-numeric, at most 253 characters. */
+        private fun isHostName(s: String): Boolean {
+            if (s.isEmpty() || s.length > 253) return false
+            val labels = s.split(".")
+            return labels.all { HOST_LABEL_RE.matches(it) } && !labels.last().all { it.isDigit() }
         }
 
         private fun isIpv4(s: String): Boolean =

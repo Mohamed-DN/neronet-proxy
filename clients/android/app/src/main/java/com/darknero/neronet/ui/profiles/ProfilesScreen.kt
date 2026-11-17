@@ -123,7 +123,7 @@ private fun ProfileRow(
 ) {
     val palette = LocalNnPalette.current
     var menuOpen by remember { mutableStateOf(false) }
-    val detail = profile.deviceId ?: profile.addresses.firstOrNull()
+    val detail = profile.deviceName ?: profile.deviceId ?: profile.addresses.firstOrNull()
 
     Row(Modifier.fillMaxWidth().heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(

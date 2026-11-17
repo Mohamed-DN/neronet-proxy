@@ -73,6 +73,18 @@ fun ProfileOptionsScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(profile.title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.reachable_as, profile.reachableName),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.testTag("reachable_as"),
+            )
+            if (profile.searchDomains.isNotEmpty()) {
+                Text(
+                    stringResource(R.string.search_domain, profile.searchDomains.joinToString(", ")),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.testTag("search_domain"),
+                )
+            }
             SwitchRow(
                 title = stringResource(R.string.kill_switch_title),
                 body = stringResource(R.string.kill_switch_body),

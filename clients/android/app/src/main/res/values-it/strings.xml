@@ -77,6 +77,8 @@
     <string name="state_off">Disattivo</string>
     <string name="kill_switch_title">Kill switch</string>
     <string name="kill_switch_body">Se il tunnel cade, NeroNet blocca tutto il traffico finché non torna o finché non spegni il tunnel. Attivo di default per i profili che fanno passare tutto il traffico da NeroNet. \"Blocca connessioni senza VPN\" di Android protegge ancora di più; vedi Impostazioni.</string>
+    <string name="reachable_as">Raggiungibile come %1$s</string>
+    <string name="search_domain">Dominio di ricerca: %1$s</string>
     <string name="split_title">Tunnel per app</string>
     <string name="split_mode_all">Tutte le app usano NeroNet</string>
     <string name="split_mode_include">Solo le app che scelgo usano NeroNet</string>
