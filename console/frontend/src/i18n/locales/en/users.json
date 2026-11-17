@@ -71,7 +71,9 @@
     "save": "Save the exclusions",
     "cancel": "Cancel",
     "saving": "Saving...",
-    "success": "Exclusions updated."
+    "success": "Exclusions updated.",
+    "removeApp": "Remove {{app}}",
+    "noApps": "No apps currently bypassed. All application traffic routes through the mesh tunnel."
   },
   "revokeDialog": {
     "title": "Sign the user out of all devices?",
@@ -111,7 +113,9 @@
       "staleness": "Max Netmap Staleness (seconds)",
       "submit": "Create Organization",
       "cancel": "Cancel",
-      "success": "Organization created successfully."
+      "success": "Organization created successfully.",
+      "namePlaceholder": "e.g. Acme Defense Cyber",
+      "slugPlaceholder": "e.g. acme-defense"
     }
   },
   "addOnlySuperAdmin": "Only a platform administrator can add users.",
@@ -123,5 +127,9 @@
     "status": "Connection status",
     "groupsTitle": "How company groups become roles",
     "groupsBody": "Each organisation maps its groups to roles in its own settings. A company group cannot grant the platform administrator role."
-  }
+  },
+  "error": {
+    "body": "Could not load users."
+  },
+  "creating": "Creating..."
 }

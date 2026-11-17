@@ -100,7 +100,13 @@ export default function DropRoute() {
         <p className="text-body text-muted">{t('readOnly')}</p>
       )}
 
-      <InboxSection items={inbox.data} isPending={inbox.isPending} onOpen={setOpened} />
+      <InboxSection
+        items={inbox.data}
+        isPending={inbox.isPending}
+        error={inbox.isError ? inbox.error : null}
+        onRetry={() => void inbox.refetch()}
+        onOpen={setOpened}
+      />
 
       <details className="mt-10 rounded-card border border-border-subtle p-4 text-body text-content">
         <summary className="flex min-h-11 cursor-pointer items-center gap-2 font-medium focus-visible:outline-focus">
@@ -439,10 +445,14 @@ function SendResultView({
 function InboxSection({
   items,
   isPending,
+  error,
+  onRetry,
   onOpen
 }: {
   items: DropItem[] | undefined;
   isPending: boolean;
+  error: Error | null;
+  onRetry: () => void;
   onOpen: (opened: { id: string; key: Uint8Array }) => void;
 }) {
   const { t, i18n } = useTranslation('drop');
@@ -473,6 +483,8 @@ function InboxSection({
               {t('inbox.loading')}
             </p>
           </>
+        ) : error && !items ? (
+          <ErrorState title={t('inbox.error.title')} body={t('inbox.error.body')} error={error} onRetry={onRetry} />
         ) : !items || items.length === 0 ? (
           <EmptyState title={t('inbox.empty.title')} body={t('inbox.empty.body')} />
         ) : (
@@ -488,6 +500,8 @@ function InboxSection({
                     })}
                     {item.status === 'received' && <> {t('inbox.received')}</>}
                   </p>
+                  {/* The key lives only in the sender's link (ADR 0033), so the server cannot open the file. */}
+                  {item.status !== 'received' && <p className="text-caption text-muted">{t('inbox.needsLink')}</p>}
                 </div>
                 <p className="text-caption text-muted">
                   <span className="sr-only">{t('inbox.code')} </span>

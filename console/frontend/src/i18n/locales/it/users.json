@@ -71,7 +71,9 @@
     "save": "Salva le esclusioni",
     "cancel": "Annulla",
     "saving": "Salvataggio...",
-    "success": "Esclusioni aggiornate."
+    "success": "Esclusioni aggiornate.",
+    "removeApp": "Rimuovi {{app}}",
+    "noApps": "Nessuna app esclusa al momento. Tutto il traffico delle app passa dal tunnel della rete."
   },
   "revokeDialog": {
     "title": "Disconnettere l'utente da tutti i dispositivi?",
@@ -111,7 +113,9 @@
       "staleness": "Obsolescenza Massima Netmap (secondi)",
       "submit": "Crea Organizzazione",
       "cancel": "Annulla",
-      "success": "Organizzazione creata con successo."
+      "success": "Organizzazione creata con successo.",
+      "namePlaceholder": "ad es. Acme Difesa Cyber",
+      "slugPlaceholder": "ad es. acme-difesa"
     }
   },
   "addOnlySuperAdmin": "Solo un amministratore della piattaforma può aggiungere utenti.",
@@ -123,5 +127,9 @@
     "status": "Stato del collegamento",
     "groupsTitle": "Come i gruppi aziendali diventano ruoli",
     "groupsBody": "Ogni organizzazione collega i propri gruppi ai ruoli nelle proprie impostazioni. Un gruppo aziendale non può dare il ruolo di amministratore della piattaforma."
-  }
+  },
+  "error": {
+    "body": "Impossibile caricare gli utenti."
+  },
+  "creating": "Creazione in corso..."
 }

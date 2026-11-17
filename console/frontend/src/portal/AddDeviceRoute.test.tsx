@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -283,15 +283,44 @@ describe('AddDeviceRoute', () => {
     expect(await alertWith(/An administrator has to choose the gateway in Settings/)).toBeInTheDocument();
   });
 
-  it('409 without the gateway code says the key was already in use', async () => {
-    stubRegister(409, { error: 'taken' });
+  it('a 409 with another reason is a generic retry, not "key already in use"', async () => {
+    stubRegister(409, { error: 'conflict', code: 'device_limit_reached' });
     renderAdd();
 
     await fillAndSubmit();
 
-    expect(await alertWith(/already in use/)).toHaveTextContent(
-      'The new key was already in use. Create the code again.'
+    expect(await alertWith(/The device was not added/)).toHaveTextContent('The device was not added. Try again.');
+    expect(screen.queryByText(/already in use/)).toBeNull();
+  });
+
+  it('409 public_key_in_use says the key was already in use', async () => {
+    stubRegister(409, { error: 'taken', code: 'public_key_in_use' });
+    renderAdd();
+
+    await fillAndSubmit();
+
+    expect(await alertWith(/already in use/)).toBeInTheDocument();
+  });
+
+  it('says so inline when the exit options cannot be loaded, and still lets the code be created', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => json(500, { error: 'boom' }))
     );
+    renderAdd();
+
+    expect(await screen.findByText(/exit options could not be loaded/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create the code' })).toBeInTheDocument();
+  });
+
+  it('moves focus to the result heading when the form is replaced by the result', async () => {
+    stubRegister(201, DEVICE);
+    renderAdd();
+
+    await fillAndSubmit();
+
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Scan this code with the WireGuard app' });
+    await waitFor(() => expect(heading).toHaveFocus());
   });
 
   it('400 marks the name field', async () => {

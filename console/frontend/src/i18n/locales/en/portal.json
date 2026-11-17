@@ -123,6 +123,7 @@
       "phones": "On iPhone and Android the WireGuard app cannot use this method."
     },
     "exit": {
+      "loadFailed": "The exit options could not be loaded. You can still create the code, and the traffic will not go through an exit.",
       "legend": "Internet traffic",
       "toggle": "All traffic through an exit",
       "hint": "Websites see the exit's address instead of yours. Choose this on a public Wi-Fi, or to browse as if you were at the exit.",

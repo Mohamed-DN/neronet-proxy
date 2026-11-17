@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Navigate, useSearchParams } from 'react-router';
+import { Navigate, useLocation, useSearchParams } from 'react-router';
 
 import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../services/apiClient';
 import { MfaChallenge, startMfaEnrolment, type MfaEnrolment } from '../services/session';
-import { Button, LanguageSwitcher, ThemeToggle } from '../ui';
+import { Button, Checkbox, LanguageSwitcher, ThemeToggle } from '../ui';
 import { NEXT_PARAM, safeNextPath } from './paths';
 
 const INPUT_CLASS =
@@ -54,6 +54,7 @@ export default function LoginRoute() {
   const { t } = useTranslation('chrome');
   const { login, completeMfaSignIn, isAuthenticated } = useAuth();
   const [params] = useSearchParams();
+  const location = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<PlainError | null>(null);
@@ -63,6 +64,10 @@ export default function LoginRoute() {
   const [mfa, setMfa] = useState<MfaStep | null>(null);
   const [code, setCode] = useState('');
   const [useRecovery, setUseRecovery] = useState(false);
+  // Enrolment: the recovery codes are shown once, so leaving needs to be deliberate.
+  const [codesSaved, setCodesSaved] = useState(false);
+  const [codesCopied, setCodesCopied] = useState<'copied' | 'failed' | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const usernameRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
 
@@ -80,7 +85,8 @@ export default function LoginRoute() {
   }, [mfa, useRecovery]);
 
   if (isAuthenticated) {
-    return <Navigate to={next} replace />;
+    // The fragment (a NeroDrop link) is re-attached here; it never went to the server.
+    return <Navigate to={`${next}${location.hash}`} replace />;
   }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -124,7 +130,24 @@ export default function LoginRoute() {
     }
   };
 
+  const copyCodes = async () => {
+    try {
+      await navigator.clipboard.writeText((mfa?.enrolment?.recoveryCodes ?? []).join('\n'));
+      setCodesCopied('copied');
+    } catch {
+      setCodesCopied('failed');
+    }
+  };
+
   const startOver = () => {
+    // The pending enrolment is replaced next time, so the codes on screen would stop working.
+    if (mfa?.enrolment && !confirmDiscard) {
+      setConfirmDiscard(true);
+      return;
+    }
+    setCodesSaved(false);
+    setCodesCopied(null);
+    setConfirmDiscard(false);
     setMfa(null);
     setCode('');
     setUseRecovery(false);
@@ -164,6 +187,23 @@ export default function LoginRoute() {
                       <li key={c}>{c}</li>
                     ))}
                   </ul>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <Button type="button" variant="secondary" onClick={() => void copyCodes()}>
+                      {t('login.mfa.copyCodes')}
+                    </Button>
+                    {codesCopied && (
+                      <span role="status" className="text-micro text-muted">
+                        {t(codesCopied === 'copied' ? 'login.mfa.copied' : 'login.mfa.copyFailed')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3">
+                    <Checkbox
+                      label={t('login.mfa.savedCodes')}
+                      checked={codesSaved}
+                      onChange={(e) => setCodesSaved(e.target.checked)}
+                    />
+                  </div>
                 </div>
               </div>
             ) : (
@@ -191,7 +231,13 @@ export default function LoginRoute() {
 
             {error && <PlainErrorAlert error={error} />}
 
-            <Button type="submit" fullWidth loading={submitting} loadingLabel={t('login.working')}>
+            <Button
+              type="submit"
+              fullWidth
+              loading={submitting}
+              loadingLabel={t('login.working')}
+              disabled={Boolean(mfa.enrolment) && !codesSaved}
+            >
               {mfa.enrolment ? t('login.mfa.enrolSubmit') : t('login.mfa.submit')}
             </Button>
 
@@ -208,9 +254,20 @@ export default function LoginRoute() {
                   {useRecovery ? t('login.mfa.useCode') : t('login.mfa.useRecovery')}
                 </button>
               )}
-              <button type="button" className="text-muted underline" onClick={startOver}>
-                {t('login.mfa.startOver')}
-              </button>
+              {confirmDiscard ? (
+                <div className="space-y-1">
+                  <p role="status" className="text-danger">
+                    {t('login.mfa.discardWarning')}
+                  </p>
+                  <button type="button" className="text-danger underline" onClick={startOver}>
+                    {t('login.mfa.discardConfirm')}
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="text-muted underline" onClick={startOver}>
+                  {t('login.mfa.startOver')}
+                </button>
+              )}
             </div>
           </form>
         ) : (

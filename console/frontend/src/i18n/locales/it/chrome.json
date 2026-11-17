@@ -129,6 +129,12 @@
       "qrAlt": "Codice QR da inquadrare con l'app di verifica",
       "secretLabel": "Se non puoi inquadrarlo, scrivi questo codice nell'app:",
       "recoveryIntro": "Sono i tuoi codici di recupero. Salvali ora in un posto sicuro: non verranno mostrati di nuovo. Ti servono se perdi il telefono; ogni codice funziona una sola volta.",
+      "savedCodes": "Ho salvato i codici di recupero",
+      "copyCodes": "Copia i codici",
+      "copied": "Codici di recupero copiati.",
+      "copyFailed": "Non è stato possibile copiare i codici. Selezionali e copiali a mano.",
+      "discardWarning": "Tornando indietro questi codici vengono scartati. La prossima volta ne verranno creati di nuovi e quelli mostrati qui non funzioneranno.",
+      "discardConfirm": "Scarta i codici e torna indietro",
       "enrolSubmit": "Conferma il codice e accedi",
       "failed": "Il codice non funziona. Controlla le sei cifre e riprova."
     },

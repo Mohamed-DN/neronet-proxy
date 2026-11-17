@@ -73,8 +73,9 @@
       "targetIdPlaceholder": "For example org-123",
       "comment": "Reason (kept in the log)",
       "commentPlaceholder": "Reason or ticket number...",
-      "confirmation": "Type CONFIRM DESTRUCTION to confirm the request",
-      "confirmationHint": "Type exactly as shown: CONFIRM DESTRUCTION",
+      "confirmation": "Type {{phrase}} to confirm the request",
+      "phrase": "CONFIRM DESTRUCTION",
+      "confirmationHint": "Type exactly as shown: {{phrase}}",
       "cancel": "Cancel",
       "submit": "Send the erasure request"
     },
@@ -169,8 +170,9 @@
     "emergencyModal": {
       "title": "Erase all network data?",
       "warning": "All organisations' data on the network will be erased forever. This cannot be undone.",
-      "phrasePrompt": "Type exactly DESTROY EVERYTHING PERMANENTLY to confirm:",
-      "phraseHint": "Type exactly as shown: DESTROY EVERYTHING PERMANENTLY",
+      "phrasePrompt": "Type exactly {{phrase}} to confirm:",
+      "phrase": "DESTROY EVERYTHING PERMANENTLY",
+      "phraseHint": "Type exactly as shown: {{phrase}}",
       "passwordPrompt": "Super-admin password:",
       "passwordPlaceholder": "Super-admin password...",
       "cancel": "Close without erasing",
@@ -179,7 +181,7 @@
   },
   "purge": {
     "done": "Global erasure started.",
-    "phraseMismatch": "Type exactly DESTROY EVERYTHING PERMANENTLY to confirm.",
+    "phraseMismatch": "Type exactly {{phrase}} to confirm.",
     "passwordRequired": "Enter the super-admin password."
   },
   "errors": {
@@ -190,7 +192,7 @@
     "reject": "The request was not rejected. Try again.",
     "passphrase": "Owner password is incorrect. Try again.",
     "purge": "The server refused the erasure. Check the password and try again.",
-    "phraseMismatch": "The phrase does not match. Type exactly CONFIRM DESTRUCTION.",
+    "phraseMismatch": "The phrase does not match. Type exactly {{phrase}}.",
     "targetRequired": "Enter the organisation ID.",
     "certifyRequired": "Tick the box to confirm you are a different administrator.",
     "reasonRequired": "Enter the legal reason or order number."

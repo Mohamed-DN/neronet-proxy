@@ -289,4 +289,28 @@ describe('DropRoute: receive', () => {
     renderDrop();
     expect(await screen.findByText('Nothing received')).toBeInTheDocument();
   });
+
+  it('says so, with a retry, when the inbox cannot be loaded', async () => {
+    let inboxCalls = 0;
+    stubFetch((call) => {
+      if (call.url.endsWith('/api/drop/inbox')) {
+        inboxCalls += 1;
+        return inboxCalls === 1 ? json(500, { error: 'boom', code: 'server_error' }) : json(200, { transfers: [] });
+      }
+      return undefined;
+    });
+    const user = userEvent.setup();
+    renderDrop();
+    expect(await screen.findByText('Received files could not be loaded')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing received')).toBeNull();
+    await user.click(screen.getByRole('button', { name: /try again|retry/i }));
+    expect(await screen.findByText('Nothing received')).toBeInTheDocument();
+  });
+
+  it('tells each received file that it needs the sender link, instead of a dead row', async () => {
+    stubFetch(undefined, { inbox: [INBOX_ITEM] });
+    renderDrop();
+    expect(await screen.findByText('From anna')).toBeInTheDocument();
+    expect(screen.getByText(/To open it, paste the link/)).toBeInTheDocument();
+  });
 });

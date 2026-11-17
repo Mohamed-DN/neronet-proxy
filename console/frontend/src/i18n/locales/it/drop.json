@@ -59,6 +59,11 @@
       "title": "Nessun file ricevuto",
       "body": "I file mandati a te compaiono qui fino alla scadenza. Per aprirne uno serve il link di chi l'ha inviato."
     },
+    "error": {
+      "title": "Impossibile caricare i file ricevuti",
+      "body": "Controlla la connessione e riprova. I tuoi file non sono andati persi."
+    },
+    "needsLink": "Per aprirlo incolla qui sotto il link di chi te l'ha inviato. La chiave è solo in quel link.",
     "from": "Da {{name}}",
     "code": "Codice",
     "details": "{{size}} cifrati, fino al {{date}}",

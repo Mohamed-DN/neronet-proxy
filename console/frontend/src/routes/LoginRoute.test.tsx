@@ -124,9 +124,50 @@ describe('sign-in with MFA', () => {
     expect(calls.find((c) => c.url === '/api/auth/mfa/setup')?.body).toEqual({ mfa_token: 'pending-3' });
 
     await user.type(screen.getByLabelText(L('login.mfa.codeLabel')), '123456');
+    await user.click(screen.getByRole('checkbox', { name: L('login.mfa.savedCodes') }));
     await user.click(screen.getByRole('button', { name: L('login.mfa.enrolSubmit') }));
 
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
+  });
+
+  it('does not confirm the enrolment until the recovery codes are acknowledged as saved', async () => {
+    stub({ mfa_required: true, mfa_setup_required: true, mfa_token: 'pending-5' });
+    renderLogin();
+
+    const user = await submitPassword();
+    await user.type(await screen.findByLabelText(L('login.mfa.codeLabel')), '123456');
+    const confirm = screen.getByRole('button', { name: L('login.mfa.enrolSubmit') });
+    expect(confirm).toBeDisabled();
+    await user.click(screen.getByRole('checkbox', { name: L('login.mfa.savedCodes') }));
+    expect(confirm).toBeEnabled();
+    expect(calls.some((c) => c.url === '/api/auth/mfa/verify')).toBe(false);
+  });
+
+  it('copies all the recovery codes with one button', async () => {
+    stub({ mfa_required: true, mfa_setup_required: true, mfa_token: 'pending-6' });
+    renderLogin();
+    const user = await submitPassword();
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    await user.click(await screen.findByRole('button', { name: L('login.mfa.copyCodes') }));
+
+    expect(writeText).toHaveBeenCalledWith('aaaa-1111\nbbbb-2222');
+    expect(await screen.findByText(L('login.mfa.copied'))).toBeInTheDocument();
+  });
+
+  it('asks before "Back to password" throws away recovery codes that were just shown', async () => {
+    stub({ mfa_required: true, mfa_setup_required: true, mfa_token: 'pending-7' });
+    renderLogin();
+    const user = await submitPassword();
+
+    await user.click(await screen.findByRole('button', { name: L('login.mfa.startOver') }));
+    expect(screen.getByText('bbbb-2222')).toBeInTheDocument();
+    expect(screen.getByText(L('login.mfa.discardWarning'))).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: L('login.mfa.discardConfirm') }));
+    expect(await screen.findByLabelText('Username')).toBeInTheDocument();
+    expect(screen.queryByText('bbbb-2222')).not.toBeInTheDocument();
   });
 
   it('shows a wrong code and stays on the MFA step', async () => {

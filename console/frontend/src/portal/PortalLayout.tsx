@@ -56,7 +56,7 @@ export default function PortalLayout() {
           )}
         </div>
       </header>
-      <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-xl px-4 pb-28 pt-6 sm:pb-8">
+      <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-xl px-4 pb-8 pt-6">
         <Outlet />
       </main>
     </div>
