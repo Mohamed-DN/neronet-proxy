@@ -78,36 +78,105 @@
   },
   "add": {
     "title": "Add a device",
-    "description": "Create the access code for one phone or computer; it is made on this page and shown once.",
-    "step1": "Install the WireGuard app on the device.",
-    "step2": "Give the device a name and create its code.",
-    "step3": "Scan the code with the app, or import the file.",
+    "description": "Choose the device, give it a name and create its access: it takes a minute.",
+    "platform": {
+      "legend": "Which device?",
+      "ios": "iPhone or iPad",
+      "android": "Android",
+      "windows": "Windows",
+      "macos": "Mac",
+      "linux": "Linux",
+      "thisOne": "The one you are using",
+      "required": "Choose the device."
+    },
+    "defaultName": {
+      "ios": "{{user}}'s iPhone",
+      "android": "{{user}}'s Android",
+      "windows": "{{user}}'s PC",
+      "macos": "{{user}}'s Mac",
+      "linux": "{{user}}'s Linux"
+    },
     "name": "Device name",
-    "nameHint": "For example: Work phone",
+    "nameHint": "You will see it in your list. You can change it.",
     "nameRequired": "Enter a name of 1 to 64 characters.",
-    "submit": "Create the code",
-    "working": "Creating the code…",
+    "submit": "Create the access",
+    "working": "Creating the access…",
+    "cancel": "Cancel",
     "result": {
-      "title": "Scan this code with the WireGuard app",
-      "qrAlt": "Access code for {{name}}",
-      "warning": "This code holds the device's private key and is shown only once; anyone who scans it can use your access.",
-      "download": "Download the file",
+      "title": "Connect {{device}}",
+      "warning": "The QR code and the file are your personal access. They are shown only once: do not share them with anyone.",
+      "install": "Install the WireGuard app on {{device}}, if you do not have it yet.",
+      "installLink": "Get WireGuard",
+      "scan": "Scan with the WireGuard app on your phone.",
+      "qrAlt": "QR code for {{name}}",
+      "getFile": "Download the profile.",
+      "getFileHere": "Download the profile on this device.",
+      "getFileMove": "Download the profile and pass it to the computer privately, for example with AirDrop, a cable or a USB stick. Not by email.",
+      "download": "Download the profile",
       "copy": "Copy the text",
       "copied": "Copied.",
-      "back": "Back to my devices",
-      "added": "{{name}} added."
+      "back": "Done",
+      "later": "I'll do it later"
+    },
+    "how": {
+      "note": "The names in quotes are the ones in the WireGuard app.",
+      "ios": {
+        "import": "Open WireGuard, tap + at the top right and choose \"Create from file or archive\". Pick the file you just downloaded and confirm when iPhone asks.",
+        "scan": "On the phone, open WireGuard, tap + at the top right and choose \"Create from QR code\". Then scan the code below, give it a name and confirm when iPhone asks.",
+        "activate": "Turn on the switch next to the connection."
+      },
+      "android": {
+        "import": "Open WireGuard, tap + and choose \"Import from file or archive\". Pick the file you just downloaded (usually in the Download folder).",
+        "scan": "On the phone, open WireGuard, tap + and choose \"Scan from QR code\". Then scan the code below and give it a name.",
+        "activate": "Turn on the switch next to the connection and accept the Android prompt."
+      },
+      "windows": {
+        "import": "Open WireGuard, click \"Add Tunnel\" at the bottom left and pick the file you just downloaded (usually in the Downloads folder).",
+        "activate": "Select the connection in the list and click \"Activate\"."
+      },
+      "macos": {
+        "import": "Open WireGuard from the menu bar at the top, choose \"Manage tunnels\", click + at the bottom left and \"Import tunnel(s) from file\", then pick the file you just downloaded.",
+        "activate": "Select the connection in the list and click \"Activate\"."
+      }
+    },
+    "wait": {
+      "title": "Waiting for your device…",
+      "body": "As soon as you turn the connection on, we see it here. You do not need to do anything else.",
+      "slow": "We do not see it yet. Check that you turned the connection on in the WireGuard app. If you cannot, you can set the access up again from your list of devices.",
+      "connected": "Connected",
+      "connectedBody": "{{name}} is now on your network."
+    },
+    "trouble": {
+      "title": "Trouble connecting?",
+      "body": "Try copying the profile text and pasting it into the WireGuard app, or download the profile as a file.",
+      "file": "Download the profile as a file"
+    },
+    "linux": {
+      "show": "Show the steps for Linux",
+      "intro": "Put the file in the WireGuard folder and turn the connection on from the terminal:",
+      "stop": "To turn it off:",
+      "app": "Download NeroNet for Linux {{version}}"
     },
     "error": {
-      "noGateway": "Your organisation cannot add devices this way yet. An administrator has to choose the gateway in Settings.",
-      "keyInUse": "The new key was already in use. Create the code again.",
-      "generic": "The device was not added. Try again.",
-      "noCrypto": "This browser cannot create the keys. Open this page in a current version of Chrome, Firefox, Safari or Edge.",
-      "exitNotPermitted": "Only an administrator can send a device through an exit. Ask yours, or create the code without this option.",
-      "exitGone": "That exit is no longer available. Choose another and try again."
+      "noGateway": "Your organisation is not ready to add devices yet. Ask an administrator to finish the setup.",
+      "keyInUse": "This access was already in use. Try creating it again.",
+      "generic": "We could not create the access. Try again.",
+      "noCrypto": "This browser cannot protect the access. Open the page in a recent version of Chrome, Firefox, Safari or Edge.",
+      "exitNotPermitted": "Only an administrator can send all traffic through the network: ask them, or create the access without this option.",
+      "exitGone": "This option is no longer available. Try without it, or pick another place to go through."
+    },
+    "exit": {
+      "toggle": "Send all traffic through the network",
+      "hint": "The sites and apps you use also go through your organisation's network. Useful on public Wi-Fi.",
+      "picker": "Where the traffic goes through",
+      "offline": " (not answering now)",
+      "privacy": "Whoever runs the network can see which sites you connect to, but not what you send to protected (HTTPS) sites.",
+      "resultNote": "All of {{name}}'s traffic goes through {{place}}.",
+      "lanNote": "To keep using printers and other devices on the network you are in, turn on \"Exclude private IPs\" in the connection settings in WireGuard."
     },
     "strict": {
       "title": "Networks that block VPNs (port 443)",
-      "intro": "For computers. Some networks, such as those in hotels, offices and guest Wi-Fi, let only the web through. With this method the connection goes over port 443, like a website, but it is slower: use it only when the code above does not connect.",
+      "intro": "For computers. Some networks, such as those in hotels, offices and guest Wi-Fi, let only the web through. With this method the connection goes over port 443, like a website, but it is slower: use it only when the profile above does not connect.",
       "install": "Install wstunnel {{version}} on the computer.",
       "installLink": "Download wstunnel {{version}} from GitHub",
       "run": "Start this command and leave it open while you stay connected:",
@@ -122,22 +191,6 @@
       "download": "Download the file for blocked networks",
       "secret": "The command contains an address reserved for your organisation: do not publish it or share it outside your team.",
       "phones": "On iPhone and Android the WireGuard app cannot use this method."
-    },
-    "exit": {
-      "loadFailed": "The exit options could not be loaded. You can still create the code, and the traffic will not go through an exit.",
-      "legend": "Internet traffic",
-      "toggle": "All traffic through an exit",
-      "hint": "Websites see the exit's address instead of yours. Choose this on a public Wi-Fi, or to browse as if you were at the exit.",
-      "none": "No exit is available yet. An administrator has to start a node as an exit.",
-      "notAllowed": "Only an administrator can send a device through an exit. Ask yours, or create the code without this option.",
-      "picker": "Exit",
-      "optionGateway": "{{name}} (your organisation's gateway)",
-      "optionNode": "{{name}}",
-      "offline": " — offline now",
-      "privacy": "Whoever runs the exit can see which sites you connect to, but not what you send over HTTPS.",
-      "down": "If the exit stops answering, the device has no internet until it is back. Nothing goes around the tunnel.",
-      "lanNote": "To keep using printers and other devices on the network you are on, turn on \"Exclude private IPs\" in the WireGuard app.",
-      "resultNote": "All of {{name}}'s traffic leaves through {{exit}}."
     }
   }
 }
