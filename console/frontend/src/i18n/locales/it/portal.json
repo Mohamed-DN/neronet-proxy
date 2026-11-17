@@ -123,6 +123,7 @@
       "phones": "Su iPhone e Android l'app WireGuard non può usare questo metodo."
     },
     "exit": {
+      "loadFailed": "Non è stato possibile caricare le opzioni di uscita. Puoi comunque creare il codice, ma il traffico non passerà da un'uscita.",
       "legend": "Traffico Internet",
       "toggle": "Tutto il traffico tramite un'uscita",
       "hint": "I siti vedono l'indirizzo dell'uscita invece del tuo. Utile su una Wi-Fi pubblica, o per navigare come se fossi dove si trova l'uscita.",

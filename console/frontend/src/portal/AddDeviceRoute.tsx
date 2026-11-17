@@ -49,7 +49,9 @@ function alertKindFor(error: unknown): AlertKind {
   if (error instanceof ApiError && error.status === 409) {
     // Older servers name the reason only in `error`; the message is that same word then.
     const reason = error.code ?? error.message;
-    return reason === 'no_profile_gateway' ? 'noGateway' : 'keyInUse';
+    if (reason === 'no_profile_gateway') return 'noGateway';
+    // Only a taken key is "key already in use"; any other conflict is a plain retry.
+    return reason === 'public_key_in_use' ? 'keyInUse' : 'generic';
   }
   return 'generic';
 }
@@ -77,11 +79,17 @@ export default function AddDeviceRoute() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const alertRef = useRef<HTMLDivElement>(null);
+  const resultHeading = useRef<HTMLHeadingElement>(null);
 
   // Focus goes to a failure so that a screen reader and a keyboard both land on it.
   useEffect(() => {
     if (alert) alertRef.current?.focus();
   }, [alert]);
+
+  // The form was replaced by the result: move focus to what replaced it.
+  useEffect(() => {
+    if (result) resultHeading.current?.focus();
+  }, [result]);
 
   // While the one-time code is on screen, leaving the page would lose it: ask first.
   useEffect(() => {
@@ -157,7 +165,12 @@ export default function AddDeviceRoute() {
       <>
         <PageHeader title={t('add.title')} description={t('add.description')} />
         <section aria-labelledby={resultId}>
-          <h2 id={resultId} className="text-heading font-medium text-content">
+          <h2
+            id={resultId}
+            ref={resultHeading}
+            tabIndex={-1}
+            className="text-heading font-medium text-content focus-visible:outline-focus"
+          >
             {t('add.result.title')}
           </h2>
           <div className="mt-4 flex justify-center rounded-card border border-border-subtle bg-surface-raised p-4">
@@ -239,6 +252,11 @@ export default function AddDeviceRoute() {
         <FormField label={t('add.name')} hint={t('add.nameHint')} error={nameError} required>
           <Input value={name} onChange={(event) => setName(event.target.value)} autoComplete="off" className="h-11" />
         </FormField>
+        {exitsQuery.isError && (
+          <p role="alert" className="text-body text-muted">
+            {t('add.exit.loadFailed')}
+          </p>
+        )}
         {exitsQuery.isSuccess && (
           <fieldset className="space-y-3 rounded-card border border-border-subtle p-4">
             <legend className="px-1 text-label font-medium text-content">{t('add.exit.legend')}</legend>
