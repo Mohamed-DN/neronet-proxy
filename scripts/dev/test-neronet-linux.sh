@@ -12,7 +12,7 @@
 # and temporary file this script creates is removed on exit, also after a failure.
 #
 # Needs rootless Podman with /dev/net/tun in its machine, and network access to pull
-# docker.io/library/alpine:3.20 and docker.io/library/golang:1.26.10. On Windows, run it from
+# docker.io/library/alpine:3.20 and docker.io/library/golang:1.26.11. On Windows, run it from
 # Git Bash; mount and copy paths are converted with cygpath.
 set -eu
 
@@ -23,7 +23,7 @@ GW=$PFX-gw
 CL=$PFX-client
 BUILD=$PFX-build
 ALPINE=docker.io/library/alpine:3.20
-GOIMG=docker.io/library/golang:1.26.10
+GOIMG=docker.io/library/golang:1.26.11
 SUBNET=10.77.42.0/24
 GW_UNDER=10.77.42.10
 CL_UNDER=10.77.42.20

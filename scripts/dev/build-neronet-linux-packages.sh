@@ -17,7 +17,7 @@ OUT=$ROOT/dist/linux
 ARCHES="amd64 arm64"
 # Package trees live in the container, not on the bind mount: mount permissions are not kept.
 BUILD=/tmp/neronet-build
-GOIMG=docker.io/library/golang:1.26.10
+GOIMG=docker.io/library/golang:1.26.11
 DEBIMG=docker.io/library/debian:13-slim
 # The t0p1 run holds this file while it is busy; container builds wait while it exists.
 GATE=${NEURONET_E2E_GATE:-/c/AI/NeroNet/piano/reports/logs-t0p1/DERP_RUNNING}
