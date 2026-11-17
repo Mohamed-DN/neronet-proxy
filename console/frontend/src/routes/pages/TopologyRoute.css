@@ -3,9 +3,6 @@
  * tinted hulls, and colour kept for state (warning, danger) and the one accent
  * that means "selected" or "found". Every state also has a shape, dash or mark.
  */
-main:has(.mesh-route) {
-  max-width: none;
-}
 .mesh-route {
   min-width: 0;
   --mesh-canvas: 247 249 245;
