@@ -16,6 +16,8 @@
     "budget": "node scripts/bundle-budget.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/overpass": "^5.3.0",
+    "@fontsource-variable/overpass-mono": "^5.3.0",
     "@radix-ui/react-dialog": "^1.1.6",
     "@radix-ui/react-select": "^2.1.6",
     "@radix-ui/react-switch": "^1.1.3",
