@@ -52,7 +52,7 @@ export function CodeText({ children, copyable = false, truncate = false, classNa
     <span className={cn('inline-flex max-w-full items-center gap-1.5', className)}>
       <code
         title={truncate ? children : undefined}
-        className="min-w-0 truncate rounded-sm bg-surface-sunken px-1.5 py-0.5 font-mono text-caption text-content"
+        className="min-w-0 truncate rounded-control bg-surface-sunken px-1.5 py-0.5 font-mono text-caption text-content"
       >
         {truncate ? shorten(children) : children}
       </code>

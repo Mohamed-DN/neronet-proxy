@@ -462,7 +462,7 @@ export default function AclsRoute() {
   }, [t, canManageAcls]);
 
   if (isLoading && !aclData) {
-    return <Skeleton className="h-[400px] w-full rounded-xl" />;
+    return <Skeleton className="h-[400px] w-full rounded-plate" />;
   }
 
   if (error && !aclData) {
@@ -538,7 +538,7 @@ export default function AclsRoute() {
 
       {/* Mesh Policy Open vs Zero-Trust Status Banner */}
       {policyIsOpen ? (
-        <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 space-y-1">
+        <div className="rounded-plate border border-warning/40 bg-warning/10 p-4 space-y-1">
           <div className="flex items-center space-x-2 text-warning font-bold text-sm">
             <ShieldAlert className="w-5 h-5 flex-shrink-0" />
             <span>{t('statusBanner.openTitle')}</span>
@@ -546,7 +546,7 @@ export default function AclsRoute() {
           <p className="text-xs text-muted leading-relaxed pl-7">{t('statusBanner.openDesc')}</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-success/40 bg-success/10 p-4 space-y-1">
+        <div className="rounded-plate border border-success/40 bg-success/10 p-4 space-y-1">
           <div className="flex items-center space-x-2 text-success font-bold text-sm">
             <ShieldCheck className="w-5 h-5 flex-shrink-0" />
             <span>{t('statusBanner.enforcedTitle')}</span>
@@ -693,7 +693,7 @@ export default function AclsRoute() {
       >
         <form onSubmit={handleSubmitRule} className="space-y-4 py-2">
           {formError && (
-            <div role="alert" className="p-3 rounded-lg bg-danger/10 border border-danger/30 text-xs text-danger">
+            <div role="alert" className="p-3 rounded-plate bg-danger/10 border border-danger/30 text-xs text-danger">
               {formError}
             </div>
           )}
@@ -914,10 +914,10 @@ export default function AclsRoute() {
               </FormField>
 
               {isCompiledLoading ? (
-                <Skeleton className="h-40 w-full rounded-lg" />
+                <Skeleton className="h-40 w-full rounded-plate" />
               ) : compiledPolicy ? (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between text-xs font-mono p-2 rounded bg-surface border border-border">
+                  <div className="flex items-center justify-between text-xs font-mono p-2 rounded-control bg-surface border border-border">
                     <span className="text-muted">
                       {t('preview.nodeVip', {
                         ip: compiledPolicy.overlay_ipv4
@@ -936,7 +936,7 @@ export default function AclsRoute() {
                         {compiledPolicy.inbound_rules.map((ir, i) => (
                           <div
                             key={i}
-                            className="p-2 rounded bg-surface text-xs font-mono flex items-center justify-between border border-border/50"
+                            className="p-2 rounded-control bg-surface text-xs font-mono flex items-center justify-between border border-border/50"
                           >
                             <span>
                               {t('preview.peerVip')}: <CodeText>{ir.allowed_peer_vip}</CodeText> • {ir.protocol}
@@ -958,7 +958,7 @@ export default function AclsRoute() {
                         {compiledPolicy.outbound_rules.map((orRule, i) => (
                           <div
                             key={i}
-                            className="p-2 rounded bg-surface text-xs font-mono flex items-center justify-between border border-border/50"
+                            className="p-2 rounded-control bg-surface text-xs font-mono flex items-center justify-between border border-border/50"
                           >
                             <span>
                               {t('preview.peerVip')}: <CodeText>{orRule.allowed_peer_vip}</CodeText> • {orRule.protocol}
@@ -1026,7 +1026,7 @@ export default function AclsRoute() {
 
               {simResult && (
                 <div
-                  className={`p-4 rounded-xl border text-xs font-mono space-y-2 ${
+                  className={`p-4 rounded-plate border text-xs font-mono space-y-2 ${
                     simResult.verdict === 'ACCEPT' ? 'border-success/40 bg-success/10' : 'border-danger/40 bg-danger/10'
                   }`}
                   data-testid="simulation-result-card"
@@ -1039,7 +1039,7 @@ export default function AclsRoute() {
                   </div>
                   <p className="text-muted leading-relaxed">{simResult.reason}</p>
                   {simResult.matched_rule && (
-                    <div className="pt-2 border-t border-border/50 text-[11px] text-muted">
+                    <div className="pt-2 border-t border-border/50 text-caption text-muted">
                       {t('preview.matchedRule', {
                         priority: simResult.matched_rule.priority,
                         id: simResult.matched_rule.id

@@ -441,7 +441,7 @@ export default function NodesRoute() {
             {selectedNode.is_quarantined ? (
               <div
                 role="status"
-                className="p-4 rounded-lg bg-danger-subtle border border-danger/30 text-danger flex flex-col gap-1.5"
+                className="p-4 rounded-plate bg-danger-subtle border border-danger/30 text-danger flex flex-col gap-1.5"
               >
                 <div className="flex items-center gap-2 font-semibold">
                   <ShieldAlert className="w-5 h-5 flex-shrink-0" aria-hidden="true" />

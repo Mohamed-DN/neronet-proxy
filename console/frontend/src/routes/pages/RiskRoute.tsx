@@ -72,7 +72,7 @@ export default function RiskRoute() {
   if ((summaryQuery.isLoading || leaderboardQuery.isLoading) && !summaryQuery.data && !leaderboardQuery.data) {
     return (
       <PageFrame>
-        <Skeleton className="h-[400px] w-full rounded-xl" />
+        <Skeleton className="h-[400px] w-full rounded-plate" />
       </PageFrame>
     );
   }

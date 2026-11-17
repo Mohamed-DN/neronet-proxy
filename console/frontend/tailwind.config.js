@@ -23,6 +23,26 @@ export default {
   theme: {
     extend: {
       colors: {
+        // The transit-map roles (docs/design/DIRECTION-2026-11.md). The older
+        // names below resolve onto the same values.
+        sheet: token('sheet'),
+        plate: token('plate'),
+        ink: {
+          DEFAULT: token('ink'),
+          muted: token('ink-muted')
+        },
+        rule: token('rule'),
+        signal: token('signal'),
+        'on-signal': token('on-signal'),
+        paper: token('paper'),
+        line: {
+          red: token('line-red'),
+          green: token('line-green'),
+          blue: token('line-blue'),
+          orange: token('line-orange'),
+          violet: token('line-violet'),
+          sky: token('line-sky')
+        },
         surface: {
           DEFAULT: token('surface'),
           raised: token('surface-raised'),
@@ -77,22 +97,42 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Noto Sans', 'sans-serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace']
+        sans: ['var(--font-sans)'],
+        mono: ['var(--font-mono)']
       },
+      // Rem scale: caption 0.75, body 0.875, lead 1, title 1.25, page 1.75,
+      // figure 2.5. The older names resolve onto it; nothing is set smaller
+      // than the caption.
       fontSize: {
-        micro: ['var(--font-size-micro)', { lineHeight: 'var(--line-height-tight)' }],
         caption: ['var(--font-size-caption)', { lineHeight: 'var(--line-height-normal)' }],
-        label: ['var(--font-size-label)', { lineHeight: 'var(--line-height-normal)' }],
         body: ['var(--font-size-body)', { lineHeight: 'var(--line-height-normal)' }],
-        heading: ['var(--font-size-heading)', { lineHeight: 'var(--line-height-tight)' }],
+        lead: ['var(--font-size-lead)', { lineHeight: 'var(--line-height-normal)' }],
         title: ['var(--font-size-title)', { lineHeight: 'var(--line-height-tight)' }],
+        page: ['var(--font-size-page)', { lineHeight: 'var(--line-height-tight)' }],
+        figure: ['var(--font-size-figure)', { lineHeight: 'var(--line-height-tight)' }],
+        micro: ['var(--font-size-micro)', { lineHeight: 'var(--line-height-tight)' }],
+        label: ['var(--font-size-label)', { lineHeight: 'var(--line-height-normal)' }],
+        heading: ['var(--font-size-heading)', { lineHeight: 'var(--line-height-tight)' }],
         display: ['var(--font-size-display)', { lineHeight: 'var(--line-height-tight)' }],
         metric: ['var(--font-size-metric)', { lineHeight: 'var(--line-height-tight)' }]
       },
+      // Plates 8 px, controls 4 px, pills for station symbols and toggles.
+      // The Tailwind sizes are kept as aliases onto the two tokens so that a
+      // page written with rounded-lg draws as a plate and not as a 12 px card.
       borderRadius: {
+        none: '0',
+        plate: 'var(--radius-plate)',
         control: 'var(--radius-control)',
-        card: 'var(--radius-card)'
+        card: 'var(--radius-plate)',
+        sm: 'var(--radius-control)',
+        DEFAULT: 'var(--radius-control)',
+        md: 'var(--radius-control)',
+        lg: 'var(--radius-plate)',
+        xl: 'var(--radius-plate)',
+        '2xl': 'var(--radius-plate)',
+        '3xl': 'var(--radius-plate)',
+        pill: 'var(--radius-pill)',
+        full: '9999px'
       },
       boxShadow: {
         raised: 'var(--elevation-raised)',

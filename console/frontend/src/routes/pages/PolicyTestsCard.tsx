@@ -126,7 +126,7 @@ export function PolicyTestFailures({
   const verdict = (v: string) => (v === 'ACCEPT' ? t('policyTests.accepted') : t('policyTests.dropped'));
   return (
     <div
-      className="mt-3 p-3 rounded-lg bg-danger/10 border border-danger/30 text-xs text-danger space-y-1"
+      className="mt-3 p-3 rounded-plate bg-danger/10 border border-danger/30 text-xs text-danger space-y-1"
       data-testid="policy-test-failures"
       role={announce ? 'alert' : undefined}
     >

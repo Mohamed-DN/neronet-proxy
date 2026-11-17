@@ -83,7 +83,7 @@ export default function PeeringRoute() {
   if (agreementsQuery.isLoading && !agreementsQuery.data) {
     return (
       <PageFrame>
-        <Skeleton className="h-[320px] w-full rounded-xl" />
+        <Skeleton className="h-[320px] w-full rounded-plate" />
       </PageFrame>
     );
   }
@@ -314,7 +314,7 @@ export default function PeeringRoute() {
             onChange={(e) => setPasted(e.target.value)}
             placeholder={t('paste.placeholder')}
             rows={5}
-            className="w-full rounded-md border border-border-strong bg-surface-sunken p-3 font-mono text-caption text-content focus-visible:outline-focus"
+            className="w-full rounded-control border border-border-strong bg-surface-sunken p-3 font-mono text-caption text-content focus-visible:outline-focus"
           />
           {pasteNotice && (
             <p
@@ -325,7 +325,7 @@ export default function PeeringRoute() {
             </p>
           )}
           {pendingFingerprint ? (
-            <div className="space-y-3 rounded-md border border-border p-4">
+            <div className="space-y-3 rounded-control border border-border p-4">
               <h3 className="text-body font-semibold text-content">{t('paste.fingerprintTitle')}</h3>
               <p className="text-body text-muted">{t('paste.fingerprintBody')}</p>
               <CodeText>{pendingFingerprint.fingerprint}</CodeText>

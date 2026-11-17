@@ -51,7 +51,7 @@ export function QrCode({ value, label, size = 256, onError }: QrCodeProps) {
   }
 
   if (src === null) {
-    return <Skeleton aria-busy="true" style={{ width: size, height: size }} className="rounded-md" />;
+    return <Skeleton aria-busy="true" style={{ width: size, height: size }} className="rounded-control" />;
   }
 
   return <img src={src} alt={label} width={size} height={size} />;

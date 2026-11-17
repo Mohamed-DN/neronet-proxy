@@ -40,7 +40,7 @@ export function ThemeToggle({ className }: { className?: string }) {
             aria-label={t(key)}
             onClick={() => setPreference(value)}
             className={cn(
-              'inline-flex h-6 w-7 items-center justify-center rounded-sm transition-colors focus-visible:outline-focus',
+              'inline-flex h-6 w-7 items-center justify-center rounded-control transition-colors focus-visible:outline-focus',
               active ? 'bg-surface-raised text-accent shadow-raised' : 'text-muted hover:text-content'
             )}
           >

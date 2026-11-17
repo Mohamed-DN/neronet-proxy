@@ -99,7 +99,7 @@ function Swatches() {
             {group.tokens.map((token) => (
               <li key={token} className="flex items-center gap-2">
                 <span
-                  className="h-6 w-10 shrink-0 rounded-sm border border-border"
+                  className="h-6 w-10 shrink-0 rounded-control border border-border"
                   style={{ backgroundColor: `rgb(var(--color-${token}))` }}
                 />
                 <code className="font-mono text-caption text-muted">--color-{token}</code>

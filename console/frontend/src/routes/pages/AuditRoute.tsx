@@ -232,7 +232,7 @@ export default function AuditRoute() {
         id: 'event_type',
         header: t('columns.eventType'),
         cell: (e) => (
-          <Badge tone="neutral" className="font-mono text-[10px]">
+          <Badge tone="neutral" className="font-mono text-caption">
             {e.event_type}
           </Badge>
         )
@@ -291,7 +291,7 @@ export default function AuditRoute() {
   );
 
   if (isLoading && events.length === 0) {
-    return <Skeleton className="h-[400px] w-full rounded-xl" />;
+    return <Skeleton className="h-[400px] w-full rounded-plate" />;
   }
 
   if (error && events.length === 0) {
@@ -432,10 +432,10 @@ export default function AuditRoute() {
       >
         <div className="py-2 space-y-4">
           {isVerifying ? (
-            <Skeleton className="h-32 w-full rounded-lg" />
+            <Skeleton className="h-32 w-full rounded-plate" />
           ) : verifyResult?.valid ? (
             <div
-              className={`p-4 rounded-xl border space-y-2 ${
+              className={`p-4 rounded-plate border space-y-2 ${
                 verificationCoverage === 'valid'
                   ? 'border-success/40 bg-success/10'
                   : verificationCoverage === 'empty'
@@ -493,7 +493,7 @@ export default function AuditRoute() {
             </div>
           ) : (
             <div
-              className="p-4 rounded-xl border border-danger/40 bg-danger/10 space-y-2"
+              className="p-4 rounded-plate border border-danger/40 bg-danger/10 space-y-2"
               data-testid="verification-tamper-card"
             >
               <div className="flex items-center space-x-2 text-danger font-bold text-sm">
@@ -547,12 +547,15 @@ export default function AuditRoute() {
           ) : (
             <div className="max-h-56 overflow-y-auto space-y-2">
               {checkpoints.map((cp) => (
-                <div key={cp.id} className="p-3 rounded-lg bg-surface border border-border text-xs font-mono space-y-1">
+                <div
+                  key={cp.id}
+                  className="p-3 rounded-plate bg-surface border border-border text-xs font-mono space-y-1"
+                >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-accent">Checkpoint #{cp.sequence_num}</span>
                     <span className="text-muted tabular-nums">{new Date(cp.created_at).toLocaleString()}</span>
                   </div>
-                  <div className="text-[11px] text-muted truncate">
+                  <div className="text-caption text-muted truncate">
                     {t('checkpointModal.signature')}: <CodeText>{cp.signature}</CodeText>
                   </div>
                 </div>
@@ -577,9 +580,9 @@ export default function AuditRoute() {
       >
         <div className="py-2 space-y-6">
           {/* Add SIEM Target Form */}
-          <form onSubmit={handleAddSiem} className="p-4 rounded-xl bg-surface border border-border space-y-3">
+          <form onSubmit={handleAddSiem} className="p-4 rounded-plate bg-surface border border-border space-y-3">
             <h4 className="text-xs font-bold font-mono text-content">{t('siemModal.addTitle')}</h4>
-            {siemError && <div className="p-2 rounded bg-danger/10 text-danger text-xs">{siemError}</div>}
+            {siemError && <div className="p-2 rounded-control bg-danger/10 text-danger text-xs">{siemError}</div>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label={t('siemModal.nameLabel')} required>
                 <Input
@@ -646,11 +649,11 @@ export default function AuditRoute() {
                 {siemDestinations.map((dest) => (
                   <div
                     key={dest.id}
-                    className="p-3 rounded-lg bg-surface border border-border flex items-center justify-between text-xs font-mono"
+                    className="p-3 rounded-plate bg-surface border border-border flex items-center justify-between text-xs font-mono"
                   >
                     <div>
                       <div className="font-bold text-content">{dest.name}</div>
-                      <div className="text-muted text-[11px]">
+                      <div className="text-muted text-caption">
                         <CodeText>{`${dest.protocol.toUpperCase()}://${dest.endpoint}`}</CodeText> •{' '}
                         {dest.format.toUpperCase()}
                       </div>
@@ -725,25 +728,25 @@ export default function AuditRoute() {
           <div className="py-2 space-y-4 text-xs font-mono">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <span className="text-muted block text-[11px]">{t('columns.timestamp')}</span>
+                <span className="text-muted block text-caption">{t('columns.timestamp')}</span>
                 <span className="text-content font-bold tabular-nums">
                   {new Date(detailEvent.created_at).toLocaleString()}
                 </span>
               </div>
               <div>
-                <span className="text-muted block text-[11px]">{t('columns.eventType')}</span>
+                <span className="text-muted block text-caption">{t('columns.eventType')}</span>
                 <Badge tone="neutral">{detailEvent.event_type}</Badge>
               </div>
             </div>
 
             <div>
-              <span className="text-muted block text-[11px]">{t('columns.message')}</span>
+              <span className="text-muted block text-caption">{t('columns.message')}</span>
               <p className="text-content font-sans text-xs mt-0.5">{detailEvent.message}</p>
             </div>
 
-            <div className="space-y-2 p-3 rounded-lg bg-surface border border-border">
+            <div className="space-y-2 p-3 rounded-plate bg-surface border border-border">
               <div>
-                <span className="text-muted block text-[11px]">{t('detailModal.entryHash')}</span>
+                <span className="text-muted block text-caption">{t('detailModal.entryHash')}</span>
                 <div className="flex items-center justify-between gap-2 mt-0.5">
                   <span className="truncate text-accent font-bold">
                     {detailEvent.entry_hash || detailEvent.chain_hash || '—'}
@@ -760,7 +763,7 @@ export default function AuditRoute() {
               </div>
               {detailEvent.prev_hash && (
                 <div>
-                  <span className="text-muted block text-[11px]">{t('detailModal.prevHash')}</span>
+                  <span className="text-muted block text-caption">{t('detailModal.prevHash')}</span>
                   <span className="truncate text-muted block mt-0.5">{detailEvent.prev_hash}</span>
                 </div>
               )}
@@ -768,19 +771,19 @@ export default function AuditRoute() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <span className="text-muted block text-[11px]">{t('detailModal.ipAddress')}</span>
+                <span className="text-muted block text-caption">{t('detailModal.ipAddress')}</span>
                 <span className="text-content">{detailEvent.ip_address || '—'}</span>
               </div>
               <div>
-                <span className="text-muted block text-[11px]">{t('detailModal.userAgent')}</span>
+                <span className="text-muted block text-caption">{t('detailModal.userAgent')}</span>
                 <span className="text-content truncate block">{detailEvent.user_agent || '—'}</span>
               </div>
             </div>
 
             {detailEvent.metadata_json && (
               <div>
-                <span className="text-muted block text-[11px] mb-1">{t('detailModal.metadata')}</span>
-                <pre className="p-3 rounded-lg bg-surface border border-border overflow-x-auto text-[11px] text-muted">
+                <span className="text-muted block text-caption mb-1">{t('detailModal.metadata')}</span>
+                <pre className="p-3 rounded-plate bg-surface border border-border overflow-x-auto text-caption text-muted">
                   {JSON.stringify(detailEvent.metadata_json, null, 2)}
                 </pre>
               </div>

@@ -342,7 +342,7 @@ function InvitationResult({ created, onDone }: { created: CreatedInvitation; onD
       </section>
 
       <div className="flex flex-col items-center gap-2 border-t border-border-subtle pt-4">
-        <div className="rounded-card bg-white p-2">
+        <div className="rounded-card bg-paper p-2">
           <QrCode value={link} label={t('result.qrAlt')} size={184} />
         </div>
         <p className="text-caption text-subtle">{t('result.qrHint')}</p>

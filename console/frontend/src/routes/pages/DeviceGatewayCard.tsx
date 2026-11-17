@@ -65,7 +65,10 @@ export function DeviceGatewayCard({ device }: { device: MeshNode }) {
         )}
 
         {moved && (
-          <div role="status" className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning-subtle p-3">
+          <div
+            role="status"
+            className="flex flex-col gap-2 rounded-plate border border-warning/40 bg-warning-subtle p-3"
+          >
             <p>
               {moved.reimport_required
                 ? t('gateway.done', { device: deviceName, gateway: moved.gateway.name })

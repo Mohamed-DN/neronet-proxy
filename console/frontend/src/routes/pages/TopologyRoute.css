@@ -94,9 +94,9 @@ main:has(.mesh-route) {
   overflow: auto;
   padding: 0.25rem;
   border: 1px solid rgb(var(--color-border-strong));
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: rgb(var(--color-surface-raised));
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+  box-shadow: var(--elevation-overlay);
 }
 .mesh-search-results [role='option'] {
   display: flex;
@@ -280,62 +280,33 @@ main:has(.mesh-route) {
   overflow: visible;
 }
 
-/* Group tints: the only categorical colour on the page, used at low opacity */
+/* Group tints: the only categorical colour on the page, used at low opacity.
+   They are the six line colours (tokens.css), each already 3:1 against the
+   sheet and the plates in both themes. Groups seven and eight reuse lines one
+   and two, as a transit map reuses a colour on distant lines. */
 .mesh-community-0 {
-  --community: #3979b4;
+  --community: rgb(var(--color-line-blue));
 }
 .mesh-community-1 {
-  --community: #b56426;
+  --community: rgb(var(--color-line-orange));
 }
 .mesh-community-2 {
-  --community: #c34b5a;
+  --community: rgb(var(--color-line-red));
 }
 .mesh-community-3 {
-  --community: #2c8580;
+  --community: rgb(var(--color-line-green));
 }
 .mesh-community-4 {
-  --community: #58803d;
+  --community: rgb(var(--color-line-violet));
 }
 .mesh-community-5 {
-  --community: #a47b0e;
+  --community: rgb(var(--color-line-sky));
 }
 .mesh-community-6 {
-  --community: #986290;
+  --community: rgb(var(--color-line-blue));
 }
 .mesh-community-7 {
-  --community: #a85470;
-}
-.dark .mesh-community-0,
-[data-theme='dark'] .mesh-community-0 {
-  --community: #77a7d6;
-}
-.dark .mesh-community-1,
-[data-theme='dark'] .mesh-community-1 {
-  --community: #e8a25e;
-}
-.dark .mesh-community-2,
-[data-theme='dark'] .mesh-community-2 {
-  --community: #e57b87;
-}
-.dark .mesh-community-3,
-[data-theme='dark'] .mesh-community-3 {
-  --community: #78bfb8;
-}
-.dark .mesh-community-4,
-[data-theme='dark'] .mesh-community-4 {
-  --community: #9cbc74;
-}
-.dark .mesh-community-5,
-[data-theme='dark'] .mesh-community-5 {
-  --community: #e0c466;
-}
-.dark .mesh-community-6,
-[data-theme='dark'] .mesh-community-6 {
-  --community: #c29abe;
-}
-.dark .mesh-community-7,
-[data-theme='dark'] .mesh-community-7 {
-  --community: #e5a0b5;
+  --community: rgb(var(--color-line-orange));
 }
 
 /* Notices above the map */
@@ -367,7 +338,7 @@ main:has(.mesh-route) {
   user-select: none;
   cursor: grab;
   background-color: rgb(var(--mesh-canvas));
-  background-image: radial-gradient(rgb(var(--color-border-strong) / 0.55) 1px, transparent 1.2px);
+  background-image: radial-gradient(rgb(var(--color-rule)) 1px, transparent 1.2px);
   background-size: 24px 24px;
   border-bottom: 1px solid rgb(var(--color-border));
 }
@@ -625,9 +596,8 @@ main:has(.mesh-route) {
   overflow: auto;
   padding: 0.75rem;
   border: 1px solid rgb(var(--color-border-strong));
-  border-radius: 8px;
+  border-radius: var(--radius-plate);
   background: rgb(var(--color-surface-raised));
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
 }
 .mesh-mirror-help {
   margin-bottom: 0.5rem;

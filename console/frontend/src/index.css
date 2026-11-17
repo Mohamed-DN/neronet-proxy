@@ -5,24 +5,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Keep session and enrollment controls reachable when labels or rates expand. */
-.console-header-search input {
-  width: clamp(10rem, 17vw, 18rem);
-}
-@media (max-width: 1800px) {
-  .console-header-throughput {
-    display: none;
-  }
-}
-@media (max-width: 1280px) {
-  .console-header-search {
-    display: none;
-  }
-  .console-header {
-    justify-content: flex-end;
-  }
-}
-
 @layer base {
   html {
     /* Every number in a table or a metric lines up. */
@@ -50,11 +32,16 @@
   :focus-visible {
     outline: var(--focus-ring-width) solid rgb(var(--color-focus));
     outline-offset: var(--focus-ring-offset);
+    /* Two-tone: an ink band against the control, the signal outside it. The
+       signal alone is 1.5:1 on the light sheet; the ink band is the part that
+       holds 3:1 in both themes (scripts/design/contrast.mjs). */
+    box-shadow: 0 0 0 var(--focus-ring-width) rgb(var(--color-ink));
     border-radius: var(--radius-sm);
   }
 
   ::selection {
-    background-color: rgb(var(--color-accent) / 0.25);
+    background-color: rgb(var(--color-signal));
+    color: rgb(var(--color-on-signal));
   }
 
   ::placeholder {
@@ -67,16 +54,22 @@
   /* For elements that draw their own ring inside an overflow-hidden parent,
      where an outline would be clipped. */
   .focus-ring {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+    @apply focus-visible:outline-none;
   }
 
-  /* The first thing in the tab order: jumps past the sidebar to the page body. */
+  .focus-ring:focus-visible {
+    box-shadow:
+      0 0 0 2px rgb(var(--color-ink)),
+      0 0 0 4px rgb(var(--color-signal));
+  }
+
+  /* The first thing in the tab order: jumps past the top bar to the page body. */
   .skip-link {
     @apply sr-only;
   }
 
   .skip-link:focus {
-    @apply not-sr-only fixed left-4 top-4 z-toast rounded-control border border-border-strong bg-surface-raised px-4 py-2 text-body font-semibold text-content shadow-overlay;
+    @apply not-sr-only fixed left-4 top-4 z-toast rounded-control border border-border-strong bg-plate px-4 py-2 text-body font-semibold text-ink shadow-overlay;
   }
 }
 

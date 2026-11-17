@@ -39,7 +39,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
       aria-describedby={field?.describedBy}
       aria-checked={indeterminate ? 'mixed' : undefined}
       className={cn(
-        'h-4 w-4 shrink-0 cursor-pointer rounded-sm border border-border-strong bg-surface-raised',
+        'h-4 w-4 shrink-0 cursor-pointer rounded-control border border-border-strong bg-surface-raised',
         'accent-accent focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50',
         className
       )}

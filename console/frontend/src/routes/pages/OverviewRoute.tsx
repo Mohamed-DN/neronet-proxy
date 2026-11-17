@@ -222,7 +222,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
                       type="button"
                       onClick={() => setTimeRange(r)}
                       aria-pressed={timeRange === r}
-                      className={`rounded-sm px-2.5 py-1 text-caption tabular-nums focus-visible:outline-focus ${
+                      className={`rounded-control px-2.5 py-1 text-caption tabular-nums focus-visible:outline-focus ${
                         timeRange === r ? 'bg-surface-hover font-medium text-content' : 'text-muted hover:text-content'
                       }`}
                     >

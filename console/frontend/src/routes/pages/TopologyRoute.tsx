@@ -654,7 +654,7 @@ export function TopologyRoute() {
         <div className="flex items-center gap-2">
           <span className="text-body font-semibold text-content">{row.name || row.id}</span>
           {row.is_ghost_vault && (
-            <Badge tone="warning" className="text-[10px]">
+            <Badge tone="warning" className="text-caption">
               {t('nodeDrawer.ghostVaultNode')}
             </Badge>
           )}

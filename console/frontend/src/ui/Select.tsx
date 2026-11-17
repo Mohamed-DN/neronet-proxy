@@ -84,7 +84,7 @@ export function Select({
                 value={option.value}
                 disabled={option.disabled}
                 className={cn(
-                  'relative flex cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-7 pr-3',
+                  'relative flex cursor-default select-none items-center gap-2 rounded-control py-1.5 pl-7 pr-3',
                   'text-body text-content outline-none',
                   'data-[highlighted]:bg-surface-hover data-[disabled]:opacity-50'
                 )}

@@ -173,7 +173,7 @@ export function Table<Row>({
                       type="button"
                       onClick={() => requestSort(column.id)}
                       className={cn(
-                        'inline-flex items-center gap-1 rounded-sm font-medium',
+                        'inline-flex items-center gap-1 rounded-control font-medium',
                         'hover:text-content focus-visible:outline-focus',
                         column.numeric && 'flex-row-reverse'
                       )}

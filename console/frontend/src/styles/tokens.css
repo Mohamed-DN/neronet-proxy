@@ -5,13 +5,20 @@
  * product resolves to one of the custom properties below, either through a
  * Tailwind utility (see tailwind.config.js) or through var() in CSS.
  *
- * Colours are stored as space-separated sRGB channels, not as hex or rgb(),
- * so that Tailwind's alpha modifiers (bg-surface-raised/60) keep working:
- * the config wraps each token in rgb(var(--token) / <alpha-value>).
+ * The direction is the transit map (docs/design/DIRECTION-2026-11.md): a cool
+ * sheet, white or dark-teal plates, ink for text and primary buttons, one
+ * yellow signal, and six line colours that tell sub-networks apart. The names
+ * of the new roles are sheet, plate, ink, ink-muted, rule and signal. The older
+ * names (surface, content, accent, border, focus) stay and point at them, so a
+ * page written against the old names draws in the new palette.
  *
- * scripts/design/contrast.mjs parses the two theme blocks below and fails the
- * build when a declared pair drops under its WCAG target. Change a value here
- * and re-run it before committing.
+ * Colours are stored as space-separated sRGB channels, not as hex or rgb(),
+ * so that Tailwind's alpha modifiers (bg-plate/60) keep working: the config
+ * wraps each token in rgb(var(--token) / <alpha-value>).
+ *
+ * scripts/design/contrast.mjs parses the two theme blocks below, follows the
+ * var() aliases, and fails the build when a declared pair drops under its WCAG
+ * target. Change a value here and re-run it before committing.
  *
  * Light is the default. [data-theme='dark'] is set by public/theme-init.js
  * before first paint, from the stored preference or prefers-color-scheme.
@@ -20,58 +27,82 @@
 :root {
   color-scheme: light;
 
-  /* Surfaces. Page, cards, wells; no gradients, no glow. */
-  --color-surface: 247 247 245;
-  --color-surface-raised: 255 255 255;
-  --color-surface-sunken: 240 240 237;
-  --color-surface-hover: 237 237 234;
-  --color-surface-inverse: 26 26 24;
-  --color-scrim: 26 26 24;
+  /* The new roles. */
+  --color-sheet: 242 244 243; /* #F2F4F3 page background, cool, never cream */
+  --color-plate: 255 255 255; /* #FFFFFF raised surfaces: panels, dialogs */
+  --color-ink: 21 35 45; /* #15232D text, primary buttons */
+  --color-ink-muted: 78 93 102; /* #4E5D66 secondary text */
+  --color-rule: 201 210 214; /* #C9D2D6 borders, dividers, map grid */
+  --color-signal: 245 194 17; /* #F5C211 the one accent: focus, you are here */
+  /* Text on a signal fill: the dark ink in both themes. */
+  --color-on-signal: 21 35 45;
+  /* A printed surface. A QR code needs a light ground in both themes. */
+  --color-paper: 255 255 255;
+
+  /* Line colours: categorical, for sub-networks and groups, never for status.
+     Each holds 3:1 against sheet, plate and sunken. Labels stay ink. */
+  --color-line-red: 209 73 91;
+  --color-line-green: 30 127 109;
+  --color-line-blue: 43 89 195;
+  --color-line-orange: 186 118 9;
+  --color-line-violet: 123 75 183;
+  --color-line-sky: 60 142 182;
+
+  /* Surfaces. Page, plates, wells; no gradients, no glow. */
+  --color-surface: var(--color-sheet);
+  --color-surface-raised: var(--color-plate);
+  --color-surface-sunken: 232 236 235;
+  --color-surface-hover: 230 234 233;
+  --color-surface-inverse: var(--color-ink);
+  --color-scrim: 21 35 45;
 
   /* Lines. `border` and `border-subtle` are decorative separators;
      `border-strong` bounds interactive controls and holds 3:1. */
-  --color-border: 221 221 216;
-  --color-border-subtle: 232 232 228;
-  --color-border-strong: 117 117 110;
+  --color-border: var(--color-rule);
+  --color-border-subtle: 222 228 231;
+  --color-border-strong: 117 133 142;
 
   /* Text. */
-  --color-content: 26 26 24;
-  --color-content-muted: 85 85 79;
-  --color-content-subtle: 107 107 100;
-  --color-content-inverse: 247 247 245;
+  --color-content: var(--color-ink);
+  --color-content-muted: var(--color-ink-muted);
+  --color-content-subtle: 92 107 116;
+  --color-content-inverse: var(--color-sheet);
 
-  /* Accent: the one non-status colour. Restrained blue. */
-  --color-accent: 29 78 216;
-  --color-accent-subtle: 230 238 255;
-  --color-accent-strong: 30 64 175;
-  --color-accent-contrast: 255 255 255;
+  /* Accent: primary actions are ink plates with sheet text. The one coloured
+     accent is the signal, and it is used for focus only. */
+  --color-accent: var(--color-ink);
+  --color-accent-subtle: 224 230 232;
+  --color-accent-strong: 47 66 79;
+  --color-accent-contrast: var(--color-sheet);
 
-  /* Status. Never decoration: always paired with an icon and a word. */
-  --color-success: 21 128 61;
-  --color-success-subtle: 220 252 231;
-  --color-success-strong: 22 101 52;
+  /* Status. Never decoration: always a colour, a shape and a word. */
+  --color-success: 18 110 52;
+  --color-success-subtle: 227 238 231;
+  --color-success-strong: 14 90 42;
   --color-success-contrast: 255 255 255;
 
-  --color-warning: 180 83 9;
-  --color-warning-subtle: 254 243 199;
-  --color-warning-strong: 146 64 14;
+  --color-warning: 155 71 8;
+  --color-warning-subtle: 243 233 225;
+  --color-warning-strong: 124 56 6;
   --color-warning-contrast: 255 255 255;
 
-  --color-danger: 185 28 28;
-  --color-danger-subtle: 254 226 226;
+  --color-danger: 183 28 28;
+  --color-danger-subtle: 246 228 228;
   --color-danger-strong: 153 27 27;
   --color-danger-contrast: 255 255 255;
 
   --color-info: 109 40 217;
-  --color-info-subtle: 237 233 254;
+  --color-info-subtle: 237 229 250;
   --color-info-strong: 91 33 182;
   --color-info-contrast: 255 255 255;
 
-  /* Focus ring. One colour, used by every focusable element. */
-  --color-focus: 29 78 216;
+  /* Focus. The signal is the ring; it cannot reach 3:1 on a light sheet on
+     its own, so every ring is two-tone, an ink band against the control and
+     the signal outside it (see src/index.css). */
+  --color-focus: var(--color-signal);
 
   /* Categorical chart series, ordered by first use. Colour-blind safe
-     (Okabe-Ito derived), each at least 3:1 on surface-raised. */
+     (Okabe-Ito derived), each at least 3:1 on plate. */
   --color-chart-1: 29 78 216;
   --color-chart-2: 217 119 6;
   --color-chart-3: 4 120 87;
@@ -93,48 +124,64 @@
 [data-theme='dark'] {
   color-scheme: dark;
 
-  --color-surface: 26 26 24;
-  --color-surface-raised: 34 34 31;
-  --color-surface-sunken: 21 21 19;
-  --color-surface-hover: 44 44 40;
-  --color-surface-inverse: 236 236 232;
-  --color-scrim: 10 10 9;
+  --color-sheet: 14 26 34; /* #0E1A22 */
+  --color-plate: 22 37 47; /* #16252F */
+  --color-ink: 232 238 240; /* #E8EEF0 */
+  --color-ink-muted: 163 179 186; /* #A3B3BA */
+  --color-rule: 46 66 80; /* #2E4250 */
+  --color-signal: 245 194 17; /* #F5C211 */
+  --color-on-signal: 21 35 45;
+  --color-paper: 255 255 255;
 
-  --color-border: 60 60 55;
-  --color-border-subtle: 42 42 38;
-  --color-border-strong: 122 122 113;
+  --color-line-red: 209 73 91;
+  --color-line-green: 30 127 109;
+  --color-line-blue: 64 106 201;
+  --color-line-orange: 224 142 11;
+  --color-line-violet: 132 88 188;
+  --color-line-sky: 61 143 184;
 
-  --color-content: 236 236 232;
-  --color-content-muted: 168 168 160;
-  --color-content-subtle: 146 146 138;
-  --color-content-inverse: 26 26 24;
+  --color-surface: var(--color-sheet);
+  --color-surface-raised: var(--color-plate);
+  --color-surface-sunken: 10 20 27;
+  --color-surface-hover: 31 50 63;
+  --color-surface-inverse: var(--color-ink);
+  --color-scrim: 4 9 13;
 
-  --color-accent: 96 165 250;
-  --color-accent-subtle: 23 37 84;
-  --color-accent-strong: 147 197 253;
-  --color-accent-contrast: 15 23 42;
+  --color-border: var(--color-rule);
+  --color-border-subtle: 36 54 66;
+  --color-border-strong: 108 130 144;
+
+  --color-content: var(--color-ink);
+  --color-content-muted: var(--color-ink-muted);
+  --color-content-subtle: 140 158 167;
+  --color-content-inverse: var(--color-sheet);
+
+  --color-accent: var(--color-ink);
+  --color-accent-subtle: 31 50 63;
+  --color-accent-strong: 207 217 221;
+  --color-accent-contrast: var(--color-sheet);
 
   --color-success: 74 222 128;
-  --color-success-subtle: 6 46 31;
+  --color-success-subtle: 28 59 57;
   --color-success-strong: 134 239 172;
-  --color-success-contrast: 5 46 22;
+  --color-success-contrast: 14 26 34;
 
   --color-warning: 251 191 36;
-  --color-warning-subtle: 58 38 6;
+  --color-warning-subtle: 49 55 46;
   --color-warning-strong: 253 224 71;
-  --color-warning-contrast: 69 26 3;
+  --color-warning-contrast: 14 26 34;
 
   --color-danger: 248 113 113;
-  --color-danger-subtle: 69 10 10;
+  --color-danger-subtle: 49 46 55;
   --color-danger-strong: 252 165 165;
-  --color-danger-contrast: 69 10 10;
+  --color-danger-contrast: 14 26 34;
 
-  --color-info: 167 139 250;
-  --color-info-subtle: 46 16 101;
-  --color-info-strong: 196 181 253;
-  --color-info-contrast: 46 16 101;
+  --color-info: 170 142 250;
+  --color-info-subtle: 40 50 71;
+  --color-info-strong: 200 185 253;
+  --color-info-contrast: 14 26 34;
 
-  --color-focus: 147 197 253;
+  --color-focus: var(--color-signal);
 
   --color-chart-1: 96 165 250;
   --color-chart-2: 251 191 36;
@@ -171,36 +218,45 @@
   --space-12: 3rem;
   --space-16: 4rem;
 
-  /* Radius: controls 6 px, cards 8 px. Nothing rounder. */
+  /* Shape: plates are 8 px, like enamel signage; controls are 4 px; 999 px is
+     for station symbols and toggles only. */
+  --radius-plate: 8px;
+  --radius-control: 4px;
   --radius-sm: 4px;
-  --radius-control: 6px;
-  --radius-card: 8px;
+  --radius-card: var(--radius-plate);
   --radius-pill: 9999px;
 
-  /* Elevation. Data surfaces are flat and separated by borders; shadows are
-     reserved for things that float above the page. */
+  /* Elevation. Plates are flat and separated by a 1 px rule. One shadow, for
+     the things that float above the page: menus, dialogs, toasts. */
   --elevation-flat: none;
-  --elevation-raised: 0 1px 2px 0 rgb(var(--color-scrim) / 0.06);
-  --elevation-overlay: 0 10px 15px -3px rgb(var(--color-scrim) / 0.18), 0 4px 6px -4px rgb(var(--color-scrim) / 0.18);
-  --elevation-popover: 0 4px 6px -1px rgb(var(--color-scrim) / 0.14), 0 2px 4px -2px rgb(var(--color-scrim) / 0.14);
+  --elevation-raised: none;
+  --elevation-overlay: 0 8px 24px -4px rgb(var(--color-scrim) / 0.28);
+  --elevation-popover: var(--elevation-overlay);
 
-  /* Type scale, 1.125 modular ratio around a 14 px body. Dense by design. */
-  --font-size-micro: 0.6875rem;
+  /* Type scale (rem, 16 px root): caption, body, lead, title, page title and
+     the single figure on the overview. `micro` and `label` are the old names
+     and now resolve onto the scale: nothing is set below the caption. */
   --font-size-caption: 0.75rem;
-  --font-size-label: 0.8125rem;
   --font-size-body: 0.875rem;
-  --font-size-heading: 1rem;
-  --font-size-title: 1.125rem;
-  --font-size-display: 1.5rem;
-  --font-size-metric: 1.75rem;
+  --font-size-lead: 1rem;
+  --font-size-title: 1.25rem;
+  --font-size-page: 1.75rem;
+  --font-size-figure: 2.5rem;
+  --font-size-micro: var(--font-size-caption);
+  --font-size-label: var(--font-size-body);
+  --font-size-heading: var(--font-size-lead);
+  --font-size-display: var(--font-size-page);
+  --font-size-metric: var(--font-size-page);
 
   --line-height-tight: 1.25;
   --line-height-normal: 1.5;
 
-  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --font-sans: 'Overpass Variable', 'Overpass', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
+  --font-mono: 'Overpass Mono Variable', 'Overpass Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 
-  /* Focus ring geometry, applied by the .focus-ring utility. */
+  /* Focus ring geometry: a 2 px ink band against the control, then a 2 px
+     signal ring, applied by :focus-visible and the .focus-ring utility. */
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
 

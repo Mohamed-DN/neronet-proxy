@@ -56,7 +56,7 @@ export function Row({ title, meta, status, actions, onSelect, className }: RowPr
           <button
             type="button"
             onClick={onSelect}
-            className="block max-w-full truncate rounded-sm text-start text-body font-medium text-content hover:underline focus-visible:outline-focus"
+            className="block max-w-full truncate rounded-control text-start text-body font-medium text-content hover:underline focus-visible:outline-focus"
           >
             {title}
           </button>

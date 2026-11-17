@@ -81,7 +81,7 @@ export default function CommandMenu({ onAddDevice }: CommandMenuProps) {
       >
         <Search aria-hidden="true" className="h-3.5 w-3.5" />
         <span>{t('trigger')}</span>
-        <kbd aria-hidden="true" className="rounded-sm border border-border px-1 text-micro text-subtle">
+        <kbd aria-hidden="true" className="rounded-control border border-border px-1 text-micro text-subtle">
           {shortcut}
         </kbd>
       </button>

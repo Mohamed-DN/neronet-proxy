@@ -25,7 +25,7 @@ export function Skeleton({ lines = 1, className, ...props }: SkeletonProps) {
   return (
     <div aria-hidden="true" className={cn('flex flex-col gap-2', className)} {...props}>
       {Array.from({ length: lines }, (_, i) => (
-        <div key={i} className="h-4 w-full animate-pulse-subtle rounded-sm bg-surface-sunken" />
+        <div key={i} className="h-4 w-full animate-pulse-subtle rounded-control bg-surface-sunken" />
       ))}
     </div>
   );

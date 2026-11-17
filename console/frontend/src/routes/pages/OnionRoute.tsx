@@ -40,7 +40,7 @@ export default function OnionRoute() {
   if (nodesQuery.isLoading && !nodesQuery.data) {
     return (
       <PageFrame>
-        <Skeleton className="h-[320px] w-full rounded-xl" />
+        <Skeleton className="h-[320px] w-full rounded-plate" />
       </PageFrame>
     );
   }
@@ -123,7 +123,7 @@ export default function OnionRoute() {
       <div className="space-y-6">
         <PageHeader title={t('title')} description={t('description')} meta={<GlossaryHint term="onion" />} />
 
-        <div className="flex items-start gap-3 rounded-md border border-warning/40 bg-warning/10 p-4">
+        <div className="flex items-start gap-3 rounded-control border border-warning/40 bg-warning/10 p-4">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
           <div className="space-y-1">
             <p className="font-medium text-content">{t('banner.title')}</p>
