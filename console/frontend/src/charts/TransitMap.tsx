@@ -67,10 +67,42 @@ export interface MapHub extends MapStation {
   lineKeys: string[];
 }
 
+/**
+ * The map in edit mode ("Modifica la mappa"). A click on a stop chooses it (to move it, or to
+ * cut it off into a new line) instead of opening it, a line's name opens that line's menu, and
+ * stops and lines can also be dragged. Dragging is one way in, never the only one: the editor
+ * offers the same changes from buttons and menus.
+ */
+export interface MapEdit {
+  /** The chosen stops, by id. */
+  selected: ReadonlySet<string>;
+  /** A stop was chosen or unchosen. */
+  onToggleStation: (id: string) => void;
+  /** A line's name was activated: open its menu. */
+  onOpenLine: (key: string) => void;
+  /** Stops were dropped on a line. */
+  onDropStations: (ids: string[], lineKey: string) => void;
+  /** A line was dropped on another line's place: put it there. */
+  onDropLine: (key: string, ontoKey: string) => void;
+  /** The lines that take devices (not the "no sub-network" one). */
+  droppable: ReadonlySet<string>;
+  /** Words for a screen reader and for an empty line. */
+  labels: {
+    /** "Ufficio: modifica la linea" */
+    line: (heading: string) => string;
+    /** The stop's own description, with whether it is chosen. */
+    station: (description: string, chosen: boolean) => string;
+    /** Said under a line that has no device yet. */
+    empty: string;
+  };
+}
+
 export interface TransitMapProps {
   lines: MapLine[];
   hubs?: MapHub[];
   onOpenStation: (id: string) => void;
+  /** Set while the map is being edited. */
+  edit?: MapEdit;
   /**
    * Motion of the lines that carried measured traffic, by line key (see liveFlow).
    * A line that is absent does not move: unknown and quiet look the same, still.
@@ -123,7 +155,7 @@ function textWidth(text: string, font: string): number {
 // The lines are drawn once per page load, the first time the map appears.
 let drawnOnce = false;
 
-export function TransitMap({ lines, hubs = [], onOpenStation, flow, label, className }: TransitMapProps) {
+export function TransitMap({ lines, hubs = [], onOpenStation, edit, flow, label, className }: TransitMapProps) {
   const [frame, width] = useMeasuredWidth<HTMLDivElement>(FALLBACK_WIDTH);
   const [animate] = useState(() => {
     const first = !drawnOnce;
@@ -174,6 +206,7 @@ export function TransitMap({ lines, hubs = [], onOpenStation, flow, label, class
   const hidden = useDocumentHidden(Boolean(flow?.size));
   const fx = useStationEvents([...everyStation.values()], reduced);
   const fxOf = new Map(fx.map((event) => [event.id, event]));
+  const [dropOver, setDropOver] = useState<string | null>(null);
 
   return (
     <div
@@ -184,13 +217,26 @@ export function TransitMap({ lines, hubs = [], onOpenStation, flow, label, class
       className={cn('relative w-full', className)}
       style={{ height: layout.height }}
     >
+      {edit &&
+        layout.lines.map((placed, index) => (
+          <LaneZone
+            key={`zone-${placed.key}`}
+            edit={edit}
+            laneKey={placed.key}
+            top={placed.top}
+            height={(layout.lines[index + 1]?.top ?? layout.height) - placed.top}
+            over={dropOver === placed.key}
+            setOver={setDropOver}
+          />
+        ))}
+
       <svg
         width={width}
         height={layout.height}
         viewBox={`0 0 ${width} ${layout.height}`}
         aria-hidden="true"
         focusable="false"
-        className="absolute inset-0"
+        className="pointer-events-none absolute inset-0"
       >
         {layout.lines.map((placed) => {
           const line = byKey.get(placed.key)!;
@@ -213,12 +259,14 @@ export function TransitMap({ lines, hubs = [], onOpenStation, flow, label, class
           layout.lines.map((placed) => {
             const params = flow.get(placed.key);
             if (!params) return null;
+            const tone = pulseTone(byKey.get(placed.key)!.colour);
             return Array.from({ length: params.pulses }, (_, i) => (
               <path
                 key={`${placed.key}-flow-${i}`}
                 d={placed.path}
                 pathLength={1}
                 data-flow={placed.key}
+                data-pulse={tone}
                 fill="none"
                 strokeWidth={4}
                 strokeLinecap="round"
@@ -246,14 +294,12 @@ export function TransitMap({ lines, hubs = [], onOpenStation, flow, label, class
                 fill="none"
                 strokeWidth={4}
                 strokeLinecap="round"
-            const tone = pulseTone(byKey.get(placed.key)!.colour);
                 strokeLinejoin="round"
                 className="map-current"
                 style={
                   {
                     '--from': start === 0 ? 9 : -start,
                     '--to': -Math.max(end - 9, start)
-                data-pulse={tone}
                   } as React.CSSProperties
                 }
               />
@@ -276,33 +322,68 @@ export function TransitMap({ lines, hubs = [], onOpenStation, flow, label, class
 
       {layout.lines.map((placed) => {
         const line = byKey.get(placed.key)!;
+        const heading = (
+          <>
+            <span aria-hidden="true" className={cn('h-1.5 w-6 shrink-0 rounded-pill', LINE_FILL[line.colour])} />
+            <span className="min-w-0 truncate" title={line.heading}>
+              {line.heading}
+            </span>
+            {line.detail && (
+              <span className="shrink-0 whitespace-nowrap font-normal text-ink-muted">{line.detail}</span>
+            )}
+          </>
+        );
         return (
           <div key={placed.key}>
             <p
-              className="absolute flex items-center gap-2 text-body font-semibold text-ink"
+              className="absolute z-10 flex items-center gap-2 text-body font-semibold text-ink"
               style={{ left: placed.heading.x, top: placed.top, maxWidth: placed.headingMax }}
             >
-              <span aria-hidden="true" className={cn('h-1.5 w-6 rounded-pill', LINE_FILL[line.colour])} />
-              <span className="min-w-0 truncate" title={line.heading}>
-                {line.heading}
-              </span>
-              {line.detail && (
-                <span className="shrink-0 whitespace-nowrap font-normal text-ink-muted">{line.detail}</span>
+              {edit && edit.droppable.has(placed.key) ? (
+                <button
+                  type="button"
+                  data-line-heading={placed.key}
+                  draggable
+                  aria-label={edit.labels.line(line.heading)}
+                  onClick={() => edit.onOpenLine(placed.key)}
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(LINE_TYPE, placed.key);
+                    event.dataTransfer.effectAllowed = 'move';
+                  }}
+                  className="-mx-1 flex min-h-8 min-w-0 items-center gap-2 rounded-control px-1 text-left font-semibold text-ink underline decoration-dotted underline-offset-4 hover:bg-surface-hover focus-visible:outline-focus"
+                >
+                  {heading}
+                </button>
+              ) : (
+                heading
               )}
             </p>
-
-            {placed.stations.map((spot) => (
-              <StationButton
-                key={spot.id}
-                spot={spot}
-                station={everyStation.get(spot.id)!}
-                onOpen={onOpenStation}
-                fx={fxOf.get(spot.id)}
-              />
-            ))}
+            {edit && line.stations.length === 0 && (
+              <p
+                className="absolute text-caption text-ink-muted"
+                style={{ left: placed.heading.x + 32, top: placed.top + 38 }}
+              >
+                {edit.labels.empty}
+              </p>
+            )}
           </div>
         );
       })}
+
+      {layout.lines.flatMap((placed) =>
+        placed.stations.map((spot) => (
+          <StationButton
+            key={spot.id}
+            spot={spot}
+            station={everyStation.get(spot.id)!}
+            onOpen={onOpenStation}
+            fx={fxOf.get(spot.id)}
+            edit={edit}
+            laneKey={placed.key}
+            setOver={setDropOver}
+          />
+        ))
+      )}
 
       {layout.hubs.map((spot) => (
         <StationButton
@@ -311,6 +392,9 @@ export function TransitMap({ lines, hubs = [], onOpenStation, flow, label, class
           station={everyStation.get(spot.id)!}
           onOpen={onOpenStation}
           fx={fxOf.get(spot.id)}
+          edit={edit}
+          laneKey={spot.lineKeys[0]!}
+          setOver={setDropOver}
           shared
         />
       ))}
@@ -323,25 +407,61 @@ function StationButton({
   station,
   onOpen,
   fx,
+  edit,
+  laneKey,
+  setOver,
   shared = false
 }: {
   spot: { id: string; x: number; y: number; side: 'above' | 'below' };
   station: MapStation;
   onOpen: (id: string) => void;
+  edit?: MapEdit;
+  /** The line this stop is drawn on: where something dropped on the stop lands. */
+  laneKey: string;
+  setOver: (key: string | null) => void;
   /** A connection event playing on this station: its lamp lights, or it dims. */
   fx?: StationFx;
   /** An interchange or terminus several lines share: its label gets a sheet-coloured plate so the lines behind it do not cut the words. */
   shared?: boolean;
 }) {
+  // A stop that stands for a whole line (a collapsed map) is not a device: it cannot be chosen.
+  const editable = edit !== undefined && !spot.id.startsWith('line:');
+  const chosen = editable && edit.selected.has(spot.id);
+  const accepts = edit?.droppable.has(laneKey) ?? false;
+  const dropProps =
+    editable && accepts
+      ? {
+          onDragOver: (event: React.DragEvent) => {
+            if (!event.dataTransfer.types.includes(STATION_TYPE)) return;
+            event.preventDefault();
+            setOver(laneKey);
+          },
+          onDrop: (event: React.DragEvent) => dropStations(event, edit, laneKey, setOver)
+        }
+      : {};
   return (
     <button
       type="button"
       data-station-id={spot.id}
       data-shared={shared || undefined}
-      aria-label={station.description}
+      data-chosen={chosen || undefined}
+      aria-label={editable ? edit.labels.station(station.description, chosen) : station.description}
+      aria-pressed={editable ? chosen : undefined}
       title={station.description}
-      onClick={() => onOpen(spot.id)}
-      className="absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-focus"
+      draggable={editable || undefined}
+      onClick={() => (editable ? edit.onToggleStation(spot.id) : onOpen(spot.id))}
+      onDragStart={
+        editable
+          ? (event) => {
+              const ids = edit.selected.has(spot.id) ? [...edit.selected] : [spot.id];
+              event.dataTransfer.setData(STATION_TYPE, JSON.stringify(ids));
+              event.dataTransfer.effectAllowed = 'move';
+            }
+          : undefined
+      }
+      onDragEnd={editable ? () => setOver(null) : undefined}
+      {...dropProps}
+      className="map-station absolute z-20 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-focus"
       style={{ left: spot.x, top: spot.y }}
     >
       {fx?.kind === 'on' && (
@@ -354,6 +474,7 @@ function StationButton({
         data-fx={fx?.kind}
         className={cn(
           'relative flex h-6 w-6 items-center justify-center rounded-full bg-sheet',
+          chosen && 'shadow-[0_0_0_2px_rgb(var(--color-ink)),0_0_0_4px_rgb(var(--color-signal))]',
           fx?.kind === 'on' && 'map-lamp-on',
           fx?.kind === 'off' && 'map-lamp-off'
         )}
@@ -371,6 +492,70 @@ function StationButton({
         {station.label}
       </span>
     </button>
+  );
+}
+
+const STATION_TYPE = 'application/x-neronet-stations';
+const LINE_TYPE = 'application/x-neronet-line';
+
+function dropStations(event: React.DragEvent, edit: MapEdit, laneKey: string, setOver: (key: string | null) => void) {
+  event.preventDefault();
+  setOver(null);
+  const raw = event.dataTransfer.getData(STATION_TYPE);
+  if (!raw) return;
+  try {
+    const ids = (JSON.parse(raw) as unknown[]).filter((id): id is string => typeof id === 'string');
+    if (ids.length > 0) edit.onDropStations(ids, laneKey);
+  } catch {
+    // Not ours.
+  }
+}
+
+/** The band of one line while editing: where stops and other lines can be dropped. */
+function LaneZone({
+  edit,
+  laneKey,
+  top,
+  height,
+  over,
+  setOver
+}: {
+  edit: MapEdit;
+  laneKey: string;
+  top: number;
+  height: number;
+  over: boolean;
+  setOver: (key: string | null) => void;
+}) {
+  if (!edit.droppable.has(laneKey)) return null;
+  return (
+    <div
+      aria-hidden="true"
+      data-lane-zone={laneKey}
+      data-over={over || undefined}
+      className={cn(
+        'absolute left-0 right-0 rounded-control',
+        over && 'bg-surface-hover outline outline-2 outline-ink'
+      )}
+      style={{ top, height }}
+      onDragOver={(event) => {
+        const types = event.dataTransfer.types;
+        if (!types.includes(STATION_TYPE) && !types.includes(LINE_TYPE)) return;
+        event.preventDefault();
+        setOver(laneKey);
+      }}
+      onDragLeave={() => setOver(null)}
+      onDrop={(event) => {
+        const line = event.dataTransfer.getData(LINE_TYPE);
+        if (line) {
+          event.preventDefault();
+          setOver(null);
+          if (line !== laneKey) edit.onDropLine(line, laneKey);
+          return;
+        }
+        dropStations(event, edit, laneKey, setOver);
+      }}
+    />
   );
 }
 
