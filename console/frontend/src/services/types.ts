@@ -116,8 +116,54 @@ export interface Compartment {
   slug: string;
   subnet_cidr: string;
   is_hidden: boolean;
+  /** Display only. null or absent: the console picks one. */
+  line_colour?: LineColour | null;
+  /** Display only: the position in the list and on the map. */
+  sort_order?: number;
   created_at?: string;
   updated_at?: string;
+}
+
+/** The six line tokens of the console design. */
+export type LineColour = 'red' | 'green' | 'blue' | 'orange' | 'violet' | 'sky';
+
+/** One side of a what-if: devices gained or lost, a count and up to 20 names. */
+export interface ReachChange {
+  count: number;
+  names: string[];
+}
+
+/** What a move or split does to what one device can reach. */
+export interface ReachPreviewNode {
+  node_id: string;
+  name: string;
+  reach_before: number;
+  reach_after: number;
+  gains: ReachChange;
+  losses: ReachChange;
+}
+
+/** The answer of preview-move and preview-split. Nothing is written. */
+export interface ReachPreview {
+  nodes: ReachPreviewNode[];
+  /** Distinct device pairs that start (gains) or stop (losses) reaching each other. */
+  summary: { nodes_moved: number; gains: number; losses: number };
+  /** preview-move: ids that are not devices the caller can move. */
+  ignored?: number;
+  /** preview-split: peerings of the source the new line does not get. */
+  peerings_not_inherited?: { count: number; peers: string[] };
+}
+
+export interface SplitCompartmentResult {
+  compartment: Compartment;
+  moved: string[];
+  peerings_not_inherited: { count: number; peers: string[] };
+}
+
+export interface MergeCompartmentResult {
+  compartment: Compartment;
+  moved: string[];
+  dropped_peerings: { count: number; peers: string[] };
 }
 
 /** A connection between two compartments. "allow" joins them both ways (ADR 0021). */
