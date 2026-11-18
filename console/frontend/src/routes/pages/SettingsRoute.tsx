@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { ApiError } from '../../services/apiClient';
 import { useOrganization, useOrganizationModules, useUpdateOrganizationSettings } from '../../services/queries/users';
 import { AccessMethodsCard } from './AccessMethodsCard';
+import { ConnectionOrderCard } from './ConnectionOrderCard';
 import { GatewaysCard } from './GatewaysCard';
 import {
   Badge,
@@ -193,6 +194,8 @@ export default function SettingsRoute() {
       <GatewaysCard user={user} />
 
       <AccessMethodsCard orgId={orgId} user={user} />
+
+      <ConnectionOrderCard user={user} />
     </div>
   );
 }

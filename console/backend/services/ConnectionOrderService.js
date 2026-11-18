@@ -271,7 +271,8 @@ function personView(ctx, userId) {
 // ---- Validation of a request body ---------------------------------------------------------
 
 function orderField(body, current, bound) {
-  if (body.order === undefined) return { order: current.order, forced: body.forced === undefined ? current.forced : body.forced };
+  if (body.order === undefined)
+    return { order: current.order, forced: body.forced === undefined ? current.forced : body.forced };
   const v = Resolver.validateOrder(body.order);
   if (!v.ok) throw new ConnectionOrderError(400, v.code, 'The order is not valid');
   const forced = body.forced === undefined ? (v.order === null ? false : current.forced) : body.forced;
@@ -364,7 +365,12 @@ async function setLine(organizationId, lineId, body) {
       [lineId, f.order, f.forced, locked]
     )
   );
-  return { before, after: { order: f.order, forced: f.forced, locked }, plan: result, view: lineView(await loadContext(organizationId), lineId) };
+  return {
+    before,
+    after: { order: f.order, forced: f.forced, locked },
+    plan: result,
+    view: lineView(await loadContext(organizationId), lineId)
+  };
 }
 
 /**
@@ -408,7 +414,10 @@ async function setDevice(organizationId, deviceId, body, actor) {
     before,
     after: { order: f.order, forced: f.forced, locked },
     plan: result,
-    view: deviceView(fresh, fresh.devices.find((d) => d.id === deviceId))
+    view: deviceView(
+      fresh,
+      fresh.devices.find((d) => d.id === deviceId)
+    )
   };
 }
 
@@ -465,7 +474,11 @@ async function preview(organizationId, scope, id, body, actor) {
     if (!line) return null;
     checkFlags(input, ['forced', 'locked']);
     const f = finish(orderField(input, line, ctx.org.allowed));
-    change = { scope, id, values: { order: f.order, forced: f.forced, locked: input.locked === undefined ? line.locked : input.locked } };
+    change = {
+      scope,
+      id,
+      values: { order: f.order, forced: f.forced, locked: input.locked === undefined ? line.locked : input.locked }
+    };
   } else if (scope === 'device') {
     const row = ctx.devices.find((d) => d.id === id);
     if (!row) return null;

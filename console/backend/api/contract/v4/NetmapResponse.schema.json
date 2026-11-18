@@ -136,6 +136,24 @@
         "epoch"
       ]
     },
+    "ConnectionOrigin": {
+      "properties": {
+        "scope": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "scope"
+      ]
+    },
     "DNSConfig": {
       "properties": {
         "magic_dns": {
@@ -311,6 +329,15 @@
         },
         "access_method": {
           "type": "string"
+        },
+        "connection_order": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "connection_origin": {
+          "$ref": "#/$defs/ConnectionOrigin"
         },
         "daita_mode": {
           "type": "string"

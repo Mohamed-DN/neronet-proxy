@@ -1,0 +1,91 @@
+{
+  "saved": "Ordine di connessione salvato. I gateway lo ricevono al prossimo controllo.",
+  "failed": "L'ordine di connessione non è stato salvato. Riprova.",
+  "loadError": "Impossibile caricare l'ordine di connessione. Riprova.",
+  "save": "Salva",
+  "revert": "Annulla le modifiche",
+  "origin": {
+    "default": "Automatico",
+    "organization": "dall'organizzazione",
+    "line": "da linea {{name}}",
+    "device": "da questo dispositivo",
+    "person": "dalla scelta della persona"
+  },
+  "summary": {
+    "none": "nessun modo per connettersi",
+    "forced": "solo {{method}}",
+    "then": ", poi ",
+    "now": "Prova per primo: {{order}} ({{origin}})."
+  },
+  "method": {
+    "wireguard": {
+      "name": "Connessione normale (WireGuard)",
+      "short": "WireGuard",
+      "hint": "Il modo più veloce. Sempre disponibile."
+    },
+    "wireguard-wss": {
+      "name": "Rete che blocca le VPN (porta 443)",
+      "short": "porta 443",
+      "hint": "WireGuard dentro una connessione web, per le reti Wi-Fi che lasciano passare solo il web."
+    },
+    "amneziawg": {
+      "name": "Rete che riconosce le VPN (AmneziaWG)",
+      "short": "AmneziaWG",
+      "hint": "Per le reti che riconoscono e fermano le VPN. Serve l'app AmneziaWG."
+    }
+  },
+  "mode": {
+    "label": "Da dove viene l'ordine",
+    "custom": "Personalizzato"
+  },
+  "inherit": {
+    "gives": "Prova: {{order}} ({{origin}})."
+  },
+  "list": {
+    "label": "Modi per connettersi, nell'ordine in cui vengono provati",
+    "help": "Il primo si prova per primo. Se non si connette in pochi secondi, si passa al successivo. Spegni un modo per non usarlo più.",
+    "up": "Sposta {{method}} su",
+    "down": "Sposta {{method}} giù",
+    "use": "Usa {{method}}",
+    "moved": "{{method}} è ora il numero {{position}} di {{count}}.",
+    "notRunning": "Il gateway non lo ha attivo adesso."
+  },
+  "forced": {
+    "label": "Forza solo il primo",
+    "hint": "Si usa solo {{method}}, senza ripiegare sugli altri.",
+    "none": "Attiva almeno un modo per connettersi."
+  },
+  "blocked": {
+    "title_one": "1 dispositivo non avrebbe alcun modo per connettersi",
+    "title_other": "{{count}} dispositivi non avrebbero alcun modo per connettersi",
+    "body": "Il loro gateway non ha attivo nessuno dei modi scelti. Scegli un modo che il gateway ha attivo, o attivalo prima sul gateway."
+  },
+  "reimport": {
+    "title_one": "1 dispositivo deve scaricare di nuovo il profilo",
+    "title_other": "{{count}} dispositivi devono scaricare di nuovo il profilo",
+    "body": "Il modo con cui questi dispositivi si connettono ora non è più nell'ordine: {{devices}}. Smettono di connettersi finché la persona non scarica un profilo per un altro modo e lo importa nell'app.",
+    "confirm": "Salva comunque",
+    "cancel": "Mantieni l'ordine attuale"
+  },
+  "org": {
+    "title": "Ordine di connessione",
+    "body": "Quale modo provano per primo telefoni e computer, e quali vengono dopo. Le linee e i dispositivi possono avere un ordine proprio.",
+    "automatic": "Automatico",
+    "onlyAdmin": "Solo il proprietario dell'organizzazione o un amministratore può cambiare l'ordine di connessione.",
+    "members": "I membri possono scegliere",
+    "membersHint": "Le persone possono impostare l'ordine, o forzare un solo modo, per i propri dispositivi, entro ciò che è consentito qui. Un amministratore può bloccare una linea o un dispositivo."
+  },
+  "device": {
+    "title": "Ordine di connessione",
+    "body": "Come questo dispositivo raggiunge la rete.",
+    "profileMethod": "Il profilo su questo dispositivo è fatto per {{method}}.",
+    "noPath": "Nessun modo di questo ordine è attivo sul gateway. Il dispositivo non può connettersi.",
+    "inherit": "Eredita {{from}}",
+    "inheritDefault": "Eredita (automatico)",
+    "lockedNote": "Un amministratore ha bloccato questa impostazione. Solo un amministratore può cambiarla.",
+    "readOnly": "Solo un amministratore può cambiarla, oppure la persona proprietaria del dispositivo quando i membri possono scegliere.",
+    "lock": "Blocca questa impostazione",
+    "lockHint": "Le persone non possono cambiare l'ordine di questo dispositivo.",
+    "lockHintLine": "Le persone non possono cambiare l'ordine di questo dispositivo. La linea {{line}} ha un suo blocco."
+  }
+}

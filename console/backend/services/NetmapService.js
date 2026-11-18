@@ -650,7 +650,8 @@ async function buildNetmap(nodeId) {
 
   const devicePolicies = new Map();
   const deviceReach = new Set();
-  const orderContext = selfIsGateway && isPostgres() ? await ConnectionOrderService.loadContext(self.organization_id) : null;
+  const orderContext =
+    selfIsGateway && isPostgres() ? await ConnectionOrderService.loadContext(self.organization_id) : null;
   if (selfIsGateway) {
     for (const row of sorted) {
       if (!servedDevice(row) || gatewayOf(row) !== self.id) continue;

@@ -113,7 +113,9 @@ function resolve(input) {
   const lineSet = order.slice();
 
   const ownerSet = Boolean(device && device.ownerSet && isList(device.order));
-  const deviceApplied = apply(device, lineSet, (d) => (d.id === undefined ? { scope: 'device' } : { scope: 'device', id: d.id }));
+  const deviceApplied = apply(device, lineSet, (d) =>
+    d.id === undefined ? { scope: 'device' } : { scope: 'device', id: d.id }
+  );
 
   let personBlocked = null;
   if (person && isList(person.order) && !(deviceApplied && ownerSet)) {

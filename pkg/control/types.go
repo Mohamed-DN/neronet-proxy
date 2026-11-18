@@ -416,6 +416,14 @@ type NetmapSelf struct {
 	Name string `json:"name,omitempty"`
 }
 
+// ConnectionOrigin is the scope a connection order was set at (ADR 0037): "default",
+// "organization", "line", "device" or "person"; a line and a device carry their id, a line its name.
+type ConnectionOrigin struct {
+	Scope string `json:"scope"`
+	ID    string `json:"id,omitempty"`
+	Name  string `json:"name,omitempty"`
+}
+
 // NetmapPeer is one node this node may talk to.
 type NetmapPeer struct {
 	NodeID string `json:"node_id"`
@@ -449,6 +457,14 @@ type NetmapPeer struct {
 	// gateway puts the device on its AmneziaWG device, if it runs one, and otherwise
 	// carries it on neither.
 	AccessMethod string `json:"access_method,omitempty"`
+
+	// ConnectionOrder is the effective order of access methods for a profile device
+	// (ADR 0037), already filtered to what the serving gateway runs. The console resolves it
+	// per scope; an agent that does not walk an order ignores it.
+	ConnectionOrder []string `json:"connection_order,omitempty"`
+
+	// ConnectionOrigin names the scope the order came from, for display.
+	ConnectionOrigin *ConnectionOrigin `json:"connection_origin,omitempty"`
 
 	// DaitaMode communicates the peer's DAITA traffic shaping mode.
 	DaitaMode string `json:"daita_mode,omitempty"`

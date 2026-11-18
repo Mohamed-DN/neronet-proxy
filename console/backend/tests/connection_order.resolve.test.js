@@ -62,7 +62,10 @@ describe('ADR 0037: organisation scope', () => {
 
 describe('ADR 0037: line scope', () => {
   it('inherits when it has no order of its own', () => {
-    const r = resolve({ organization: org({ order: [WSS, WG] }), line: { id: 'l1', name: 'Viaggiatori', order: null } });
+    const r = resolve({
+      organization: org({ order: [WSS, WG] }),
+      line: { id: 'l1', name: 'Viaggiatori', order: null }
+    });
     assert.deepEqual(r.order, [WSS, WG]);
     assert.equal(r.origin.scope, 'organization');
   });

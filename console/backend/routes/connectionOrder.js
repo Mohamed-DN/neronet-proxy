@@ -125,9 +125,7 @@ router.get('/devices/:id', async (req, res, next) => {
   try {
     const found = await visibleDevice(req);
     if (!found) return res.status(404).json({ error: 'no_such_device', code: 'no_such_device' });
-    const can = isAdmin(req)
-      ? true
-      : found.view.members_may_choose && !found.view.own.locked && !found.lineLocked;
+    const can = isAdmin(req) ? true : found.view.members_may_choose && !found.view.own.locked && !found.lineLocked;
     res.set('Cache-Control', 'no-store');
     return res.json({ ...found.view, can_edit: can, can_lock: isAdmin(req) });
   } catch (err) {
@@ -189,7 +187,7 @@ router.post('/preview', async (req, res, next) => {
       return res.status(400).json({ error: 'invalid_scope', code: 'invalid_scope' });
     }
     const role = roleOf(req);
-    if (scope === 'organization' && !(isAdmin(req))) {
+    if (scope === 'organization' && !isAdmin(req)) {
       return res.status(403).json({ error: 'Forbidden: insufficient organizational role permissions' });
     }
     if (scope === 'line' && !(isAdmin(req) || role === 'network_admin')) {

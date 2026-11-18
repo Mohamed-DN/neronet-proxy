@@ -220,7 +220,8 @@ describe('ADR 0037: connection order through the API', () => {
           "SELECT metadata_json FROM audit_events WHERE event_type = 'CONNECTION_ORDER_UPDATED' ORDER BY id DESC LIMIT 1"
         )
       ).rows;
-      const meta = typeof rows[0].metadata_json === 'string' ? JSON.parse(rows[0].metadata_json) : rows[0].metadata_json;
+      const meta =
+        typeof rows[0].metadata_json === 'string' ? JSON.parse(rows[0].metadata_json) : rows[0].metadata_json;
       assert.equal(meta.scope, 'organization');
       assert.deepEqual(meta.before.order, [WSS, WG]);
       assert.deepEqual(meta.after.order, [WG]);
@@ -387,7 +388,10 @@ describe('ADR 0037: connection order through the API', () => {
     it('can force one method, and a method outside the order is not made', async () => {
       await setOrg({ members_may_choose: true });
       await put('/me', member, { order: [WSS, WG], forced: true });
-      assert.deepEqual((await methods(member)).body.methods.map((m) => m.id), [WSS]);
+      assert.deepEqual(
+        (await methods(member)).body.methods.map((m) => m.id),
+        [WSS]
+      );
       const res = await addDevice(member, { access_method: WG });
       assert.equal(res.status, 409);
       assert.equal(res.body.code, 'method_not_in_order');
@@ -463,13 +467,19 @@ describe('ADR 0037: connection order through the API', () => {
 
       const strand = await preview(admin, { scope: 'organization', settings: { order: [AWG], forced: true } });
       assert.equal(strand.status, 200);
-      assert.deepEqual(strand.body.strands.map((d) => d.id), [stuck]);
+      assert.deepEqual(
+        strand.body.strands.map((d) => d.id),
+        [stuck]
+      );
       assert.equal(strand.body.strands_total, 1);
 
       const reimport = await preview(admin, { scope: 'organization', settings: { order: [WG, WSS] } });
       assert.equal(reimport.status, 200);
       assert.deepEqual(reimport.body.strands, []);
-      assert.deepEqual(reimport.body.reimport.map((d) => d.id), [awgDevice]);
+      assert.deepEqual(
+        reimport.body.reimport.map((d) => d.id),
+        [awgDevice]
+      );
       assert.ok(!reimport.body.reimport.some((d) => d.id === wgDevice));
 
       const row = (await pool.query('SELECT connection_order FROM organizations WHERE id = $1', [ORG])).rows[0];
@@ -480,15 +490,27 @@ describe('ADR 0037: connection order through the API', () => {
       const awgDevice = await deviceIn(admin, { access_method: AWG });
       const res = await setOrg({ order: [WG, WSS] });
       assert.equal(res.status, 200, JSON.stringify(res.body));
-      assert.deepEqual(res.body.plan.reimport.map((d) => d.id), [awgDevice]);
+      assert.deepEqual(
+        res.body.plan.reimport.map((d) => d.id),
+        [awgDevice]
+      );
     });
 
     it('restricts the preview to those who could write the scope', async () => {
       assert.equal((await preview(member, { scope: 'organization', settings: { order: [WG] } })).status, 403);
-      assert.equal((await preview(member, { scope: 'line', id: 'cmp-co-travel', settings: { order: [WG] } })).status, 403);
-      assert.equal((await preview(netAdmin, { scope: 'line', id: 'cmp-co-travel', settings: { order: [WG] } })).status, 200);
+      assert.equal(
+        (await preview(member, { scope: 'line', id: 'cmp-co-travel', settings: { order: [WG] } })).status,
+        403
+      );
+      assert.equal(
+        (await preview(netAdmin, { scope: 'line', id: 'cmp-co-travel', settings: { order: [WG] } })).status,
+        200
+      );
       assert.equal((await preview(admin, { scope: 'nonsense' })).status, 400);
-      assert.equal((await preview(admin, { scope: 'line', id: 'cmp-co-foreign', settings: { order: [WG] } })).status, 404);
+      assert.equal(
+        (await preview(admin, { scope: 'line', id: 'cmp-co-foreign', settings: { order: [WG] } })).status,
+        404
+      );
     });
   });
 });

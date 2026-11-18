@@ -1,0 +1,91 @@
+{
+  "saved": "Connection order saved. Gateways get it at their next check.",
+  "failed": "The connection order was not saved. Try again.",
+  "loadError": "Could not load the connection order. Try again.",
+  "save": "Save",
+  "revert": "Undo changes",
+  "origin": {
+    "default": "Automatic",
+    "organization": "from the organisation",
+    "line": "from line {{name}}",
+    "device": "from this device",
+    "person": "from the person's own choice"
+  },
+  "summary": {
+    "none": "no way to connect",
+    "forced": "{{method}} only",
+    "then": ", then ",
+    "now": "Tries first: {{order}} ({{origin}})."
+  },
+  "method": {
+    "wireguard": {
+      "name": "Normal connection (WireGuard)",
+      "short": "WireGuard",
+      "hint": "The fastest way. Always available."
+    },
+    "wireguard-wss": {
+      "name": "Network that blocks VPNs (port 443)",
+      "short": "port 443",
+      "hint": "WireGuard inside a web connection, for Wi-Fi that only lets the web through."
+    },
+    "amneziawg": {
+      "name": "Network that recognises VPNs (AmneziaWG)",
+      "short": "AmneziaWG",
+      "hint": "For networks that spot and stop VPNs. Needs the AmneziaWG app."
+    }
+  },
+  "mode": {
+    "label": "Where the order comes from",
+    "custom": "Custom"
+  },
+  "inherit": {
+    "gives": "It tries: {{order}} ({{origin}})."
+  },
+  "list": {
+    "label": "Ways to connect, in the order they are tried",
+    "help": "The first is tried first. If it does not connect in a few seconds, the next one is tried. Switch a way off to stop using it.",
+    "up": "Move {{method}} up",
+    "down": "Move {{method}} down",
+    "use": "Use {{method}}",
+    "moved": "{{method}} is now number {{position}} of {{count}}.",
+    "notRunning": "The gateway is not running it now."
+  },
+  "forced": {
+    "label": "Force only the first",
+    "hint": "Only {{method}} is used, with no fallback to the others.",
+    "none": "Switch on at least one way to connect."
+  },
+  "blocked": {
+    "title_one": "1 device would have no way to connect",
+    "title_other": "{{count}} devices would have no way to connect",
+    "body": "Their gateway does not run any of the chosen ways. Choose a way the gateway runs, or turn it on there first."
+  },
+  "reimport": {
+    "title_one": "1 device must download its profile again",
+    "title_other": "{{count}} devices must download their profile again",
+    "body": "The way these devices connect now is no longer in the order: {{devices}}. They stop connecting until their person downloads a profile for another way and imports it in the app.",
+    "confirm": "Save anyway",
+    "cancel": "Keep the current order"
+  },
+  "org": {
+    "title": "Connection order",
+    "body": "Which way phones and computers try first, and what comes next. Lines and devices can use their own order.",
+    "automatic": "Automatic",
+    "onlyAdmin": "Only the organisation owner or an administrator can change the connection order.",
+    "members": "Members can choose",
+    "membersHint": "People can set the order, or force one way, for their own devices, inside what is allowed here. An administrator can lock a line or a device."
+  },
+  "device": {
+    "title": "Connection order",
+    "body": "How this device reaches the network.",
+    "profileMethod": "The profile on this device is made for {{method}}.",
+    "noPath": "No way of this order is one the gateway runs. The device cannot connect.",
+    "inherit": "Inherit {{from}}",
+    "inheritDefault": "Inherit (automatic)",
+    "lockedNote": "An administrator locked this setting. Only an administrator can change it.",
+    "readOnly": "Only an administrator can change this, or the person who owns the device when members can choose.",
+    "lock": "Lock this setting",
+    "lockHint": "People cannot change the order of this device.",
+    "lockHintLine": "People cannot change the order of this device. Line {{line}} has its own lock."
+  }
+}
