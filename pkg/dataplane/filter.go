@@ -428,7 +428,7 @@ func (f *filteredTUN) isLocal(a netip.Addr) bool {
 
 // wakeIfDirect ends a direct read that may be blocked, at most every 20ms.
 func (f *filteredTUN) wakeIfDirect() {
-	if f.pumping.Load() || f.wake == nil {
+	if f.pumping.Load() || f.wake == nil || f.isClosing() {
 		return
 	}
 	now := time.Now().UnixNano()
@@ -438,7 +438,29 @@ func (f *filteredTUN) wakeIfDirect() {
 	}
 	// Not inline: the netstack hands a sent packet to the reader over an unbuffered
 	// channel, and this may run on wireguard-go's receive path.
-	go f.wake()
+	go f.runWake()
+}
+
+// runWake sends one wake datagram. The device can be closed while it is in flight; the
+// netstack then panics on a send to its closed packet channel, and a panic here would end
+// the whole process. A wake is only a nudge to a blocked read, so losing one while the
+// device goes away is harmless: the panic is contained and the wake dropped.
+func (f *filteredTUN) runWake() {
+	defer func() { _ = recover() }()
+	if f.isClosing() {
+		return
+	}
+	f.wake()
+}
+
+// isClosing reports whether Close has started.
+func (f *filteredTUN) isClosing() bool {
+	select {
+	case <-f.done:
+		return true
+	default:
+		return false
+	}
 }
 
 // isWake recognises the datagram wake sends: UDP to wakeDst carrying wakeToken.
