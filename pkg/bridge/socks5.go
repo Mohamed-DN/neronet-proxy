@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -61,6 +62,11 @@ type SOCKS5Server struct {
 	// routing hint and its password is not checked.
 	username string
 	password string
+
+	// deviceAuth, when set, replaces the single username and password: every client
+	// authenticates as one device and its connections are dialled by that device's
+	// dialer (device_socks.go). The bridge is not used on this path.
+	deviceAuth func(username, password string) (OverlayDialer, bool)
 }
 
 // SetCredentials makes the proxy require this username and password.
@@ -69,7 +75,9 @@ func (s *SOCKS5Server) SetCredentials(username, password string) {
 	s.password = password
 }
 
-func (s *SOCKS5Server) requiresAuth() bool { return s.username != "" || s.password != "" }
+func (s *SOCKS5Server) requiresAuth() bool {
+	return s.deviceAuth != nil || s.username != "" || s.password != ""
+}
 
 func constantTimeEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
@@ -146,6 +154,7 @@ func (s *SOCKS5Server) handleConnection(conn net.Conn) {
 		return
 	}
 
+	var deviceDialer OverlayDialer
 	hasUserPass, hasNone := false, false
 	for _, m := range methods {
 		switch m {
@@ -169,7 +178,14 @@ func (s *SOCKS5Server) handleConnection(conn net.Conn) {
 		}
 		// The credentials used to be read and discarded: any username and password
 		// were accepted.
-		if s.requiresAuth() && !(constantTimeEqual(uname, s.username) && constantTimeEqual(passwd, s.password)) {
+		if s.deviceAuth != nil {
+			d, ok := s.deviceAuth(uname, passwd)
+			if !ok {
+				_, _ = conn.Write([]byte{socks5UserPassVersion, socks5UserPassFailure})
+				return
+			}
+			deviceDialer = d
+		} else if s.requiresAuth() && !(constantTimeEqual(uname, s.username) && constantTimeEqual(passwd, s.password)) {
 			_, _ = conn.Write([]byte{socks5UserPassVersion, socks5UserPassFailure})
 			return
 		}
@@ -233,7 +249,13 @@ func (s *SOCKS5Server) handleConnection(conn net.Conn) {
 	// outbound dial, so a client was told it was connected to a destination that was
 	// unreachable, refused or forbidden, and saw the stream close instead of an error.
 	dialCtx, cancel := context.WithTimeout(context.Background(), socks5DialTimeout)
-	outbound, err := s.bridge.Dial(dialCtx, targetHost, targetPort)
+	var outbound net.Conn
+	var err error
+	if deviceDialer != nil {
+		outbound, err = deviceDialer.DialContext(dialCtx, "tcp", net.JoinHostPort(targetHost, strconv.Itoa(targetPort)))
+	} else {
+		outbound, err = s.bridge.Dial(dialCtx, targetHost, targetPort)
+	}
 	cancel()
 	if err != nil {
 		writeSOCKSReply(conn, socksReplyFor(err), nil)
@@ -247,6 +269,10 @@ func (s *SOCKS5Server) handleConnection(conn net.Conn) {
 	}
 
 	// 3. Forward stream to bridge
+	if deviceDialer != nil {
+		pipeDevice(conn, outbound)
+		return
+	}
 	_ = s.bridge.Pipe(context.Background(), conn, outbound)
 }
 
