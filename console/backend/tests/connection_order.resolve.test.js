@@ -341,3 +341,36 @@ describe('ADR 0037: node-to-node link', () => {
     assert.equal(l.no_path, true);
   });
 });
+
+describe('ADR 0037: stored orders that name a method the organisation no longer allows', () => {
+  const NARROW = { allowed: [WG, WSS] };
+
+  it('drops it from an organisation, line, device and person order alike', () => {
+    const r = resolve({
+      organization: org({ ...NARROW, order: [AWG, WSS, WG], membersMayChoose: true }),
+      line: { id: 'l1', name: 'L', order: [AWG, WG, WSS] },
+      device: { id: 'd1', order: [AWG, WSS, WG] },
+      person: { order: [AWG, WG] }
+    });
+    assert.deepEqual(r.order, [WG]);
+    assert.ok(!r.order.includes(AWG));
+  });
+
+  it('a forced method that is no longer allowed falls back to what the scope above gives, never to it', () => {
+    const device = resolve({ organization: org(NARROW), device: { id: 'd1', order: [AWG, WG], forced: true } });
+    assert.deepEqual(device.order, [WG]);
+    const stale = resolve({ organization: org({ ...NARROW, order: [AWG], forced: true }) });
+    assert.deepEqual(stale.order, [WG, WSS]);
+    assert.equal(stale.origin.scope, 'default');
+    assert.equal(stale.clamped, true);
+  });
+
+  it('a person whose whole order is stale inherits and is flagged', () => {
+    const r = resolve({
+      organization: org({ ...NARROW, membersMayChoose: true }),
+      person: { order: [AWG], forced: true }
+    });
+    assert.deepEqual(r.order, [WG, WSS]);
+    assert.equal(r.clamped, true);
+  });
+});

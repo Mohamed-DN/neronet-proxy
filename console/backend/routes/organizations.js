@@ -5,6 +5,7 @@ const { resolveUserOrg, requireRole, requireOrgRole, requireNotAuditor } = requi
 const OrgService = require('../services/OrgService');
 const TransportPolicyService = require('../services/TransportPolicyService');
 const AccessMethodService = require('../services/AccessMethodService');
+const ConnectionOrderService = require('../services/ConnectionOrderService');
 const { logAuditEvent } = require('../utils/audit');
 
 router.use(authenticateToken);
@@ -150,6 +151,27 @@ router.put('/:id/access-methods', requireOrgRole('owner', 'admin'), async (req, 
     if (req.user.role !== 'super-admin' && req.user.organization_id !== req.params.id) {
       return res.status(404).json({ error: 'Organization not found' });
     }
+    // ADR 0037: switching a method off must not leave a device with no way to connect, and the
+    // devices whose profile was made for it must be named and confirmed first.
+    const plan = await ConnectionOrderService.planAllowedChange(req.params.id, req.body);
+    if (plan && plan.strands_total > 0) {
+      return res.status(409).json({
+        error: 'would_strand_devices',
+        code: 'would_strand_devices',
+        message: 'Some devices would have no way to connect',
+        devices: plan.strands,
+        total: plan.strands_total
+      });
+    }
+    if (plan && plan.reimport_total > 0 && req.body.confirm_reimport !== true) {
+      return res.status(409).json({
+        error: 'reimport_confirmation_required',
+        code: 'reimport_confirmation_required',
+        message: 'Some devices must download their profile again',
+        reimport: plan.reimport,
+        total: plan.reimport_total
+      });
+    }
     const result = await AccessMethodService.setSettings(req.params.id, req.body);
     if (!result) return res.status(404).json({ error: 'Organization not found' });
     await logAuditEvent({
@@ -162,10 +184,29 @@ router.put('/:id/access-methods', requireOrgRole('owner', 'admin'), async (req, 
       targetType: 'organization',
       message: `Access methods of ${result.organization_id} set to ${result.allowed_access_methods.join(',')}${result.generated ? '; AmneziaWG parameters generated' : ''}`,
       ipAddress: req.ip,
-      metadata: { allowed_access_methods: result.allowed_access_methods, parameters_generated: result.generated }
+      metadata: {
+        allowed_access_methods: result.allowed_access_methods,
+        parameters_generated: result.generated,
+        devices_to_reimport: plan ? plan.reimport_total : 0
+      }
     });
     const { generated: _generated, ...view } = result;
-    return res.status(200).json(view);
+    return res.status(200).json({ ...view, plan });
+  } catch (err) {
+    return accessMethodFail(res, err, next);
+  }
+});
+
+// Who switching the two optional methods would affect; writes nothing.
+router.post('/:id/access-methods/preview', requireOrgRole('owner', 'admin'), async (req, res, next) => {
+  try {
+    if (req.user.role !== 'super-admin' && req.user.organization_id !== req.params.id) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    const plan = await ConnectionOrderService.planAllowedChange(req.params.id, req.body);
+    if (!plan) return res.status(400).json({ error: 'invalid_access_methods', code: 'invalid_access_methods' });
+    res.set('Cache-Control', 'no-store');
+    return res.status(200).json(plan);
   } catch (err) {
     return accessMethodFail(res, err, next);
   }

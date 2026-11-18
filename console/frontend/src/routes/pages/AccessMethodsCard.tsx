@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../services/apiClient';
 import {
   useAccessMethods,
+  usePreviewAccessMethods,
   useRegenerateAwgParams,
   useSetAccessMethods,
   type AccessMethodsSettings
@@ -25,19 +26,53 @@ export function AccessMethodsCard({ orgId, user }: { orgId: string; user: RoleUs
   const settings = useAccessMethods(orgId);
   const save = useSetAccessMethods(orgId);
   const regenerate = useRegenerateAwgParams(orgId);
+  const preview = usePreviewAccessMethods(orgId);
+  const [blocked, setBlocked] = useState<Array<{ id: string; name: string | null }> | null>(null);
+  const [asking, setAsking] = useState<{
+    next: Pick<AccessMethodsSettings, 'wireguard_wss' | 'amneziawg'>;
+    devices: Array<{ id: string; name: string | null }>;
+  } | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const data = settings.data;
   const role = effectiveRole(user);
   const mayManage = role === 'super-admin' || role === 'owner' || role === 'admin';
 
-  async function change(next: Pick<AccessMethodsSettings, 'wireguard_wss' | 'amneziawg'>, firstTimeAwg: boolean) {
+  async function commit(
+    next: Pick<AccessMethodsSettings, 'wireguard_wss' | 'amneziawg'>,
+    firstTimeAwg: boolean,
+    confirmReimport = false
+  ) {
     try {
-      await save.mutateAsync(next);
+      await save.mutateAsync(confirmReimport ? { ...next, confirm_reimport: true } : next);
       notify(firstTimeAwg ? t('accessMethods.generated') : t('accessMethods.saved'), { tone: 'success' });
     } catch (error) {
-      notify(error instanceof ApiError && error.status === 403 ? t('forbidden') : t('accessMethods.failed'), {
-        tone: 'danger'
-      });
+      if (error instanceof ApiError && error.code === 'would_strand_devices') {
+        const body = (error.details ?? {}) as { devices?: Array<{ id: string; name: string | null }> };
+        setBlocked(body.devices ?? []);
+      } else {
+        notify(error instanceof ApiError && error.status === 403 ? t('forbidden') : t('accessMethods.failed'), {
+          tone: 'danger'
+        });
+      }
+    } finally {
+      setAsking(null);
     }
+  }
+
+  // Switching a method off can strand devices or make profiles useless: the server says who first.
+  async function change(next: Pick<AccessMethodsSettings, 'wireguard_wss' | 'amneziawg'>, firstTimeAwg: boolean) {
+    setBlocked(null);
+    const turnsOff =
+      (data?.wireguard_wss === true && !next.wireguard_wss) || (data?.amneziawg === true && !next.amneziawg);
+    if (!turnsOff) return commit(next, firstTimeAwg);
+    try {
+      const plan = await preview.mutateAsync(next);
+      if (plan.strands_total > 0) return setBlocked(plan.strands);
+      if (plan.reimport_total > 0) return setAsking({ next, devices: plan.reimport });
+    } catch {
+      return notify(t('accessMethods.failed'), { tone: 'danger' });
+    }
+    return commit(next, false);
   }
 
   async function doRegenerate() {
@@ -51,7 +86,6 @@ export function AccessMethodsCard({ orgId, user }: { orgId: string; user: RoleUs
     }
   }
 
-  const data = settings.data;
   return (
     <Card>
       <CardHeader as="h2" title={t('accessMethods.title')} description={t('accessMethods.body')} />
@@ -91,9 +125,30 @@ export function AccessMethodsCard({ orgId, user }: { orgId: string; user: RoleUs
               )}
             </div>
           )}
+          {blocked && (
+            <div role="alert" className="space-y-1 rounded-plate border border-danger/40 bg-danger/10 p-3 text-body">
+              <p className="font-medium">{t('accessMethods.blockedTitle', { count: blocked.length })}</p>
+              <p className="text-caption">{blocked.map((d) => d.name || d.id).join(', ')}</p>
+              <p className="text-caption text-subtle">{t('accessMethods.blockedBody')}</p>
+            </div>
+          )}
           {!mayManage && <p className="text-caption text-subtle">{t('accessMethods.onlyAdmin')}</p>}
         </div>
       )}
+
+      <ConfirmDialog
+        open={asking !== null}
+        onOpenChange={(open) => !open && setAsking(null)}
+        title={t('accessMethods.reimportTitle', { count: asking?.devices.length ?? 0 })}
+        description={t('accessMethods.reimportBody', {
+          devices: asking ? asking.devices.map((d) => d.name || d.id).join(', ') : ''
+        })}
+        confirmLabel={t('accessMethods.reimportConfirm')}
+        cancelLabel={t('accessMethods.reimportCancel')}
+        tone="danger"
+        onConfirm={() => asking && void commit(asking.next, false, true)}
+        busy={save.isPending}
+      />
 
       <ConfirmDialog
         open={confirming}

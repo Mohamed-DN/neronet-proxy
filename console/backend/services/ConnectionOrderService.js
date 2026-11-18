@@ -177,14 +177,23 @@ function withChange(ctx, change) {
  * the person must import a profile for another method.
  */
 function plan(ctx, change) {
-  const after = withChange(ctx, change);
+  return compare(ctx, withChange(ctx, change), []);
+}
+
+/**
+ * Who a change would affect, `after` being the context with the change laid over it. `removed` are
+ * methods the organisation stops allowing: a device whose effective order is forced to one of them
+ * is stranded too (its single method is gone and the setting would silently fall back).
+ */
+function compare(ctx, after, removed) {
   const strands = [];
   const reimport = [];
   const changed = new Map(after.devices.map((d) => [d.id, d]));
   for (const row of ctx.devices) {
     const was = effectiveFor(ctx, row);
     const now = effectiveFor(after, changed.get(row.id));
-    if (was.usable && !now.usable) {
+    const forcedAway = was.forced && was.order.length === 1 && removed.includes(was.order[0]);
+    if (was.usable && (!now.usable || forcedAway)) {
       strands.push({ id: row.id, name: row.name });
     } else if (now.usable && was.order.includes(row.access_method) && !now.order.includes(row.access_method)) {
       reimport.push({ id: row.id, name: row.name, access_method: row.access_method });
@@ -196,6 +205,28 @@ function plan(ctx, change) {
     reimport: reimport.slice(0, LIST_LIMIT),
     reimport_total: reimport.length
   };
+}
+
+/**
+ * The same plan for the organisation's access-method switches (ADR 0036 settings): what turning
+ * port 443 or AmneziaWG off would do to the devices, lines and people that use it. Null when the
+ * organisation is unknown or the body is not two booleans (the writer answers 400 itself).
+ */
+async function planAllowedChange(organizationId, body) {
+  const input = body || {};
+  if (typeof input.wireguard_wss !== 'boolean' || typeof input.amneziawg !== 'boolean') return null;
+  const ctx = await loadContext(organizationId);
+  if (!ctx) return null;
+  const allowed = [Resolver.WIREGUARD];
+  if (input.wireguard_wss) allowed.push(Resolver.WIREGUARD_WSS);
+  if (input.amneziawg) allowed.push(Resolver.AMNEZIAWG);
+  const removed = ctx.org.allowed.filter((m) => !allowed.includes(m));
+  const after = {
+    ...ctx,
+    org: { ...ctx.org, allowed },
+    orgRow: { ...ctx.orgRow, allowed_access_methods: allowed }
+  };
+  return compare(ctx, after, removed);
 }
 
 /** What a person may use at a scope: the methods the bound above allows. */
@@ -529,6 +560,7 @@ module.exports = {
   loadContext,
   effectiveFor,
   plan,
+  planAllowedChange,
   withChange,
   organizationView,
   lineView,

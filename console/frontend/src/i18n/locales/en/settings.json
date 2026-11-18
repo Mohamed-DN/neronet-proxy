@@ -92,6 +92,14 @@
     "regenerated_other": "Parameters regenerated. {{count}} devices must download their profile again.",
     "failed": "The ways to connect were not saved. Try again.",
     "loadError": "Could not load the ways to connect. Try again.",
+    "blockedTitle_one": "1 device would have no way to connect",
+    "blockedTitle_other": "{{count}} devices would have no way to connect",
+    "blockedBody": "They are set to use only the way you switched off. Change their connection order first, then switch it off.",
+    "reimportTitle_one": "1 device must download its profile again",
+    "reimportTitle_other": "{{count}} devices must download their profile again",
+    "reimportBody": "These devices connect the way you are switching off: {{devices}}. They stop connecting until their person downloads a profile for another way and imports it in the app.",
+    "reimportConfirm": "Switch it off",
+    "reimportCancel": "Keep it on",
     "onlyAdmin": "Only the organisation owner or an administrator can change the ways to connect."
   }
 }

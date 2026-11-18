@@ -92,6 +92,14 @@
     "regenerated_other": "Parametri rigenerati. {{count}} dispositivi devono scaricare di nuovo il loro profilo.",
     "failed": "I metodi di accesso non sono stati salvati. Riprova.",
     "loadError": "Impossibile caricare i metodi di accesso. Riprova.",
+    "blockedTitle_one": "1 dispositivo non avrebbe alcun modo per connettersi",
+    "blockedTitle_other": "{{count}} dispositivi non avrebbero alcun modo per connettersi",
+    "blockedBody": "Sono impostati per usare solo il modo che stai spegnendo. Cambia prima il loro ordine di connessione, poi spegnilo.",
+    "reimportTitle_one": "1 dispositivo deve scaricare di nuovo il profilo",
+    "reimportTitle_other": "{{count}} dispositivi devono scaricare di nuovo il profilo",
+    "reimportBody": "Questi dispositivi si connettono con il modo che stai spegnendo: {{devices}}. Smettono di connettersi finché la persona non scarica un profilo per un altro modo e lo importa nell'app.",
+    "reimportConfirm": "Spegni",
+    "reimportCancel": "Lascia acceso",
     "onlyAdmin": "Solo il proprietario o un amministratore dell'organizzazione può cambiare i metodi di accesso."
   }
 }

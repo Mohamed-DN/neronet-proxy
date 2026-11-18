@@ -356,8 +356,12 @@ describe('ADR 0036: access methods through the API', () => {
     assert.equal(other.self.awg, undefined);
     assert.ok(!JSON.stringify(other).includes('"jmin"'));
 
-    // Switched off: the listener is not started, so the parameters are not sent either.
-    await setMethods(admin, { wireguard_wss: false, amneziawg: false });
+    // Switched off: the listener is not started, so the parameters are not sent either. The device
+    // above has an AmneziaWG profile, so ADR 0037 asks for confirmation first.
+    const asked = await setMethods(admin, { wireguard_wss: false, amneziawg: false });
+    assert.equal(asked.status, 409);
+    assert.equal(asked.body.code, 'reimport_confirmation_required');
+    await setMethods(admin, { wireguard_wss: false, amneziawg: false, confirm_reimport: true });
     const off = await NetmapService.buildNetmap(gw.id);
     assert.equal(off.self.awg, undefined);
     assert.ok(!JSON.stringify(off).includes('"jmin"'));

@@ -513,4 +513,113 @@ describe('ADR 0037: connection order through the API', () => {
       );
     });
   });
+  describe('access methods switched off (ADR 0036 settings)', () => {
+    const switchAwg = (body) =>
+      request(app)
+        .put(`/api/organizations/${ORG}/access-methods`)
+        .set(auth(admin))
+        .send({ wireguard_wss: true, amneziawg: false, ...body });
+    const previewSwitch = (body = {}) =>
+      request(app)
+        .post(`/api/organizations/${ORG}/access-methods/preview`)
+        .set(auth(admin))
+        .send({ wireguard_wss: true, amneziawg: false, ...body });
+    const allowed = async () =>
+      (await pool.query('SELECT allowed_access_methods FROM organizations WHERE id = $1', [ORG])).rows[0]
+        .allowed_access_methods;
+
+    it('refuses with 409 and the devices when one is forced to the method being switched off', async () => {
+      const forcedId = await deviceIn(admin);
+      const free = await deviceIn(admin);
+      assert.equal((await put(`/devices/${forcedId}`, admin, { order: [AWG], forced: true })).status, 200);
+      const res = await switchAwg();
+      assert.equal(res.status, 409, JSON.stringify(res.body));
+      assert.equal(res.body.code, 'would_strand_devices');
+      assert.deepEqual(
+        res.body.devices.map((d) => d.id),
+        [forcedId]
+      );
+      assert.ok(!res.body.devices.some((d) => d.id === free));
+      assert.deepEqual(await allowed(), [WG, WSS, AWG], 'nothing was written');
+    });
+
+    it('also refuses when a line or the person forces the method', async () => {
+      await setOrg({ members_may_choose: true });
+      const id = await deviceIn(member);
+      await pool.query("UPDATE nodes SET compartment_id = 'cmp-co-travel' WHERE id = $1", [id]);
+      await put('/lines/cmp-co-travel', admin, { order: [AWG, WG], forced: true });
+      assert.equal((await switchAwg()).status, 409);
+      await put('/lines/cmp-co-travel', admin, { order: null });
+      await put('/me', member, { order: [AWG, WG], forced: true });
+      const res = await switchAwg();
+      assert.equal(res.status, 409);
+      assert.equal(res.body.devices[0].id, id);
+    });
+
+    it('asks for confirmation when a device profile was made for the method, then lets it through', async () => {
+      const awgDevice = await deviceIn(admin, { access_method: AWG });
+      await deviceIn(admin);
+      const asked = await switchAwg();
+      assert.equal(asked.status, 409, JSON.stringify(asked.body));
+      assert.equal(asked.body.code, 'reimport_confirmation_required');
+      assert.deepEqual(
+        asked.body.reimport.map((d) => d.id),
+        [awgDevice]
+      );
+      assert.deepEqual(await allowed(), [WG, WSS, AWG]);
+      const done = await switchAwg({ confirm_reimport: true });
+      assert.equal(done.status, 200, JSON.stringify(done.body));
+      assert.deepEqual(
+        done.body.plan.reimport.map((d) => d.id),
+        [awgDevice]
+      );
+      assert.deepEqual(await allowed(), [WG, WSS]);
+    });
+
+    it('previews the same two lists without writing, and only for an owner or admin', async () => {
+      const forcedId = await deviceIn(admin);
+      const awgDevice = await deviceIn(admin, { access_method: AWG });
+      await put(`/devices/${forcedId}`, admin, { order: [AWG], forced: true });
+      const res = await previewSwitch();
+      assert.equal(res.status, 200);
+      assert.deepEqual(
+        res.body.strands.map((d) => d.id),
+        [forcedId]
+      );
+      assert.ok(res.body.reimport.some((d) => d.id === awgDevice));
+      assert.deepEqual(await allowed(), [WG, WSS, AWG]);
+      const denied = await request(app)
+        .post(`/api/organizations/${ORG}/access-methods/preview`)
+        .set(auth(member))
+        .send({ wireguard_wss: true, amneziawg: false });
+      assert.equal(denied.status, 403);
+      assert.equal((await previewSwitch({ amneziawg: 'no' })).status, 400);
+    });
+
+    it('lets a change that affects no device go straight through', async () => {
+      await deviceIn(admin);
+      assert.equal((await switchAwg()).status, 200);
+      assert.equal((await switchAwg({ wireguard_wss: false })).status, 200);
+    });
+
+    it('resolves a stored order that names a method no longer allowed, instead of keeping it', async () => {
+      const id = await deviceIn(admin);
+      await pool.query("UPDATE organizations SET connection_order = ARRAY['amneziawg','wireguard'] WHERE id = $1", [
+        ORG
+      ]);
+      await pool.query(
+        "UPDATE nodes SET connection_order = ARRAY['amneziawg'], connection_forced = TRUE WHERE id = $1",
+        [id]
+      );
+      await pool.query(
+        "UPDATE organizations SET allowed_access_methods = ARRAY['wireguard','wireguard-wss']::text[] WHERE id = $1",
+        [ORG]
+      );
+      const view = await get(`/devices/${id}`, admin);
+      assert.deepEqual(view.body.effective.order, [WG]);
+      assert.ok(!view.body.effective.order.includes(AWG));
+      const peer = await peerOf(gw, id);
+      assert.deepEqual(peer.connection_order, [WG]);
+    });
+  });
 });

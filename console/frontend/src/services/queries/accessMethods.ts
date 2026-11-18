@@ -21,6 +21,16 @@ export interface AccessMethodsSettings {
   amneziawg_ready: boolean;
 }
 
+/** Who switching a method off would affect (the server's simulation, nothing written). */
+export interface AccessMethodsPlan {
+  /** Devices left with no way to connect: the server refuses the change. */
+  strands: Array<{ id: string; name: string | null }>;
+  strands_total: number;
+  /** Devices whose profile was made for the method: they must download a new one. */
+  reimport: Array<{ id: string; name: string | null; access_method: string }>;
+  reimport_total: number;
+}
+
 export interface RegenerateResult extends AccessMethodsSettings {
   /** How many AmneziaWG devices must import their profile again. */
   devices_to_redo: number;
@@ -39,15 +49,28 @@ export function useAccessMethods(orgId: string | null): UseQueryResult<AccessMet
 
 export function useSetAccessMethods(
   orgId: string
-): UseMutationResult<AccessMethodsSettings, ApiError, { wireguard_wss: boolean; amneziawg: boolean }> {
+): UseMutationResult<
+  AccessMethodsSettings,
+  ApiError,
+  { wireguard_wss: boolean; amneziawg: boolean; confirm_reimport?: boolean }
+> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input) => apiPut<AccessMethodsSettings>(base(orgId), input),
     onSuccess: (data) => {
-      queryClient.setQueryData(keyFor(orgId), data);
+      const settings: AccessMethodsSettings & { plan?: unknown } = { ...data };
+      delete settings.plan;
+      queryClient.setQueryData(keyFor(orgId), settings);
       void queryClient.invalidateQueries({ queryKey: ['devices', 'profile-methods'] });
+      void queryClient.invalidateQueries({ queryKey: ['connection-order'] });
     }
   });
+}
+
+export function usePreviewAccessMethods(
+  orgId: string
+): UseMutationResult<AccessMethodsPlan, ApiError, { wireguard_wss: boolean; amneziawg: boolean }> {
+  return useMutation({ mutationFn: (input) => apiPost<AccessMethodsPlan>(`${base(orgId)}/preview`, input) });
 }
 
 export function useRegenerateAwgParams(orgId: string): UseMutationResult<RegenerateResult, ApiError, void> {
