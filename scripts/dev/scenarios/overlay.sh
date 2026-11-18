@@ -1407,8 +1407,11 @@ PostUp = ip -6 route add ::/0 dev %i table 51820 && ip -6 rule add not fwmark 51
 
       echo
       echo "== (b) DNS through the tunnel: the exit's resolver answers 100.100.100.100"
-      got=$(dev_dns "$DEV1" inet-echo)
-      echo "  nslookup inet-echo 100.100.100.100 -> ${got:-nothing}"
+      # A dotted name on purpose: since ADR 0034 the gateway treats a single-label name as a
+      # mesh name and answers NXDOMAIN for an unknown one, so an exit's resolver is asked
+      # for names outside the mesh only.
+      got=$(dev_dns "$DEV1" inet-echo.exit.test)
+      echo "  nslookup inet-echo.exit.test 100.100.100.100 -> ${got:-nothing}"
       case " $got " in *" $INET_ECHO "*) ;; *) echo "unexpected: the name did not resolve through the exit" >&2; rc=1 ;; esac
       # The exit's resolver also names inet-echo's address on the exits' private LAN
       # (Compose gives a service its name on every network): that one is refused, the
@@ -1471,7 +1474,7 @@ PostUp = ip -6 route add ::/0 dev %i table 51820 && ip -6 rule add not fwmark 51
       expect_tcp fail "$DEV1" "$INET_ECHO" "device -> internet with $EX stopped"
       r=$(dev_source "$DEV1"); echo "  internet source probe with $EX stopped: $r"
       [ "$r" = none ] || { echo "unexpected: the internet answered with the exit stopped" >&2; rc=1; }
-      got=$(dev_dns "$DEV1" inet-echo); echo "  DNS with $EX stopped: ${got:-no answer}"
+      got=$(dev_dns "$DEV1" inet-echo.exit.test); echo "  DNS with $EX stopped: ${got:-no answer}"
       [ -z "$got" ] || { echo "unexpected: a DNS answer arrived with the exit stopped" >&2; rc=1; }
       echo "  waiting 30s, through at least one netmap fetch, still sending..."
       i=0

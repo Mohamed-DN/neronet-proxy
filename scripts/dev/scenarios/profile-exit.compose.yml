@@ -42,7 +42,7 @@ services:
     networks:
       exit-internet:
         ipv4_address: 198.51.100.80
-        aliases: [inet-echo]
+        aliases: [inet-echo, inet-echo.exit.test]
       exit-lan:
         ipv4_address: 172.31.250.80
     command:
