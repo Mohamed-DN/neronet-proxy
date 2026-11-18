@@ -35,6 +35,13 @@ next method after a bounded timeout), remember the last working method per netwo
 report the method in use. Stock-app profile devices cannot walk an order: the portal writes the
 profile for the first method and offers the alternatives as separate downloads.
 
+When the two ends of a link have no method in common, the link is in an explicit **no path** state,
+shown on the map and in the policy view, never a silent failure (research, 18 Nov: disabling relays
+on one end strands links in Nebula/Tailscale-style systems). Relay use is a visible permission in the
+order, not a hidden device switch. Precedents: Mullvad's "Automatic" obfuscation (fallback after
+failed connects), Tailscale nodeAttrs scoping, Nebula `use_relays`, AmneziaVPN's per-server protocol
+bundles.
+
 Safety: a change that would leave a device with no method its gateway runs is refused; a stricter
 order shows a preview of devices that would lose connectivity (as the map editor does); every change
 is audited with before/after.
