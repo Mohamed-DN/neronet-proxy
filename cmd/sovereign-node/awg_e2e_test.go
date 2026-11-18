@@ -76,6 +76,7 @@ func TestNetmapStartsTheRealAmneziaWGDeviceAndAClientHandshakes(t *testing.T) {
 
 	params := awgParamsFromNetmap(*awg)
 	ch := tuntest.NewChannelTUN()
+	<-ch.TUN().Events() // the test TUN's up event would start the device before it is configured
 	client := awgdevice.NewDevice(ch.TUN(), awgconn.NewDefaultBind(), awgdevice.NewLogger(awgdevice.LogLevelSilent, ""))
 	t.Cleanup(client.Close)
 	uapi := fmt.Sprintf("private_key=%s\njc=%d\njmin=%d\njmax=%d\ns1=%d\ns2=%d\ns3=%d\ns4=%d\nh1=%s\nh2=%s\nh3=%s\nh4=%s\n",

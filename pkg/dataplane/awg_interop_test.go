@@ -59,6 +59,8 @@ func newAWGTestClient(t *testing.T, p AWGParams, gwPub [32]byte, gwPort uint16, 
 		t.Fatal(err)
 	}
 	ch := tuntest.NewChannelTUN()
+	// The test TUN queues an up event that would start the device before it is configured.
+	<-ch.TUN().Events()
 	dev := awgdevice.NewDevice(ch.TUN(), awgconn.NewDefaultBind(), awgTestLogger())
 	t.Cleanup(dev.Close)
 	uapi := fmt.Sprintf("private_key=%s\n", hex.EncodeToString(keys.PrivateKey[:])) + p.uapi() +

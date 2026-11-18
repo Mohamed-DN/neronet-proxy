@@ -82,7 +82,9 @@ func (d *Device) StartAWG(cfg AWGConfig) error {
 		}
 	}
 	dev := awgdevice.NewDevice(newAWGTUN(wrap, d.mtu), awgconn.NewDefaultBind(), logger)
-	uapi := fmt.Sprintf("private_key=%s\nlisten_port=%d\n", hex.EncodeToString(d.privKey[:]), cfg.ListenPort) + cfg.Params.uapi()
+	// Parameters before the port, and the device is still down: it comes up only at Up.
+	uapi := fmt.Sprintf("private_key=%s\n", hex.EncodeToString(d.privKey[:])) +
+		cfg.Params.uapi() + fmt.Sprintf("listen_port=%d\n", cfg.ListenPort)
 	if err := dev.IpcSet(uapi); err != nil {
 		dev.Close()
 		return fmt.Errorf("dataplane: configuring the AmneziaWG device: %w", err)
@@ -240,9 +242,10 @@ type awgTUN struct {
 }
 
 func newAWGTUN(f *filteredTUN, mtu int) *awgTUN {
-	a := &awgTUN{f: f, mtu: mtu, events: make(chan awgtun.Event, 1)}
-	a.events <- awgtun.EventUp
-	return a
+	// No EventUp is queued: amneziawg-go would bring itself up the moment it is created,
+	// opening the socket and starting its receive routines while StartAWG is still writing
+	// the parameters they read. StartAWG calls Up once the configuration is in.
+	return &awgTUN{f: f, mtu: mtu, events: make(chan awgtun.Event, 1)}
 }
 
 func (a *awgTUN) File() *os.File { return nil }

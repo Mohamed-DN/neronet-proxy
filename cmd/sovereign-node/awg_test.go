@@ -208,7 +208,7 @@ func TestAWGListenPort(t *testing.T) {
 			t.Errorf("%q: got %d, %v; want %d", spec, got, err, want)
 		}
 	}
-	for _, spec := range []string{"0", "70000", "abc", "10.0.0.1:51821", "localhost:51821", ":x"} {
+	for _, spec := range []string{"0", "70000", "abc", "192.0.2.1:51821", "localhost:51821", ":x"} {
 		if _, err := awgListenPort(spec); err == nil {
 			t.Errorf("%q was accepted", spec)
 		}

@@ -6,6 +6,7 @@ FROM golang:1.26.11 AS builder
 
 WORKDIR /build
 COPY go.mod go.sum ./
+COPY third_party/amneziawg-go ./third_party/amneziawg-go
 RUN go mod download
 
 COPY internal ./internal
