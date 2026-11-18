@@ -29,6 +29,9 @@ import {
   CodeText,
   ConfirmDialog,
   Dialog,
+  ResponsiveDetail,
+  StationRow,
+  StationRowList,
   EmptyState,
   ErrorState,
   FormField,
@@ -41,7 +44,8 @@ import {
   Switch,
   Table,
   type TableColumn,
-  Tooltip
+  Tooltip,
+  useLayoutSize
 } from '../../ui';
 
 interface RuleFormState {
@@ -85,6 +89,7 @@ export default function AclsRoute() {
   // The roles the server lets write ACLs (routes/acl.js requireAclAdmin reads org_role || role).
   // network_admin and owner can read the rules, but the server refuses their writes.
   const auth = useContext(AuthContext);
+  const size = useLayoutSize();
   const writerRole = effectiveRole(auth?.user ?? null);
   const canManageAcls = writerRole === 'super-admin' || writerRole === 'admin';
 
@@ -492,8 +497,8 @@ export default function AclsRoute() {
     { value: 'wireguard', label: t('form.presetWireguard') }
   ];
 
-  return (
-    <div className="space-y-6">
+  const lead = (
+    <>
       {/* Page Header */}
       <PageHeader
         title={t('title')}
@@ -505,23 +510,23 @@ export default function AclsRoute() {
           />
         }
         actions={
-          <div className="flex items-center space-x-3">
-            <Button variant="secondary" onClick={() => setPreviewOpen(true)} data-testid="preview-simulator-button">
-              <Play className="w-4 h-4 mr-2" />
-              <span>{t('previewSimulate')}</span>
+          <Button variant="secondary" onClick={() => setPreviewOpen(true)} data-testid="preview-simulator-button">
+            <Play className="w-4 h-4 mr-2" />
+            <span>{t('previewSimulate')}</span>
+          </Button>
+        }
+        primaryAction={
+          canManageAcls ? (
+            <Button variant="primary" onClick={handleOpenCreate} data-testid="add-rule-button">
+              <Plus className="w-4 h-4 mr-2" />
+              <span>{t('addRule')}</span>
             </Button>
-            {canManageAcls && (
-              <Button variant="primary" onClick={handleOpenCreate} data-testid="add-rule-button">
-                <Plus className="w-4 h-4 mr-2" />
-                <span>{t('addRule')}</span>
-              </Button>
-            )}
-          </div>
+          ) : undefined
         }
       />
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
         <Stat
           label={t('stats.activeRules')}
           value={rules.length}
@@ -629,14 +634,47 @@ export default function AclsRoute() {
           {deleteError}
         </p>
       )}
+    </>
+  );
 
-      {/* Rules Table */}
-      <Table<AclRule>
-        caption={t('caption')}
-        columns={columns}
-        rows={filteredRules}
-        rowKey={(r) => r.id}
-        empty={
+  const list = (
+    <>
+      {size === 'desktop' ? (
+        <Table<AclRule>
+          caption={t('caption')}
+          columns={columns}
+          rows={filteredRules}
+          rowKey={(r) => r.id}
+          empty={
+            <EmptyState
+              title={rules.length === 0 ? t('empty.title') : t('empty.noMatches')}
+              body={rules.length === 0 ? t('empty.desc') : undefined}
+              action={
+                rules.length === 0 ? (
+                  canManageAcls ? (
+                    <Button variant="primary" onClick={handleOpenCreate}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      <span>{t('addRule')}</span>
+                    </Button>
+                  ) : undefined
+                ) : (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setActionFilter('ALL');
+                      setProtoFilter('ALL');
+                    }}
+                  >
+                    {t('empty.clearFilters')}
+                  </Button>
+                )
+              }
+            />
+          }
+        />
+      ) : filteredRules.length === 0 ? (
+        <Card className="p-6">
           <EmptyState
             title={rules.length === 0 ? t('empty.title') : t('empty.noMatches')}
             body={rules.length === 0 ? t('empty.desc') : undefined}
@@ -662,19 +700,50 @@ export default function AclsRoute() {
               )
             }
           />
-        }
-      />
+        </Card>
+      ) : (
+        // Tablet and phone: a station row per rule, the whole row opens it.
+        <StationRowList label={t('ruleList')}>
+          {filteredRules.map((r) => {
+            const accept = (r.action || 'ACCEPT').toUpperCase() === 'ACCEPT';
+            const off = r.enabled === false;
+            const proto = (r.protocol || r.proto || 'ALL').toUpperCase();
+            const pStart = r.port_start ?? 0;
+            const pEnd = r.port_end ?? 65535;
+            const ports = pStart === 0 && pEnd === 65535 ? t('columns.allPorts') : `${pStart} - ${pEnd}`;
+            const source = r.source_cidr || r.src_cidr || '0.0.0.0/0';
+            const destination = r.destination_cidr || r.dst_cidr || '0.0.0.0/0';
+            return (
+              <StationRow
+                key={r.id}
+                kind={off ? 'unmeasured' : accept ? 'service' : 'blocked'}
+                title={r.description || `${source} → ${destination}`}
+                meta={[
+                  `#${r.priority ?? 100}`,
+                  accept ? t('form.actionAccept') : t('form.actionDrop'),
+                  `${proto} ${ports}`,
+                  ...(off ? [t('off')] : [])
+                ].join(' · ')}
+                selected={ruleModalOpen && editingRuleId === r.id}
+                onSelect={() => handleOpenEdit(r)}
+              />
+            );
+          })}
+        </StationRowList>
+      )}
+    </>
+  );
 
-      {/* Policy tests (ADR 0028): the promises every rule save above must keep. */}
-      <PolicyTestsCard canManage={canManageAcls} />
-
-      {/* Rule Builder / Editor Dialog */}
-      <Dialog
+  return (
+    <div className="space-y-6">
+      <ResponsiveDetail
         open={ruleModalOpen}
-        onOpenChange={setRuleModalOpen}
+        onClose={() => setRuleModalOpen(false)}
         title={editingRuleId ? t('form.editTitle') : t('form.createTitle')}
         description={t('form.subtitle')}
-        size="lg"
+        lead={lead}
+        list={list}
+        placeholder={t('pickRule')}
         footer={
           <div className="flex items-center justify-end space-x-3">
             <Button variant="secondary" onClick={() => setRuleModalOpen(false)}>
@@ -827,7 +896,10 @@ export default function AclsRoute() {
             />
           </FormField>
         </form>
-      </Dialog>
+      </ResponsiveDetail>
+
+      {/* Policy tests (ADR 0028): the promises every rule save above must keep. Out of the way while a rule is open on a phone. */}
+      {!(size === 'phone' && ruleModalOpen) && <PolicyTestsCard canManage={canManageAcls} />}
 
       {/* Delete Rule Confirmation Dialog */}
       <ConfirmDialog

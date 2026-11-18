@@ -1,4 +1,7 @@
 {
+  "moreActions": "Altre azioni",
+  "pickPerson": "Scegli una persona per vederne qui i dettagli.",
+  "personDetail": "Dettagli della persona",
   "description": "Chi può accedere alla console e cosa permette di fare il ruolo di ciascuno.",
   "tabsLabel": "Viste di gestione utenti",
   "statTotalUsersHint": "Utenti registrati della rete",

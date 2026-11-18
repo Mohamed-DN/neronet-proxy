@@ -1,4 +1,7 @@
 {
+  "moreActions": "More actions",
+  "pickPerson": "Choose a person to see their details here.",
+  "personDetail": "Person details",
   "description": "Who can sign in to the console and what each person's role lets them do.",
   "tabsLabel": "User Management Views",
   "statTotalUsersHint": "Users registered on the network",

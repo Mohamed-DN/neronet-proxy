@@ -1,10 +1,24 @@
 import React, { useContext, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 
 import AuthContext from '../../context/AuthContext';
 import { effectiveRole, invitableRoles } from '../../services/roles';
 import { InvitationsPanel } from './invitations/InvitationsPanel';
-import { Building2, Lock, Mail, Plus, RefreshCw, Search, Shield, Sliders, Trash2, UserPlus, Users } from 'lucide-react';
+import {
+  Building2,
+  Lock,
+  Mail,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Search,
+  Shield,
+  Sliders,
+  Trash2,
+  UserPlus,
+  Users
+} from 'lucide-react';
 
 import {
   useCreateOrganization,
@@ -19,6 +33,7 @@ import type { CreateOrgPayload, CreateUserPayload, Organization, UserAccount } f
 import {
   Badge,
   type BadgeTone,
+  BottomSheet,
   Button,
   Card,
   CodeText,
@@ -29,13 +44,17 @@ import {
   Input,
   NotMeasured,
   PageHeader,
+  ResponsiveDetail,
   Select,
+  StationRow,
+  StationRowList,
   Stat,
   StatusBadge,
   Table,
   type TableColumn,
   Tabs,
-  type TabItem
+  type TabItem,
+  useLayoutSize
 } from '../../ui';
 
 const PRESET_BYPASS_APPS = [
@@ -59,6 +78,15 @@ export default function UsersRoute() {
   const revokeSessionsMutation = useRevokeUserSessions();
   const updateSplitMutation = useUpdateSplitTunneling();
   const createOrgMutation = useCreateOrganization();
+
+  const size = useLayoutSize();
+
+  // The person whose details are open is in the address (?person=<id>), so a
+  // refresh or the back button keeps the place. Tablet and phone only: the
+  // desktop table carries its actions in the row.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const personId = searchParams.get('person');
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // Local State
   const [activeTab, setActiveTab] = useState<'directory' | 'invitations' | 'organizations' | 'sso'>('directory');
@@ -236,6 +264,68 @@ export default function UsersRoute() {
   // The role's name, from the shared glossary. An unknown role shows as it was sent.
   const roleLabel = (role: string) => t(`roles.${role}.term`, { ns: 'glossary', defaultValue: role });
 
+  const selectedPerson = size === 'desktop' ? null : (users.find((u) => u.id === personId) ?? null);
+  const openPerson = (id: string) => setSearchParams({ person: id });
+  const closePerson = () => {
+    setMoreOpen(false);
+    setSearchParams({});
+  };
+
+  // One person's details and actions, for the right column of a tablet and the screen of a phone.
+  const personDetail = selectedPerson && (
+    <div className="flex flex-col gap-4">
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-body">
+        <dt className="text-muted">{t('colUsername')}</dt>
+        <dd className="min-w-0 break-all">
+          <CodeText>{selectedPerson.username}</CodeText>
+        </dd>
+        <dt className="text-muted">{t('colEmail')}</dt>
+        <dd className="min-w-0 break-all text-ink">{selectedPerson.email || '—'}</dd>
+        <dt className="text-muted">{t('colRole')}</dt>
+        <dd>
+          <Badge tone={getRoleBadgeTone(selectedPerson.role)}>{roleLabel(selectedPerson.role)}</Badge>
+        </dd>
+        <dt className="text-muted">{t('colStatus')}</dt>
+        <dd>
+          <StatusBadge status={selectedPerson.status === 'active' ? 'ok' : 'warning'} label={selectedPerson.status} />
+        </dd>
+        <dt className="text-muted">{t('colBypass')}</dt>
+        <dd className="text-ink">
+          {Array.isArray(selectedPerson.bypass_apps) && selectedPerson.bypass_apps.length > 0
+            ? t('bypassCount', { count: selectedPerson.bypass_apps.length })
+            : t('bypassNone')}
+        </dd>
+      </dl>
+      {size === 'tablet' && (
+        <div className="flex flex-col gap-2 border-t border-border-subtle pt-4">
+          <Button variant="secondary" icon={Sliders} onClick={() => handleOpenSplit(selectedPerson)}>
+            {t('actionSplit')}
+          </Button>
+          <Button variant="secondary" icon={Lock} onClick={() => setSelectedUserForRevoke(selectedPerson)}>
+            {t('actionRevoke')}
+          </Button>
+          {canAddUsers && (
+            <Button variant="danger" icon={Trash2} onClick={() => setSelectedUserForDelete(selectedPerson)}>
+              {t('actionDelete')}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  // On a phone the primary action of a person is in the bar; the rest is in a sheet.
+  const personFooter = selectedPerson && size === 'phone' && (
+    <>
+      <Button variant="primary" icon={Sliders} onClick={() => handleOpenSplit(selectedPerson)}>
+        {t('actionSplit')}
+      </Button>
+      <Button variant="secondary" icon={MoreHorizontal} onClick={() => setMoreOpen(true)}>
+        {t('moreActions')}
+      </Button>
+    </>
+  );
+
   // User Columns for Table
   const userColumns: TableColumn<UserAccount>[] = useMemo(
     () => [
@@ -335,6 +425,52 @@ export default function UsersRoute() {
   );
 
   // Tab Items definition
+  const directoryCard = (
+    <Card className="space-y-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-border">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted pointer-events-none" />
+          <Input
+            id={searchInputId}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('searchPlaceholder')}
+            className="pl-9"
+            aria-label={t('searchPlaceholder')}
+          />
+        </div>
+        <div className="text-xs text-muted font-mono">
+          {filteredUsers.length} / {users.length} {t('tableTitle')}
+        </div>
+      </div>
+
+      {size === 'desktop' ? (
+        <Table<UserAccount>
+          caption={t('tableTitle')}
+          columns={userColumns}
+          rows={filteredUsers}
+          rowKey={(u) => u.id}
+          loading={isLoadingUsers}
+          error={isUsersError ? t('error.body') : null}
+          onRetry={() => refetchUsers()}
+        />
+      ) : (
+        <StationRowList label={t('tableTitle')}>
+          {filteredUsers.map((u) => (
+            <StationRow
+              key={u.id}
+              kind={u.status === 'active' ? 'service' : 'interrupted'}
+              title={u.username}
+              meta={`${roleLabel(u.role)} · ${u.email || u.status}`}
+              selected={u.id === selectedPerson?.id}
+              onSelect={() => openPerson(u.id)}
+            />
+          ))}
+        </StationRowList>
+      )}
+    </Card>
+  );
+
   const tabItems: TabItem[] = [
     {
       value: 'directory',
@@ -349,36 +485,20 @@ export default function UsersRoute() {
           {users.length}
         </span>
       ),
-      content: (
-        <Card className="space-y-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-border">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted pointer-events-none" />
-              <Input
-                id={searchInputId}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('searchPlaceholder')}
-                className="pl-9"
-                aria-label={t('searchPlaceholder')}
-              />
-            </div>
-            <div className="text-xs text-muted font-mono">
-              {filteredUsers.length} / {users.length} {t('tableTitle')}
-            </div>
-          </div>
-
-          <Table<UserAccount>
-            caption={t('tableTitle')}
-            columns={userColumns}
-            rows={filteredUsers}
-            rowKey={(u) => u.id}
-            loading={isLoadingUsers}
-            error={isUsersError ? t('error.body') : null}
-            onRetry={() => refetchUsers()}
-          />
-        </Card>
-      )
+      content:
+        size === 'tablet' ? (
+          <ResponsiveDetail
+            open={Boolean(selectedPerson)}
+            onClose={closePerson}
+            title={selectedPerson?.username ?? ''}
+            list={directoryCard}
+            placeholder={t('pickPerson')}
+          >
+            {personDetail}
+          </ResponsiveDetail>
+        ) : (
+          directoryCard
+        )
     },
     {
       value: 'invitations',
@@ -469,79 +589,119 @@ export default function UsersRoute() {
     }
   ];
 
+  const phonePerson = size === 'phone' && selectedPerson;
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <PageHeader
-        title={t('title')}
-        description={t('description')}
-        actions={
-          <div className="flex items-center gap-3">
-            <IconButton
-              icon={RefreshCw}
-              label={t('common.refresh', { ns: 'ui' })}
-              onClick={() => {
-                refetchUsers();
-                refetchOrgs();
-              }}
-            />
-            {canInvite && activeTab !== 'invitations' && (
-              <Button
-                variant="primary"
-                size="md"
-                icon={Mail}
-                onClick={() => {
-                  setActiveTab('invitations');
-                  setInviteOpen(true);
-                }}
-              >
-                {t('panel.invite', { ns: 'invitations' })}
-              </Button>
-            )}
-            {canAddUsers ? (
-              <Button variant="secondary" size="md" icon={UserPlus} onClick={handleOpenProvision}>
-                {t('btnProvision')}
-              </Button>
-            ) : (
-              <p className="max-w-xs text-right text-xs text-muted">{t('addOnlySuperAdmin')}</p>
-            )}
-          </div>
-        }
-      />
-
-      {actionError && (
-        <p role="alert" className="text-xs text-danger">
-          {actionError}
-        </p>
+      {phonePerson && (
+        <ResponsiveDetail open onClose={closePerson} title={selectedPerson.username} list={null} footer={personFooter}>
+          {personDetail}
+        </ResponsiveDetail>
       )}
 
-      {/* Top Stats Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat
-          label={t('statTotalUsers')}
-          value={isLoadingUsers ? '...' : String(users.length)}
-          hint={t('statTotalUsersHint')}
-        />
-        <Stat
-          label={t('statPrivileged')}
-          value={isLoadingUsers ? '...' : String(privilegedCount)}
-          hint={t('statPrivilegedHint')}
-        />
-        <Stat
-          label={t('statOrgs')}
-          value={isLoadingOrgs ? '...' : String(Math.max(orgs.length, 1))}
-          hint={t('statOrgsHint')}
-        />
-        <Stat label={t('statSecurity')} value="RFC 6238" hint={t('statSecurityHint')} />
-      </div>
+      {!phonePerson && (
+        <>
+          {/* Header */}
+          <PageHeader
+            title={t('title')}
+            description={t('description')}
+            actions={
+              <div className="flex items-center gap-3">
+                <IconButton
+                  icon={RefreshCw}
+                  label={t('common.refresh', { ns: 'ui' })}
+                  onClick={() => {
+                    refetchUsers();
+                    refetchOrgs();
+                  }}
+                />
+                {canInvite && activeTab !== 'invitations' && (
+                  <Button
+                    variant="primary"
+                    size="md"
+                    icon={Mail}
+                    onClick={() => {
+                      setActiveTab('invitations');
+                      setInviteOpen(true);
+                    }}
+                  >
+                    {t('panel.invite', { ns: 'invitations' })}
+                  </Button>
+                )}
+                {canAddUsers ? (
+                  <Button variant="secondary" size="md" icon={UserPlus} onClick={handleOpenProvision}>
+                    {t('btnProvision')}
+                  </Button>
+                ) : (
+                  <p className="max-w-xs text-right text-xs text-muted">{t('addOnlySuperAdmin')}</p>
+                )}
+              </div>
+            }
+          />
 
-      {/* Tabs */}
-      <Tabs
-        items={tabItems}
-        value={activeTab}
-        onValueChange={(val) => setActiveTab(val as any)}
-        label={t('tabsLabel')}
-      />
+          {actionError && (
+            <p role="alert" className="text-xs text-danger">
+              {actionError}
+            </p>
+          )}
+
+          {/* Top Stats Cards */}
+          <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
+            <Stat
+              label={t('statTotalUsers')}
+              value={isLoadingUsers ? '...' : String(users.length)}
+              hint={t('statTotalUsersHint')}
+            />
+            <Stat
+              label={t('statPrivileged')}
+              value={isLoadingUsers ? '...' : String(privilegedCount)}
+              hint={t('statPrivilegedHint')}
+            />
+            <Stat
+              label={t('statOrgs')}
+              value={isLoadingOrgs ? '...' : String(Math.max(orgs.length, 1))}
+              hint={t('statOrgsHint')}
+            />
+            <Stat label={t('statSecurity')} value="RFC 6238" hint={t('statSecurityHint')} />
+          </div>
+
+          {/* Tabs */}
+          <Tabs
+            items={tabItems}
+            value={activeTab}
+            onValueChange={(val) => setActiveTab(val as any)}
+            label={t('tabsLabel')}
+          />
+        </>
+      )}
+
+      {/* The rest of a person's actions, in a sheet, on a phone. */}
+      <BottomSheet open={moreOpen && Boolean(selectedPerson)} onOpenChange={setMoreOpen} title={t('moreActions')}>
+        <div className="flex flex-col gap-2 p-2">
+          <Button
+            variant="secondary"
+            icon={Lock}
+            onClick={() => {
+              setMoreOpen(false);
+              setSelectedUserForRevoke(selectedPerson);
+            }}
+          >
+            {t('actionRevoke')}
+          </Button>
+          {canAddUsers && (
+            <Button
+              variant="danger"
+              icon={Trash2}
+              onClick={() => {
+                setMoreOpen(false);
+                setSelectedUserForDelete(selectedPerson);
+              }}
+            >
+              {t('actionDelete')}
+            </Button>
+          )}
+        </div>
+      </BottomSheet>
 
       {/* MODAL 1: Provision User Dialog */}
       <Dialog
