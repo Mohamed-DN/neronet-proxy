@@ -177,6 +177,10 @@ type Peer struct {
 	// Profile marks a profile device on a gateway (ADR 0029): it has no paths, and the
 	// transport mux answers it wherever its authenticated handshake came from.
 	Profile bool `json:"profile,omitempty"`
+
+	// AWG puts a profile device on the gateway's AmneziaWG device instead of the plain
+	// WireGuard one (ADR 0036). A key is on one of the two, never both.
+	AWG bool `json:"awg,omitempty"`
 }
 
 func (p Peer) validate() error {
