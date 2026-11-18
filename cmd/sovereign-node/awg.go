@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -61,7 +62,7 @@ func (m *netmapManager) awgWanted(doc *control.NetmapResponse) (*dataplane.AWGPa
 	var p dataplane.AWGParams
 	switch {
 	case doc != nil && doc.Self.Awg != nil:
-		p = awgParamsFromNetmap(*doc.Self.Awg)
+		p = awgParamsFromNetmap(doc.Self.Awg.Params)
 	case m.awg.env != nil:
 		p = *m.awg.env
 	default:
@@ -73,7 +74,7 @@ func (m *netmapManager) awgWanted(doc *control.NetmapResponse) (*dataplane.AWGPa
 	return &p, ""
 }
 
-func awgParamsFromNetmap(c control.AwgConfig) dataplane.AWGParams {
+func awgParamsFromNetmap(c control.AwgParams) dataplane.AWGParams {
 	return dataplane.AWGParams{
 		Jc: c.Jc, Jmin: c.Jmin, Jmax: c.Jmax,
 		S1: c.S1, S2: c.S2, S3: c.S3, S4: c.S4,
@@ -189,4 +190,19 @@ func awgParamsFromEnv() (*dataplane.AWGParams, error) {
 		return nil, fmt.Errorf("SOVEREIGN_AWG_PARAMS: %w", err)
 	}
 	return &p, nil
+}
+
+// AWGCapability is what a gateway tells the console when it can serve AmneziaWG.
+const AWGCapability = "awg-v1"
+
+// withAWG adds the capability and the port when the operator gave the node a port and the
+// binary can run the device. Without both the console never offers the method for this
+// gateway. The caller's slice is left alone.
+func withAWG(c control.CapabilityDesc, port uint16, built bool) control.CapabilityDesc {
+	if port == 0 || !built {
+		return c
+	}
+	c.Capabilities = append(slices.Clone(c.Capabilities), AWGCapability)
+	c.AwgPort = port
+	return c
 }

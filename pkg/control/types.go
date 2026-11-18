@@ -57,6 +57,10 @@ type CapabilityDesc struct {
 	Transports   []string `json:"transports,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
 
+	// AwgPort is the UDP port of the gateway's AmneziaWG device, reported together with the
+	// "awg-v1" capability (ADR 0036). A port, never a host: the console knows the address.
+	AwgPort uint16 `json:"awg_port,omitempty"`
+
 	// CountryCode is declared by the operator, not measured. The node has no way to
 	// establish where it is.
 	CountryCode string `json:"country_code,omitempty"`
@@ -335,6 +339,15 @@ type NetmapRequest struct {
 // ("1177943521-1177943999"), non-overlapping and above 4. The values are secrets of a kind:
 // log none of them. Limits are in pkg/dataplane (AWGParams.Validate).
 type AwgConfig struct {
+	// ListenPort is the UDP port the gateway reported at registration (capability.awg_port);
+	// the console copies it back so the profiles it writes name the same port.
+	ListenPort uint16    `json:"listen_port"`
+	Params     AwgParams `json:"params"`
+}
+
+// AwgParams are the obfuscation values: jc, jmin, jmax and s1-s4 integers, h1-h4 "low-high"
+// strings (four disjoint ranges inside 5..2147483647).
+type AwgParams struct {
 	Jc   int    `json:"jc"`
 	Jmin int    `json:"jmin"`
 	Jmax int    `json:"jmax"`

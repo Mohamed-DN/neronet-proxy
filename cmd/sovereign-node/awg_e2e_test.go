@@ -74,7 +74,7 @@ func TestNetmapStartsTheRealAmneziaWGDeviceAndAClientHandshakes(t *testing.T) {
 		t.Fatalf("AmneziaWG device on port %d, the operator asked for %d", got, port)
 	}
 
-	params := awgParamsFromNetmap(*awg)
+	params := awgParamsFromNetmap(awg.Params)
 	ch := tuntest.NewChannelTUN()
 	<-ch.TUN().Events() // the test TUN's up event would start the device before it is configured
 	client := awgdevice.NewDevice(ch.TUN(), awgconn.NewDefaultBind(), awgdevice.NewLogger(awgdevice.LogLevelSilent, ""))

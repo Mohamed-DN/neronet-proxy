@@ -20,8 +20,8 @@ func awgDoc() []control.NetmapPeer {
 }
 
 func netmapAWG() *control.AwgConfig {
-	return &control.AwgConfig{Jc: 5, Jmin: 40, Jmax: 120, S1: 37, S2: 71, S3: 23, S4: 11,
-		H1: "1177943521-1177943999", H2: "2218841063-2218841590", H3: "3302115709", H4: "412345678-412346133"}
+	return &control.AwgConfig{ListenPort: 51821, Params: control.AwgParams{Jc: 6, Jmin: 20, Jmax: 90, S1: 37, S2: 71, S3: 23, S4: 16,
+		H1: "1177943521-1177943999", H2: "1218841063-1218841590", H3: "1302115709", H4: "412345678-412346133"}}
 }
 
 type awgRecorder struct {
@@ -137,10 +137,10 @@ func TestAWGDeviceStartsOnlyWithAPortAndNetmapParameters(t *testing.T) {
 
 func TestAWGDeviceIsNotStartedFromInvalidNetmapParametersEvenWithAnEnvironmentSet(t *testing.T) {
 	m, rec, _ := awgManager(t, 51821)
-	env := awgParamsFromNetmap(*netmapAWG())
+	env := awgParamsFromNetmap(netmapAWG().Params)
 	m.awg.env = &env
 	bad := netmapAWG()
-	bad.H1 = "2" // WireGuard's own message type
+	bad.Params.H1 = "2" // WireGuard's own message type
 	apply(t, m, 1, awgDoc(), bad)
 	if len(rec.starts) != 0 {
 		t.Fatal("invalid netmap parameters were replaced by the environment's instead of refusing")
@@ -149,7 +149,7 @@ func TestAWGDeviceIsNotStartedFromInvalidNetmapParametersEvenWithAnEnvironmentSe
 
 func TestAWGEnvironmentParametersAreAFallbackOnly(t *testing.T) {
 	m, rec, _ := awgManager(t, 51821)
-	env := awgParamsFromNetmap(*netmapAWG())
+	env := awgParamsFromNetmap(netmapAWG().Params)
 	env.S1 = 99
 	m.awg.env = &env
 	apply(t, m, 1, awgDoc(), nil)
@@ -170,7 +170,7 @@ func TestAWGDeviceRestartsOnNewParametersAndNotOnTheSame(t *testing.T) {
 		t.Fatalf("an unchanged set restarted the device: starts=%d stops=%d", len(rec.starts), rec.stops)
 	}
 	next := netmapAWG()
-	next.S1 = 53
+	next.Params.S1 = 53
 	apply(t, m, 3, awgDoc(), next)
 	if len(rec.starts) != 2 || rec.stops != 1 || rec.starts[1].Params.S1 != 53 {
 		t.Fatalf("new parameters did not restart the device: starts=%d stops=%d", len(rec.starts), rec.stops)
@@ -220,22 +220,40 @@ func TestAWGParamsFromEnvironment(t *testing.T) {
 	if p, err := awgParamsFromEnv(); p != nil || err != nil {
 		t.Fatalf("unset: %v %v", p, err)
 	}
-	t.Setenv("SOVEREIGN_AWG_PARAMS", `{"jc":5,"jmin":40,"jmax":120,"s1":37,"s2":71,"s3":23,"s4":11,"h1":"1177943521-1177943999","h2":"2218841063-2218841590","h3":"3302115709","h4":"412345678-412346133"}`)
+	t.Setenv("SOVEREIGN_AWG_PARAMS", `{"jc":5,"jmin":40,"jmax":120,"s1":37,"s2":71,"s3":23,"s4":11,"h1":"1177943521-1177943999","h2":"1218841063-1218841590","h3":"1302115709","h4":"412345678-412346133"}`)
 	if p, err := awgParamsFromEnv(); err != nil || p == nil || p.S1 != 37 {
 		t.Fatalf("valid: %v %v", p, err)
 	}
 	for name, raw := range map[string]string{
 		"not json":      `{"jc":`,
 		"unknown field": `{"jc":5,"secret":"1177943521"}`,
-		"invalid":       `{"jc":5,"jmin":40,"jmax":120,"s1":37,"s2":71,"s3":23,"s4":11,"h1":"1-4","h2":"2218841063","h3":"3302115709","h4":"412345678"}`,
+		"invalid":       `{"jc":5,"jmin":40,"jmax":120,"s1":37,"s2":71,"s3":23,"s4":11,"h1":"1-4","h2":"1218841063","h3":"1302115709","h4":"412345678"}`,
 	} {
 		t.Setenv("SOVEREIGN_AWG_PARAMS", raw)
 		_, err := awgParamsFromEnv()
 		if err == nil {
 			t.Fatalf("%s was accepted", name)
 		}
-		if strings.Contains(err.Error(), "1177943521") || strings.Contains(err.Error(), "3302115709") {
+		if strings.Contains(err.Error(), "1177943521") || strings.Contains(err.Error(), "1302115709") {
 			t.Fatalf("%s: the error carries a value: %v", name, err)
 		}
+	}
+}
+
+// The gateway tells the console it can serve AmneziaWG with the capability and a port, never a host.
+func TestGatewayAdvertisesAmneziaWGOnlyWithAPortAndABuildThatHasIt(t *testing.T) {
+	base := control.CapabilityDesc{Capabilities: []string{"derp"}}
+	if got := withAWG(base, 0, true); got.AwgPort != 0 || len(got.Capabilities) != 1 {
+		t.Fatalf("advertised without a port: %+v", got)
+	}
+	if got := withAWG(base, 51821, false); got.AwgPort != 0 || len(got.Capabilities) != 1 {
+		t.Fatalf("advertised by a binary without AmneziaWG: %+v", got)
+	}
+	got := withAWG(base, 51821, true)
+	if got.AwgPort != 51821 || len(got.Capabilities) != 2 || got.Capabilities[1] != "awg-v1" {
+		t.Fatalf("capability = %+v", got)
+	}
+	if len(base.Capabilities) != 1 {
+		t.Fatal("the caller's slice was changed")
 	}
 }

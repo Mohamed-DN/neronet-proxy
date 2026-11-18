@@ -83,6 +83,9 @@ const (
 	// WireGuard's own message types are 1 to 4. A header range that touches them would
 	// make this device accept or emit standard messages.
 	awgHeaderFloor = 5
+	// The console generates inside 5..2147483647, and so does every profile; a header above
+	// that is not one the official apps' generator would produce.
+	awgHeaderCap = 2147483647
 )
 
 type awgHeaderRange struct{ lo, hi uint32 }
@@ -108,6 +111,9 @@ func parseAWGHeader(spec string) (awgHeaderRange, error) {
 	}
 	if hi < lo {
 		return awgHeaderRange{}, errors.New("range ends before it starts")
+	}
+	if hi > awgHeaderCap {
+		return awgHeaderRange{}, errors.New("above 2147483647")
 	}
 	if lo < awgHeaderFloor {
 		return awgHeaderRange{}, errors.New("overlaps WireGuard's own message types 1-4")

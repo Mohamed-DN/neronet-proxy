@@ -3,6 +3,22 @@
   "$defs": {
     "AwgConfig": {
       "properties": {
+        "listen_port": {
+          "type": "integer"
+        },
+        "params": {
+          "$ref": "#/$defs/AwgParams"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "listen_port",
+        "params"
+      ]
+    },
+    "AwgParams": {
+      "properties": {
         "jc": {
           "type": "integer"
         },

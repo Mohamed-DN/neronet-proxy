@@ -21,6 +21,7 @@ import (
 	"github.com/sovereign/proxy/v4/pkg/config"
 	"github.com/sovereign/proxy/v4/pkg/control"
 	"github.com/sovereign/proxy/v4/pkg/crypto"
+	"github.com/sovereign/proxy/v4/pkg/dataplane"
 	"github.com/sovereign/proxy/v4/pkg/posture"
 	"github.com/sovereign/proxy/v4/pkg/transport"
 )
@@ -153,8 +154,12 @@ func main() {
 	dataplaneNodeID := ""
 
 	dropEnabled := *dropListen != ""
+	awgAdvert, awgErr := awgListenPort(*awgListen)
+	if awgErr != nil {
+		log.Fatalf("Invalid -awg-listen: %v", awgErr)
+	}
 	dropNode := &currentNodeID{}
-	regResp, err := registerWithRetry(ctx, ctrlClient, enrolment, role, withDrop(withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), dropEnabled))
+	regResp, err := registerWithRetry(ctx, ctrlClient, enrolment, role, withAWG(withDrop(withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), dropEnabled), awgAdvert, dataplane.AWGBuilt()))
 
 	if err != nil {
 		log.Printf("[SOVEREIGN-NODE] Warning: Initial control plane registration failed: %v (operating in local standalone mode)", err)
@@ -245,7 +250,7 @@ func main() {
 						// credential check: it expired while the node was cut off, or the
 						// control plane lost the registration it belonged to.
 						if errors.Is(hbErr, control.ErrNodeUnknown) || errors.Is(hbErr, control.ErrUnauthorized) {
-							newID, reErr := reregister(ctx, ctrlClient, enrolment, role, withDrop(withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), dropEnabled), netmaps.endpoints())
+							newID, reErr := reregister(ctx, ctrlClient, enrolment, role, withAWG(withDrop(withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), dropEnabled), awgAdvert, dataplane.AWGBuilt()), netmaps.endpoints())
 							if reErr != nil {
 								log.Printf("[SOVEREIGN-NODE] Re-enrolment failed: %v", reErr)
 								continue

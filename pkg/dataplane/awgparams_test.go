@@ -12,8 +12,8 @@ func validAWGParams() AWGParams {
 		Jc: 5, Jmin: 40, Jmax: 120,
 		S1: 37, S2: 71, S3: 23, S4: 11,
 		H1: "1177943521-1177943999",
-		H2: "2218841063-2218841590",
-		H3: "3302115709",
+		H2: "1218841063-1218841590",
+		H3: "1302115709",
 		H4: "412345678-412346133",
 	}
 }
@@ -55,7 +55,7 @@ func TestAWGParamsRefuseWhatTheSpecOrTheWireForbids(t *testing.T) {
 		"H4 reversed range":       func(p *AWGParams) { p.H4 = "412346133-412345678" },
 		"H1 is WireGuard's own":   func(p *AWGParams) { p.H1 = "1" },
 		"H2 range touches 1-4":    func(p *AWGParams) { p.H2 = "4-9000" },
-		"H3 above 32 bits":        func(p *AWGParams) { p.H3 = "4294967296" },
+		"H3 above 32 bits":        func(p *AWGParams) { p.H3 = "2147483648" },
 		"H2 overlaps H1":          func(p *AWGParams) { p.H2 = "1177943900-1177944100" },
 		"H4 equals H3":            func(p *AWGParams) { p.H4 = p.H3 },
 		"H1 inside H4's range":    func(p *AWGParams) { p.H1 = "412345700" },
@@ -77,12 +77,12 @@ func TestAWGParamsEdgesOfTheValidRangeAreAccepted(t *testing.T) {
 	p := validAWGParams()
 	p.Jc, p.Jmin, p.Jmax = 128, 1280, 1280
 	p.S1, p.S2, p.S3, p.S4 = 1132, 1187, 64, 32
-	p.H1, p.H2, p.H3, p.H4 = "5", "6-4294967294", "4294967295", "4294967295"
+	p.H1, p.H2, p.H3, p.H4 = "5", "6-2147483646", "2147483647", "2147483647"
 	if err := p.Validate(); err == nil {
-		t.Fatal("H3 and H4 share 4294967295 and must overlap")
+		t.Fatal("H3 and H4 share 2147483647 and must overlap")
 	}
 	p.H4 = "7-8"
-	p.H2 = "9-4294967294"
+	p.H2 = "9-2147483646"
 	if err := p.Validate(); err != nil {
 		t.Fatalf("the edges of the valid range were refused: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestAWGParamsNeverAppearInText(t *testing.T) {
 func TestAWGParamsRenderAsAnUAPIRequest(t *testing.T) {
 	got := validAWGParams().uapi()
 	for _, want := range []string{"jc=5\n", "jmin=40\n", "jmax=120\n", "s1=37\n", "s2=71\n", "s3=23\n", "s4=11\n",
-		"h1=1177943521-1177943999\n", "h3=3302115709\n"} {
+		"h1=1177943521-1177943999\n", "h3=1302115709\n"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("UAPI request lacks %q:\n%s", want, got)
 		}

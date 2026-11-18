@@ -34,11 +34,11 @@ const awgClientAddr = "100.64.0.9"
 // none, and refuses to start an AmneziaWG device without a set from the control plane.
 func testAWGParams() AWGParams {
 	return AWGParams{
-		Jc: 5, Jmin: 40, Jmax: 120,
-		S1: 37, S2: 71, S3: 23, S4: 11,
+		Jc: 6, Jmin: 20, Jmax: 90,
+		S1: 37, S2: 71, S3: 23, S4: 16,
 		H1: "1177943521-1177943999",
-		H2: "2218841063-2218841590",
-		H3: "3302115709-3302116222",
+		H2: "1218841063-1218841590",
+		H3: "1302115709-1302116222",
 		H4: "412345678-412346133",
 	}
 }
@@ -195,7 +195,7 @@ func TestAWGClientWithOneMismatchedParameterCannotHandshake(t *testing.T) {
 		"S2": func(p *AWGParams) { p.S2++ },
 		"S4": func(p *AWGParams) { p.S4++ },
 		"H1": func(p *AWGParams) { p.H1 = "1177944001-1177944500" },
-		"H2": func(p *AWGParams) { p.H2 = "2218841600-2218842000" },
+		"H2": func(p *AWGParams) { p.H2 = "1218841600-1218842000" },
 		"H4": func(p *AWGParams) { p.H4 = "412346200-412346600" },
 	}
 	for name, mutate := range mismatches {

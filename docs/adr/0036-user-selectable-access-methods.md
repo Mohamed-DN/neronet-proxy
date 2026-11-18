@@ -99,7 +99,9 @@ What the console stores and sends, so the gateway can be built against it:
   is on one device only: `Peer.AWG` partitions the peers, a key named on both is refused.
 - **Selection.** `NetmapPeer.access_method = "amneziawg"` on a profile device. If the gateway runs no
   AmneziaWG device the entry is dropped with a note, never moved to plain WireGuard.
-- **Parameters.** `NetmapSelf.awg` (`AwgConfig`): `jc, jmin, jmax, s1..s4` integers, `h1..h4` a value
+- **Registration.** A gateway with `SOVEREIGN_AWG_LISTEN` set and the tag built reports capability
+  `awg-v1` and `capability.awg_port` (a port, never a host).
+- **Parameters.** `NetmapSelf.awg` = `{listen_port, params}` (`AwgConfig`); `params` has `jc, jmin, jmax, s1..s4` integers, `h1..h4` a value
   or an inclusive range (`"1177943521-1177943999"`). No default set exists: no parameters, no device.
   `SOVEREIGN_AWG_PARAMS` (same JSON) is a fallback for lab nodes only; a netmap set wins and an
   invalid netmap set is never replaced by it. New parameters restart the device. Rules
@@ -107,7 +109,7 @@ What the console stores and sends, so the gateway can be built against it:
   1 ≤ Jmin ≤ Jmax ≤ 1280; S1 1 to 1132 and S2 1 to 1188 with S2 ≠ S1+56 (initiation 148+S1 and
   response 92+S2 must differ in size); S3 0 to 64 and S4 0 to 32 (held below the MTU bound because
   S4 is added to every data message); H1–H4 above 4 (1–4 are WireGuard's own types), 32-bit,
-  pairwise non-overlapping. S1–S4 and H1–H4 must equal the profile's values; Jc/Jmin/Jmax shape what
+  pairwise non-overlapping, at most 2147483647 (the console generates inside 5..2147483647). S1–S4 and H1–H4 must equal the profile's values; Jc/Jmin/Jmax shape what
   a sender emits and need not.
 - **Removed.** The fixed-header sketch `pkg/dataplane/stealth` and everything that referenced it.
 - **Not covered yet.** Exit clients (ADR 0032) on AmneziaWG; the profile's MTU should be at most
