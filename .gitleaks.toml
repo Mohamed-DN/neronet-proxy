@@ -95,3 +95,8 @@ paths = ['''^console/frontend/src/portal/AddDeviceRoute\.test\.tsx$''']
 description = "Overlay scenario script. Sec-WebSocket-Key is the sample nonce from RFC 6455 section 1.3 (base64 of 'the sample nonce'), sent in a hand-written WebSocket upgrade request. It is public and protects nothing."
 targetRules = ["generic-api-key"]
 paths = ['''^scripts/dev/scenarios/overlay\.sh$''']
+
+[[allowlists]]
+description = "The sha256 of the pinned Xray-core release archive (Xray-linux-64.zip, v26.11.9), copied from the release page: a public file digest the build verifies, not a token."
+targetRules = ["jfrog-identity-token"]
+regexes = ['''b651f7e1d9966ee2c1b1ee1bf8b52c72771824d3065dce96bbc8bcc19ed95f82''']
