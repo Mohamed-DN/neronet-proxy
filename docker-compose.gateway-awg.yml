@@ -18,8 +18,10 @@
 services:
   gateway:
     environment:
-      # The listener inside the container is always 51821.
-      - SOVEREIGN_AWG_LISTEN=:51821
+      # The listener inside the container uses the same port as the host: the gateway reports
+      # this port to the console, which writes it into every AmneziaWG profile, so the two
+      # must be the one number people connect to.
+      - SOVEREIGN_AWG_LISTEN=:${NERONET_AWG_PORT:?set NERONET_AWG_PORT to the host UDP port for AmneziaWG}
     ports:
       # The only port this file opens.
-      - "${NERONET_GATEWAY_BIND:-0.0.0.0}:${NERONET_AWG_PORT:?set NERONET_AWG_PORT to the host UDP port for AmneziaWG}:51821/udp"
+      - "${NERONET_GATEWAY_BIND:-0.0.0.0}:${NERONET_AWG_PORT}:${NERONET_AWG_PORT}/udp"
