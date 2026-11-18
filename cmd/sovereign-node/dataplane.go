@@ -52,6 +52,10 @@ type dataplaneOptions struct {
 	// Netmaps is where the heartbeat loop finds the manager once it exists.
 	Netmaps *netmapHolder
 
+	// AWGListen is SOVEREIGN_AWG_LISTEN: the UDP port of the gateway's AmneziaWG device
+	// (ADR 0036). Empty keeps the method off.
+	AWGListen string
+
 	// ExitEnabled is the operator's consent to be an exit (-enable-exit): without it the
 	// node never dials the internet for a client, whatever the netmap says (ADR 0032).
 	ExitEnabled bool
@@ -191,6 +195,18 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 			log.Printf("[SOVEREIGN-NODE] Exit enabled, but no resolver found for clients' DNS (set SOVEREIGN_EXIT_DNS)")
 		}
 	}
+
+	awgPort, err := awgListenPort(opts.AWGListen)
+	if err != nil {
+		dev.Close()
+		return nil, err
+	}
+	awgEnv, err := awgParamsFromEnv()
+	if err != nil {
+		dev.Close()
+		return nil, err
+	}
+	manager.SetAWG(awgPort, awgEnv)
 
 	meshUp, _ := exitDNSUpstream()
 	manager.SetMeshDNS(meshDNSEnabled(), meshUp)

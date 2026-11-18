@@ -40,6 +40,7 @@ func main() {
 	identityPath := config.BindStringFlag(flag.CommandLine, "identity", "SOVEREIGN_NODE_KEY_PATH", "/var/lib/neronet/node_identity.key", "Path to this node's persistent identity key")
 	maxBandwidthKbps := config.BindIntFlag(flag.CommandLine, "max-bandwidth-kbps", "SOVEREIGN_MAX_BANDWIDTH_KBPS", 0, "Self-declared uplink capacity in kbps; 0 means not declared")
 	dataplaneMode := config.BindStringFlag(flag.CommandLine, "dataplane", "SOVEREIGN_DATAPLANE", "off", "WireGuard data plane mode: off, netstack or tun")
+	awgListen := config.BindStringFlag(flag.CommandLine, "awg-listen", "SOVEREIGN_AWG_LISTEN", "", "UDP port of the profile gateway's AmneziaWG device (e.g. 51821); empty keeps AmneziaWG off. The parameters come from the netmap, never from the binary")
 	spikePeers := config.BindStringFlag(flag.CommandLine, "spike-peers", "SOVEREIGN_SPIKE_PEERS", "", "Path to the WP-201 spike peers document")
 	overlayEchoPort := config.BindIntFlag(flag.CommandLine, "overlay-echo-port", "SOVEREIGN_OVERLAY_ECHO_PORT", 0, "TCP port answering on this node's overlay address; 0 disables it")
 	stunServer := config.BindStringFlag(flag.CommandLine, "stun-server", "SOVEREIGN_STUN_SERVER", "", "STUN server (host:port) asked for this node's reflexive address; empty disables it")
@@ -357,6 +358,7 @@ func main() {
 		Bridge:       netstackBridge,
 		Netmaps:      netmaps,
 		ExitEnabled:  *enableExit,
+		AWGListen:    *awgListen,
 	})
 	if dpErr != nil {
 		log.Fatalf("Failed to start data plane: %v", dpErr)

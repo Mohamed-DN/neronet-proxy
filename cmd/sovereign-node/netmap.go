@@ -77,8 +77,10 @@ type netmapManager struct {
 	// profileFilters holds one filter per profile device this gateway serves, keyed by
 	// node id, so a device's conntrack survives a new document. Guarded by applyMu.
 	profileFilters map[string]*acl.NetstackFilter
-	netfilter      *acl.NetstackFilter
-	path           string
+	// awg is the AmneziaWG device's state (awg.go). Guarded by applyMu.
+	awg       awgState
+	netfilter *acl.NetstackFilter
+	path      string
 
 	// listenPort is the local WireGuard port, reported as part of this node's
 	// candidate endpoints.
@@ -228,7 +230,9 @@ func newNetmapManager(
 	var setForwarding func(*dataplane.ForwardTable)
 	var setEgress func(*dataplane.EgressTable, netip.AddrPort) error
 	var setMeshDNS func(*dataplane.MeshDNS) error
+	awg := awgState{built: dataplane.AWGBuilt()}
 	if dev != nil {
+		awg.start, awg.stop = dev.StartAWG, dev.StopAWG
 		mux = dev.TransportMux()
 		setPeers = dev.SetPeers
 		setForwarding = dev.SetForwarding
@@ -242,6 +246,7 @@ func newNetmapManager(
 		setForwarding: setForwarding,
 		setEgress:     setEgress,
 		setMeshDNS:    setMeshDNS,
+		awg:           awg,
 		netfilter:     netfilter,
 		path:          netmapPathFor(identityPath),
 		listenPort:    listenPort,
@@ -374,6 +379,8 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 		return err
 	}
 	peers, dropped = m.enforceable(peers, dropped, netmap)
+	m.reconcileAWG(netmap)
+	peers, dropped = m.withoutUnservedAWG(peers, dropped, netmap.Peers)
 	if m.mux != nil {
 		allowed, relays, err := documentTransports(netmap)
 		if err != nil {
@@ -478,6 +485,7 @@ func (m *netmapManager) ApplyRevocations(keys []string, atVersion uint64) {
 		return
 	}
 	peers, dropped = m.enforceable(peers, dropped, doc)
+	peers, dropped = m.withoutUnservedAWG(peers, dropped, current)
 	if err := m.setPeers(peers); err != nil {
 		m.markRevocationPending(true)
 		log.Printf("[SOVEREIGN-NODE] Could not apply %d revocation(s) to the data plane, retrying at the next heartbeat: %v", newly, err)
@@ -822,6 +830,7 @@ func netmapPeers(in []control.NetmapPeer, revoked map[string]uint64, documents .
 			PersistentKeepalive: p.KeepaliveSeconds,
 			PresharedKey:        presharedKey,
 			Profile:             p.Profile,
+			AWG:                 accessMethodAWG(p),
 		})
 	}
 

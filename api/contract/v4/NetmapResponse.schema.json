@@ -1,6 +1,58 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
+    "AwgConfig": {
+      "properties": {
+        "jc": {
+          "type": "integer"
+        },
+        "jmin": {
+          "type": "integer"
+        },
+        "jmax": {
+          "type": "integer"
+        },
+        "s1": {
+          "type": "integer"
+        },
+        "s2": {
+          "type": "integer"
+        },
+        "s3": {
+          "type": "integer"
+        },
+        "s4": {
+          "type": "integer"
+        },
+        "h1": {
+          "type": "string"
+        },
+        "h2": {
+          "type": "string"
+        },
+        "h3": {
+          "type": "string"
+        },
+        "h4": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "jc",
+        "jmin",
+        "jmax",
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "h1",
+        "h2",
+        "h3",
+        "h4"
+      ]
+    },
     "CompiledFilterRule": {
       "properties": {
         "allowed_peer_vip": {
@@ -241,6 +293,9 @@
         "stealth": {
           "$ref": "#/$defs/StealthConfig"
         },
+        "access_method": {
+          "type": "string"
+        },
         "daita_mode": {
           "type": "string"
         },
@@ -306,6 +361,9 @@
         },
         "stealth": {
           "$ref": "#/$defs/StealthConfig"
+        },
+        "awg": {
+          "$ref": "#/$defs/AwgConfig"
         },
         "daita_mode": {
           "type": "string"
