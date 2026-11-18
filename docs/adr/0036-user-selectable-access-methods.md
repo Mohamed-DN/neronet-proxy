@@ -28,7 +28,21 @@ person adding a device to choose among open-source protocols, and AmneziaWG to r
      never compiled into the binary. The profile is written for the official AmneziaWG apps (iOS,
      Android, macOS, Windows, Linux). The fixed constants in `pkg/dataplane/stealth` are removed or
      no longer used for this.
+   - `vless-reality`: VLESS + REALITY + XTLS-Vision (Xray-core, MPL-2.0), the protocol this project
+     started with on Oracle Cloud (`sovereign-oci-proxy`, 3x-ui). For heavy censorship and active
+     probing. An Xray terminator on TCP 443 in front of the gateway; each NeroNet device is one Xray
+     user (UUID), and its traffic enters the mesh through the gateway's netstack **as that device**
+     (an authenticated per-device hop into the forward/policy point, not a shared NAT), so ACLs,
+     blocks and names apply exactly as for WireGuard. Clients: FoXray/Streisand (iOS), v2rayNG
+     (Android), v2rayN (Windows), nekoray/v2rayN (macOS, Linux); subscription link per device.
+   - `openvpn`: for people and networks that only accept OpenVPN (OpenVPN Connect, or company
+     firewalls). An OpenVPN terminator in front of the gateway with a per-device client address
+     mapped 1:1 to the NeroNet device, so policy stays per device; certificates per device issued
+     by the console, revocable with the device.
    - `ikev2`: later (native on iOS/macOS without an app; needs PKI and a privileged terminator).
+
+   Rule for every non-WireGuard method: it is a way **into** the same per-device policy, never a
+   bypass. A method whose terminator cannot attribute traffic to a device is not shipped.
 3. Tests come first: an overlay scenario per method; for AmneziaWG an `amneziawg-go` client against
    the gateway, which must fail before the work and pass after, plus a negative test with a
    mismatched parameter.
