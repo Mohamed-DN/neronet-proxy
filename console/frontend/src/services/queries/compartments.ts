@@ -3,7 +3,15 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import { apiRequest } from '../apiClient';
 import { captureSession, isCurrentCredential, readAccessToken, storeAccessToken } from '../authToken';
 import { BROWSER_PROTOCOL, beginBrowserOperation, rememberSelection, type Selection } from '../browserContext';
-import type { Compartment, CompartmentPeering, TopologyData } from '../types';
+import type {
+  Compartment,
+  CompartmentPeering,
+  LineColour,
+  MergeCompartmentResult,
+  ReachPreview,
+  SplitCompartmentResult,
+  TopologyData
+} from '../types';
 import { queryKeys } from './keys';
 
 /**
@@ -56,6 +64,88 @@ export function useMoveToCompartment() {
       body: { node_ids: nodeIds }
     });
     return res.moved;
+  });
+}
+
+/**
+ * Rename a line, give it a colour, or set its position. Colour and order are display
+ * only; a rename is 409 `name_in_use` when another line has the name. Send only the
+ * fields that change; `line_colour: null` goes back to automatic.
+ */
+export interface UpdateCompartmentInput {
+  id: string;
+  name?: string;
+  line_colour?: LineColour | null;
+  sort_order?: number;
+}
+
+export function useUpdateCompartment() {
+  return useSubnetMutation(async ({ id, ...changes }: UpdateCompartmentInput) => {
+    const res = await apiRequest<{ compartment: Compartment }>(`/compartments/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: changes
+    });
+    return res.compartment;
+  });
+}
+
+/** Put the lines in this order (first id first). Returns the new list. */
+export function useReorderCompartments() {
+  return useSubnetMutation(async (ids: string[]) => {
+    const res = await apiRequest<{ compartments: Compartment[] }>('/compartments/reorder', {
+      method: 'PUT',
+      body: { ids }
+    });
+    return res.compartments;
+  });
+}
+
+/**
+ * Split devices off a line into a new one, in one step. The new line starts with no
+ * peerings; the result says how many the source has that it did not get.
+ */
+export function useSplitCompartment() {
+  return useSubnetMutation(
+    ({ id, name, nodeIds, lineColour }: { id: string; name: string; nodeIds: string[]; lineColour?: LineColour }) =>
+      apiRequest<SplitCompartmentResult>(`/compartments/${encodeURIComponent(id)}/split`, {
+        method: 'POST',
+        body: { name, node_ids: nodeIds, ...(lineColour ? { line_colour: lineColour } : {}) }
+      })
+  );
+}
+
+/**
+ * Merge a line into another. Its devices move over, its peerings are dropped (the result
+ * counts and names them) and the line is deleted.
+ */
+export function useMergeCompartment() {
+  return useSubnetMutation(({ id, into }: { id: string; into: string }) =>
+    apiRequest<MergeCompartmentResult>(`/compartments/${encodeURIComponent(id)}/merge`, {
+      method: 'POST',
+      body: { into }
+    })
+  );
+}
+
+/**
+ * What moving devices into a line would change, with nothing written. A mutation because
+ * it is asked for on demand with the editor's current selection, not cached.
+ */
+export function usePreviewMove() {
+  return useMutation({
+    mutationFn: ({ nodeIds, to }: { nodeIds: string[]; to: string }) =>
+      apiRequest<ReachPreview>('/compartments/preview-move', { method: 'POST', body: { node_ids: nodeIds, to } })
+  });
+}
+
+/** What splitting devices off a line would change, with nothing written. */
+export function usePreviewSplit() {
+  return useMutation({
+    mutationFn: ({ id, nodeIds }: { id: string; nodeIds: string[] }) =>
+      apiRequest<ReachPreview>(`/compartments/${encodeURIComponent(id)}/preview-split`, {
+        method: 'POST',
+        body: { node_ids: nodeIds }
+      })
   });
 }
 

@@ -12,6 +12,18 @@ const CompartmentService = require('../services/CompartmentService');
 const DuressService = require('../services/DuressService');
 const logger = require('../utils/logger');
 
+// Errors CompartmentService raises with a status: refusals the caller can act on.
+// One that carries a code (name_in_use, nodes_not_in_source, ...) answers with the code as
+// "error", so the console can branch on it, and the sentence as "message".
+function sendServiceError(res, err) {
+  if (err && Number.isInteger(err.status) && err.status >= 400 && err.status < 500) {
+    const body = err.code ? { error: err.code, message: err.message } : { error: err.message };
+    res.status(err.status).json(body);
+    return true;
+  }
+  return false;
+}
+
 router.use(authenticateToken);
 router.use(resolveUserOrg);
 
@@ -173,7 +185,7 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', requireOrgRole('owner', 'admin', 'network_admin'), async (req, res, next) => {
   try {
     const orgId = req.user.organization_id || 'org-default';
-    const { name, slug, subnet_cidr, is_hidden } = req.body || {};
+    const { name, slug, subnet_cidr, is_hidden, line_colour } = req.body || {};
 
     const accessTier = req.user.compartment_access || req.user.access_tier || 'standard';
     const compartment = await CompartmentService.createCompartment(
@@ -182,7 +194,8 @@ router.post('/', requireOrgRole('owner', 'admin', 'network_admin'), async (req, 
         name,
         slug,
         subnetCidr: subnet_cidr,
-        isHidden: Boolean(is_hidden)
+        isHidden: Boolean(is_hidden),
+        lineColour: line_colour
       },
       accessTier,
       req.user
@@ -190,6 +203,7 @@ router.post('/', requireOrgRole('owner', 'admin', 'network_admin'), async (req, 
 
     return res.status(201).json({ compartment });
   } catch (err) {
+    if (sendServiceError(res, err)) return undefined;
     if (err.message.includes('Forbidden')) {
       return res.status(403).json({ error: err.message });
     }
@@ -197,11 +211,29 @@ router.post('/', requireOrgRole('owner', 'admin', 'network_admin'), async (req, 
   }
 });
 
-// 4. Update Compartment
+// 4a. Reorder lines: { ids: [...] }, first id first. Display only. Registered before
+// PUT /:id so "reorder" is not read as a compartment id.
+router.put('/reorder', requireOrgRole('owner', 'admin', 'network_admin'), async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id || 'org-default';
+    const compartments = await CompartmentService.reorderCompartments(
+      orgId,
+      (req.body || {}).ids,
+      req.user.compartment_access || req.user.access_tier || 'standard',
+      req.user
+    );
+    return res.status(200).json({ compartments });
+  } catch (err) {
+    if (sendServiceError(res, err)) return undefined;
+    next(err);
+  }
+});
+
+// 4. Update Compartment (name, subnet, hidden, and the display-only line_colour and sort_order)
 router.put('/:id', requireOrgRole('owner', 'admin', 'network_admin'), async (req, res, next) => {
   try {
     const orgId = req.user.organization_id || 'org-default';
-    const { name, subnet_cidr, is_hidden } = req.body || {};
+    const { name, subnet_cidr, is_hidden, line_colour, sort_order } = req.body || {};
     const accessTier = req.user.compartment_access || req.user.access_tier || 'standard';
 
     const updated = await CompartmentService.updateCompartment(
@@ -210,7 +242,9 @@ router.put('/:id', requireOrgRole('owner', 'admin', 'network_admin'), async (req
       {
         name,
         subnetCidr: subnet_cidr,
-        isHidden: is_hidden
+        isHidden: is_hidden,
+        lineColour: line_colour,
+        sortOrder: sort_order
       },
       accessTier,
       req.user
@@ -222,6 +256,7 @@ router.put('/:id', requireOrgRole('owner', 'admin', 'network_admin'), async (req
 
     return res.status(200).json({ compartment: updated });
   } catch (err) {
+    if (sendServiceError(res, err)) return undefined;
     if (err.message.includes('Forbidden')) {
       return res.status(403).json({ error: err.message });
     }
@@ -248,15 +283,6 @@ router.delete('/:id', requireOrgRole('owner', 'admin'), async (req, res, next) =
     next(err);
   }
 });
-
-// Errors CompartmentService raises with a status: refusals the caller can act on.
-function sendServiceError(res, err) {
-  if (err && Number.isInteger(err.status) && err.status >= 400 && err.status < 500) {
-    res.status(err.status).json({ error: err.message });
-    return true;
-  }
-  return false;
-}
 
 const accessTierOf = (req) => req.user.compartment_access || req.user.access_tier || 'standard';
 
@@ -330,6 +356,79 @@ router.post('/:id/members', requireOrgRole('owner', 'admin', 'network_admin'), a
       return res.status(404).json({ error: 'Compartment not found' });
     }
     return res.status(200).json({ moved });
+  } catch (err) {
+    if (sendServiceError(res, err)) return undefined;
+    next(err);
+  }
+});
+
+// 10. Split devices off a line into a new one: { name, node_ids: [...], line_colour? }.
+// One transaction, one ACL epoch bump. The new line starts with no peerings.
+router.post('/:id/split', requireOrgRole('owner', 'admin', 'network_admin'), async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id || 'org-default';
+    const { name, node_ids, line_colour } = req.body || {};
+    const result = await CompartmentService.splitCompartment(
+      req.params.id,
+      orgId,
+      { name, nodeIds: node_ids, lineColour: line_colour },
+      accessTierOf(req),
+      req.user
+    );
+    if (!result) return res.status(404).json({ error: 'Compartment not found' });
+    return res.status(201).json(result);
+  } catch (err) {
+    if (sendServiceError(res, err)) return undefined;
+    next(err);
+  }
+});
+
+// 11. Merge a line into another: { into }. Owner or admin, as for a delete: the merged
+// line and its peerings are gone afterwards.
+router.post('/:id/merge', requireOrgRole('owner', 'admin'), async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id || 'org-default';
+    const result = await CompartmentService.mergeCompartment(
+      req.params.id,
+      orgId,
+      (req.body || {}).into,
+      accessTierOf(req),
+      req.user
+    );
+    if (!result) return res.status(404).json({ error: 'Compartment not found' });
+    return res.status(200).json(result);
+  } catch (err) {
+    if (sendServiceError(res, err)) return undefined;
+    next(err);
+  }
+});
+
+// 12. What a move would change, with nothing written: { node_ids: [...], to }.
+router.post('/preview-move', requireOrgRole('owner', 'admin', 'network_admin'), async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id || 'org-default';
+    const { node_ids, to } = req.body || {};
+    const preview = await CompartmentService.previewMove(orgId, node_ids, to, accessTierOf(req));
+    if (!preview) return res.status(404).json({ error: 'Compartment not found' });
+    return res.status(200).json(preview);
+  } catch (err) {
+    if (sendServiceError(res, err)) return undefined;
+    next(err);
+  }
+});
+
+// 13. What a split would change, with nothing written: { node_ids: [...] }.
+router.post('/:id/preview-split', requireOrgRole('owner', 'admin', 'network_admin'), async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id || 'org-default';
+    const preview = await CompartmentService.previewSplit(
+      req.params.id,
+      orgId,
+      (req.body || {}).node_ids,
+      accessTierOf(req)
+    );
+    if (!preview) return res.status(404).json({ error: 'Compartment not found' });
+    return res.status(200).json(preview);
   } catch (err) {
     if (sendServiceError(res, err)) return undefined;
     next(err);
