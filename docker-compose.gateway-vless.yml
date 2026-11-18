@@ -1,0 +1,63 @@
+# VLESS + REALITY on the profile gateway (ADR 0036): for devices on heavily censored networks
+# (deep packet inspection, active probing). The person adding a device picks "Rete molto
+# censurata (VLESS)" and imports the link into v2rayNG, FoXray or v2rayN.
+#
+#   NERONET_EXTRA_COMPOSE_FILE="docker-compose.proxy.yml docker-compose.gateway.yml docker-compose.gateway-vless.yml"
+#   NERONET_VLESS_PORT=443        # the TCP port on the host the devices connect to
+#
+# It needs docker-compose.gateway.yml. Off unless you include this file. Two containers:
+# the gateway, which decides who each connection is, and Xray, which only terminates
+# REALITY. Xray has no route to anywhere else: every user it accepts is sent to the gateway's
+# per-device SOCKS5 as that device (pkg/xrayconf), and the gateway puts the connection into
+# the mesh from the device's own overlay address, under the device's own policy. Nothing leaves
+# Xray directly.
+#
+# If TCP 443 is taken on the host (the console's reverse proxy usually owns it), publish on
+# another port, for example NERONET_VLESS_PORT=8443, or put a TCP (SNI) router in front.
+# A REALITY service on a non-standard port is easier to block; docs/handbook/strict-networks.md
+# says what was measured.
+#
+# The REALITY keys and the short ids are not here and not in the image: the console generates
+# them per organisation and sends them to this gateway in the netmap. The gateway writes
+# Xray's configuration (mode 0600, secrets inside) into the xray-config volume; without the
+# parameters the file does not exist and Xray does not run.
+services:
+  gateway:
+    environment:
+      - SOVEREIGN_VLESS_PORT=${NERONET_VLESS_PORT:?set NERONET_VLESS_PORT to the host TCP port for VLESS}
+      - SOVEREIGN_VLESS_SOCKS_LISTEN=:1081
+      - SOVEREIGN_VLESS_SOCKS_ADDR=gateway:1081
+      - SOVEREIGN_XRAY_CONFIG=/var/lib/neronet-xray/config.json
+    volumes:
+      - xray-config:/var/lib/neronet-xray
+
+  xray:
+    build:
+      context: .
+      dockerfile: docker/xray/Dockerfile
+    image: ${NERONET_XRAY_IMAGE:-neronet-xray:dev}
+    restart: unless-stopped
+    networks:
+      - neronet-isolated-mesh
+    ports:
+      # The listener inside the container uses the same port as the host: the gateway reports
+      # this port to the console, which writes it into every VLESS link.
+      - "${NERONET_GATEWAY_BIND:-0.0.0.0}:${NERONET_VLESS_PORT}:${NERONET_VLESS_PORT}/tcp"
+    environment:
+      - XRAY_CONFIG=/var/lib/neronet-xray/config.json
+    volumes:
+      - xray-config:/var/lib/neronet-xray:ro
+    # A port below 1024 without CAP_NET_BIND_SERVICE: only in this container's namespace.
+    sysctls:
+      - net.ipv4.ip_unprivileged_port_start=0
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    depends_on:
+      - gateway
+
+volumes:
+  xray-config:

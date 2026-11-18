@@ -47,6 +47,7 @@ func (m *netmapManager) installMeshDNS(doc *control.NetmapResponse, kept []datap
 		keptKeys[normaliseKey(p.PublicKey)] = true
 		serves = serves || p.Profile
 	}
+	serves = serves || len(m.vless.served) > 0
 	if !m.meshDNSEnabled || !serves || doc == nil {
 		if err := m.setMeshDNS(nil); err != nil {
 			log.Printf("[SOVEREIGN-NODE] Mesh names: could not remove the resolver: %v", err)

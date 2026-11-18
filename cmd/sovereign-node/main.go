@@ -42,6 +42,10 @@ func main() {
 	maxBandwidthKbps := config.BindIntFlag(flag.CommandLine, "max-bandwidth-kbps", "SOVEREIGN_MAX_BANDWIDTH_KBPS", 0, "Self-declared uplink capacity in kbps; 0 means not declared")
 	dataplaneMode := config.BindStringFlag(flag.CommandLine, "dataplane", "SOVEREIGN_DATAPLANE", "off", "WireGuard data plane mode: off, netstack or tun")
 	awgListen := config.BindStringFlag(flag.CommandLine, "awg-listen", "SOVEREIGN_AWG_LISTEN", "", "UDP port of the profile gateway's AmneziaWG device (e.g. 51821); empty keeps AmneziaWG off. The parameters come from the netmap, never from the binary")
+	vlessPort := config.BindIntFlag(flag.CommandLine, "vless-port", "SOVEREIGN_VLESS_PORT", 0, "Public TCP port of the gateway's VLESS + REALITY terminator (Xray); 0 keeps the method off. The REALITY parameters come from the netmap")
+	vlessSocksListen := config.BindStringFlag(flag.CommandLine, "vless-socks-listen", "SOVEREIGN_VLESS_SOCKS_LISTEN", "", "Listen address of the per-device SOCKS5 the Xray terminator connects to (e.g. :1081); empty keeps VLESS off")
+	vlessSocksAddr := config.BindStringFlag(flag.CommandLine, "vless-socks-addr", "SOVEREIGN_VLESS_SOCKS_ADDR", "", "host:port at which the Xray container reaches the device SOCKS5 (e.g. gateway:1081)")
+	xrayConfig := config.BindStringFlag(flag.CommandLine, "xray-config", "SOVEREIGN_XRAY_CONFIG", "", "Path of the Xray configuration the node writes for the terminator; empty keeps VLESS off")
 	spikePeers := config.BindStringFlag(flag.CommandLine, "spike-peers", "SOVEREIGN_SPIKE_PEERS", "", "Path to the WP-201 spike peers document")
 	overlayEchoPort := config.BindIntFlag(flag.CommandLine, "overlay-echo-port", "SOVEREIGN_OVERLAY_ECHO_PORT", 0, "TCP port answering on this node's overlay address; 0 disables it")
 	stunServer := config.BindStringFlag(flag.CommandLine, "stun-server", "SOVEREIGN_STUN_SERVER", "", "STUN server (host:port) asked for this node's reflexive address; empty disables it")
@@ -158,8 +162,9 @@ func main() {
 	if awgErr != nil {
 		log.Fatalf("Invalid -awg-listen: %v", awgErr)
 	}
+	vlessAdvert := vlessAdvertisedPort(*vlessPort, *vlessSocksListen, *vlessSocksAddr, *xrayConfig)
 	dropNode := &currentNodeID{}
-	regResp, err := registerWithRetry(ctx, ctrlClient, enrolment, role, withAWG(withDrop(withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), dropEnabled), awgAdvert, dataplane.AWGBuilt()))
+	regResp, err := registerWithRetry(ctx, ctrlClient, enrolment, role, withVless(withAWG(withDrop(withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), dropEnabled), awgAdvert, dataplane.AWGBuilt()), vlessAdvert))
 
 	if err != nil {
 		log.Printf("[SOVEREIGN-NODE] Warning: Initial control plane registration failed: %v (operating in local standalone mode)", err)
@@ -250,7 +255,7 @@ func main() {
 						// credential check: it expired while the node was cut off, or the
 						// control plane lost the registration it belonged to.
 						if errors.Is(hbErr, control.ErrNodeUnknown) || errors.Is(hbErr, control.ErrUnauthorized) {
-							newID, reErr := reregister(ctx, ctrlClient, enrolment, role, withAWG(withDrop(withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), dropEnabled), awgAdvert, dataplane.AWGBuilt()), netmaps.endpoints())
+							newID, reErr := reregister(ctx, ctrlClient, enrolment, role, withVless(withAWG(withDrop(withLocation(capability(*enableExit, *countryCode, *maxBandwidthKbps), location), dropEnabled), awgAdvert, dataplane.AWGBuilt()), vlessAdvert), netmaps.endpoints())
 							if reErr != nil {
 								log.Printf("[SOVEREIGN-NODE] Re-enrolment failed: %v", reErr)
 								continue
