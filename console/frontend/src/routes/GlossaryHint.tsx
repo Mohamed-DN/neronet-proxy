@@ -127,7 +127,7 @@ export function GlossaryHint(props: GlossaryHintProps) {
       <button
         type="button"
         aria-label={label}
-        className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted hover:text-content focus-visible:outline-focus ${className ?? ''}`}
+        className={`relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted hover:text-content focus-visible:outline-focus max-xl:after:absolute max-xl:after:-inset-2.5 max-xl:after:content-[''] ${className ?? ''}`}
       >
         <CircleHelp aria-hidden="true" className="h-3.5 w-3.5" />
       </button>

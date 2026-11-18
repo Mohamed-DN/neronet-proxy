@@ -30,8 +30,9 @@ const VARIANTS: Record<ButtonVariant, string> = {
 };
 
 const SIZES: Record<ButtonSize, string> = {
-  sm: 'h-7 px-2.5 text-caption gap-1.5',
-  md: 'h-9 px-3.5 text-body gap-2',
+  // Under 1280 px every size is a 44 px touch target.
+  sm: 'h-7 px-2.5 text-caption gap-1.5 max-xl:h-11 max-xl:px-3.5',
+  md: 'h-9 px-3.5 text-body gap-2 max-xl:h-11',
   // 44 px: the touch target on /me and /me/add.
   lg: 'h-11 px-4 text-body gap-2'
 };

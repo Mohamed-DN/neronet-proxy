@@ -28,14 +28,14 @@ export interface TabsProps {
 export function Tabs({ items, value, onValueChange, label, className }: TabsProps) {
   return (
     <RadixTabs.Root value={value} onValueChange={onValueChange} className={cn('flex flex-col gap-4', className)}>
-      <RadixTabs.List aria-label={label} className="flex items-center gap-1 border-b border-border">
+      <RadixTabs.List aria-label={label} className="flex items-center gap-1 overflow-x-auto border-b border-border">
         {items.map((item) => (
           <RadixTabs.Trigger
             key={item.value}
             value={item.value}
             disabled={item.disabled}
             className={cn(
-              '-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-body font-medium',
+              '-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-body font-medium max-xl:min-h-11',
               'transition-colors focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50',
               'border-transparent text-muted hover:text-content',
               'data-[state=active]:border-accent data-[state=active]:text-accent'

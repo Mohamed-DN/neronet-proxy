@@ -24,7 +24,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       aria-invalid={isInvalid || undefined}
       required={required ?? field?.required}
       className={cn(
-        'h-9 w-full rounded-control border bg-surface-raised px-3 text-body text-content',
+        'h-9 w-full rounded-control border max-xl:h-11 bg-surface-raised px-3 text-body text-content',
         'placeholder:text-subtle focus-visible:outline-focus',
         'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-subtle',
         isInvalid ? 'border-danger' : 'border-border-strong',

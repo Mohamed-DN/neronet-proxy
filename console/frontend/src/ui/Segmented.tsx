@@ -61,7 +61,7 @@ export function Segmented<V extends string>({ options, value, onChange, label, c
             onClick={() => onChange(option.value)}
             onKeyDown={(event) => move(event, index)}
             className={cn(
-              'h-8 whitespace-nowrap rounded-control px-3 text-caption focus-visible:outline-focus',
+              'h-8 whitespace-nowrap rounded-control px-3 max-xl:h-11 text-caption focus-visible:outline-focus',
               active ? 'bg-ink font-semibold text-sheet' : 'text-ink-muted hover:bg-surface-hover hover:text-ink'
             )}
           >
