@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 
 	"github.com/sovereign/proxy/v4/pkg/acl"
 )
@@ -175,11 +176,21 @@ func (d *Device) SetForwarding(t *ForwardTable) {
 	if closed {
 		return
 	}
+	// Both wrappers get the same table, so a profile device's policy and conntrack are the
+	// same objects on whichever device carries it (awg.go).
+	d.fwdMu.Lock()
+	installed := t
 	if t.Len() == 0 {
-		d.filter.forward.Store(nil)
+		installed = nil
+	}
+	d.filter.forward.Store(installed)
+	if r := d.filter.route.Load(); r != nil {
+		r.awg.forward.Store(installed)
+	}
+	d.fwdMu.Unlock()
+	if installed == nil {
 		return
 	}
-	d.filter.forward.Store(t)
 	// wireguard-go may be blocked in a read of the local stack, which only returns
 	// when the stack sends something. Make it send something, so the reader switches
 	// to the path that also serves the forwarding queue.
@@ -204,4 +215,54 @@ func (t *ForwardTable) CanOpen(src, dst netip.Addr) bool {
 		return false
 	}
 	return true
+}
+
+// relayRoute joins the gateway's two tun wrappers (ADR 0036). Policy is decided in the
+// wrapper that decrypted a packet; the packet then has to be encrypted by the WireGuard
+// device that holds the destination peer, which may be the other one. forDestination
+// names the wrapper whose queue the packet goes to: the AmneziaWG one for an address
+// that is one of its peers, the first one for everything else.
+type relayRoute struct {
+	main, awg *filteredTUN
+	awgAddrs  atomic.Pointer[map[netip.Addr]struct{}]
+}
+
+func (r *relayRoute) forDestination(dst netip.Addr) *filteredTUN {
+	if m := r.awgAddrs.Load(); m != nil {
+		if _, ok := (*m)[dst.Unmap()]; ok {
+			return r.awg
+		}
+	}
+	return r.main
+}
+
+// destinationOf reads the destination address of an IP packet without parsing the rest.
+func destinationOf(b []byte) (netip.Addr, bool) {
+	if len(b) < 1 {
+		return netip.Addr{}, false
+	}
+	switch b[0] >> 4 {
+	case 4:
+		if len(b) >= ipv4MinHeaderLen {
+			return netip.AddrFrom4([4]byte(b[16:20])), true
+		}
+	case 6:
+		if len(b) >= ipv6HeaderLen {
+			return netip.AddrFrom16([16]byte(b[24:40])), true
+		}
+	}
+	return netip.Addr{}, false
+}
+
+// routed is the wrapper a relayed packet is queued on: this one unless the gateway runs
+// an AmneziaWG device that holds the destination.
+func (f *filteredTUN) routed(raw []byte) *filteredTUN {
+	r := f.route.Load()
+	if r == nil {
+		return f
+	}
+	if dst, ok := destinationOf(raw); ok {
+		return r.forDestination(dst)
+	}
+	return f
 }

@@ -232,6 +232,17 @@ type Device struct {
 	daitaShaper *daita.Shaper
 	mtu         int
 
+	// privKey and logf are what the AmneziaWG device (awg.go) is built from: it runs
+	// under the same identity key as the first device.
+	privKey [32]byte
+	logf    func(format string, args ...any)
+	verbose bool
+	// awg is the gateway's AmneziaWG device, nil until StartAWG. Guarded by setMu.
+	awg *awgRuntime
+	// fwdMu orders the forwarding table's installation in both wrappers against
+	// StartAWG and StopAWG, so neither wrapper is left with a stale table.
+	fwdMu sync.Mutex
+
 	mu     sync.Mutex
 	closed bool
 
@@ -351,6 +362,9 @@ func New(cfg Config) (*Device, error) {
 		backing:       back,
 		daitaShaper:   shaper,
 		mtu:           cfg.MTU,
+		privKey:       cfg.PrivateKey,
+		logf:          cfg.Logf,
+		verbose:       cfg.Verbose,
 		counterEpoch:  1,
 	}, nil
 }
@@ -398,6 +412,11 @@ func (d *Device) SetPeers(peers []Peer) error {
 		return ErrClosed
 	}
 
+	peers, awgPeers, err := d.partitionAWG(peers)
+	if err != nil {
+		return err
+	}
+
 	seen := make(map[string]struct{}, len(peers))
 	for i, p := range peers {
 		if err := p.validate(); err != nil {
@@ -416,6 +435,18 @@ func (d *Device) SetPeers(peers []Peer) error {
 		if p.Profile && len(p.Paths) > 0 {
 			return fmt.Errorf("dataplane: peer %d: a profile device has no declared paths", i)
 		}
+	}
+
+	for _, p := range awgPeers {
+		if _, both := seen[strings.ToLower(strings.TrimSpace(p.PublicKey))]; both {
+			return fmt.Errorf("dataplane: public key %.8s is on both the WireGuard and the AmneziaWG device", p.PublicKey)
+		}
+	}
+	// The AmneziaWG device is changed first: its failure leaves the first device
+	// untouched, and a key that moves from one device to the other is then on both for
+	// the instant between the two applies, under the one policy table, never on neither.
+	if err := d.applyAWGPeersLocked(awgPeers); err != nil {
+		return err
 	}
 
 	var b strings.Builder
@@ -594,7 +625,13 @@ func (d *Device) Ping(ctx context.Context, dst netip.Addr) (time.Duration, error
 }
 
 // Stats reports what the enforcement filter dropped.
-func (d *Device) Stats() FilterStats { return d.filter.stats() }
+func (d *Device) Stats() FilterStats {
+	s := d.filter.stats()
+	if r := d.filter.route.Load(); r != nil {
+		s.add(r.awg.stats())
+	}
+	return s
+}
 
 // ListenPort reports the UDP port wireguard-go is actually bound to, which is not
 // the configured one when the configuration asked for an ephemeral port.
@@ -658,7 +695,7 @@ func (d *Device) peersLocked() ([]PeerStatus, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dataplane: reading device state: %w", err)
 	}
-	return parsePeerStatus(raw), nil
+	return append(parsePeerStatus(raw), parsePeerStatus(d.awgIpcGet())...), nil
 }
 
 func parsePeerStatus(raw string) []PeerStatus {
@@ -724,6 +761,7 @@ func (d *Device) Close() error {
 	// wireguard-go closes the tun device it was given, which is the filtered
 	// wrapper around the backend. Closing the backend again here is what makes the
 	// second close happen, so it is not done.
+	d.shutdownAWG()
 	d.wg.Close()
 	return d.filter.Close()
 }
@@ -801,4 +839,36 @@ func wakeDestination(mode Mode, addrs []netip.Prefix) (netip.AddrPort, bool) {
 		return netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), discardPort), true
 	}
 	return netip.AddrPort{}, false
+}
+
+// partitionAWG splits a peer list into the peers for the first device and the profile
+// devices that are on the AmneziaWG one, and validates the latter: only a profile device
+// can choose AmneziaWG, and its addresses are single hosts, which is what lets the relay
+// route by destination.
+func (d *Device) partitionAWG(peers []Peer) (plain, awg []Peer, err error) {
+	for i, p := range peers {
+		if !p.AWG {
+			plain = append(plain, p)
+			continue
+		}
+		if err := p.validate(); err != nil {
+			return nil, nil, fmt.Errorf("dataplane: peer %d: %w", i, err)
+		}
+		if !p.Profile {
+			return nil, nil, fmt.Errorf("dataplane: peer %d: only a profile device can use AmneziaWG", i)
+		}
+		if len(p.Paths) > 0 {
+			return nil, nil, fmt.Errorf("dataplane: peer %d: a profile device has no declared paths", i)
+		}
+		for _, aip := range p.AllowedIPs {
+			if !aip.IsSingleIP() {
+				return nil, nil, fmt.Errorf("dataplane: peer %d: an AmneziaWG device holds single addresses, not %s", i, aip)
+			}
+		}
+		awg = append(awg, p)
+	}
+	if len(awg) > 0 && d.awg == nil {
+		return nil, nil, ErrAWGNotRunning
+	}
+	return plain, awg, nil
 }

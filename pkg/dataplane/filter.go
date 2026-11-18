@@ -79,6 +79,17 @@ type FilterStats struct {
 	EgressDropped uint64
 }
 
+func (s *FilterStats) add(o FilterStats) {
+	s.OutboundDropped += o.OutboundDropped
+	s.InboundDropped += o.InboundDropped
+	s.MalformedDropped += o.MalformedDropped
+	s.DummyDropped += o.DummyDropped
+	s.Forwarded += o.Forwarded
+	s.ForwardDropped += o.ForwardDropped
+	s.Egressed += o.Egressed
+	s.EgressDropped += o.EgressDropped
+}
+
 // filteredTUN wraps the tun.Device so every packet crossing the tunnel passes the
 // filter. Both modes get enforcement from the same code because both go through a
 // tun.Device: this is the one point where the plaintext of every direction is
@@ -120,6 +131,10 @@ type filteredTUN struct {
 
 	// Mesh names (meshdns.go). meshDNS is nil unless the gateway serves them.
 	meshDNS atomic.Pointer[MeshDNS]
+
+	// route is non-nil only on a gateway that runs an AmneziaWG device (awg.go): it holds
+	// both wrappers and says which one a relayed packet goes to.
+	route atomic.Pointer[relayRoute]
 
 	// The reader switch. Until forwarding is first switched on, Read reads the
 	// backend directly, exactly as before. From then on a pump goroutine reads the
@@ -230,6 +245,9 @@ func (f *filteredTUN) keepOutbound(bufs [][]byte, sizes []int, offset, n int) in
 			continue
 		}
 		if f.filter != nil && !f.allow(raw, true) {
+			continue
+		}
+		if f.divertToAWG(raw) {
 			continue
 		}
 		if f.daitaShaper != nil {
@@ -345,7 +363,7 @@ func (f *filteredTUN) enqueueRelay(raw []byte) bool {
 		forwardBufPool.Put(bp)
 		return false
 	}
-	return f.enqueue(bp)
+	return f.routed(buf).enqueue(bp)
 }
 
 // enqueueOriginated queues a packet this node's exit stack sent to a client. It was
@@ -353,7 +371,7 @@ func (f *filteredTUN) enqueueRelay(raw []byte) bool {
 func (f *filteredTUN) enqueueOriginated(raw []byte) bool {
 	bp := forwardBufPool.Get().(*[]byte)
 	*bp = append((*bp)[:0], raw...)
-	return f.enqueue(bp)
+	return f.routed(*bp).enqueue(bp)
 }
 
 func (f *filteredTUN) enqueue(bp *[]byte) bool {
@@ -514,6 +532,7 @@ func (f *filteredTUN) Write(bufs [][]byte, offset int) (int, error) {
 
 	allowed := bufs
 	filtering := false
+	var toLocal [][]byte
 	// The first rejected packet is where the caller's slice stops being usable as
 	// is, so the copy is made then and not before.
 	startFiltering := func(i int) {
@@ -535,6 +554,16 @@ func (f *filteredTUN) Write(bufs [][]byte, offset int) (int, error) {
 			f.dummyDropped.Add(1)
 			startFiltering(i)
 			continue
+		}
+		if r := f.route.Load(); r != nil && r.awg == f {
+			// The AmneziaWG wrapper has no stack: what is addressed to the gateway goes to the
+			// first wrapper's Write, where the stack, mesh names and the gateway's own
+			// filter are.
+			if pkt, ok := ParsePacket(raw); ok && f.isLocal(pkt.Dst) {
+				toLocal = append(toLocal, b)
+				startFiltering(i)
+				continue
+			}
 		}
 		if f.meshDNS.Load() != nil {
 			if pkt, ok := ParsePacket(raw); ok && f.meshDNSWrite(raw, pkt) {
@@ -564,10 +593,30 @@ func (f *filteredTUN) Write(bufs [][]byte, offset int) (int, error) {
 		}
 	}
 
+	if len(toLocal) > 0 {
+		if r := f.route.Load(); r != nil {
+			_, _ = r.main.Write(toLocal, offset)
+		}
+	}
 	if len(allowed) == 0 {
 		return 0, nil
 	}
 	return f.Device.Write(allowed, offset)
+}
+
+// divertToAWG moves a packet the gateway's own stack produced onto the AmneziaWG
+// device's queue when its destination is one of that device's peers, and reports whether it
+// did. The first device has no peer for that address and would drop it.
+func (f *filteredTUN) divertToAWG(raw []byte) bool {
+	r := f.route.Load()
+	if r == nil || r.main != f {
+		return false
+	}
+	dst, ok := destinationOf(raw)
+	if !ok || r.forDestination(dst) != r.awg {
+		return false
+	}
+	return r.awg.enqueueOriginated(raw)
 }
 
 func (f *filteredTUN) allow(raw []byte, outbound bool) bool {
