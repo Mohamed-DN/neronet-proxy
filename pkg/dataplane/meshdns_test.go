@@ -129,7 +129,7 @@ func meshNames(t *testing.T, upstream netip.AddrPort) *MeshDNS {
 		},
 		&control.DNSConfig{SearchDomains: []string{"example.com", "mesh", "neronet"}},
 	)
-	return &MeshDNS{Answer: srv.AnswerFor, Upstream: upstream}
+	return &MeshDNS{Answer: srv.AnswerFor, AnswerExit: srv.AnswerForExit, Upstream: upstream}
 }
 
 // meshDNSPair is gateway G serving device D (no exit) as a profile device.
@@ -385,6 +385,117 @@ func TestMeshDNSDeviceWithAnExitResolvesMeshNamesLocally(t *testing.T) {
 	}
 	if exitUp.queries.Load() != 2 || meshUp.queries.Load() != 0 {
 		t.Fatalf("exit saw %d queries (want 2), gateway upstream %d (want 0)", exitUp.queries.Load(), meshUp.queries.Load())
+	}
+}
+
+// A full-tunnel user must resolve the names of the LAN behind the exit (`printer`). Only a
+// single-label name that is not the mesh's goes to the exit's resolver; a mesh name, known
+// or hidden from this device, never does.
+func TestMeshDNSExitDeviceForwardsAnUnknownSingleLabelNameToTheExit(t *testing.T) {
+	g, d := meshDNSPair(t)
+	allowAllNames(g)
+	meshUp := newStubResolver(t, [4]byte{192, 0, 2, 77})
+	exitUp := newStubResolver(t, [4]byte{198, 51, 100, 5})
+	if err := g.dev.SetMeshDNS(meshNames(t, meshUp.addr)); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.dev.SetEgress(egressFor(deviceAddr, &EgressClient{ID: "dev", Via: EgressLocal}), exitUp.addr); err != nil {
+		t.Fatal(err)
+	}
+	for _, network := range []string{"udp", "tcp"} {
+		m, err := ask(t, d.dev, network, "printer.", 15*time.Second)
+		if err != nil {
+			t.Fatalf("%s printer: %v", network, err)
+		}
+		if got := aOf(t, m); len(got) != 1 || got[0].String() != "198.51.100.5" {
+			t.Errorf("%s printer: answered %v, want the exit resolver's 198.51.100.5", network, got)
+		}
+		// A mesh name still wins and is answered here.
+		m, err = ask(t, d.dev, network, "laptop.", 15*time.Second)
+		if err != nil {
+			t.Fatalf("%s laptop: %v", network, err)
+		}
+		if got := aOf(t, m); len(got) != 1 || got[0].String() != "100.64.0.9" {
+			t.Errorf("%s laptop: answered %v, want 100.64.0.9", network, got)
+		}
+		// A dotted name under a mesh domain that is unknown stays NXDOMAIN.
+		m, err = ask(t, d.dev, network, "ghost.example.com.", 15*time.Second)
+		if err != nil {
+			t.Fatalf("%s ghost: %v", network, err)
+		}
+		if m.RCode != dnsmessage.RCodeNameError {
+			t.Errorf("%s ghost.example.com: rcode %v, want NXDOMAIN", network, m.RCode)
+		}
+	}
+	if exitUp.queries.Load() < 2 {
+		t.Fatalf("the exit's resolver saw %d queries, want at least 2 (printer over both transports)", exitUp.queries.Load())
+	}
+	if meshUp.queries.Load() != 0 {
+		t.Fatalf("the gateway's own upstream saw %d queries from an exit device, want 0", meshUp.queries.Load())
+	}
+}
+
+func TestMeshDNSExitDeviceNeverSendsAHiddenMeshNameToTheExit(t *testing.T) {
+	g, d := meshDNSPair(t) // no allowAllNames: the device's policy hides every name
+	exitUp := newStubResolver(t, [4]byte{198, 51, 100, 5})
+	if err := g.dev.SetMeshDNS(meshNames(t, netip.AddrPort{})); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.dev.SetEgress(egressFor(deviceAddr, &EgressClient{ID: "dev", Via: EgressLocal}), exitUp.addr); err != nil {
+		t.Fatal(err)
+	}
+	m, err := ask(t, d.dev, "udp", "laptop.", 15*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.RCode != dnsmessage.RCodeNameError || len(m.Answers) != 0 {
+		t.Fatalf("a hidden mesh name got rcode %v with %d answer(s), want NXDOMAIN", m.RCode, len(m.Answers))
+	}
+	if exitUp.queries.Load() != 0 {
+		t.Fatalf("a mesh name reached the exit's resolver %d time(s), want 0", exitUp.queries.Load())
+	}
+}
+
+func TestMeshDNSDeviceWithoutAnExitStillGetsNXDOMAINForAnUnknownSingleLabelName(t *testing.T) {
+	g, d := meshDNSPair(t)
+	allowAllNames(g)
+	up := newStubResolver(t, [4]byte{192, 0, 2, 77})
+	if err := g.dev.SetMeshDNS(meshNames(t, up.addr)); err != nil {
+		t.Fatal(err)
+	}
+	m, err := ask(t, d.dev, "udp", "printer.", 15*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.RCode != dnsmessage.RCodeNameError || up.queries.Load() != 0 {
+		t.Fatalf("rcode %v, upstream saw %d: a device without an exit keeps NXDOMAIN", m.RCode, up.queries.Load())
+	}
+}
+
+func TestMeshDNSDeviceBehindAMeshExitForwardsAnUnknownSingleLabelName(t *testing.T) {
+	m := newMeshExit(t)
+	meshUp := newStubResolver(t, [4]byte{192, 0, 2, 77})
+	exitUp := newStubResolver(t, [4]byte{198, 51, 100, 5})
+	ft := NewForwardTable()
+	nf := acl.NewNetstackFilter()
+	allowOnly(nf, laptopAddr)
+	ft.AddDevice(netip.MustParseAddr(deviceAddr), nf)
+	m.g.dev.SetForwarding(ft)
+	if err := m.g.dev.SetMeshDNS(meshNames(t, meshUp.addr)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.x.dev.SetEgress(egressFor(deviceAddr, &EgressClient{ID: "dev", Via: EgressLocal, AllowLAN: true}), exitUp.addr); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ask(t, m.d.dev, "udp", "printer.", 15*time.Second)
+	if err != nil {
+		t.Fatalf("single-label name through a mesh exit: %v", err)
+	}
+	if a := aOf(t, got); len(a) != 1 || a[0].String() != "198.51.100.5" {
+		t.Fatalf("answered %v, want the exit resolver's 198.51.100.5", a)
+	}
+	if meshUp.queries.Load() != 0 {
+		t.Fatalf("gateway upstream saw %d queries, want 0", meshUp.queries.Load())
 	}
 }
 

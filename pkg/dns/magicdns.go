@@ -196,6 +196,20 @@ func (s *Server) Answer(reqBytes []byte) (reply []byte, forward bool) {
 // lists only its visible addresses. The filter runs on every query and nothing is
 // cached, so a policy change shows on the next one.
 func (s *Server) AnswerFor(reqBytes []byte, visible func(target netip.Addr) bool) (reply []byte, forward bool) {
+	return s.answerFor(reqBytes, visible, false)
+}
+
+// AnswerForExit is AnswerFor for a device that has an exit. The one difference: a
+// single-label name that is not a mesh name at all (`printer`) is forwarded, so the caller
+// can ask the exit's resolver, which may know the LAN behind the exit. A name the mesh
+// has, including one this asker's policy hides, is answered here exactly as AnswerFor
+// does, and a dotted name under a mesh domain stays NXDOMAIN: none of those is ever
+// forwarded.
+func (s *Server) AnswerForExit(reqBytes []byte, visible func(target netip.Addr) bool) (reply []byte, forward bool) {
+	return s.answerFor(reqBytes, visible, true)
+}
+
+func (s *Server) answerFor(reqBytes []byte, visible func(target netip.Addr) bool, forwardBare bool) (reply []byte, forward bool) {
 	var msg dnsmessage.Message
 	if err := msg.Unpack(reqBytes); err != nil {
 		return nil, false
@@ -260,6 +274,7 @@ func (s *Server) AnswerFor(reqBytes []byte, visible func(target netip.Addr) bool
 	} else if isMeshDomain {
 		// In-mesh forward query
 		entry, found := s.lookupName(qName)
+		exists := found
 		if found {
 			entry = s.visibleEntry(entry, visible)
 			found = entry != nil
@@ -300,6 +315,12 @@ func (s *Server) AnswerFor(reqBytes []byte, visible func(target netip.Addr) bool
 					}
 				}
 			}
+		} else if forwardBare && !exists && !strings.Contains(qName, ".") {
+			// A device with an exit asked for a bare name the mesh does not have: the exit's
+			// resolver may know it (a printer on the LAN behind the exit). The NXDOMAIN is
+			// only the fallback if the query cannot be relayed.
+			forward = true
+			resp.Header.RCode = dnsmessage.RCodeNameError
 		} else {
 			// ANTI-DNS LEAK CRITICAL GUARANTEE:
 			// If an internal mesh domain (.neronet, .mesh, etc.) is not found,

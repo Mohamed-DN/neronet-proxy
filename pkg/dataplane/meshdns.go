@@ -31,6 +31,9 @@ import (
 //     A name the asking device's policy would not let it reach is NXDOMAIN too, the
 //     same bytes as an unknown name (ADR 0034 phase 3).
 //   - anything else from a device without an exit goes to MeshDNS.Upstream.
+//   - for a device with an exit, a single-label name that is not a mesh name is not
+//     answered here either: it goes to the exit's resolver, so `printer` on the LAN
+//     behind the exit resolves. Mesh names, hidden ones included, stay local.
 //   - anything else from a device with an exit goes to the exit's resolver (ADR 0032),
 //     never to MeshDNS.Upstream: a device that chose an exit must not resolve around it.
 //     For an exit on this host that is the resolver SetEgress was given (SERVFAIL if
@@ -50,9 +53,21 @@ type MeshDNS struct {
 	// addresses are all hidden is answered NXDOMAIN like an unknown one (see
 	// nameVisibility). dns.Server.AnswerFor has this shape.
 	Answer func(query []byte, visible func(target netip.Addr) bool) (reply []byte, forward bool)
+	// AnswerExit is Answer for a device that has an exit: it also forwards a single-label
+	// name that is not the mesh's, so the exit's resolver can answer a LAN name such as
+	// `printer`. Nil means Answer is used for those devices too. dns.Server.AnswerForExit.
+	AnswerExit func(query []byte, visible func(target netip.Addr) bool) (reply []byte, forward bool)
 	// Upstream is the resolver for names outside the mesh. Invalid means none: the
 	// device then gets SERVFAIL for them.
 	Upstream netip.AddrPort
+}
+
+// answerer picks the function that decides a query for a device that has (or has not) an exit.
+func (m *MeshDNS) answerer(hasExit bool) func([]byte, func(netip.Addr) bool) ([]byte, bool) {
+	if hasExit && m.AnswerExit != nil {
+		return m.AnswerExit
+	}
+	return m.Answer
 }
 
 const (
@@ -176,7 +191,7 @@ func (f *filteredTUN) meshDNSExitWrite(raw []byte, pkt Packet, c *EgressClient, 
 		if query == nil {
 			return false
 		}
-		if reply, forward := m.Answer(query, f.nameVisibility(pkt.Src)); reply != nil && !forward {
+		if reply, forward := m.answerer(true)(query, f.nameVisibility(pkt.Src)); reply != nil && !forward {
 			es.inject(raw)
 			return true
 		}
@@ -322,7 +337,7 @@ func (e *egressStack) meshReply(query []byte, src netip.Addr, overTCP bool, via 
 	if m == nil {
 		return nil
 	}
-	reply, forward := m.Answer(query, e.visibleTo(src))
+	reply, forward := m.answerer(viaExit)(query, e.visibleTo(src))
 	if reply == nil || !forward {
 		return reply
 	}
