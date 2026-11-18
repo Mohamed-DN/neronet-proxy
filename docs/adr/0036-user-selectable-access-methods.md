@@ -112,5 +112,9 @@ What the console stores and sends, so the gateway can be built against it:
   pairwise non-overlapping, at most 2147483647 (the console generates inside 5..2147483647). S1–S4 and H1–H4 must equal the profile's values; Jc/Jmin/Jmax shape what
   a sender emits and need not.
 - **Removed.** The fixed-header sketch `pkg/dataplane/stealth` and everything that referenced it.
-- **Not covered yet.** Exit clients (ADR 0032) on AmneziaWG; the profile's MTU should be at most
-  1420 minus S4 so a full-size packet does not fragment on a 1500 path.
+- **MTU.** S4 pads every data message: the console writes `MTU = 1420 - S4` into each AmneziaWG
+  profile, so a full-size packet still fits a 1500-byte path and TCP announces a matching MSS.
+- **Listener port.** The overlay makes the container listen on `NERONET_AWG_PORT`, the same port it
+  publishes, because the port the gateway reports is the one the console writes into profiles.
+- **Not covered yet.** Exit clients (ADR 0032) on AmneziaWG: an AmneziaWG device that sends
+  internet-bound traffic gets no exit path.
