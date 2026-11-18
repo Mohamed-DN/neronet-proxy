@@ -62,6 +62,8 @@
   },
   "actionFailed": "This was not completed. Try again shortly.",
   "detail": {
+    "pick": "Choose a device to see its details here.",
+    "list": "Devices",
     "gatewayLocked": "This device is a gateway for WireGuard profiles. Revoking it would disconnect the devices it serves. Move them to another gateway and remove this one from the gateways in Settings first.",
     "description": "Details for one device: security checks, addresses, a connection test, and actions to block it or disconnect it.",
     "alert": "This device is blocked and cannot communicate with any other device on the network.",

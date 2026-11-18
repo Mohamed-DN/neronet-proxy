@@ -90,11 +90,6 @@
     "body": "Questo indirizzo non appartiene alla console. Potrebbe essere stato rinominato, oppure il collegamento e sbagliato.",
     "back": "Vai alla panoramica"
   },
-  "narrow": {
-    "title": "Usa una finestra più larga",
-    "body": "La console di amministrazione richiede una finestra larga almeno 1024 pixel. Da telefono puoi gestire i tuoi dispositivi dal tuo spazio personale.",
-    "portalLink": "Apri i miei dispositivi"
-  },
   "page": {
     "title": "{{page}} - NeroNet",
     "loading": "Caricamento della pagina",

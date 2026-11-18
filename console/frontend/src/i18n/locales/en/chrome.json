@@ -90,11 +90,6 @@
     "body": "This address does not belong to the console. It may have been renamed, or the link may be wrong.",
     "back": "Go to the overview"
   },
-  "narrow": {
-    "title": "Use a wider window",
-    "body": "The admin console needs a window at least 1024 pixels wide. On a phone you can manage your own devices from your personal space.",
-    "portalLink": "Open my devices"
-  },
   "page": {
     "title": "{{page}} - NeroNet",
     "loading": "Loading the page",

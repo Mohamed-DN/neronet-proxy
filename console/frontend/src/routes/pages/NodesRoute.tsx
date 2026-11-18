@@ -34,7 +34,10 @@ import { Stat } from '../../ui/Stat';
 import { Segmented } from '../../ui/Segmented';
 import { STATION_TONE, StationSymbol, type StationKind } from '../../ui/StationSymbol';
 import { StatusBadge } from '../../ui/StatusBadge';
+import { ResponsiveDetail } from '../../ui/ResponsiveDetail';
+import { StationRow, StationRowList } from '../../ui/StationRow';
 import { Table, type TableColumn } from '../../ui/Table';
+import { useLayoutSize } from '../../ui/useLayoutSize';
 
 export type FilterKey = 'ALL' | 'ACTIVE' | 'QUARANTINED' | 'UNVERIFIED' | 'HIGH_RISK';
 
@@ -63,6 +66,7 @@ export default function NodesRoute() {
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>();
   const shell = useShell();
+  const size = useLayoutSize();
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterKey>('ALL');
@@ -331,301 +335,332 @@ export default function NodesRoute() {
     HIGH_RISK: t('filter.highRisk')
   };
 
-  return (
-    <PageFrame>
-      <div className="flex flex-col gap-6">
-        <PageHeader
-          title={t('title')}
-          description={t('description')}
-          primaryAction={
-            <Button variant="primary" onClick={shell.openEnroll}>
-              {t('addDevice')}
-            </Button>
-          }
-        />
+  const lead = (
+    <>
+      <PageHeader
+        title={t('title')}
+        description={t('description')}
+        primaryAction={
+          <Button variant="primary" onClick={shell.openEnroll}>
+            {t('addDevice')}
+          </Button>
+        }
+      />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Stat label={t('counts.total')} value={counts.total} />
-          <Stat label={t('counts.reachable')} value={counts.reachable} />
-          <div className="relative">
-            <Stat label={t('counts.blocked')} value={counts.quarantined} />
-            <GlossaryHint className="absolute right-0 top-0" term="quarantine" />
-          </div>
-          <div className="relative">
-            <Stat label={t('counts.unverified')} value={unverifiedCount} />
-            <GlossaryHint className="absolute right-0 top-0" term="posture" />
-          </div>
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
+        <Stat label={t('counts.total')} value={counts.total} />
+        <Stat label={t('counts.reachable')} value={counts.reachable} />
+        <div className="relative">
+          <Stat label={t('counts.blocked')} value={counts.quarantined} />
+          <GlossaryHint className="absolute right-0 top-0" term="quarantine" />
         </div>
-
-        {allUnverified && (
-          <p data-testid="all-unverified-note" className="text-caption text-muted">
-            {t('posture.allUnverified')}
-          </p>
-        )}
-
-        <Card className="p-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t('searchPlaceholder')}
-                className="pl-9"
-              />
-            </div>
-
-            <Segmented
-              label={t('filter.label')}
-              value={filter}
-              onChange={setFilter}
-              options={FILTER_KEYS.map((key) => ({ value: key, label: filterLabels[key] }))}
-            />
-          </div>
-        </Card>
-
-        {nodesQuery.isLoading ? (
-          <Card className="p-6">
-            <Skeleton lines={6} />
-          </Card>
-        ) : nodesQuery.isError ? (
-          <ErrorState
-            title={t('loadFailed.title')}
-            body={t('loadFailed.body')}
-            error={nodesQuery.error}
-            onRetry={() => void nodesQuery.refetch()}
-          />
-        ) : nodes.length === 0 ? (
-          <Card className="p-8">
-            <EmptyState
-              title={t('empty.title')}
-              body={t('empty.body')}
-              action={
-                <Button variant="secondary" onClick={shell.openEnroll}>
-                  {t('addDevice')}
-                </Button>
-              }
-            />
-          </Card>
-        ) : filteredNodes.length === 0 ? (
-          <FilteredEmptyState
-            title={t('filtered.title')}
-            body={t('filtered.body')}
-            resetLabel={t('filtered.reset')}
-            onReset={resetFilters}
-          />
-        ) : (
-          <Card className="p-0 overflow-hidden">
-            <Table columns={columns} rows={filteredNodes} rowKey={(n) => n.id} caption={t('title')} density="signage" />
-          </Card>
-        )}
+        <div className="relative">
+          <Stat label={t('counts.unverified')} value={unverifiedCount} />
+          <GlossaryHint className="absolute right-0 top-0" term="posture" />
+        </div>
       </div>
 
-      <Dialog
-        open={Boolean(id)}
-        onOpenChange={(open) => {
-          if (!open) handleCloseDetail();
-        }}
-        title={selectedNode?.name || selectedNode?.hostname || id || t('detail.title')}
-        description={t('detail.description')}
-        size="lg"
-      >
-        {selectedNodeQuery.isLoading ? (
-          <Skeleton lines={6} />
-        ) : selectedNodeQuery.isError ? (
-          <ErrorState
-            body={t('detail.loadFailed')}
-            error={selectedNodeQuery.error}
-            onRetry={() => void selectedNodeQuery.refetch()}
+      {allUnverified && (
+        <p data-testid="all-unverified-note" className="text-caption text-muted">
+          {t('posture.allUnverified')}
+        </p>
+      )}
+
+      <Card className="p-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('searchPlaceholder')}
+              className="pl-9"
+            />
+          </div>
+
+          <Segmented
+            label={t('filter.label')}
+            value={filter}
+            onChange={setFilter}
+            options={FILTER_KEYS.map((key) => ({ value: key, label: filterLabels[key] }))}
           />
-        ) : selectedNode ? (
-          <div className="flex flex-col gap-6 py-2">
-            {selectedNode.is_quarantined ? (
-              <div
-                role="status"
-                className="p-4 rounded-plate bg-danger-subtle border border-danger/30 text-danger flex flex-col gap-1.5"
-              >
-                <div className="flex items-center gap-2 font-semibold">
-                  <ShieldAlert className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
-                  <span>{t('detail.alert')}</span>
-                </div>
-                {selectedNode.quarantine_reason && (
-                  <p className="text-sm opacity-90 pl-7">
-                    <span className="font-medium">{t('detail.reason')}:</span> {selectedNode.quarantine_reason}
-                  </p>
+        </div>
+      </Card>
+    </>
+  );
+
+  const list = (
+    <>
+      {nodesQuery.isLoading ? (
+        <Card className="p-6">
+          <Skeleton lines={6} />
+        </Card>
+      ) : nodesQuery.isError ? (
+        <ErrorState
+          title={t('loadFailed.title')}
+          body={t('loadFailed.body')}
+          error={nodesQuery.error}
+          onRetry={() => void nodesQuery.refetch()}
+        />
+      ) : nodes.length === 0 ? (
+        <Card className="p-8">
+          <EmptyState
+            title={t('empty.title')}
+            body={t('empty.body')}
+            action={
+              <Button variant="secondary" onClick={shell.openEnroll}>
+                {t('addDevice')}
+              </Button>
+            }
+          />
+        </Card>
+      ) : filteredNodes.length === 0 ? (
+        <FilteredEmptyState
+          title={t('filtered.title')}
+          body={t('filtered.body')}
+          resetLabel={t('filtered.reset')}
+          onReset={resetFilters}
+        />
+      ) : size === 'desktop' ? (
+        <Card className="p-0 overflow-hidden">
+          <Table columns={columns} rows={filteredNodes} rowKey={(n) => n.id} caption={t('title')} density="signage" />
+        </Card>
+      ) : (
+        // Tablet and phone: a station row per device, the whole row opens it.
+        <StationRowList label={t('detail.list')}>
+          {filteredNodes.map((n) => {
+            const { kind, word } = stationOf(n);
+            return (
+              <StationRow
+                key={n.id}
+                kind={kind}
+                title={n.name || n.hostname || n.id}
+                meta={n.overlay_ipv4 ? `${word} · ${n.overlay_ipv4}` : word}
+                selected={n.id === id}
+                onSelect={() => handleOpenDetail(n.id)}
+              />
+            );
+          })}
+        </StationRowList>
+      )}
+    </>
+  );
+
+  const detail = (
+    <>
+      {selectedNodeQuery.isLoading ? (
+        <Skeleton lines={6} />
+      ) : selectedNodeQuery.isError ? (
+        <ErrorState
+          body={t('detail.loadFailed')}
+          error={selectedNodeQuery.error}
+          onRetry={() => void selectedNodeQuery.refetch()}
+        />
+      ) : selectedNode ? (
+        <div className="flex flex-col gap-6 py-2">
+          {selectedNode.is_quarantined ? (
+            <div
+              role="status"
+              className="p-4 rounded-plate bg-danger-subtle border border-danger/30 text-danger flex flex-col gap-1.5"
+            >
+              <div className="flex items-center gap-2 font-semibold">
+                <ShieldAlert className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+                <span>{t('detail.alert')}</span>
+              </div>
+              {selectedNode.quarantine_reason && (
+                <p className="text-sm opacity-90 pl-7">
+                  <span className="font-medium">{t('detail.reason')}:</span> {selectedNode.quarantine_reason}
+                </p>
+              )}
+            </div>
+          ) : null}
+
+          <Card className="p-4">
+            <CardHeader
+              as="h2"
+              title={t('detail.securityChecks')}
+              actions={
+                selectedNode.posture_status === 'verified_compliant' ? (
+                  <StatusBadge status="ok" label={t('posture.passed')} />
+                ) : selectedNode.posture_status === 'non_compliant' ? (
+                  <StatusBadge status="critical" label={t('posture.failed')} />
+                ) : (
+                  <span data-state="not-measured">
+                    <StatusBadge status="not-measured" label={t('posture.unverified')} />
+                  </span>
+                )
+              }
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 text-sm">
+              <div>
+                <span className="text-muted block text-xs">{t('detail.diskEncrypted')}</span>
+                <span className="font-medium">
+                  {formatCheck(
+                    selectedNode.posture_checks?.disk_encrypted,
+                    t('detail.yes'),
+                    t('detail.no'),
+                    t('detail.notReported')
+                  )}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-muted block text-xs">{t('detail.firewall')}</span>
+                <span className="font-medium">
+                  {formatCheck(
+                    selectedNode.posture_checks?.firewall_active,
+                    t('detail.on'),
+                    t('detail.off'),
+                    t('detail.notReported')
+                  )}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-muted block text-xs">{t('detail.os')}</span>
+                {selectedNode.posture_checks?.os_name ? (
+                  <span className="font-medium">
+                    {selectedNode.posture_checks.os_name} {selectedNode.posture_checks.os_version || ''}
+                  </span>
+                ) : (
+                  <span className="text-muted">{t('detail.notReported')}</span>
                 )}
               </div>
-            ) : null}
 
-            <Card className="p-4">
-              <CardHeader
-                as="h2"
-                title={t('detail.securityChecks')}
-                actions={
-                  selectedNode.posture_status === 'verified_compliant' ? (
-                    <StatusBadge status="ok" label={t('posture.passed')} />
-                  ) : selectedNode.posture_status === 'non_compliant' ? (
-                    <StatusBadge status="critical" label={t('posture.failed')} />
-                  ) : (
-                    <span data-state="not-measured">
-                      <StatusBadge status="not-measured" label={t('posture.unverified')} />
-                    </span>
-                  )
-                }
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 text-sm">
-                <div>
-                  <span className="text-muted block text-xs">{t('detail.diskEncrypted')}</span>
-                  <span className="font-medium">
-                    {formatCheck(
-                      selectedNode.posture_checks?.disk_encrypted,
-                      t('detail.yes'),
-                      t('detail.no'),
-                      t('detail.notReported')
-                    )}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-muted block text-xs">{t('detail.firewall')}</span>
-                  <span className="font-medium">
-                    {formatCheck(
-                      selectedNode.posture_checks?.firewall_active,
-                      t('detail.on'),
-                      t('detail.off'),
-                      t('detail.notReported')
-                    )}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-muted block text-xs">{t('detail.os')}</span>
-                  {selectedNode.posture_checks?.os_name ? (
-                    <span className="font-medium">
-                      {selectedNode.posture_checks.os_name} {selectedNode.posture_checks.os_version || ''}
-                    </span>
-                  ) : (
-                    <span className="text-muted">{t('detail.notReported')}</span>
-                  )}
-                </div>
-
-                <div>
-                  <span className="text-muted block text-xs">{t('detail.rootless')}</span>
-                  <span className="font-medium">
-                    {selectedNode.posture_checks?.is_rootless === true
-                      ? t('detail.yes')
-                      : selectedNode.posture_checks?.is_rootless === false
-                        ? t('detail.runsAsAdmin')
-                        : t('detail.notReported')}
-                  </span>
-                </div>
+              <div>
+                <span className="text-muted block text-xs">{t('detail.rootless')}</span>
+                <span className="font-medium">
+                  {selectedNode.posture_checks?.is_rootless === true
+                    ? t('detail.yes')
+                    : selectedNode.posture_checks?.is_rootless === false
+                      ? t('detail.runsAsAdmin')
+                      : t('detail.notReported')}
+                </span>
               </div>
-            </Card>
+            </div>
+          </Card>
 
-            <Card className="p-4">
-              <CardHeader as="h2" title={t('detail.kind')} />
-              <div className="flex flex-col gap-3 mt-3 text-sm">
-                <p className="font-medium">
-                  {isProfileGateway(selectedNode)
-                    ? t('kind.gateway')
-                    : selectedNode.device_kind === 'profile'
-                      ? t('kind.profile')
-                      : selectedNode.device_kind === 'mesh'
-                        ? t('kind.mesh')
-                        : t('detail.notReported')}
-                </p>
+          <Card className="p-4">
+            <CardHeader as="h2" title={t('detail.kind')} />
+            <div className="flex flex-col gap-3 mt-3 text-sm">
+              <p className="font-medium">
+                {isProfileGateway(selectedNode)
+                  ? t('kind.gateway')
+                  : selectedNode.device_kind === 'profile'
+                    ? t('kind.profile')
+                    : selectedNode.device_kind === 'mesh'
+                      ? t('kind.mesh')
+                      : t('detail.notReported')}
+              </p>
+              <div>
+                <span className="text-muted block text-xs">{t('detail.publicKey')}</span>
+                {selectedNode.public_key ? (
+                  <CodeText copyable>{selectedNode.public_key}</CodeText>
+                ) : (
+                  <span className="text-muted">—</span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <span className="text-muted block text-xs">{t('detail.publicKey')}</span>
-                  {selectedNode.public_key ? (
-                    <CodeText copyable>{selectedNode.public_key}</CodeText>
+                  <span className="text-muted block text-xs">{t('detail.address')}</span>
+                  {selectedNode.overlay_ipv4 ? (
+                    <CodeText copyable>{selectedNode.overlay_ipv4}</CodeText>
                   ) : (
                     <span className="text-muted">—</span>
                   )}
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-muted block text-xs">{t('detail.address')}</span>
-                    {selectedNode.overlay_ipv4 ? (
-                      <CodeText copyable>{selectedNode.overlay_ipv4}</CodeText>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-muted block text-xs">{t('detail.subnet')}</span>
-                    <span className="font-medium">{selectedNode.compartment_id || t('detail.defaultSubnet')}</span>
-                  </div>
+                <div>
+                  <span className="text-muted block text-xs">{t('detail.subnet')}</span>
+                  <span className="font-medium">{selectedNode.compartment_id || t('detail.defaultSubnet')}</span>
                 </div>
               </div>
-            </Card>
+            </div>
+          </Card>
 
-            {selectedNode.device_kind === 'profile' && <DeviceGatewayCard device={selectedNode} />}
+          {selectedNode.device_kind === 'profile' && <DeviceGatewayCard device={selectedNode} />}
 
-            <Card className="p-4">
-              <CardHeader as="h2" title={t('detail.connectionTest')} />
-              <div className="flex flex-wrap items-center justify-between gap-4 mt-3">
-                <Button variant="secondary" size="sm" onClick={handlePing} loading={pingMutation.isPending}>
-                  <Zap className="w-4 h-4 mr-2 text-warning" aria-hidden="true" />
-                  {pingMutation.isPending ? t('detail.testing') : t('detail.testButton')}
-                </Button>
+          <Card className="p-4">
+            <CardHeader as="h2" title={t('detail.connectionTest')} />
+            <div className="flex flex-wrap items-center justify-between gap-4 mt-3">
+              <Button variant="secondary" size="sm" onClick={handlePing} loading={pingMutation.isPending}>
+                <Zap className="w-4 h-4 mr-2 text-warning" aria-hidden="true" />
+                {pingMutation.isPending ? t('detail.testing') : t('detail.testButton')}
+              </Button>
 
-                {pingOutcome?.kind === 'replied' && (
-                  <span role="status" className="text-sm font-medium text-success">
-                    {t('detail.replied', { rtt: pingOutcome.rtt, jitter: pingOutcome.jitter })}
-                  </span>
-                )}
-                {pingOutcome?.kind === 'notMeasured' && (
-                  <span role="status" className="text-sm text-muted">
-                    {t('detail.notMeasured')}
-                  </span>
-                )}
-                {pingOutcome?.kind === 'failed' && (
-                  <span role="alert" className="text-sm font-medium text-danger">
-                    {t('detail.testFailed')}
-                  </span>
-                )}
-              </div>
-            </Card>
-
-            <Card className="p-4 border-danger/30">
-              <CardHeader as="h2" title={t('detail.actions')} />
-              <div className="flex flex-wrap items-center gap-3 mt-3">
-                {selectedNode.is_quarantined ? (
-                  <Button variant="secondary" onClick={handleLift} loading={liftQuarantineMutation.isPending}>
-                    <ShieldCheck className="w-4 h-4 mr-2 text-success" aria-hidden="true" />
-                    {t('detail.unblock')}
-                  </Button>
-                ) : (
-                  <Button variant="danger" onClick={() => setQuarantineDialogOpen(true)}>
-                    <ShieldAlert className="w-4 h-4 mr-2" aria-hidden="true" />
-                    {t('detail.block')}
-                  </Button>
-                )}
-
-                <Button
-                  variant="danger"
-                  disabled={isProfileGateway(selectedNode)}
-                  aria-describedby={isProfileGateway(selectedNode) ? 'gateway-revoke-locked' : undefined}
-                  onClick={() => setRevokeConfirmOpen(true)}
-                >
-                  {t('detail.revoke')}
-                </Button>
-              </div>
-              {isProfileGateway(selectedNode) && (
-                <p id="gateway-revoke-locked" className="mt-3 text-sm text-muted">
-                  {t('detail.gatewayLocked')}
-                </p>
+              {pingOutcome?.kind === 'replied' && (
+                <span role="status" className="text-sm font-medium text-success">
+                  {t('detail.replied', { rtt: pingOutcome.rtt, jitter: pingOutcome.jitter })}
+                </span>
               )}
-              {actionFailed && (
-                <p role="alert" className="mt-3 text-sm font-medium text-danger">
-                  {t('actionFailed')}
-                </p>
+              {pingOutcome?.kind === 'notMeasured' && (
+                <span role="status" className="text-sm text-muted">
+                  {t('detail.notMeasured')}
+                </span>
               )}
-            </Card>
-          </div>
-        ) : null}
-      </Dialog>
+              {pingOutcome?.kind === 'failed' && (
+                <span role="alert" className="text-sm font-medium text-danger">
+                  {t('detail.testFailed')}
+                </span>
+              )}
+            </div>
+          </Card>
+
+          <Card className="p-4 border-danger/30">
+            <CardHeader as="h2" title={t('detail.actions')} />
+            <div className="flex flex-wrap items-center gap-3 mt-3">
+              {selectedNode.is_quarantined ? (
+                <Button variant="secondary" onClick={handleLift} loading={liftQuarantineMutation.isPending}>
+                  <ShieldCheck className="w-4 h-4 mr-2 text-success" aria-hidden="true" />
+                  {t('detail.unblock')}
+                </Button>
+              ) : (
+                <Button variant="danger" onClick={() => setQuarantineDialogOpen(true)}>
+                  <ShieldAlert className="w-4 h-4 mr-2" aria-hidden="true" />
+                  {t('detail.block')}
+                </Button>
+              )}
+
+              <Button
+                variant="danger"
+                disabled={isProfileGateway(selectedNode)}
+                aria-describedby={isProfileGateway(selectedNode) ? 'gateway-revoke-locked' : undefined}
+                onClick={() => setRevokeConfirmOpen(true)}
+              >
+                {t('detail.revoke')}
+              </Button>
+            </div>
+            {isProfileGateway(selectedNode) && (
+              <p id="gateway-revoke-locked" className="mt-3 text-sm text-muted">
+                {t('detail.gatewayLocked')}
+              </p>
+            )}
+            {actionFailed && (
+              <p role="alert" className="mt-3 text-sm font-medium text-danger">
+                {t('actionFailed')}
+              </p>
+            )}
+          </Card>
+        </div>
+      ) : null}
+    </>
+  );
+
+  return (
+    <PageFrame>
+      <div className="flex flex-col gap-6">
+        <ResponsiveDetail
+          open={Boolean(id)}
+          onClose={handleCloseDetail}
+          title={selectedNode?.name || selectedNode?.hostname || id || t('detail.title')}
+          description={t('detail.description')}
+          lead={lead}
+          list={list}
+          placeholder={t('detail.pick')}
+        >
+          {detail}
+        </ResponsiveDetail>
+      </div>
 
       <Dialog
         open={quarantineDialogOpen}

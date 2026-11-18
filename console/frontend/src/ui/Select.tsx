@@ -54,7 +54,7 @@ export function Select({
         aria-describedby={field?.describedBy}
         aria-invalid={isInvalid || undefined}
         className={cn(
-          'inline-flex h-9 w-full items-center justify-between gap-2 rounded-control border bg-surface-raised px-3',
+          'inline-flex h-9 w-full items-center max-xl:h-11 justify-between gap-2 rounded-control border bg-surface-raised px-3',
           'text-body text-content focus-visible:outline-focus',
           'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-subtle',
           'data-[placeholder]:text-subtle',

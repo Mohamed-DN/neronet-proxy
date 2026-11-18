@@ -1,4 +1,6 @@
 {
+  "pickRule": "Choose a rule to read or change it here.",
+  "ruleList": "Rules",
   "title": "Access rules between devices",
   "description": "Decide which devices may talk to each other and on which ports; traffic no rule covers follows the default rule.",
   "addRule": "Add access rule",

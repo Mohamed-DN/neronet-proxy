@@ -34,7 +34,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-control transition-colors',
         'focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50',
-        size === 'sm' ? 'h-7 w-7' : 'h-9 w-9',
+        size === 'sm' ? 'h-7 w-7 max-xl:h-11 max-xl:w-11' : 'h-9 w-9 max-xl:h-11 max-xl:w-11',
         VARIANTS[variant],
         className
       )}

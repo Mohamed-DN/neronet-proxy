@@ -1,14 +1,24 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useLocation, useMatches } from 'react-router';
 
 import ConnectionStatus from '../components/ConnectionStatus';
+import { BottomTabBar, PhoneTopBar } from '../components/PhoneBars';
+import TabletBar from '../components/TabletBar';
 import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { fleetCounts, useFeatures, useLiveUpdates, useNodes } from '../services/queries';
-import { BreadcrumbContext, ConfirmDialog, Skeleton, SkipLink, useToast, type Breadcrumb } from '../ui';
-import { NarrowWindow, useIsWideEnough } from './NarrowWindow';
+import {
+  BreadcrumbContext,
+  ConfirmDialog,
+  Skeleton,
+  SkipLink,
+  cn,
+  useLayoutSize,
+  useToast,
+  type Breadcrumb
+} from '../ui';
 import { locate } from './navModel';
 import { useShell } from './shell';
 
@@ -61,7 +71,23 @@ export function RootLayout() {
   const features = useFeatures();
   const nodes = useNodes();
   const shell = useShell();
-  const wide = useIsWideEnough();
+  const size = useLayoutSize();
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // The bar at the top is sticky and its height depends on the size and on how its
+  // status line wraps. Whatever sticks under it (the phone's detail header, the
+  // tablet's detail column) reads the height from here rather than guessing it.
+  useEffect(() => {
+    const root = rootRef.current;
+    const bar = root?.querySelector<HTMLElement>('[data-shell-topbar]');
+    if (!root || !bar) return;
+    const apply = () => root.style.setProperty('--top-bar-height', `${bar.offsetHeight}px`);
+    apply();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(apply);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [size]);
   const { notify } = useToast();
   const [wipeOpen, setWipeOpen] = useState(false);
   const [wipeBusy, setWipeBusy] = useState(false);
@@ -97,30 +123,50 @@ export function RootLayout() {
     await logout();
   };
 
-  // Below 1024 px the admin pages are not offered at all: the notice replaces
-  // the whole shell so no bar sits over it.
-  if (!wide) return <NarrowWindow />;
+  const bar = {
+    features: features.data ?? { cloud_pc: false },
+    nodeCount: counts.total,
+    reachableCount: counts.reachable,
+    quarantinedCount: counts.quarantined,
+    highRiskCount: counts.highRisk,
+    nukeArmed: shell.nukeArmed,
+    nukeScheduledAt: shell.nukeScheduledAt,
+    onExecuteWipe: () => setWipeOpen(true),
+    onOpenEnrollModal: shell.openEnroll
+  };
+  const Bar = size === 'phone' ? PhoneTopBar : size === 'tablet' ? TabletBar : TopBar;
 
   return (
-    <div data-shell-root className="bg-surface font-sans text-content">
+    <div
+      ref={rootRef}
+      data-shell-root
+      data-layout={size}
+      // The phone's tab bar is fixed; pages and the sticky action bar clear it by this much.
+      style={
+        size === 'phone'
+          ? ({ '--bottom-nav-height': 'calc(3.5rem + env(safe-area-inset-bottom))' } as React.CSSProperties)
+          : undefined
+      }
+      className="bg-surface font-sans text-content"
+    >
       {/* First stop in the tab order: past the whole top bar, to the page. */}
       <SkipLink />
 
-      <TopBar
-        features={features.data ?? { cloud_pc: false }}
-        nodeCount={counts.total}
-        reachableCount={counts.reachable}
-        quarantinedCount={counts.quarantined}
-        highRiskCount={counts.highRisk}
-        nukeArmed={shell.nukeArmed}
-        nukeScheduledAt={shell.nukeScheduledAt}
-        onExecuteWipe={() => setWipeOpen(true)}
-        onOpenEnrollModal={shell.openEnroll}
-      />
+      <Bar {...bar} />
 
       {/* tabIndex -1 so the skip link moves focus here and not only the
           viewport. Left-aligned on the grid, 1360 px at most. */}
-      <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1360px] p-6 focus-visible:outline-focus">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className={cn(
+          'mx-auto w-full max-w-[1360px] focus-visible:outline-focus',
+          size === 'desktop' && 'p-6',
+          size === 'tablet' && 'p-5',
+          // Room under the page for the tab bar and for the action bar above it.
+          size === 'phone' && 'overflow-x-clip px-4 pb-[calc(var(--bottom-nav-height)+5rem)] pt-4'
+        )}
+      >
         <div className="mb-4">
           <ConnectionStatus />
         </div>
@@ -162,6 +208,8 @@ export function RootLayout() {
           </p>
         )}
       </ConfirmDialog>
+
+      {size === 'phone' && <BottomTabBar {...bar} />}
 
       {shell.enrollOpen && (
         <Suspense fallback={null}>

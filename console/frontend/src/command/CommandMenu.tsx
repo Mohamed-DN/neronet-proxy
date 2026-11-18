@@ -77,7 +77,7 @@ export default function CommandMenu({ onAddDevice }: CommandMenuProps) {
         onClick={() => setOpen(true)}
         aria-label={t('open')}
         aria-haspopup="dialog"
-        className="inline-flex min-h-9 items-center justify-center gap-2 rounded-control border border-border bg-surface-sunken px-2.5 text-caption text-muted transition-colors hover:text-content focus-visible:outline-focus"
+        className="inline-flex min-h-9 max-xl:min-h-11 max-xl:min-w-11 items-center justify-center gap-2 rounded-control border border-border bg-surface-sunken px-2.5 text-caption text-muted transition-colors hover:text-content focus-visible:outline-focus"
       >
         <Search aria-hidden="true" className="h-3.5 w-3.5" />
         <span className="hidden xl:inline">{t('trigger')}</span>

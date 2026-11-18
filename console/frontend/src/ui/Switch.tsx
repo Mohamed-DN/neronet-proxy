@@ -42,6 +42,8 @@ export function Switch({ checked, onCheckedChange, label, description, disabled 
       aria-describedby={[field?.describedBy, descriptionId].filter(Boolean).join(' ') || undefined}
       className={cn(
         'relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-pill border transition-colors',
+        // The switch stays small; its touch area grows to 52 x 48 px under 1280 px.
+        "max-xl:after:absolute max-xl:after:-inset-x-2 max-xl:after:-inset-y-3.5 max-xl:after:content-['']",
         'focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50',
         'data-[state=checked]:border-accent data-[state=checked]:bg-accent',
         'data-[state=unchecked]:border-border-strong data-[state=unchecked]:bg-surface-sunken',

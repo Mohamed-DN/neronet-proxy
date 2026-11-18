@@ -71,11 +71,16 @@ export function Dialog({
             'fixed left-1/2 top-1/2 z-overlay w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2',
             'rounded-card border border-border bg-surface-raised shadow-overlay',
             'max-h-[calc(100vh-4rem)] overflow-y-auto',
+            // A phone gets a full-screen sheet: the header and the actions stay
+            // in reach while the body scrolls between them.
+            'max-md:left-0 max-md:top-0 max-md:h-dvh max-md:max-h-none max-md:w-full max-md:max-w-none',
+            'max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-none max-md:border-0',
+            'max-md:flex max-md:flex-col',
             SIZES[size],
             className
           )}
         >
-          <div className="flex items-start justify-between gap-4 border-b border-border-subtle p-4">
+          <div className="flex items-start justify-between gap-4 border-b border-border-subtle p-4 max-md:sticky max-md:top-0 max-md:z-sticky max-md:bg-surface-raised">
             <div className="min-w-0">
               <RadixDialog.Title className="text-heading font-semibold text-content">{title}</RadixDialog.Title>
               {description ? (
@@ -88,15 +93,19 @@ export function Dialog({
             </div>
             <RadixDialog.Close
               aria-label={t('dialog.close')}
-              className="rounded-control p-1 text-muted transition-colors hover:bg-surface-hover hover:text-content focus-visible:outline-focus"
+              className="inline-flex items-center justify-center rounded-control p-1 text-muted transition-colors hover:bg-surface-hover hover:text-content focus-visible:outline-focus max-xl:h-11 max-xl:w-11"
             >
               <X aria-hidden="true" className="h-4 w-4" />
             </RadixDialog.Close>
           </div>
 
-          {children && <div className="p-4">{children}</div>}
+          {children && <div className="p-4 max-md:flex-1">{children}</div>}
 
-          {footer && <div className="flex justify-end gap-2 border-t border-border-subtle p-4">{footer}</div>}
+          {footer && (
+            <div className="flex justify-end gap-2 border-t border-border-subtle p-4 max-md:sticky max-md:bottom-0 max-md:z-sticky max-md:bg-surface-raised max-md:pb-[calc(1rem+env(safe-area-inset-bottom))]">
+              {footer}
+            </div>
+          )}
         </RadixDialog.Content>
       </RadixDialog.Portal>
     </RadixDialog.Root>

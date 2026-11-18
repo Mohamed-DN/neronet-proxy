@@ -1,6 +1,8 @@
 import { createContext, useContext } from 'react';
 
 import { cn } from './cn';
+import { StickyActionBar } from './StickyActionBar';
+import { useLayoutSize } from './useLayoutSize';
 
 /**
  * Where the current page sits in the navigation: "Network", "Map". The shell
@@ -34,39 +36,46 @@ export interface PageHeaderProps {
 export function PageHeader({ title, description, actions, primaryAction, meta, className }: PageHeaderProps) {
   const breadcrumb = useContext(BreadcrumbContext);
   const trail = breadcrumb && breadcrumb.trail.length > 1 ? breadcrumb : null;
+  // On a phone the page's one primary action leaves the header for a bar above the tab bar.
+  const phone = useLayoutSize() === 'phone';
 
   return (
-    <header className={cn('mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-rule pb-4', className)}>
-      <div className="min-w-0">
-        {trail && (
-          <nav aria-label={trail.label} className="mb-1">
-            <ol className="flex flex-wrap items-center gap-1.5 text-caption text-muted">
-              {trail.trail.map((step, index) => {
-                const last = index === trail.trail.length - 1;
-                return (
-                  <li key={`${index}-${step}`} className="flex items-center gap-1.5">
-                    <span aria-current={last ? 'page' : undefined} className={cn(last && 'font-medium text-content')}>
-                      {step}
-                    </span>
-                    {!last && <span aria-hidden="true">&rsaquo;</span>}
-                  </li>
-                );
-              })}
-            </ol>
-          </nav>
+    <>
+      <header
+        className={cn('mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-rule pb-4', className)}
+      >
+        <div className="min-w-0">
+          {trail && (
+            <nav aria-label={trail.label} className="mb-1">
+              <ol className="flex flex-wrap items-center gap-1.5 text-caption text-muted">
+                {trail.trail.map((step, index) => {
+                  const last = index === trail.trail.length - 1;
+                  return (
+                    <li key={`${index}-${step}`} className="flex items-center gap-1.5">
+                      <span aria-current={last ? 'page' : undefined} className={cn(last && 'font-medium text-content')}>
+                        {step}
+                      </span>
+                      {!last && <span aria-hidden="true">&rsaquo;</span>}
+                    </li>
+                  );
+                })}
+              </ol>
+            </nav>
+          )}
+          <div className="flex items-center gap-2">
+            <h1 className="truncate text-display font-semibold text-content">{title}</h1>
+            {meta}
+          </div>
+          {description && <p className="mt-1 max-w-[65ch] text-body text-muted">{description}</p>}
+        </div>
+        {(actions || (primaryAction && !phone)) && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2 max-md:w-full">
+            {actions}
+            {!phone && primaryAction}
+          </div>
         )}
-        <div className="flex items-center gap-2">
-          <h1 className="truncate text-display font-semibold text-content">{title}</h1>
-          {meta}
-        </div>
-        {description && <p className="mt-1 max-w-[65ch] text-body text-muted">{description}</p>}
-      </div>
-      {(actions || primaryAction) && (
-        <div className="flex shrink-0 items-center gap-2">
-          {actions}
-          {primaryAction}
-        </div>
-      )}
-    </header>
+      </header>
+      {phone && primaryAction && <StickyActionBar>{primaryAction}</StickyActionBar>}
+    </>
   );
 }

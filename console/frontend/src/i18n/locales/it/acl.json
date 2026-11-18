@@ -1,4 +1,6 @@
 {
+  "pickRule": "Scegli una regola per leggerla o modificarla qui.",
+  "ruleList": "Regole",
   "title": "Regole di accesso tra dispositivi",
   "description": "Decidi quali dispositivi possono comunicare e su quali porte; il traffico che nessuna regola copre segue la regola predefinita.",
   "addRule": "Aggiungi regola di accesso",

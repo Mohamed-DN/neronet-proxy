@@ -62,6 +62,8 @@
   },
   "actionFailed": "L'operazione non è stata completata. Riprova tra poco.",
   "detail": {
+    "pick": "Scegli un dispositivo per vederne qui i dettagli.",
+    "list": "Dispositivi",
     "gatewayLocked": "Questo dispositivo è un gateway dei profili WireGuard. Revocarlo scollegherebbe i dispositivi che serve. Prima spostali su un altro gateway e toglilo dai gateway in Impostazioni.",
     "description": "Scheda di un singolo dispositivo: controlli di sicurezza, indirizzi, una verifica di collegamento e le azioni per bloccarlo o disconnetterlo.",
     "alert": "Questo dispositivo è bloccato e non può comunicare con nessun altro dispositivo della rete.",

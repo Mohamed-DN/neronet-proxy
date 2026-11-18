@@ -8,4 +8,4 @@ export const MENU_CONTENT =
   'min-w-56 rounded-plate border border-border bg-plate p-1 text-body text-ink shadow-overlay';
 
 export const MENU_ITEM =
-  'option-ring flex cursor-default select-none items-center gap-2 rounded-control px-3 py-2 text-body text-ink outline-none hover:bg-surface-hover focus-visible:bg-surface-hover';
+  'option-ring flex min-h-11 cursor-default xl:min-h-0 select-none items-center gap-2 rounded-control px-3 py-2 text-body text-ink outline-none hover:bg-surface-hover focus-visible:bg-surface-hover';
