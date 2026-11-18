@@ -1,0 +1,146 @@
+{
+  "enter": "Modifica la mappa",
+  "enterHint": "Cambia colori, ordine e dispositivi delle linee.",
+  "banner": "Stai modificando la rete: le modifiche cambiano chi raggiunge chi.",
+  "done": "Fine",
+  "newLine": "Nuova linea",
+  "collapsedNote": "Ci sono molti dispositivi, quindi ogni linea è una sola fermata. Puoi comunque rinominare, colorare, riordinare e unire le linee; per spostare dispositivi usa l'elenco sotto la mappa.",
+  "keyboardHint": "Scegli i dispositivi con Invio o Spazio, poi usa «Sposta su…». Trascinare è facoltativo.",
+  "selection": {
+    "count_one": "{{count}} dispositivo scelto",
+    "count_other": "{{count}} dispositivi scelti",
+    "move": "Sposta su…",
+    "split": "Taglia in una nuova linea",
+    "splitNeedsOne": "Per tagliare scegli dispositivi di una sola linea.",
+    "clear": "Deseleziona",
+    "chooseHint": "Scegli uno o più dispositivi per spostarli o tagliarli in una nuova linea."
+  },
+  "station": {
+    "chosen": "{{description}}, scelto",
+    "notChosen": "{{description}}, non scelto"
+  },
+  "line": {
+    "edit": "{{name}}: modifica la linea",
+    "empty": "Nessun dispositivo: trascina qui un dispositivo o usa «Sposta su…».",
+    "none": "Senza sotto-rete",
+    "devices_one": "{{count}} dispositivo",
+    "devices_other": "{{count}} dispositivi",
+    "automatic": "Automatico",
+    "defaultLine": "Linea predefinita"
+  },
+  "lineMenu": {
+    "title": "Linea {{name}}",
+    "description": "Cambiare una linea non sposta i dispositivi, tranne unire ed eliminare.",
+    "name": "Nome",
+    "rename": "Rinomina",
+    "nameRequired": "Scrivi un nome per la linea.",
+    "nameInUse": "Esiste già una linea con questo nome. Scegline un altro.",
+    "colour": "Colore della linea",
+    "colourHint": "Il colore serve solo a riconoscere la linea sulla mappa.",
+    "order": "Posizione",
+    "position": "Posizione {{position}} di {{total}}",
+    "up": "Sposta su",
+    "down": "Sposta giù",
+    "merge": "Unisci a un'altra linea",
+    "mergeInto": "Unisci in",
+    "mergeAction": "Unisci…",
+    "mergeNone": "Non c'è un'altra linea in cui unirla.",
+    "delete": "Elimina la linea",
+    "deleteAction": "Elimina…",
+    "deleteDefault": "La linea predefinita non si può eliminare.",
+    "close": "Chiudi"
+  },
+  "colourName": {
+    "red": "Rosso",
+    "green": "Verde",
+    "blue": "Blu",
+    "orange": "Arancione",
+    "violet": "Viola",
+    "sky": "Azzurro"
+  },
+  "merge": {
+    "title": "Unire {{from}} a {{into}}?",
+    "description": "I dispositivi di {{from}} passano su {{into}} e la linea {{from}} sparisce. Non si può annullare.",
+    "devices_one": "{{count}} dispositivo passa su {{into}}.",
+    "devices_other": "{{count}} dispositivi passano su {{into}}.",
+    "droppedNone": "Nessun collegamento tra linee viene rimosso.",
+    "dropped_one": "Viene rimosso 1 collegamento tra linee: con {{peers}}.",
+    "dropped_other": "Vengono rimossi {{count}} collegamenti tra linee: con {{peers}}.",
+    "confirm": "Unisci le linee"
+  },
+  "delete": {
+    "title": "Eliminare la linea {{name}}?",
+    "description": "La linea sparisce con i suoi collegamenti verso altre linee. I suoi dispositivi tornano alla linea predefinita. Non si può annullare.",
+    "confirm": "Elimina la linea",
+    "devices_one": "{{count}} dispositivo torna alla linea predefinita.",
+    "devices_other": "{{count}} dispositivi tornano alla linea predefinita."
+  },
+  "move": {
+    "pickTitle": "Sposta su…",
+    "pickDescription": "Scegli la linea. Prima di spostare vedrai chi raggiungerà chi.",
+    "pickList": "Linee",
+    "title": "Sposta su {{line}}",
+    "description": "Spostare cambia chi raggiunge chi. Controlla l'anteprima prima di confermare.",
+    "loading": "Calcolo cosa cambia…",
+    "error": "Non riesco a calcolare l'anteprima: {{message}}",
+    "retry": "Riprova",
+    "back": "Scegli un'altra linea",
+    "confirm": "Sposta",
+    "ignored_one": "{{count}} elemento non si può spostare e viene ignorato.",
+    "ignored_other": "{{count}} elementi non si possono spostare e vengono ignorati.",
+    "pairs": "In tutto {{gains}} coppie di dispositivi iniziano a raggiungersi e {{losses}} smettono.",
+    "moreDevices": "e altri {{count}} dispositivi spostati"
+  },
+  "preview": {
+    "gain_one": "raggiungerà {{count}} dispositivo in più",
+    "gain_other": "raggiungerà {{count}} dispositivi in più",
+    "loss_one": "non raggiungerà più {{count}} dispositivo",
+    "loss_other": "non raggiungerà più {{count}} dispositivi",
+    "join": " e ",
+    "sentence": "{{name}} {{what}}.",
+    "same": "{{name}} continuerà a raggiungere gli stessi dispositivi.",
+    "gainNames": "In più: {{names}}",
+    "lossNames": "Non più: {{names}}",
+    "andMore": "e altri {{count}}",
+    "list": "Cosa cambia per ogni dispositivo"
+  },
+  "split": {
+    "title": "Taglia in una nuova linea",
+    "description": "I dispositivi scelti lasciano {{from}} e formano una linea nuova. Controlla l'anteprima prima di confermare.",
+    "devices": "Dispositivi da tagliare",
+    "name": "Nome della nuova linea",
+    "colour": "Colore",
+    "confirm": "Taglia la linea",
+    "notInheritedNone": "La nuova linea parte senza collegamenti, e {{from}} non ne aveva.",
+    "notInherited_one": "La nuova linea parte senza collegamenti: 1 collegamento di {{from}} non viene ereditato, con {{peers}}.",
+    "notInherited_other": "La nuova linea parte senza collegamenti: {{count}} collegamenti di {{from}} non vengono ereditati, con {{peers}}."
+  },
+  "create": {
+    "title": "Nuova linea",
+    "description": "Dai un nome e un colore alla linea. Puoi spostarci subito dei dispositivi.",
+    "name": "Nome della linea",
+    "colour": "Colore",
+    "devices": "Dispositivi da spostare (facoltativo)",
+    "devicesHint": "Prima di spostarli vedrai chi raggiungerà chi.",
+    "confirm": "Crea la linea"
+  },
+  "toast": {
+    "renamed": "Linea rinominata",
+    "recoloured": "Colore della linea cambiato",
+    "reordered": "Linee riordinate",
+    "moved": "Spostato su {{line}}",
+    "movedMany": "{{count}} dispositivi spostati su {{line}}",
+    "split": "Nuova linea {{name}} creata",
+    "merged": "Linea unita a {{into}}",
+    "mergedDropped_one": "Linea unita a {{into}}. Rimosso 1 collegamento.",
+    "mergedDropped_other": "Linea unita a {{into}}. Rimossi {{count}} collegamenti.",
+    "deleted": "Linea eliminata",
+    "created": "Linea {{name}} creata",
+    "failed": "Non è andata: {{message}}"
+  },
+  "panel": {
+    "title": "Linee e dispositivi",
+    "description": "Scegli i dispositivi con le caselle, poi spostali o tagliali in una nuova linea. Il nome di una linea apre le sue impostazioni."
+  },
+  "cancel": "Annulla"
+}
