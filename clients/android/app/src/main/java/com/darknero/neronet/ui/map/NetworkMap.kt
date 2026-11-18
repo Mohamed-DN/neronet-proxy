@@ -61,6 +61,7 @@ private fun NnPalette.color(role: ColorRole): Color = when (role) {
     ColorRole.RELIEF -> relief
     ColorRole.SIGNAL -> signal
     ColorRole.ON_SIGNAL -> onSignal
+    ColorRole.PROGRESS -> progress
     ColorRole.CONNECTED -> connected
     ColorRole.ON_CONNECTED -> onConnected
     ColorRole.ALARM -> alarm
@@ -177,7 +178,7 @@ fun NetworkMap(
                     if (progress < 1f) {
                         val radius = (PULSE_START + (PULSE_END - PULSE_START) * progress) * s
                         drawCircle(
-                            color = palette.signal.copy(alpha = PULSE_ALPHA * (1f - progress)),
+                            color = palette.progress.copy(alpha = PULSE_ALPHA * (1f - progress)),
                             radius = radius,
                             center = centre,
                             style = DrawStroke(width = 2.dp.toPx()),

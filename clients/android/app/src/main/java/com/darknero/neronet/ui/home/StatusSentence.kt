@@ -106,7 +106,7 @@ private fun ErrorAction.labelRes(): Int = when (this) {
 
 private fun NnPalette.toneColor(tone: StatusTone): Color = when (tone) {
     StatusTone.NEUTRAL -> ink
-    StatusTone.SIGNAL -> signal
+    StatusTone.SIGNAL -> progress
     StatusTone.CONNECTED -> connected
     StatusTone.ALARM -> alarm
 }

@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.darknero.neronet.AddMethod
 import com.darknero.neronet.R
@@ -28,6 +29,7 @@ import com.darknero.neronet.ui.LayoutMode
 import com.darknero.neronet.ui.map.MapTopology
 import com.darknero.neronet.ui.map.NetworkMap
 import com.darknero.neronet.ui.resolve
+import com.darknero.neronet.ui.theme.BrandMark
 
 /** Map counts above this many servers draw one overflow node (see MapGeometry). */
 private const val MAX_DRAWN_SERVERS = 6
@@ -51,6 +53,8 @@ fun HomeScreen(
     onProfiles: () -> Unit,
     onSettings: () -> Unit,
     secondaryPane: @Composable () -> Unit,
+    playAllaccio: Boolean = false,
+    onAllaccioDone: () -> Unit = {},
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val twoPane = layout == LayoutMode.TWO_PANE
@@ -74,6 +78,8 @@ fun HomeScreen(
                         onCancel = onCancel,
                         onErrorAction = onErrorAction,
                         onDismissError = onDismissError,
+                        playAllaccio = playAllaccio,
+                        onAllaccioDone = onAllaccioDone,
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                     )
                     if (!state.hasProfiles) EmptyState(onAdd, Modifier.padding(top = 16.dp))
@@ -105,6 +111,8 @@ fun HomeScreen(
                     onCancel = onCancel,
                     onErrorAction = onErrorAction,
                     onDismissError = onDismissError,
+                    playAllaccio = playAllaccio,
+                    onAllaccioDone = onAllaccioDone,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
                 if (!state.hasProfiles) {
@@ -135,6 +143,8 @@ private fun MapAndStatus(
     onCancel: () -> Unit,
     onErrorAction: (ErrorAction) -> Unit,
     onDismissError: () -> Unit,
+    playAllaccio: Boolean,
+    onAllaccioDone: () -> Unit,
     modifier: Modifier,
 ) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -159,12 +169,23 @@ private fun MapAndStatus(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        StatusSentence(
-            state = state,
-            onCancel = onCancel,
-            onErrorAction = onErrorAction,
-            onDismissError = onDismissError,
-            modifier = Modifier.padding(top = 8.dp),
-        )
+        Box(Modifier.padding(top = 8.dp).fillMaxWidth()) {
+            StatusSentence(
+                state = state,
+                onCancel = onCancel,
+                onErrorAction = onErrorAction,
+                onDismissError = onDismissError,
+            )
+            if (playAllaccio) {
+                // Beside the status, over it at the end: no layout shift, and it is decorative (the status words
+                // already say "connected").
+                BrandMark(
+                    Modifier.align(Alignment.TopEnd).clearAndSetSemantics { },
+                    size = 56.dp,
+                    animate = true,
+                    onDone = onAllaccioDone,
+                )
+            }
+        }
     }
 }

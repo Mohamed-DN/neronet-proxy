@@ -17,8 +17,8 @@ class ThemeResourcesTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
     @Test
-    fun interFontResourceLoads() {
-        assertNotNull(ResourcesCompat.getFont(context, R.font.inter_variable))
+    fun overpassFontResourceLoads() {
+        assertNotNull(ResourcesCompat.getFont(context, R.font.overpass_variable))
     }
 
     @Test
@@ -29,8 +29,28 @@ class ThemeResourcesTest {
     }
 
     @Test
-    fun bodyLargeUsesInter() {
-        assertEquals(InterFamily, NnTypography.bodyLarge.fontFamily)
+    fun bodyLargeUsesOverpass() {
+        assertEquals(OverpassFamily, NnTypography.bodyLarge.fontFamily)
+    }
+
+    @Test
+    fun launcherAndTileIconsLoad() {
+        for (icon in listOf(
+            R.drawable.ic_launcher_foreground, R.drawable.ic_launcher_monochrome,
+            R.drawable.ic_tile, R.drawable.ic_tile_off, R.drawable.ic_stat_neronet,
+        )) {
+            assertNotNull(ContextCompat.getDrawable(context, icon))
+        }
+    }
+
+    @Test
+    fun launcherBackgroundIsInk() {
+        assertEquals(0xFF15232D.toInt(), ContextCompat.getColor(context, R.color.ic_launcher_background))
+    }
+
+    @Test
+    fun wordmarkIsExtraBold() {
+        assertEquals(androidx.compose.ui.text.font.FontWeight.ExtraBold, NnTextStyles.wordmark.fontWeight)
     }
 
     @Test

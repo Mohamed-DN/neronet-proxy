@@ -4,5 +4,12 @@
         <item name="android:windowBackground">@color/nn_background</item>
     </style>
 
+    <!-- Launch theme of MainActivity: ink screen with the mark, then the app theme (androidx core-splashscreen). -->
+    <style name="Theme.NeroNet.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.NeroNet</item>
+    </style>
+
     <style name="Theme.NeroNet.Translucent" parent="android:Theme.Translucent.NoTitleBar" />
 </resources>

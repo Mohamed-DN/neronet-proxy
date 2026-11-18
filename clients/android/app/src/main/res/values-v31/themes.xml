@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- API 31+: the platform splash plays Allaccio (avd_allaccio, 1000 ms, the platform maximum). API 26-30 use the static mark in values/themes.xml. -->
+    <style name="Theme.NeroNet.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/avd_allaccio</item>
+        <item name="windowSplashScreenAnimationDuration">1000</item>
+        <item name="postSplashScreenTheme">@style/Theme.NeroNet</item>
+    </style>
+</resources>

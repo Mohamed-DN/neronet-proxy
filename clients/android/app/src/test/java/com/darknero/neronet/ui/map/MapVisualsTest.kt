@@ -35,7 +35,7 @@ class MapVisualsTest {
         for (state in listOf(MapState.CONNECTING, MapState.WAITING)) {
             val d = MapVisuals.device(state)
             assertEquals(ColorRole.SIGNAL, d.fill)
-            assertEquals(ColorRole.SIGNAL, d.outline)
+            assertEquals(ColorRole.INK, d.outline)
             assertEquals(ColorRole.ON_SIGNAL, d.glyph)
         }
     }
@@ -134,10 +134,10 @@ class MapVisualsTest {
     fun connectingPeerHasSignalStrokeAtSixtyPercentDashedAndSpokeAtFortyPercent() {
         val p = MapVisuals.peer(MapState.CONNECTING, responded = false)
         assertNull(p.fill)
-        assertEquals(ColorRole.SIGNAL, p.stroke.role)
+        assertEquals(ColorRole.PROGRESS, p.stroke.role)
         near(0.6f, p.stroke.alpha)
         assertTrue(p.stroke.dashed)
-        assertEquals(ColorRole.SIGNAL, p.spoke.role)
+        assertEquals(ColorRole.PROGRESS, p.spoke.role)
         near(0.4f, p.spoke.alpha)
         assertTrue(p.spoke.dashed)
     }
@@ -145,9 +145,9 @@ class MapVisualsTest {
     @Test
     fun waitingRespondedPeerIsSignalFillAndSolidSpoke() {
         val p = MapVisuals.peer(MapState.WAITING, responded = true)
-        assertEquals(ColorRole.SIGNAL, p.fill)
-        assertEquals(ColorRole.SIGNAL, p.stroke.role)
-        assertEquals(ColorRole.SIGNAL, p.spoke.role)
+        assertEquals(ColorRole.PROGRESS, p.fill)
+        assertEquals(ColorRole.PROGRESS, p.stroke.role)
+        assertEquals(ColorRole.PROGRESS, p.spoke.role)
         assertFalse(p.spoke.dashed)
     }
 
@@ -155,7 +155,7 @@ class MapVisualsTest {
     fun waitingSilentPeerIsDashedSignalLikeConnecting() {
         val p = MapVisuals.peer(MapState.WAITING, responded = false)
         assertNull(p.fill)
-        assertEquals(ColorRole.SIGNAL, p.stroke.role)
+        assertEquals(ColorRole.PROGRESS, p.stroke.role)
         assertTrue(p.stroke.dashed)
     }
 
@@ -210,7 +210,7 @@ class MapVisualsTest {
     @Test
     fun waitingOrganisationIsSignalWhenGatewayResponded() {
         val o = MapVisuals.org(MapState.WAITING, gatewayResponded = true)
-        assertEquals(ColorRole.SIGNAL, o.stroke.role)
+        assertEquals(ColorRole.PROGRESS, o.stroke.role)
         assertFalse(o.stroke.dashed)
     }
 

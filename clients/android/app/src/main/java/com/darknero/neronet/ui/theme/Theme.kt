@@ -11,7 +11,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.dp
 
 private val NnShapes = Shapes(
-    small = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(4.dp),
     medium = RoundedCornerShape(8.dp),
 )
 
@@ -19,9 +19,11 @@ private val NnShapes = Shapes(
 @Composable
 fun NeroNetTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val p = if (darkTheme) NnPalettes.Dark else NnPalettes.Light
+    // primary = ink plate with sheet text; tertiary = the brand signal (focus, "you are here"), never text.
     val scheme = if (darkTheme) {
         darkColorScheme(
-            primary = p.signal, onPrimary = p.onSignal,
+            primary = p.ink, onPrimary = p.surface,
+            tertiary = p.signal, onTertiary = p.onSignal,
             background = p.surface, surface = p.surface,
             surfaceContainer = p.relief, surfaceContainerHigh = p.relief,
             onSurface = p.ink, onBackground = p.ink, onSurfaceVariant = p.inkMuted,
@@ -30,7 +32,8 @@ fun NeroNetTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composabl
         )
     } else {
         lightColorScheme(
-            primary = p.signal, onPrimary = p.onSignal,
+            primary = p.ink, onPrimary = p.surface,
+            tertiary = p.signal, onTertiary = p.onSignal,
             background = p.surface, surface = p.surface,
             surfaceContainer = p.relief, surfaceContainerHigh = p.relief,
             onSurface = p.ink, onBackground = p.ink, onSurfaceVariant = p.inkMuted,

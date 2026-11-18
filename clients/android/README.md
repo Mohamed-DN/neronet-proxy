@@ -28,8 +28,8 @@ The script fails when an APK is over budget:
 
 | APK | Budget | Measured in version 1.0.0 |
 |---|---|---|
-| debug (`app/build/outputs/apk/debug/app-debug.apk`, all ABIs) | 24.0 MB (25165824 bytes) | 23.2 MB (24306982 bytes, with phase A) |
-| release (`app/build/outputs/apk/release/app-release-unsigned.apk`, R8, arm64-v8a and armeabi-v7a) | 14.0 MB (14680064 bytes) | 7.9 MB (8305793 bytes, with phase A) |
+| debug (`app/build/outputs/apk/debug/app-debug.apk`, all ABIs) | 24.0 MB (25165824 bytes) | 23.3 MB (24461338 bytes, with the Allaccio animation) |
+| release (`app/build/outputs/apk/release/app-release-unsigned.apk`, R8, arm64-v8a and armeabi-v7a) | 14.0 MB (14680064 bytes) | 8.0 MB (8424106 bytes, with the Allaccio animation) |
 
 Pinned versions: Gradle 8.10.2, Android Gradle Plugin 8.7.3, Kotlin 2.0.21, compileSdk and targetSdk 35,
 minSdk 26, Compose BOM 2024.12.01 (Material 3 1.3.1), `activity-compose` 1.9.3,
