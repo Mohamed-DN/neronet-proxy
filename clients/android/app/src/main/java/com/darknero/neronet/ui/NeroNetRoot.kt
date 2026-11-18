@@ -87,6 +87,7 @@ fun NeroNetRoot(app: NeroNetApplication) {
     val profilesVm: ProfilesViewModel = viewModel(factory = ProfilesViewModel.factory(app))
 
     val home by homeVm.uiState.collectAsStateWithLifecycle()
+    val allaccio by homeVm.allaccio.collectAsStateWithLifecycle()
     val profiles by profilesVm.profiles.collectAsStateWithLifecycle()
     val selected by profilesVm.selectedId.collectAsStateWithLifecycle()
     val active by profilesVm.activeId.collectAsStateWithLifecycle()
@@ -315,6 +316,8 @@ fun NeroNetRoot(app: NeroNetApplication) {
                     onAdd = onAdd,
                     onProfiles = { nav.push(Route.PROFILES) },
                     onSettings = { nav.push(Route.SETTINGS) },
+                    playAllaccio = allaccio,
+                    onAllaccioDone = homeVm::onAllaccioDone,
                     secondaryPane = {
                         when (nav.current) {
                             Route.ADD_PROFILE -> addContent(ComposeModifier, { nav.pop() })
@@ -339,6 +342,8 @@ fun NeroNetRoot(app: NeroNetApplication) {
                     onProfiles = { nav.push(Route.PROFILES) },
                     onSettings = { nav.push(Route.SETTINGS) },
                     secondaryPane = {},
+                    playAllaccio = allaccio,
+                    onAllaccioDone = homeVm::onAllaccioDone,
                 )
                 nav.current == Route.PROFILES -> profilesContent(fullScreenModifier) { nav.pop() }
                 nav.current == Route.ADD_PROFILE -> addContent(fullScreenModifier) { nav.pop() }

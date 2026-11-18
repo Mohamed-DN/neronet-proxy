@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Allaccio as the API 31+ splash icon: the same geometry and colours as ic_launcher_foreground, compressed to
+  1000 ms (the platform limit): terminus 0-150, wire 0-450, current 400-700, lamp, glow, ring and rays 650-1000.
+  The end state is the static mark plus the settled glow. API 26-30 keep ic_launcher_foreground.
+-->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:drawable="@drawable/avd_allaccio_mark">
+
+    <target android:name="start_g">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:propertyName="scaleX" android:valueFrom="0" android:valueTo="1"
+                    android:duration="150" android:interpolator="@android:interpolator/decelerate_quad" />
+                <objectAnimator android:propertyName="scaleY" android:valueFrom="0" android:valueTo="1"
+                    android:duration="150" android:interpolator="@android:interpolator/decelerate_quad" />
+            </set>
+        </aapt:attr>
+    </target>
+
+    <target android:name="wire">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:propertyName="trimPathEnd" android:valueFrom="0" android:valueTo="1"
+                android:duration="450" android:interpolator="@android:interpolator/fast_out_slow_in" />
+        </aapt:attr>
+    </target>
+
+    <target android:name="current">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:propertyName="strokeAlpha" android:valueFrom="1" android:valueTo="1"
+                    android:startOffset="400" android:duration="1" />
+                <objectAnimator android:propertyName="trimPathStart" android:valueFrom="0" android:valueTo="0.9"
+                    android:startOffset="400" android:duration="300"
+                    android:interpolator="@android:interpolator/fast_out_slow_in" />
+                <objectAnimator android:propertyName="trimPathEnd" android:valueFrom="0.1" android:valueTo="1"
+                    android:startOffset="400" android:duration="300"
+                    android:interpolator="@android:interpolator/fast_out_slow_in" />
+            </set>
+        </aapt:attr>
+    </target>
+
+    <target android:name="lamp">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:startOffset="650" android:duration="350">
+                <propertyValuesHolder android:propertyName="fillColor" android:valueType="colorType">
+                    <keyframe android:fraction="0" android:value="#15232D" />
+                    <keyframe android:fraction="0.4" android:value="#FFF3B0" />
+                    <keyframe android:fraction="1" android:value="#F5C211" />
+                </propertyValuesHolder>
+            </objectAnimator>
+        </aapt:attr>
+    </target>
+
+    <target android:name="lamp_g">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:startOffset="650" android:duration="350">
+                    <propertyValuesHolder android:propertyName="scaleX">
+                        <keyframe android:fraction="0" android:value="0.6" />
+                        <keyframe android:fraction="0.4" android:value="1.25" />
+                        <keyframe android:fraction="1" android:value="1" />
+                    </propertyValuesHolder>
+                </objectAnimator>
+                <objectAnimator android:startOffset="650" android:duration="350">
+                    <propertyValuesHolder android:propertyName="scaleY">
+                        <keyframe android:fraction="0" android:value="0.6" />
+                        <keyframe android:fraction="0.4" android:value="1.25" />
+                        <keyframe android:fraction="1" android:value="1" />
+                    </propertyValuesHolder>
+                </objectAnimator>
+            </set>
+        </aapt:attr>
+    </target>
+
+    <target android:name="glow">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:startOffset="650" android:duration="350">
+                <propertyValuesHolder android:propertyName="fillAlpha">
+                    <keyframe android:fraction="0" android:value="0" />
+                    <keyframe android:fraction="0.25" android:value="0.85" />
+                    <keyframe android:fraction="1" android:value="0.28" />
+                </propertyValuesHolder>
+            </objectAnimator>
+        </aapt:attr>
+    </target>
+
+    <target android:name="glow_g">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:startOffset="650" android:duration="350">
+                    <propertyValuesHolder android:propertyName="scaleX">
+                        <keyframe android:fraction="0" android:value="0.4" />
+                        <keyframe android:fraction="0.25" android:value="1" />
+                        <keyframe android:fraction="1" android:value="1.15" />
+                    </propertyValuesHolder>
+                </objectAnimator>
+                <objectAnimator android:startOffset="650" android:duration="350">
+                    <propertyValuesHolder android:propertyName="scaleY">
+                        <keyframe android:fraction="0" android:value="0.4" />
+                        <keyframe android:fraction="0.25" android:value="1" />
+                        <keyframe android:fraction="1" android:value="1.15" />
+                    </propertyValuesHolder>
+                </objectAnimator>
+            </set>
+        </aapt:attr>
+    </target>
+
+    <target android:name="spark">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:propertyName="strokeAlpha" android:valueFrom="0.95" android:valueTo="0"
+                android:startOffset="650" android:duration="350"
+                android:interpolator="@android:interpolator/decelerate_quad" />
+        </aapt:attr>
+    </target>
+
+    <target android:name="spark_g">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:propertyName="scaleX" android:valueFrom="0.5" android:valueTo="2"
+                    android:startOffset="650" android:duration="350"
+                    android:interpolator="@android:interpolator/decelerate_quad" />
+                <objectAnimator android:propertyName="scaleY" android:valueFrom="0.5" android:valueTo="2"
+                    android:startOffset="650" android:duration="350"
+                    android:interpolator="@android:interpolator/decelerate_quad" />
+            </set>
+        </aapt:attr>
+    </target>
+
+    <!-- Four rays: each draws out, then wipes away, once. -->
+    <target android:name="ray_n">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:propertyName="strokeAlpha" android:valueFrom="1" android:valueTo="1" android:startOffset="650" android:duration="1" />
+                <objectAnimator android:propertyName="trimPathEnd" android:valueFrom="0" android:valueTo="1" android:startOffset="650" android:duration="170" />
+                <objectAnimator android:propertyName="trimPathStart" android:valueFrom="0" android:valueTo="1" android:startOffset="820" android:duration="120" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="ray_e">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:propertyName="strokeAlpha" android:valueFrom="1" android:valueTo="1" android:startOffset="650" android:duration="1" />
+                <objectAnimator android:propertyName="trimPathEnd" android:valueFrom="0" android:valueTo="1" android:startOffset="650" android:duration="170" />
+                <objectAnimator android:propertyName="trimPathStart" android:valueFrom="0" android:valueTo="1" android:startOffset="820" android:duration="120" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="ray_ne">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:propertyName="strokeAlpha" android:valueFrom="1" android:valueTo="1" android:startOffset="650" android:duration="1" />
+                <objectAnimator android:propertyName="trimPathEnd" android:valueFrom="0" android:valueTo="1" android:startOffset="650" android:duration="170" />
+                <objectAnimator android:propertyName="trimPathStart" android:valueFrom="0" android:valueTo="1" android:startOffset="820" android:duration="120" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="ray_nw">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:propertyName="strokeAlpha" android:valueFrom="1" android:valueTo="1" android:startOffset="650" android:duration="1" />
+                <objectAnimator android:propertyName="trimPathEnd" android:valueFrom="0" android:valueTo="1" android:startOffset="650" android:duration="170" />
+                <objectAnimator android:propertyName="trimPathStart" android:valueFrom="0" android:valueTo="1" android:startOffset="820" android:duration="120" />
+            </set>
+        </aapt:attr>
+    </target>
+</animated-vector>

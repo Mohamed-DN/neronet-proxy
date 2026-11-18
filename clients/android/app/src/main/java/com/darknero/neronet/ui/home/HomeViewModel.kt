@@ -13,6 +13,9 @@ import com.darknero.neronet.tunnel.TunnelRepository
 import com.darknero.neronet.tunnel.TunnelStats
 import com.darknero.neronet.tunnel.TunnelTimings
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +58,28 @@ class HomeViewModel(
                 }
             }
         }
+
+    private val allaccioPending = MutableStateFlow(false)
+
+    /** True while the Allaccio animation is due; the screen calls [onAllaccioDone] when it has played. */
+    val allaccio: StateFlow<Boolean> = allaccioPending.asStateFlow()
+
+    init {
+        // The previous phase starts as the phase at creation, so an app that opens already connected stays quiet.
+        var previous = tunnels.state.value.phase
+        viewModelScope.launch {
+            tunnels.state.collect { machine ->
+                val next = machine.phase
+                if (AllaccioTrigger.shouldPlay(previous, next)) allaccioPending.value = true
+                else if (AllaccioTrigger.shouldCancel(next)) allaccioPending.value = false
+                previous = next
+            }
+        }
+    }
+
+    fun onAllaccioDone() {
+        allaccioPending.value = false
+    }
 
     val uiState: StateFlow<HomeUiState> = combine(
         tunnels.state,
