@@ -74,9 +74,10 @@ What the console stores and sends, so the gateway can be built against it:
   entry with `access_method: "amneziawg"` is served by the AmneziaWG device; any other device entry keeps
   the plain WireGuard device (a WebSocket device reaches it through the tunnel server).
 - **Parameters** (`AccessMethodService.generateAwgParams`, random per organisation with `crypto.randomInt`;
-  ranges per the AmneziaWG 2.0 documentation, to be checked against the pinned `amneziawg-go` release):
-  Jc 4..12, Jmin 8..128, Jmax Jmin+32..Jmin+400 (at most 1280), S1 and S2 15..150 with S1+56 != S2, S3 8..64,
-  S4 4..32, H1..H4 four disjoint ranges `low-high` inside 5..4294967295, at least 1000 wide, each in its own
+  checked on 18 November against the amneziawg-go README and the kernel-module README):
+  Jc 4..12, Jmin 8..128, Jmax Jmin+32..Jmin+400 (at most 1280), S1 and S2 15..150 with S1+56 != S2, S3 12..64,
+  S4 12..32 (header protection needs S1..S4 >= 12), H1..H4 four disjoint ranges `low-high` inside
+  5..2147483647 (the recommended bound; some clients read headers as signed 32-bit), at least 1000 wide, each in its own
   quarter of the space in a random order. They are never logged or audited, and the Settings route does not
   return them.
 - **API**: `GET /api/devices/profile/methods`, `POST /api/devices/profile` with `access_method` (409

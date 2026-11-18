@@ -109,13 +109,18 @@ export function buildStrictNetworkConfig(
  * Endpoint is the gateway's AmneziaWG listener. Import it into the AmneziaWG app, not the
  * WireGuard one: a stock WireGuard app does not know these keys.
  */
+/** WireGuard's usual tunnel MTU, before the AmneziaWG transport padding (S4) is taken off. */
+const AWG_BASE_MTU = 1420;
+
 export function buildAmneziaConfig(
   keys: { privateKey: string; presharedKey: string },
   device: ProfileDeviceResponse,
   awg: AmneziaWgInfo
 ): string {
   const p = awg.params;
-  return configText(keys, device, { endpoint: awg.endpoint, keepalive: 25 }, [
+  // S4 pads every data message: lower the tunnel MTU by the same amount so a full-size
+  // packet still fits a 1500-byte path (and TCP announces a matching MSS).
+  return configText(keys, device, { endpoint: awg.endpoint, keepalive: 25, mtu: AWG_BASE_MTU - p.s4 }, [
     `Jc = ${p.jc}`,
     `Jmin = ${p.jmin}`,
     `Jmax = ${p.jmax}`,

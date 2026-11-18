@@ -43,9 +43,11 @@ const DEFAULT_ALLOWED = [WIREGUARD, WIREGUARD_WSS];
  *   Jmax   largest junk packet, bytes               <= 1280
  *   S1     padding of the handshake initiation      0..1132
  *   S2     padding of the handshake response        0..1188, and S1 + 56 != S2
- *   S3     padding of the cookie reply (2.0)        0..64
- *   S4     padding of a transport packet (2.0)      0..32
- *   H1..H4 message-type headers (2.0: a range)      inside 5..4294967295, the four ranges
+ *   S3     padding of the cookie reply (2.0)        12..64
+ *   S4     padding of a transport packet (2.0)      12..32
+ *          (amneziawg-go README: header protection needs S1..S4 >= 12)
+ *   H1..H4 message-type headers (2.0: a range)      inside 5..2147483647 (recommended; some
+ *                                                   clients read them as signed 32-bit), the four ranges
  *                                                   do not overlap; 1..4 are WireGuard's own
  */
 const RANGES = {
@@ -54,11 +56,11 @@ const RANGES = {
   jmaxSpan: [32, 400], // Jmax = Jmin + a span, never above 1280
   s1: [15, 150],
   s2: [15, 150],
-  s3: [8, 64],
-  s4: [4, 32]
+  s3: [12, 64],
+  s4: [12, 32]
 };
 const H_MIN = 5;
-const H_MAX = 4294967295;
+const H_MAX = 2147483647;
 const H_MIN_WIDTH = 1000;
 const KEYS = ['jc', 'jmin', 'jmax', 's1', 's2', 's3', 's4', 'h1', 'h2', 'h3', 'h4'];
 const H_FORMAT = /^([0-9]{1,10})-([0-9]{1,10})$/;
@@ -113,8 +115,8 @@ function validAwgParams(params) {
   const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   if (!int(params.jc, 1, 128)) return false;
   if (!int(params.jmin, 0, 1279) || !int(params.jmax, 1, 1280) || params.jmin >= params.jmax) return false;
-  if (!int(params.s1, 0, 1132) || !int(params.s2, 0, 1188) || params.s1 + 56 === params.s2) return false;
-  if (!int(params.s3, 0, 64) || !int(params.s4, 0, 32)) return false;
+  if (!int(params.s1, 12, 1132) || !int(params.s2, 12, 1188) || params.s1 + 56 === params.s2) return false;
+  if (!int(params.s3, 12, 64) || !int(params.s4, 12, 32)) return false;
   const ranges = [];
   for (const k of ['h1', 'h2', 'h3', 'h4']) {
     const m = typeof params[k] === 'string' ? H_FORMAT.exec(params[k]) : null;

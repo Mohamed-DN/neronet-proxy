@@ -25,7 +25,9 @@ describe('AmneziaWG parameter generation', () => {
       assert.ok(p.jc >= 4 && p.jc <= 12);
       assert.ok(p.jmin < p.jmax && p.jmax <= 1280);
       assert.notEqual(p.s1 + 56, p.s2);
-      assert.ok(p.s3 <= 64 && p.s4 <= 32);
+      // amneziawg-go: header protection needs S1..S4 >= 12.
+      assert.ok(p.s3 >= 12 && p.s3 <= 64 && p.s4 >= 12 && p.s4 <= 32);
+      assert.ok(p.s1 >= 12 && p.s2 >= 12);
     }
   });
 
@@ -41,13 +43,17 @@ describe('AmneziaWG parameter generation', () => {
       const ranges = ['h1', 'h2', 'h3', 'h4'].map((k) => p[k].split('-').map(Number)).sort((a, b) => a[0] - b[0]);
       assert.ok(ranges[0][0] >= 5);
       for (let j = 1; j < 4; j++) assert.ok(ranges[j][0] > ranges[j - 1][1]);
-      assert.ok(ranges[3][1] <= 4294967295);
+      // Recommended H range 5..2147483647: some clients read headers as signed 32-bit.
+      assert.ok(ranges[3][1] <= 2147483647);
     }
   });
 
   it('refuses a value that could not have been generated', () => {
     const good = AccessMethodService.generateAwgParams();
     assert.ok(!AccessMethodService.validAwgParams({ ...good, jmin: good.jmax }));
+    assert.ok(!AccessMethodService.validAwgParams({ ...good, s3: 8 }));
+    assert.ok(!AccessMethodService.validAwgParams({ ...good, s4: 4 }));
+    assert.ok(!AccessMethodService.validAwgParams({ ...good, h4: '3000000000-3000001000' }));
     assert.ok(!AccessMethodService.validAwgParams({ ...good, s2: good.s1 + 56 }));
     assert.ok(!AccessMethodService.validAwgParams({ ...good, h1: '1-2' }));
     assert.ok(!AccessMethodService.validAwgParams({ ...good, h2: good.h1 }));
