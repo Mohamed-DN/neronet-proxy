@@ -1,4 +1,5 @@
-import type { TopologyLink, TopologyNode } from '../../services/types';
+import { isDefaultCompartment } from '../../services/compartmentLabel';
+import type { Compartment, TopologyLink, TopologyNode } from '../../services/types';
 import type { StationKind } from '../../ui/StationSymbol';
 import { STATE_STATION, groupValue, nodeKind, nodeState } from './topologyGraph';
 
@@ -49,8 +50,14 @@ export interface Tally {
 
 export interface TransitLineModel {
   key: string;
+  /** The compartment id, or null for the devices that belong to no sub-network. */
+  id: string | null;
   label: string;
   colour: LineColour;
+  /** True when the colour was chosen (`line_colour`), false when the index picked it. */
+  colourChosen: boolean;
+  /** The organisation's default line: it cannot be deleted or merged away. */
+  isDefault: boolean;
   stations: TransitStationModel[];
   tally: Tally;
 }
@@ -68,6 +75,13 @@ export interface TransitOptions {
   shareHubs?: boolean;
   /** The topology's links: a link relayed by a gateway makes it serve both ends. */
   links?: TopologyLink[];
+  /**
+   * The sub-networks themselves. Their `line_colour` colours the line when set, and their
+   * `sort_order` sets the order of the lines when the operator has arranged them.
+   */
+  compartments?: Pick<Compartment, 'id' | 'name' | 'slug' | 'line_colour' | 'sort_order'>[];
+  /** Also draw the lines that have no device yet (the editor shows them as places to move devices to). */
+  includeEmpty?: boolean;
 }
 
 const byCodePoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -93,9 +107,10 @@ export function worstStatus(tally: Tally): StationStatusKind {
 }
 
 /**
- * Lines in order of size (largest first, then by key), each with its own colour
- * taken by the key's place in sorted order, so a line keeps its colour when
- * another one grows past it. Stations are sorted by name then id.
+ * Lines in the operator's order (`sort_order`) when the sub-networks say one, otherwise in
+ * order of size (largest first, then by key). Each line has the colour it was given, or else
+ * the one taken by its key's place in sorted order, so a line keeps its colour when another
+ * one grows past it. Stations are sorted by name then id.
  */
 export function buildTransit(nodes: TopologyNode[], now: number, options: TransitOptions): TransitModel {
   const groups = new Map<string, { label: string; nodes: TopologyNode[] }>();
@@ -109,8 +124,30 @@ export function buildTransit(nodes: TopologyNode[], now: number, options: Transi
   const lineOf = new Map<string, string>();
   for (const [key, group] of groups) for (const node of group.nodes) lineOf.set(node.id, key);
 
+  const known = new Map((options.compartments ?? []).map((compartment) => [compartment.id, compartment]));
   const keys = [...groups.keys()].sort(byCodePoint);
-  const colourOf = new Map(keys.map((key, index) => [key, LINE_COLOURS[index % LINE_COLOURS.length]!]));
+  // The automatic colour is the key's place among the lines that have devices, as it always was;
+  // an empty line (shown only while editing) takes the next ones, so nothing else changes colour.
+  const colourOf = new Map<string, LineColour>(
+    keys.map((key, index) => [key, LINE_COLOURS[index % LINE_COLOURS.length]!])
+  );
+  if (options.includeEmpty) {
+    const empty = [...known.values()].filter((compartment) => !groups.has(compartment.id));
+    empty.sort((a, b) => byCodePoint(a.id, b.id));
+    empty.forEach((compartment, index) => {
+      groups.set(compartment.id, { label: compartment.name || options.noSubnetLabel, nodes: [] });
+      colourOf.set(compartment.id, LINE_COLOURS[(keys.length + index) % LINE_COLOURS.length]!);
+      keys.push(compartment.id);
+    });
+  }
+  const chosen = new Set<string>();
+  for (const key of keys) {
+    const colour = known.get(key)?.line_colour;
+    if (colour && (LINE_COLOURS as readonly string[]).includes(colour)) {
+      colourOf.set(key, colour);
+      chosen.add(key);
+    }
+  }
   const tally = emptyTally();
   const served =
     options.shareHubs === false ? new Map<string, string[]>() : servedLines(nodes, lineOf, options.links ?? []);
@@ -138,10 +175,27 @@ export function buildTransit(nodes: TopologyNode[], now: number, options: Transi
           shared: served.has(node.id)
         };
       });
-    return { key, label: group.label, colour: colourOf.get(key)!, stations, tally: lineTally };
+    return {
+      key,
+      id: key === '__none__' ? null : key,
+      label: group.label,
+      colour: colourOf.get(key)!,
+      colourChosen: chosen.has(key),
+      isDefault: known.has(key) ? isDefaultCompartment(known.get(key)!) : false,
+      stations,
+      tally: lineTally
+    };
   });
 
-  lines.sort((a, b) => b.stations.length - a.stations.length || byCodePoint(a.key, b.key));
+  // The operator's order wins where there is one; lines it does not know come after, by size.
+  const position = (line: TransitLineModel) => known.get(line.key)?.sort_order;
+  lines.sort((a, b) => {
+    const pa = position(a);
+    const pb = position(b);
+    if (pa !== undefined && pb !== undefined && pa !== pb) return pa - pb;
+    if ((pa === undefined) !== (pb === undefined)) return pa === undefined ? 1 : -1;
+    return b.stations.length - a.stations.length || byCodePoint(a.key, b.key);
+  });
   const order = new Map(lines.map((line, index) => [line.key, index]));
 
   const hubs: TransitHubModel[] = [];

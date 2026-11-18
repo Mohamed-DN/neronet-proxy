@@ -43,9 +43,14 @@ export function useCompartmentPeerings(): UseQueryResult<CompartmentPeering[], E
   });
 }
 
+/** A new line: its name, and optionally one of the six colours (otherwise the console picks). */
 export function useCreateCompartment() {
-  return useSubnetMutation(async (name: string) => {
-    const res = await apiRequest<{ compartment: Compartment }>('/compartments', { method: 'POST', body: { name } });
+  return useSubnetMutation(async (input: string | { name: string; lineColour?: LineColour }) => {
+    const { name, lineColour } = typeof input === 'string' ? { name: input, lineColour: undefined } : input;
+    const res = await apiRequest<{ compartment: Compartment }>('/compartments', {
+      method: 'POST',
+      body: { name, ...(lineColour ? { line_colour: lineColour } : {}) }
+    });
     return res.compartment;
   });
 }
