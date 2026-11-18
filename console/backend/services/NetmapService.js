@@ -35,6 +35,7 @@ const RevocationEngine = require('./RevocationEngine');
 const ExitService = require('./ExitService');
 const ProfileGatewayService = require('./ProfileGatewayService');
 const AccessMethodService = require('./AccessMethodService');
+const ConnectionOrderService = require('./ConnectionOrderService');
 
 // --- Configured constants ----------------------------------------------------
 //
@@ -570,14 +571,17 @@ async function buildNetmap(nodeId) {
         // policy were ever to name one.
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
                 transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
-                device_kind, preshared_key, profile_gateway_endpoint, gateway_node_id, access_method, role
+                device_kind, preshared_key, profile_gateway_endpoint, gateway_node_id, access_method, role,
+                user_id, compartment_id, connection_order, connection_forced, connection_locked, connection_owner_set
            FROM nodes
           WHERE id <> $1 AND is_quarantined = FALSE AND is_healthy = TRUE
             AND COALESCE(organization_id, 'org-default') = $2`,
         [nodeId, self.organization_id || 'org-default'],
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
                 transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
-                'mesh' AS device_kind, NULL AS preshared_key, NULL AS profile_gateway_endpoint, NULL AS gateway_node_id, 'wireguard' AS access_method, role
+                'mesh' AS device_kind, NULL AS preshared_key, NULL AS profile_gateway_endpoint, NULL AS gateway_node_id, 'wireguard' AS access_method, role,
+                NULL AS user_id, NULL AS compartment_id, NULL AS connection_order, 0 AS connection_forced,
+                0 AS connection_locked, 0 AS connection_owner_set
            FROM nodes
           WHERE id <> ? AND is_quarantined = 0 AND is_healthy = 1
             AND COALESCE(organization_id, 'org-default') = ?`,
@@ -646,6 +650,7 @@ async function buildNetmap(nodeId) {
 
   const devicePolicies = new Map();
   const deviceReach = new Set();
+  const orderContext = selfIsGateway && isPostgres() ? await ConnectionOrderService.loadContext(self.organization_id) : null;
   if (selfIsGateway) {
     for (const row of sorted) {
       if (!servedDevice(row) || gatewayOf(row) !== self.id) continue;
@@ -693,6 +698,13 @@ async function buildNetmap(nodeId) {
       // ADR 0036: only AmneziaWG needs the gateway to know the method. A WebSocket device
       // reaches the gateway's ordinary WireGuard port through the tunnel server.
       if (row.access_method === 'amneziawg') deviceEntry.access_method = 'amneziawg';
+      // ADR 0037: the order this device walks and the scope it came from. Stock apps cannot walk
+      // it (the profile is written for the first method); our own apps and the console read it.
+      if (orderContext) {
+        const order = ConnectionOrderService.netmapFields(orderContext, row);
+        if (order.connection_order.length > 0) deviceEntry.connection_order = order.connection_order;
+        deviceEntry.connection_origin = order.connection_origin;
+      }
       if (devicePolicies.get(row.id)) deviceEntry.acl = devicePolicies.get(row.id);
       const exitAssignment = exitPlan && exitPlan.devices.get(row.id);
       if (exitAssignment) deviceEntry.exit = ExitService.exitEntry(exitAssignment);

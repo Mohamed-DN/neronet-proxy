@@ -286,8 +286,7 @@ function awgEndpointOf(gateway) {
  * whether the installation runs the WebSocket tunnel (it is installation-wide, not a
  * property of one gateway).
  */
-async function availableMethods(organizationId, gateway, wssAvailable) {
-  const row = await organisationRow(organizationId);
+function usableMethods(row, gateway, wssAvailable) {
   if (!row || !gateway) return [];
   const allowed = allowedOf(row);
   return METHODS.filter((method) => {
@@ -296,6 +295,10 @@ async function availableMethods(organizationId, gateway, wssAvailable) {
     if (method === AMNEZIAWG) return gatewayRunsAmneziaWg(gateway) && paramsOf(row) !== null;
     return true;
   });
+}
+
+async function availableMethods(organizationId, gateway, wssAvailable) {
+  return usableMethods(await organisationRow(organizationId), gateway, wssAvailable);
 }
 
 /** The parameters for a profile, or null when the organisation has none. */
@@ -318,5 +321,6 @@ module.exports = {
   gatewayRunsAmneziaWg,
   awgEndpointOf,
   availableMethods,
+  usableMethods,
   paramsForProfile
 };

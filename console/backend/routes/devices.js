@@ -22,6 +22,7 @@ const { MESH_DNS, meshDnsEnabled, effectiveSearchDomain } = require('../utils/me
 const ProfileGatewayService = require('../services/ProfileGatewayService');
 const DeviceNameService = require('../services/DeviceNameService');
 const AccessMethodService = require('../services/AccessMethodService');
+const ConnectionOrderService = require('../services/ConnectionOrderService');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -461,10 +462,14 @@ router.get('/profile/methods', async (req, res, next) => {
       gateway = await ProfileGatewayService.defaultGateway(orgOf(req));
     }
     const usable = await AccessMethodService.availableMethods(orgOf(req), gateway, strictNetworkOf(req) !== null);
+    // ADR 0037: the person's connection order says which method comes first and which are offered
+    // as alternatives; a method the order leaves out is not offered.
+    const { order, origin } = await ConnectionOrderService.orderForNewDevice(orgOf(req), req.user.id, usable);
     res.set('Cache-Control', 'no-store');
     return res.json({
-      default: 'wireguard',
-      methods: usable.map((id) => ({ id, label: AccessMethodService.LABELS[id] }))
+      default: order[0] || 'wireguard',
+      order_origin: origin,
+      methods: order.map((id) => ({ id, label: AccessMethodService.LABELS[id] }))
     });
   } catch (err) {
     next(err);
@@ -521,25 +526,33 @@ router.post('/profile', async (req, res, next) => {
     }
 
     // ADR 0036: the method must be allowed by the organisation and advertised by this
-    // device's gateway. Absent means plain WireGuard, as before.
-    const method = access_method === undefined || access_method === null ? 'wireguard' : access_method;
+    // device's gateway. Absent means the first method of the person's connection order
+    // (ADR 0037), which is plain WireGuard unless an order says otherwise.
+    const usable = await AccessMethodService.availableMethods(orgOf(req), gateway, strictNetworkOf(req) !== null);
+    const { order } = await ConnectionOrderService.orderForNewDevice(orgOf(req), req.user.id, usable);
+    const method = access_method === undefined || access_method === null ? order[0] || 'wireguard' : access_method;
     if (typeof method !== 'string' || !AccessMethodService.METHODS.includes(method)) {
       return res.status(400).json({ error: 'invalid_access_method', code: 'invalid_access_method' });
     }
     let awgParams = null;
-    if (method !== 'wireguard') {
-      const usable = await AccessMethodService.availableMethods(orgOf(req), gateway, strictNetworkOf(req) !== null);
-      if (!usable.includes(method)) {
-        return res.status(409).json({
-          error: 'method_not_available',
-          code: 'method_not_available',
-          message: 'This way of connecting is not available for this device.'
-        });
-      }
-      if (method === 'amneziawg') awgParams = await AccessMethodService.paramsForProfile(orgOf(req));
-      if (method === 'amneziawg' && !awgParams) {
-        return res.status(409).json({ error: 'method_not_available', code: 'method_not_available' });
-      }
+    if (method !== 'wireguard' && !usable.includes(method)) {
+      return res.status(409).json({
+        error: 'method_not_available',
+        code: 'method_not_available',
+        message: 'This way of connecting is not available for this device.'
+      });
+    }
+    if (method === 'amneziawg') {
+      awgParams = await AccessMethodService.paramsForProfile(orgOf(req));
+      if (!awgParams) return res.status(409).json({ error: 'method_not_available', code: 'method_not_available' });
+    }
+    // A method the person's connection order leaves out is not offered, so it is not made either.
+    if (!order.includes(method) && access_method !== undefined && access_method !== null) {
+      return res.status(409).json({
+        error: 'method_not_in_order',
+        code: 'method_not_in_order',
+        message: 'This way of connecting is switched off by the connection order.'
+      });
     }
 
     // A full-tunnel profile (ADR 0032): every packet goes to the gateway and leaves through

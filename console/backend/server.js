@@ -40,6 +40,7 @@ const invitationRoutes = require('./routes/invitations');
 const transportsRoutes = require('./routes/transports');
 const devicesRoutes = require('./routes/devices');
 const compartmentsRoutes = require('./routes/compartments');
+const connectionOrderRoutes = require('./routes/connectionOrder');
 const dropRoutes = require('./routes/drop');
 const ModuleLoader = require('./services/ModuleLoader');
 const securityHeaders = require('./middleware/securityHeaders');
@@ -110,6 +111,7 @@ function createApp() {
   app.use('/api/transports', transportsRoutes);
   app.use('/api/devices', devicesRoutes);
   app.use('/api/compartments', compartmentsRoutes);
+  app.use('/api/connection-order', connectionOrderRoutes);
   app.use('/api/drop', dropRoutes);
 
   // Load and mount discrete feature modules (WP-107: nuke, onion, deniability)
