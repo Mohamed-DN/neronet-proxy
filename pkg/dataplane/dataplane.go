@@ -243,6 +243,10 @@ type Device struct {
 	// StartAWG and StopAWG, so neither wrapper is left with a stale table.
 	fwdMu sync.Mutex
 
+	// virt is the gateway's virtual devices (virtdev.go), guarded by virtMu.
+	virtMu sync.Mutex
+	virt   map[string]*virtualDevice
+
 	mu     sync.Mutex
 	closed bool
 
@@ -762,6 +766,7 @@ func (d *Device) Close() error {
 	// wrapper around the backend. Closing the backend again here is what makes the
 	// second close happen, so it is not done.
 	d.shutdownAWG()
+	d.closeVirtual()
 	d.wg.Close()
 	return d.filter.Close()
 }
