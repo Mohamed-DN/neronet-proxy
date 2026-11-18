@@ -15,7 +15,6 @@ import (
 	awgconn "github.com/amnezia-vpn/amneziawg-go/conn"
 	awgdevice "github.com/amnezia-vpn/amneziawg-go/device"
 	awgtun "github.com/amnezia-vpn/amneziawg-go/tun"
-	"golang.zx2c4.com/wireguard/tun"
 )
 
 // The gateway's second device (ADR 0036): amneziawg-go on its own UDP port, serving the
@@ -261,35 +260,4 @@ func (a *awgTUN) Close() error {
 	err := a.f.Close()
 	a.once.Do(func() { close(a.events) })
 	return err
-}
-
-// nullTUN is the backend of the AmneziaWG wrapper: nothing is ever read from it and
-// whatever is written to it is discarded. Packets for the gateway itself never reach it
-// (they go to the first wrapper), so anything that does is traffic with nowhere to go.
-type nullTUN struct {
-	closed chan struct{}
-	events chan tun.Event
-	once   sync.Once
-}
-
-func newNullTUN() *nullTUN {
-	return &nullTUN{closed: make(chan struct{}), events: make(chan tun.Event)}
-}
-
-func (n *nullTUN) File() *os.File { return nil }
-func (n *nullTUN) Read([][]byte, []int, int) (int, error) {
-	<-n.closed
-	return 0, os.ErrClosed
-}
-func (n *nullTUN) Write(bufs [][]byte, _ int) (int, error) { return len(bufs), nil }
-func (n *nullTUN) MTU() (int, error)                       { return DefaultMTU, nil }
-func (n *nullTUN) Name() (string, error)                   { return "awg-null", nil }
-func (n *nullTUN) Events() <-chan tun.Event                { return n.events }
-func (n *nullTUN) BatchSize() int                          { return 1 }
-func (n *nullTUN) Close() error {
-	n.once.Do(func() {
-		close(n.closed)
-		close(n.events)
-	})
-	return nil
 }
