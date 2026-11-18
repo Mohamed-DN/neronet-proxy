@@ -7,6 +7,10 @@
 # Then, once, name it as the gateway in the console (Admin > Gateway, or
 # PUT /api/devices/gateway {"node_id": "<its id>", "endpoint": "<public name>:51820"}).
 #
+# AmneziaWG for networks that recognise WireGuard is a separate overlay,
+# docker-compose.gateway-awg.yml (ADR 0036): include it and set NERONET_AWG_PORT. Without it
+# this file publishes the one WireGuard port below and nothing else.
+#
 # The data plane is userspace (netstack): no extra capabilities, no sysctls, no
 # ip_forward. The gateway relays a device's packets inside its own tunnel wrapper and only
 # what that device's policy allows. The router forwards UDP NERONET_GATEWAY_PORT (51820 by

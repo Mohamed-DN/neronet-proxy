@@ -11,7 +11,10 @@ RUN go mod download
 COPY internal ./internal
 COPY pkg ./pkg
 COPY cmd ./cmd
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-node ./cmd/sovereign-node \
+# The node is built with the awg tag: it carries the AmneziaWG device the profile gateway can
+# run (ADR 0036). The device stays off unless SOVEREIGN_AWG_LISTEN names a port and the netmap
+# carries the organisation's parameters, so the tag adds code, not behaviour.
+RUN CGO_ENABLED=0 GOOS=linux go build -tags awg -ldflags="-s -w" -o /build/bin/sovereign-node ./cmd/sovereign-node \
  && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-cli ./cmd/sovereign-cli \
  && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/sovereign-derp-relay ./cmd/sovereign-derp-relay
 

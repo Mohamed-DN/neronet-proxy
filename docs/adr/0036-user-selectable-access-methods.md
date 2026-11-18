@@ -83,3 +83,31 @@ What the console stores and sends, so the gateway can be built against it:
 - **API**: `GET /api/devices/profile/methods`, `POST /api/devices/profile` with `access_method` (409
   `method_not_available` unless allowed and advertised), `GET|PUT /api/organizations/:id/access-methods`,
   `POST /api/organizations/:id/access-methods/regenerate` (owner or admin).
+
+## Implementation: AmneziaWG on the gateway (18 November 2026)
+
+- **Engine.** `github.com/amnezia-vpn/amneziawg-go` v0.2.19 (MIT, June 2026), pinned. The `v1.0.x`
+  tags sort higher but are older (July 2025) and have no S3/S4 or header ranges.
+- **Second device.** `pkg/dataplane/awg.go` (build tag `awg`) runs it under the gateway's identity
+  key on its own UDP port, `SOVEREIGN_AWG_LISTEN` (default off; the node image is built with the
+  tag). Without the tag the same API exists and refuses with `ErrAWGNotBuilt`.
+- **One policy point.** Each device has a tun wrapper and decides in the wrapper that decrypted the
+  packet, against the same `ForwardTable` (so the same per-device ACL and conntrack). `relayRoute`
+  then queues the packet on the wrapper whose device holds the destination peer. A packet for the
+  gateway itself goes to the first wrapper's stack and its answer is moved across. A profile device
+  is on one device only: `Peer.AWG` partitions the peers, a key named on both is refused.
+- **Selection.** `NetmapPeer.access_method = "amneziawg"` on a profile device. If the gateway runs no
+  AmneziaWG device the entry is dropped with a note, never moved to plain WireGuard.
+- **Parameters.** `NetmapSelf.awg` (`AwgConfig`): `jc, jmin, jmax, s1..s4` integers, `h1..h4` a value
+  or an inclusive range (`"1177943521-1177943999"`). No default set exists: no parameters, no device.
+  `SOVEREIGN_AWG_PARAMS` (same JSON) is a fallback for lab nodes only; a netmap set wins and an
+  invalid netmap set is never replaced by it. New parameters restart the device. Rules
+  (`AWGParams.Validate`, from the amneziawg-go README and the AmneziaWG documentation): Jc 1 to 128;
+  1 ≤ Jmin ≤ Jmax ≤ 1280; S1 1 to 1132 and S2 1 to 1188 with S2 ≠ S1+56 (initiation 148+S1 and
+  response 92+S2 must differ in size); S3 0 to 64 and S4 0 to 32 (held below the MTU bound because
+  S4 is added to every data message); H1–H4 above 4 (1–4 are WireGuard's own types), 32-bit,
+  pairwise non-overlapping. S1–S4 and H1–H4 must equal the profile's values; Jc/Jmin/Jmax shape what
+  a sender emits and need not.
+- **Removed.** The fixed-header sketch `pkg/dataplane/stealth` and everything that referenced it.
+- **Not covered yet.** Exit clients (ADR 0032) on AmneziaWG; the profile's MTU should be at most
+  1420 minus S4 so a full-size packet does not fragment on a 1500 path.

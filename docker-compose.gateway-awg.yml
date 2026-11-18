@@ -1,0 +1,25 @@
+# AmneziaWG on the profile gateway (ADR 0036): for devices on networks that recognise and
+# block plain WireGuard. The person adding a device picks "Rete che riconosce le VPN
+# (AmneziaWG)" and imports the profile into the official AmneziaWG app.
+#
+#   NERONET_EXTRA_COMPOSE_FILE="docker-compose.proxy.yml docker-compose.gateway.yml docker-compose.gateway-awg.yml"
+#   NERONET_AWG_PORT=51821        # the UDP port on the host; the router forwards it
+#
+# It needs docker-compose.gateway.yml and a node binary built with the awg tag (the node
+# image is: docker/Dockerfile.node). Off unless you include this file: without it the
+# gateway publishes only its WireGuard port, and NERONET_AWG_PORT does nothing. Compose
+# cannot make one entry of a ports list optional inside docker-compose.gateway.yml, which
+# is why this is an overlay, like docker-compose.wss.yml.
+#
+# The obfuscation parameters are not here and not in the image. The console generates a
+# set per organisation, sends it to this gateway in the netmap and writes the same values
+# into each AmneziaWG profile. An organisation that does not allow the method has no set,
+# and then the gateway starts no AmneziaWG device even with this file included.
+services:
+  gateway:
+    environment:
+      # The listener inside the container is always 51821.
+      - SOVEREIGN_AWG_LISTEN=:51821
+    ports:
+      # The only port this file opens.
+      - "${NERONET_GATEWAY_BIND:-0.0.0.0}:${NERONET_AWG_PORT:?set NERONET_AWG_PORT to the host UDP port for AmneziaWG}:51821/udp"
