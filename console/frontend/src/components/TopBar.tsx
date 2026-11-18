@@ -1,17 +1,16 @@
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useLocation } from 'react-router';
-import { ArrowDownLeft, ArrowUpRight, ChevronDown, Skull } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { ROUTES, type RouteId } from '../routes/paths';
 import { canSeeRoute, locate, visibleGroups, type NavGroupKey } from '../routes/navModel';
-import { useStatsOverview } from '../services/queries';
 import { effectiveRole } from '../services/roles';
 import type { Features } from '../services/types';
-import { Disclosure, MENU_CONTENT, MENU_ITEM, NotMeasured, StationSymbol, cn } from '../ui';
+import { Disclosure, MENU_CONTENT, MENU_ITEM, cn } from '../ui';
 import { Logo } from '../ui/Logo';
 import Header from './Header';
+import { StatusLine } from './StatusLine';
 
 export interface TopBarProps {
   features: Features;
@@ -30,39 +29,6 @@ const TRIGGER =
 // The marker for "you are here": the signal, outlined in ink so it holds 3:1.
 const ACTIVE_MARK =
   'font-semibold after:absolute after:inset-x-3 after:-bottom-[7px] after:h-[3px] after:rounded-pill after:bg-signal after:shadow-[0_0_0_1px_rgb(var(--color-ink))]';
-
-function useCountdown(armed: boolean, scheduledAt: string | null): string {
-  const { t } = useTranslation('chrome');
-  const [remaining, setRemaining] = useState('');
-
-  useEffect(() => {
-    if (!armed && !scheduledAt) return;
-
-    const update = () => {
-      if (scheduledAt) {
-        const diff = new Date(scheduledAt).getTime() - Date.now();
-        if (diff <= 0) {
-          setRemaining(t('status.triggered'));
-        } else {
-          const hours = Math.floor(diff / (1000 * 60 * 60));
-          const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-          const secs = Math.floor((diff % (1000 * 60)) / 1000);
-          setRemaining(
-            `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-          );
-        }
-      } else if (armed) {
-        setRemaining(t('status.erasureArmedInstant'));
-      }
-    };
-
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, [armed, scheduledAt, t]);
-
-  return remaining;
-}
 
 /**
  * The top bar: the wordmark, the four task groups, search, language, theme,
@@ -91,21 +57,12 @@ export default function TopBar({
   const role = effectiveRole(user);
   const { pathname } = useLocation();
   const here = locate(pathname);
-  const remaining = useCountdown(nukeArmed, nukeScheduledAt);
-
-  // The rate is null until the collector has two samples to derive it from, and
-  // the bar says "not measured" then rather than a zero.
-  const overview = useStatsOverview();
-  const stats = overview.status === 'success' ? overview.data : null;
-  const rate = (value: number | null | undefined) =>
-    typeof value === 'number' ? <span className="font-medium tabular-nums">{value} MiB/s</span> : <NotMeasured />;
 
   const groups = visibleGroups(role, features);
   const showSettings = canSeeRoute('settings', role, features);
   const counts: Partial<Record<RouteId, number>> = { nodes: nodeCount };
   const alerts: Partial<Record<RouteId, number>> = { risk: highRiskCount, audit: quarantinedCount };
 
-  const armed = nukeArmed || Boolean(nukeScheduledAt);
   const canSeeRisk = canSeeRoute('risk', role, features);
 
   return (
@@ -174,67 +131,16 @@ export default function TopBar({
         </div>
       </div>
 
-      {/* One line, in words, that says how the network is doing: the same
-          statuses the map will draw as stations. */}
-      <div role="group" aria-label={t('status.label')} className="border-t border-border-subtle bg-sheet">
-        <div className="mx-auto flex min-h-9 w-full max-w-[1360px] flex-wrap items-center gap-x-5 gap-y-1 px-6 py-1 text-caption text-muted">
-          {armed && (
-            <span className="flex items-center gap-2 rounded-control border border-danger bg-danger/10 py-0.5 pl-2 pr-0.5 text-danger">
-              <Skull aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-              <span className="font-semibold">{t('status.erasureArmed')}</span>
-              <span className="tabular-nums">{remaining}</span>
-              <button
-                type="button"
-                onClick={onExecuteWipe}
-                className="rounded-control bg-danger px-2 py-0.5 font-semibold text-danger-contrast transition-colors hover:bg-danger-strong focus-visible:outline-focus"
-              >
-                {t('status.eraseNow')}
-              </button>
-            </span>
-          )}
-
-          <span className="flex items-center gap-1.5 text-content">
-            <StationSymbol kind="service" size={14} className="text-success" />
-            {nodeCount === 0
-              ? t('status.noDevices')
-              : t('status.inService', { reachable: reachableCount, total: nodeCount })}
-          </span>
-
-          {quarantinedCount > 0 ? (
-            <Link
-              to={ROUTES.nodes}
-              className="flex items-center gap-1.5 rounded-control font-medium text-danger underline focus-visible:outline-focus"
-            >
-              <StationSymbol kind="blocked" size={14} />
-              {t('status.blocked', { count: quarantinedCount })}
-            </Link>
-          ) : (
-            <span>{t('status.noneBlocked')}</span>
-          )}
-
-          {highRiskCount > 0 && canSeeRisk && (
-            <Link
-              to={ROUTES.risk}
-              className="rounded-control font-medium text-warning underline focus-visible:outline-focus"
-            >
-              {t('status.highRisk', { count: highRiskCount })}
-            </Link>
-          )}
-
-          <span aria-label={t('header.throughput')} className="ml-auto hidden items-center gap-4 text-content lg:flex">
-            <span className="flex items-center gap-1.5">
-              <ArrowDownLeft aria-hidden="true" className="h-3.5 w-3.5 text-muted" />
-              <span className="text-muted">{t('header.rx')}:</span>
-              {rate(stats?.total_bandwidth_rx_mb_s)}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5 text-muted" />
-              <span className="text-muted">{t('header.tx')}:</span>
-              {rate(stats?.total_bandwidth_tx_mb_s)}
-            </span>
-          </span>
-        </div>
-      </div>
+      <StatusLine
+        nodeCount={nodeCount}
+        reachableCount={reachableCount}
+        quarantinedCount={quarantinedCount}
+        highRiskCount={highRiskCount}
+        canSeeRisk={canSeeRisk}
+        nukeArmed={nukeArmed}
+        nukeScheduledAt={nukeScheduledAt}
+        onExecuteWipe={onExecuteWipe}
+      />
     </header>
   );
 }

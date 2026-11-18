@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +9,7 @@ import { clearSession, storeSession } from '../services/authToken';
 import { resetConnectionState } from '../services/connection';
 import { createQueryClient } from '../services/queries';
 import { renderUI } from '../test/harness';
+import { stubLayout } from '../test/layout';
 import i18n from '../i18n';
 import { RequireAuth } from './RequireAuth';
 import { RootLayout } from './RootLayout';
@@ -152,21 +153,11 @@ describe('shell height', () => {
   });
 });
 
-describe('narrow window', () => {
+describe('shell at every width', () => {
   beforeEach(() => {
     localStorage.clear();
     resetConnectionState();
     stubEnvironment();
-    vi.stubGlobal('matchMedia', ((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false
-    })) as unknown as typeof window.matchMedia);
     storeSession({ token: 'tok' });
   });
 
@@ -176,15 +167,38 @@ describe('narrow window', () => {
     vi.restoreAllMocks();
   });
 
-  it('replaces the whole shell with a clean message and a link to the personal portal', async () => {
-    renderConsole();
+  it('draws the admin shell on a phone, with a bottom tab bar, and no "use a wider window" screen', async () => {
+    stubLayout('phone');
+    const { container } = renderConsole();
 
-    expect(await screen.findByRole('heading', { name: label('narrow.title') })).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: label('narrow.portalLink') });
-    expect(link).toHaveAttribute('href', '/me');
-    // No top bar and no page behind the message.
-    expect(screen.queryByRole('navigation')).toBeNull();
-    expect(screen.queryByRole('banner')).toBeNull();
-    expect(screen.queryByText('Overview body')).toBeNull();
+    expect(await screen.findByText('Overview body')).toBeInTheDocument();
+    expect(container.querySelector('[data-layout="phone"]')).not.toBeNull();
+    const nav = screen.getByRole('navigation', { name: label('nav.landmark') });
+    expect(nav).toHaveAttribute('data-bottom-tabs');
+    expect(screen.getAllByRole('navigation', { name: label('nav.landmark') })).toHaveLength(1);
+    expect(container.querySelector('[data-narrow-window]')).toBeNull();
+    // The tab bar is the thing the page makes room for.
+    expect(screen.getByRole('main').className).toContain('--bottom-nav-height');
+  });
+
+  it('draws a row of tabs under the wordmark on a tablet and no bottom bar', async () => {
+    stubLayout('tablet');
+    const { container } = renderConsole();
+
+    expect(await screen.findByText('Overview body')).toBeInTheDocument();
+    expect(container.querySelector('[data-layout="tablet"]')).not.toBeNull();
+    expect(container.querySelector('[data-bottom-tabs]')).toBeNull();
+    expect(screen.getByRole('button', { name: label('nav.groups.network') })).toBeInTheDocument();
+  });
+
+  it('moves between the layouts as the window turns, without losing the page', async () => {
+    const turnTo = stubLayout('desktop');
+    const { container } = renderConsole();
+    expect(await screen.findByText('Overview body')).toBeInTheDocument();
+    expect(container.querySelector('[data-layout="desktop"]')).not.toBeNull();
+
+    act(() => turnTo('phone'));
+    await waitFor(() => expect(container.querySelector('[data-layout="phone"]')).not.toBeNull());
+    expect(screen.getByText('Overview body')).toBeInTheDocument();
   });
 });
