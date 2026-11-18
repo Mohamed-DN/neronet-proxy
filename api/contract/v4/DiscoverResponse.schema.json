@@ -21,6 +21,9 @@
         "awg_port": {
           "type": "integer"
         },
+        "vless_port": {
+          "type": "integer"
+        },
         "country_code": {
           "type": "string"
         },

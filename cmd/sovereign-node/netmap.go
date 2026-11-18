@@ -78,7 +78,9 @@ type netmapManager struct {
 	// node id, so a device's conntrack survives a new document. Guarded by applyMu.
 	profileFilters map[string]*acl.NetstackFilter
 	// awg is the AmneziaWG device's state (awg.go). Guarded by applyMu.
-	awg       awgState
+	awg awgState
+	// vless is the VLESS + REALITY terminator's state (vless.go). Guarded by applyMu.
+	vless     vlessState
 	netfilter *acl.NetstackFilter
 	path      string
 
@@ -380,6 +382,7 @@ func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Tim
 	}
 	peers, dropped = m.enforceable(peers, dropped, netmap)
 	m.reconcileAWG(netmap)
+	m.reconcileVLESS(netmap, revoked)
 	peers, dropped = m.withoutUnservedAWG(peers, dropped, netmap.Peers)
 	if m.mux != nil {
 		allowed, relays, err := documentTransports(netmap)
@@ -486,6 +489,7 @@ func (m *netmapManager) ApplyRevocations(keys []string, atVersion uint64) {
 	}
 	peers, dropped = m.enforceable(peers, dropped, doc)
 	peers, dropped = m.withoutUnservedAWG(peers, dropped, current)
+	m.reconcileVLESS(doc, revoked)
 	if err := m.setPeers(peers); err != nil {
 		m.markRevocationPending(true)
 		log.Printf("[SOVEREIGN-NODE] Could not apply %d revocation(s) to the data plane, retrying at the next heartbeat: %v", newly, err)
@@ -698,7 +702,8 @@ func (m *netmapManager) installForwarding(doc []control.NetmapPeer, kept []datap
 	table := dataplane.NewForwardTable()
 	filters := make(map[string]*acl.NetstackFilter, len(served))
 	for _, p := range doc {
-		if !p.Profile || !served[normaliseKey(p.PublicKeyHex)] {
+		// A VLESS device has no WireGuard peer: it is served when its virtual device is.
+		if !p.Profile || !(served[normaliseKey(p.PublicKeyHex)] || m.vless.served[p.NodeID] && accessMethodVLESS(p)) {
 			continue
 		}
 		// One filter per device for as long as it is served: its conntrack holds the
@@ -778,6 +783,10 @@ func netmapPeers(in []control.NetmapPeer, revoked map[string]uint64, documents .
 		key := normaliseKey(p.PublicKeyHex)
 		if _, isRevoked := revoked[key]; isRevoked {
 			dropped = append(dropped, fmt.Sprintf("%s revoked", p.NodeID))
+			continue
+		}
+		// A VLESS device is served by a virtual device, not by WireGuard (vless.go).
+		if accessMethodVLESS(p) {
 			continue
 		}
 

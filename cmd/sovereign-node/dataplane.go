@@ -56,6 +56,12 @@ type dataplaneOptions struct {
 	// (ADR 0036). Empty keeps the method off.
 	AWGListen string
 
+	// VLESSSocksListen, VLESSSocksAddr and XrayConfig are the operator's settings for the
+	// VLESS + REALITY terminator (ADR 0036, vless.go). Empty keeps the method off.
+	VLESSSocksListen string
+	VLESSSocksAddr   string
+	XrayConfig       string
+
 	// ExitEnabled is the operator's consent to be an exit (-enable-exit): without it the
 	// node never dials the internet for a client, whatever the netmap says (ADR 0032).
 	ExitEnabled bool
@@ -207,6 +213,11 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		return nil, err
 	}
 	manager.SetAWG(awgPort, awgEnv)
+	stopVLESS, err := startVLESS(manager, opts.VLESSSocksListen, opts.VLESSSocksAddr, opts.XrayConfig)
+	if err != nil {
+		dev.Close()
+		return nil, fmt.Errorf("starting the VLESS device SOCKS5: %w", err)
+	}
 
 	meshUp, _ := exitDNSUpstream()
 	manager.SetMeshDNS(meshDNSEnabled(), meshUp)
@@ -285,6 +296,7 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 
 	return func() {
 		stopLoops()
+		stopVLESS()
 		pskManager.Stop()
 		if echo != nil {
 			_ = echo.Close()
