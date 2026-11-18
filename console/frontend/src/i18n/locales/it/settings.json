@@ -72,5 +72,26 @@
     "failed": "La modifica non è stata salvata. Riprova.",
     "loadFailed": "Non è stato possibile caricare i gateway.",
     "onlyAdmin": "Solo un amministratore della piattaforma o un amministratore può gestire i gateway."
+  },
+  "accessMethods": {
+    "title": "Metodi di accesso",
+    "body": "Come telefoni e computer si collegano alla rete. Il collegamento normale è sempre attivo.",
+    "wss": "Reti che bloccano le VPN (porta 443)",
+    "wssHint": "Per computer su Wi-Fi di alberghi e uffici che lasciano passare solo il web. WireGuard dentro una connessione web.",
+    "awg": "Reti che riconoscono le VPN (AmneziaWG)",
+    "awgHint": "Per le reti che riconoscono e fermano le VPN. Serve un gateway con AmneziaWG attivo e l'app AmneziaWG sul dispositivo.",
+    "saved": "Metodi di accesso salvati. Arriveranno ai gateway al prossimo controllo.",
+    "generated": "AmneziaWG attivato. I parametri segreti sono stati creati e arriveranno ai gateway al prossimo controllo.",
+    "regenerateBody": "I parametri di AmneziaWG sono segreti e non si vedono qui. Puoi crearne di nuovi se pensi che siano stati scoperti.",
+    "regenerate": "Rigenera i parametri",
+    "regenerateTitle": "Rigenerare i parametri di AmneziaWG?",
+    "regenerateWarning": "I dispositivi che usano AmneziaWG smetteranno di collegarsi finché non scaricano di nuovo il loro profilo e lo importano nell'app. Gli altri dispositivi non cambiano.",
+    "regenerateConfirm": "Rigenera",
+    "regenerateCancel": "Annulla",
+    "regenerated_one": "Parametri rigenerati. 1 dispositivo deve scaricare di nuovo il suo profilo.",
+    "regenerated_other": "Parametri rigenerati. {{count}} dispositivi devono scaricare di nuovo il loro profilo.",
+    "failed": "I metodi di accesso non sono stati salvati. Riprova.",
+    "loadError": "Impossibile caricare i metodi di accesso. Riprova.",
+    "onlyAdmin": "Solo il proprietario o un amministratore dell'organizzazione può cambiare i metodi di accesso."
   }
 }

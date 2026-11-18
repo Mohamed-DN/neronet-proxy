@@ -38,6 +38,18 @@ export const WIREGUARD_INSTALL: Record<Platform, string> = {
   linux: 'https://www.wireguard.com/install/'
 };
 
+/**
+ * Where the official AmneziaWG app for each platform comes from (ADR 0036). Official pages only:
+ * the store listings and the project's own releases on GitHub.
+ */
+export const AMNEZIAWG_INSTALL: Record<Platform, string> = {
+  ios: 'https://apps.apple.com/app/amneziawg/id6478942365',
+  android: 'https://play.google.com/store/apps/details?id=org.amnezia.awg',
+  windows: 'https://github.com/amnezia-vpn/amneziawg-windows-client/releases',
+  macos: 'https://apps.apple.com/app/amneziawg/id6478942365',
+  linux: 'https://github.com/amnezia-vpn/amneziawg-tools/releases'
+};
+
 /** The interface name used in the Linux commands: short, because Linux limits it to 15 characters. */
 export const LINUX_INTERFACE = 'neronet';
 

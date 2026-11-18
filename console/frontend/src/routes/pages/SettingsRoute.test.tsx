@@ -87,6 +87,7 @@ interface RenderOptions {
   deleteAnswer?: { status: number; body: unknown };
   withOrg?: boolean;
   modulesFail?: boolean;
+  access?: { wireguard_wss: boolean; amneziawg: boolean; amneziawg_ready: boolean };
 }
 
 function render({
@@ -96,8 +97,11 @@ function render({
   gateways = GATEWAYS,
   deleteAnswer = { status: 200, body: { removed: 'node-gw2' } },
   withOrg = true,
-  modulesFail = false
+  modulesFail = false,
+  access = { wireguard_wss: true, amneziawg: false, amneziawg_ready: false }
 }: RenderOptions = {}) {
+  let accessNow = access;
+  const accessPuts: unknown[] = [];
   const puts: unknown[] = [];
   const gatewayPuts: unknown[] = [];
   const calls: string[] = [];
@@ -125,6 +129,16 @@ function render({
       if (url.startsWith('/api/devices/gateways/') && method === 'DELETE') {
         return json(deleteAnswer.body, deleteAnswer.status);
       }
+      if (url === '/api/organizations/org-a/access-methods' && method === 'PUT') {
+        const body = JSON.parse(String(init?.body));
+        accessPuts.push(body);
+        accessNow = { ...body, amneziawg_ready: body.amneziawg || accessNow.amneziawg_ready };
+        return json({ organization_id: 'org-a', ...accessNow });
+      }
+      if (url === '/api/organizations/org-a/access-methods/regenerate' && method === 'POST') {
+        return json({ organization_id: 'org-a', ...accessNow, devices_to_redo: 2 });
+      }
+      if (url === '/api/organizations/org-a/access-methods') return json({ organization_id: 'org-a', ...accessNow });
       if (url === '/api/devices/gateways') return json({ gateways });
       if (url === '/api/organizations/org-a') {
         return json({
@@ -159,7 +173,7 @@ function render({
       </QueryClientProvider>
     </AuthContext.Provider>
   );
-  return { ...result, puts, gatewayPuts, calls };
+  return { ...result, puts, gatewayPuts, calls, accessPuts };
 }
 
 /** The row of the gateways table that names `name`. */
@@ -329,5 +343,65 @@ describe('SettingsRoute', () => {
     await screen.findByDisplayValue('300');
     expect(container.textContent ?? '').not.toMatch(/deniab|negabilit/i);
     expect(screen.getByText(/Only the platform administrator can change this level/i)).toBeInTheDocument();
+  });
+
+  it('shows the ways to connect, and an administrator switches them on and off', async () => {
+    const u = userEvent.setup();
+    const { accessPuts } = render({ role: 'admin' });
+    expect(await screen.findByRole('heading', { level: 2, name: 'Ways to connect' })).toBeInTheDocument();
+    const wss = await screen.findByRole('switch', { name: /Networks that block VPNs \(port 443\)/ });
+    const awg = screen.getByRole('switch', { name: /Networks that recognise VPNs \(AmneziaWG\)/ });
+    expect(wss).toBeChecked();
+    expect(awg).not.toBeChecked();
+    expect(screen.queryByRole('button', { name: 'Regenerate the parameters' })).toBeNull();
+
+    await u.click(awg);
+    await waitFor(() => expect(accessPuts).toEqual([{ wireguard_wss: true, amneziawg: true }]));
+    expect(await screen.findByText(/AmneziaWG is on\. The secret parameters were created/)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Regenerate the parameters' })).toBeInTheDocument();
+
+    await u.click(wss);
+    await waitFor(() => expect(accessPuts[1]).toEqual({ wireguard_wss: false, amneziawg: true }));
+  });
+
+  it('warns that AmneziaWG devices must import their profile again before regenerating', async () => {
+    const u = userEvent.setup();
+    const { calls } = render({
+      role: 'owner',
+      access: { wireguard_wss: false, amneziawg: true, amneziawg_ready: true }
+    });
+    await u.click(await screen.findByRole('button', { name: 'Regenerate the parameters' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/download their profile again and import it in the app/)).toBeInTheDocument();
+    expect(calls.some((c) => c.includes('regenerate'))).toBe(false);
+
+    await u.click(within(dialog).getByRole('button', { name: 'Regenerate' }));
+    await waitFor(() => expect(calls).toContain('POST /api/organizations/org-a/access-methods/regenerate'));
+    expect(
+      await screen.findByText('Parameters regenerated. 2 devices must download their profile again.')
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the switches to an owner or administrator', async () => {
+    render({ role: 'member' });
+    const wss = await screen.findByRole('switch', { name: /Networks that block VPNs/ });
+    expect(wss).toBeDisabled();
+    expect(screen.getByRole('switch', { name: /Networks that recognise VPNs/ })).toBeDisabled();
+    expect(
+      screen.getByText(/Only the organisation owner or an administrator can change the ways to connect/)
+    ).toBeInTheDocument();
+  });
+
+  it('is written in Italian too', async () => {
+    await setLanguage('it');
+    try {
+      render({ role: 'admin' });
+      expect(await screen.findByRole('heading', { level: 2, name: 'Metodi di accesso' })).toBeInTheDocument();
+      expect(
+        await screen.findByRole('switch', { name: /Reti che riconoscono le VPN \(AmneziaWG\)/ })
+      ).toBeInTheDocument();
+    } finally {
+      await setLanguage('en');
+    }
   });
 });

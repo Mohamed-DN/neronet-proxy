@@ -70,20 +70,30 @@ interface Api {
   exits: unknown;
   nodes: unknown[];
   manifest: unknown;
+  methods: unknown[] | null;
 }
 
-const api: Api = { registerStatus: 201, registerBody: DEVICE, exits: NO_EXITS, nodes: [], manifest: null };
+const api: Api = {
+  registerStatus: 201,
+  registerBody: DEVICE,
+  exits: NO_EXITS,
+  nodes: [],
+  manifest: null,
+  methods: null
+};
 
 /** Answers the exits, the registration, the device list and the app manifest; anything else is not found. */
 function stubApi(overrides: Partial<Api> = {}) {
   Object.assign(
     api,
-    { registerStatus: 201, registerBody: DEVICE, exits: NO_EXITS, nodes: [], manifest: null },
+    { registerStatus: 201, registerBody: DEVICE, exits: NO_EXITS, nodes: [], manifest: null, methods: null },
     overrides
   );
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (/\/devices\/exits$/.test(url)) return json(200, api.exits);
+    if (/\/devices\/profile\/methods$/.test(url) && api.methods)
+      return json(200, { default: 'wireguard', methods: api.methods });
     if (/\/devices\/profile$/.test(url) && init?.method === 'POST') return json(api.registerStatus, api.registerBody);
     if (/\/nodes$/.test(url)) return json(200, { nodes: api.nodes });
     if (url.endsWith('/downloads/manifest.json') && api.manifest) return json(200, api.manifest);
@@ -646,3 +656,183 @@ describe('AddDeviceRoute, accessibility', () => {
 
 /** The device as the device list reports it once its gateway has seen it. */
 const DEVICE_NODE = { id: 'dev-1', name: 'Work phone', user_id: 'u1', device_kind: 'profile' };
+
+// ADR 0036: a choice among access methods, only when there is more than one.
+const M = (id: string) => ({ id, label: id });
+const ALL_METHODS = [M('wireguard'), M('wireguard-wss'), M('amneziawg')];
+const WSS = {
+  url: 'wss://console.example.net',
+  path_prefix: '0123456789abcdef',
+  remote: 'gateway:51820',
+  local_endpoint: '127.0.0.1:51820',
+  mtu: 1380,
+  persistent_keepalive: 20
+};
+const AWG_PARAMS = {
+  jc: 7,
+  jmin: 40,
+  jmax: 90,
+  s1: 21,
+  s2: 22,
+  s3: 23,
+  s4: 24,
+  h1: '100000-100999',
+  h2: '200000-200999',
+  h3: '300000-300999',
+  h4: '400000-400999'
+};
+
+function registrations(fetchMock: ReturnType<typeof stubApi>) {
+  return fetchMock.mock.calls
+    .filter(([url, init]) => /\/devices\/profile$/.test(String(url)) && init?.method === 'POST')
+    .map(([, init]) => JSON.parse(String(init?.body)) as Record<string, unknown>);
+}
+
+describe('AddDeviceRoute, access methods', () => {
+  it('shows no choice when the server offers only the normal way, or does not answer', async () => {
+    setUserAgent(UA.windows);
+    stubApi({ methods: [M('wireguard')] });
+    const view = renderAdd();
+    await screen.findByRole('radio', { name: /Windows/ });
+    expect(screen.queryByText('How do you connect?')).toBeNull();
+    view.unmount();
+
+    vi.unstubAllGlobals();
+    stubApi({ methods: null });
+    renderAdd();
+    await screen.findByRole('radio', { name: /Windows/ });
+    expect(screen.queryByText('How do you connect?')).toBeNull();
+  });
+
+  it('offers the three ways after the device, in words about the situation, with the protocol muted', async () => {
+    setUserAgent(UA.windows);
+    stubApi({ methods: ALL_METHODS });
+    renderAdd();
+
+    expect(await screen.findByText('How do you connect?')).toBeInTheDocument();
+    const radios = screen.getAllByRole('radio', { name: /Normal|VPN/ });
+    expect(radios.map((r) => r.getAttribute('value'))).toEqual(['wireguard', 'wireguard-wss', 'amneziawg']);
+    expect(screen.getByRole('radio', { name: /^Normal/ })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /Network that blocks VPNs \(port 443\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Network that recognises VPNs.*AmneziaWG/ })).toBeInTheDocument();
+    expect(screen.getByText(/Fine almost everywhere/)).toBeInTheDocument();
+  });
+
+  it('does not offer the port 443 way on a phone, which cannot run its program', async () => {
+    setUserAgent(UA.iphone);
+    stubApi({ methods: ALL_METHODS });
+    renderAdd();
+
+    await screen.findByText('How do you connect?');
+    expect(screen.queryByRole('radio', { name: /blocks VPNs/ })).toBeNull();
+    expect(screen.getByRole('radio', { name: /recognises VPNs/ })).toBeInTheDocument();
+  });
+
+  it('sends the chosen method and builds the AmneziaWG profile and steps from the answer', async () => {
+    setUserAgent(UA.android);
+    const fetchMock = stubApi({
+      methods: ALL_METHODS,
+      registerBody: {
+        ...DEVICE,
+        access_method: 'amneziawg',
+        amneziawg: { endpoint: 'gw.example.net:51821', params: AWG_PARAMS }
+      }
+    });
+    const downloads: string[] = [];
+    const texts: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.download);
+    });
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, {
+        createObjectURL: vi.fn((blob: Blob) => {
+          const reader = new FileReader();
+          reader.onload = () => texts.push(String(reader.result));
+          reader.readAsText(blob);
+          return 'blob:config';
+        }),
+        revokeObjectURL: vi.fn()
+      })
+    );
+    renderAdd();
+
+    await screen.findByText('How do you connect?');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /recognises VPNs/ }));
+    await user.click(screen.getByRole('button', { name: 'Create the access' }));
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Connect Android' })).toBeInTheDocument();
+    expect(registrations(fetchMock)[0]).toMatchObject({ access_method: 'amneziawg' });
+    expect(screen.getByRole('link', { name: /Get AmneziaWG/ })).toHaveAttribute(
+      'href',
+      'https://play.google.com/store/apps/details?id=org.amnezia.awg'
+    );
+    expect(screen.getByText(/Open AmneziaWG, tap \+ and choose "Import from file or archive"/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Get WireGuard/ })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Download the profile' }));
+    expect(downloads).toContain('anna-s-android-awg.conf');
+    await waitFor(() => expect(texts.length).toBe(1));
+    expect(texts[0]).toContain('Jc = 7');
+    expect(texts[0]).toContain('H4 = 400000-400999');
+    expect(texts[0]).toContain('Endpoint = gw.example.net:51821');
+  });
+
+  it('makes the port 443 way the main steps, with its own file', async () => {
+    setUserAgent(UA.windows);
+    const fetchMock = stubApi({
+      methods: ALL_METHODS,
+      registerBody: { ...DEVICE, access_method: 'wireguard-wss', strict_network: WSS }
+    });
+    const downloads: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.download);
+    });
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:config'), revokeObjectURL: vi.fn() }));
+    renderAdd();
+
+    await screen.findByText('How do you connect?');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /blocks VPNs/ }));
+    await user.click(screen.getByRole('button', { name: 'Create the access' }));
+
+    await screen.findByRole('heading', { level: 2, name: 'Connect Windows' });
+    expect(registrations(fetchMock)[0]).toMatchObject({ access_method: 'wireguard-wss' });
+    // The steps are in the main list, not behind "Trouble connecting?".
+    const trouble = screen.getByText('Trouble connecting?').closest('details') as HTMLElement;
+    expect(within(trouble).queryByRole('heading', { level: 3 })).toBeNull();
+    expect(screen.getAllByText(/wstunnel client --tls-verify-certificate/).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'Download the file for blocked networks' }));
+    expect(downloads).toEqual(['anna-s-pc-443.conf']);
+  });
+
+  it('409 method_not_available says the way is no longer available', async () => {
+    setUserAgent(UA.windows);
+    stubApi({
+      methods: ALL_METHODS,
+      registerStatus: 409,
+      registerBody: { error: 'method_not_available', code: 'method_not_available' }
+    });
+    renderAdd();
+
+    await screen.findByText('How do you connect?');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /recognises VPNs/ }));
+    await user.click(screen.getByRole('button', { name: 'Create the access' }));
+
+    expect(await alertWith(/no longer available/)).toBeInTheDocument();
+  });
+
+  it('the choice is accessible in both themes', async () => {
+    setUserAgent(UA.windows);
+    stubApi({ methods: ALL_METHODS });
+    const light = renderAdd('light');
+    await screen.findByText('How do you connect?');
+    await expectNoAxeViolations(light.container, 'light');
+    light.unmount();
+    const dark = renderAdd('dark');
+    await screen.findByText('How do you connect?');
+    await expectNoAxeViolations(dark.container, 'dark');
+  });
+});

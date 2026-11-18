@@ -165,7 +165,8 @@
       "generic": "We could not create the access. Try again.",
       "noCrypto": "This browser cannot protect the access. Open the page in a recent version of Chrome, Firefox, Safari or Edge.",
       "exitNotPermitted": "Only an administrator can send all traffic through the network: ask them, or create the access without this option.",
-      "exitGone": "This option is no longer available. Try without it, or pick another place to go through."
+      "exitGone": "This option is no longer available. Try without it, or pick another place to go through.",
+      "methodGone": "This way of connecting is no longer available. Choose another one and try again."
     },
     "exit": {
       "toggle": "Send all traffic through the network",
@@ -193,6 +194,46 @@
       "download": "Download the file for blocked networks",
       "secret": "The command contains an address reserved for your organisation: do not publish it or share it outside your team.",
       "phones": "On iPhone and Android the WireGuard app cannot use this method."
+    },
+    "method": {
+      "legend": "How do you connect?",
+      "wireguard": {
+        "title": "Normal",
+        "body": "Fine almost everywhere: at home, at the office, on mobile data."
+      },
+      "wireguard-wss": {
+        "title": "Network that blocks VPNs (port 443)",
+        "body": "For hotels, offices and guest Wi-Fi that only let the web through. It is slower and needs one more program on the computer."
+      },
+      "amneziawg": {
+        "title": "Network that recognises VPNs",
+        "body": "For networks that spot and stop connections like this one. It uses the AmneziaWG app instead of WireGuard."
+      }
+    },
+    "awg": {
+      "install": "Install the AmneziaWG app on {{device}}, if you do not have it yet. WireGuard is not enough: it has to be this one.",
+      "installLink": "Get AmneziaWG",
+      "note": "The names in quotes are the ones in the AmneziaWG app: they may appear in English.",
+      "how": {
+        "ios": {
+          "import": "Open AmneziaWG, tap + at the top right and choose \"Create from file or archive\". Select the file you just downloaded and confirm when iPhone asks.",
+          "scan": "On the phone open AmneziaWG, tap + at the top right and choose \"Create from QR code\". Then scan the code below, name it and confirm when iPhone asks.",
+          "activate": "Turn on the switch next to the connection."
+        },
+        "android": {
+          "import": "Open AmneziaWG, tap + and choose \"Import from file or archive\". Select the file you just downloaded (usually in the Download folder).",
+          "scan": "On the phone open AmneziaWG, tap + and choose \"Scan from QR code\". Then scan the code below and name it.",
+          "activate": "Turn on the switch next to the connection and confirm Android's request."
+        },
+        "windows": {
+          "import": "Open AmneziaWG, click \"Add Tunnel\" at the bottom left and choose the file you just downloaded (usually in the Download folder).",
+          "activate": "Select the connection in the list and click \"Activate\"."
+        },
+        "macos": {
+          "import": "Open AmneziaWG from the menu bar at the top, choose \"Manage tunnels\", click + at the bottom left and \"Import tunnel(s) from file\", then choose the file you just downloaded.",
+          "activate": "Select the connection in the list and click \"Activate\"."
+        }
+      }
     }
   }
 }

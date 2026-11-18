@@ -19,10 +19,17 @@ const RAW_SETTING = /exclude private ips/i;
 const ADVANCED = ['add.strict.'];
 
 /**
+ * The names of the three access methods are the words the owner chose (ADR 0036): they say
+ * "VPN" and "porta 443" on purpose, because the person recognises the situation by them. Only
+ * these titles; the sentence under each stays free of the words.
+ */
+const NAMED_SITUATIONS = /^add\.method\.[a-z-]+\.title$/;
+
+/**
  * Names of the WireGuard app's own buttons, quoted as the app shows them. A person has to find
  * them by that name, so they are not jargon of ours.
  */
-const APP_LABELS = ['add.how.'];
+const APP_LABELS = ['add.how.', 'add.awg.how.'];
 
 function strings(node: unknown, path = ''): Array<[string, string]> {
   if (typeof node === 'string') return [[path, node]];
@@ -39,7 +46,7 @@ describe('portal copy for members', () => {
   ] as const) {
     it(lang + ': no technical term outside the advanced keys', () => {
       const found = strings(doc)
-        .filter(([path]) => !ADVANCED.some((prefix) => path.startsWith(prefix)))
+        .filter(([path]) => !ADVANCED.some((prefix) => path.startsWith(prefix)) && !NAMED_SITUATIONS.test(path))
         // The app's own menu names are quoted: strip the quotes' content before looking for our own words.
         .map(([path, value]): [string, string] => [
           path,

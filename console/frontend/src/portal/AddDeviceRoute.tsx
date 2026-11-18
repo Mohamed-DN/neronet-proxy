@@ -5,9 +5,14 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '../context/AuthContext';
 import { generateDeviceKeys, KeyGenerationUnavailable } from '../devices/keys';
-import { buildProfileConfig, buildStrictNetworkConfig } from '../devices/wgConfig';
+import {
+  buildAmneziaConfig,
+  buildProfileConfig,
+  buildStrictNetworkConfig,
+  type AccessMethod
+} from '../devices/wgConfig';
 import { ApiError } from '../services/apiClient';
-import { useProfileExits, useRegisterProfileDevice } from '../services/queries/devices';
+import { useProfileExits, useProfileMethods, useRegisterProfileDevice } from '../services/queries/devices';
 import { Button } from '../ui/Button';
 import { cn } from '../ui/cn';
 import { FormField } from '../ui/FormField';
@@ -16,7 +21,8 @@ import { PageHeader } from '../ui/PageHeader';
 import { Select } from '../ui/Select';
 import { Switch } from '../ui/Switch';
 import { AddResult, type AddResultData } from './AddResult';
-import { detectPlatform, type Platform } from './platform';
+import { AccessMethodPicker } from './AccessMethodPicker';
+import { detectPlatform, isMobilePlatform, type Platform } from './platform';
 import { PlatformPicker } from './PlatformPicker';
 
 const NAME_MIN = 1;
@@ -24,7 +30,15 @@ const NAME_MAX = 64;
 const SECONDARY_LARGE =
   'inline-flex h-11 items-center justify-center gap-2 rounded-control border border-border-strong bg-surface-raised px-4 text-body font-medium text-content hover:bg-surface-hover focus-visible:outline-focus';
 
-type AlertKind = 'noCrypto' | 'noGateway' | 'blockedOwner' | 'keyInUse' | 'exitNotPermitted' | 'exitGone' | 'generic';
+type AlertKind =
+  | 'noCrypto'
+  | 'noGateway'
+  | 'blockedOwner'
+  | 'keyInUse'
+  | 'exitNotPermitted'
+  | 'exitGone'
+  | 'methodGone'
+  | 'generic';
 
 function alertKindFor(error: unknown): AlertKind {
   if (error instanceof KeyGenerationUnavailable) return 'noCrypto';
@@ -36,6 +50,7 @@ function alertKindFor(error: unknown): AlertKind {
     const reason = error.code ?? error.message;
     if (reason === 'no_profile_gateway') return 'noGateway';
     if (reason === 'owner_has_blocked_device') return 'blockedOwner';
+    if (reason === 'method_not_available') return 'methodGone';
     // Only a taken key is "key already in use"; any other conflict is a plain retry.
     return reason === 'public_key_in_use' ? 'keyInUse' : 'generic';
   }
@@ -60,6 +75,10 @@ export default function AddDeviceRoute() {
   // The choice is offered only when the server offers it: no exits, or no right to choose, and it is not mentioned.
   const offersExit = exitsQuery.isSuccess && exitsQuery.data.can_choose === true && exits.length > 0;
 
+  // ADR 0036: the choice is shown only when the server offers more than one way. A server
+  // that does not know the question (an older one) or fails to answer it means plain WireGuard.
+  const methodsQuery = useProfileMethods();
+
   const detected = useMemo(() => detectPlatform(), []);
   const [platform, setPlatform] = useState<Platform | null>(detected);
   const [platformError, setPlatformError] = useState(false);
@@ -69,10 +88,23 @@ export default function AddDeviceRoute() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [fullTunnel, setFullTunnel] = useState(false);
   const [exitId, setExitId] = useState<string | undefined>(undefined);
+  const [chosenMethod, setChosenMethod] = useState<AccessMethod | null>(null);
   const [alert, setAlert] = useState<AlertKind | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<AddResultData | null>(null);
   const alertRef = useRef<HTMLDivElement>(null);
+
+  // The way for networks that block VPNs needs a program a phone cannot run, so a phone is not offered it.
+  const methods = useMemo(
+    () =>
+      (methodsQuery.data ?? [])
+        .map((m) => m.id)
+        .filter((id) => id !== 'wireguard-wss' || !platform || !isMobilePlatform(platform)),
+    [methodsQuery.data, platform]
+  );
+  const offersMethod = methodsQuery.isSuccess && methods.length > 1;
+  const method: AccessMethod =
+    offersMethod && chosenMethod && methods.includes(chosenMethod) ? chosenMethod : 'wireguard';
 
   const chosenExit = exits.find((e) => e.node_id === exitId) ?? exits.find((e) => e.online) ?? exits[0];
   const username = user?.username ?? '';
@@ -111,17 +143,34 @@ export default function AddDeviceRoute() {
         name: trimmed,
         public_key: keys.publicKey,
         preshared_key: keys.presharedKey,
-        ...(exitNodeId ? { exit_node_id: exitNodeId } : {})
+        ...(exitNodeId ? { exit_node_id: exitNodeId } : {}),
+        ...(method !== 'wireguard' ? { access_method: method } : {})
       });
       const strictInfo = device.strict_network ?? null;
+      const strict = strictInfo
+        ? { info: strictInfo, config: buildStrictNetworkConfig(keys, device, strictInfo) }
+        : null;
+      // The profile text follows the method the server confirmed; an answer without what that
+      // method needs is a failure, never a profile that would not connect.
+      let config: string;
+      if (method === 'amneziawg') {
+        if (!device.amneziawg?.endpoint || !device.amneziawg.params) throw new Error('amneziawg answer incomplete');
+        config = buildAmneziaConfig(keys, device, device.amneziawg);
+      } else if (method === 'wireguard-wss') {
+        if (!strict) throw new Error('strict network answer incomplete');
+        config = strict.config;
+      } else {
+        config = buildProfileConfig(keys, device);
+      }
       setResult({
         deviceId: device.device_id,
         name: trimmed,
         platform,
         sameDevice: detected === platform,
         exitName: device.exit?.name,
-        config: buildProfileConfig(keys, device),
-        strict: strictInfo ? { info: strictInfo, config: buildStrictNetworkConfig(keys, device, strictInfo) } : null
+        method,
+        config,
+        strict
       });
     } catch (error) {
       if (error instanceof ApiError && error.status === 400) {
@@ -178,6 +227,15 @@ export default function AddDeviceRoute() {
             </p>
           )}
         </fieldset>
+
+        {offersMethod && (
+          <fieldset>
+            <legend className="text-heading font-medium text-content">{t('add.method.legend')}</legend>
+            <div className="mt-3">
+              <AccessMethodPicker methods={methods} value={method} onChange={setChosenMethod} />
+            </div>
+          </fieldset>
+        )}
 
         <FormField label={t('add.name')} hint={t('add.nameHint')} error={nameError} required>
           <Input

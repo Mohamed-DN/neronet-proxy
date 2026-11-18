@@ -27,6 +27,37 @@ export interface ProfileDeviceResponse {
    * signed-in user with the profile they just made. Absent or null: not offered.
    */
   strict_network?: StrictNetwork | null;
+  /** ADR 0036: the way this device connects. Absent on an older server: plain WireGuard. */
+  access_method?: AccessMethod;
+  /** Present for an AmneziaWG device: the listener's address and the organisation's obfuscation parameters. */
+  amneziawg?: AmneziaWgInfo | null;
+}
+
+export type AccessMethod = 'wireguard' | 'wireguard-wss' | 'amneziawg';
+
+/**
+ * The organisation's AmneziaWG obfuscation parameters, as the console generated them. They
+ * are a secret of the same kind as a key: they are written into the profile and nowhere else.
+ * H1 to H4 are ranges ("low-high"), as AmneziaWG 2.0 reads them.
+ */
+export interface AwgParams {
+  jc: number;
+  jmin: number;
+  jmax: number;
+  s1: number;
+  s2: number;
+  s3: number;
+  s4: number;
+  h1: string;
+  h2: string;
+  h3: string;
+  h4: string;
+}
+
+export interface AmneziaWgInfo {
+  /** host:port of the gateway's AmneziaWG listener. */
+  endpoint: string;
+  params: AwgParams;
 }
 
 export interface StrictNetwork {
@@ -72,6 +103,34 @@ export function buildStrictNetworkConfig(
 }
 
 /**
+ * The profile for a network that recognises VPNs: AmneziaWG. Same keys and address as the
+ * plain profile; the [Interface] section also carries the obfuscation parameters, under the
+ * names the official AmneziaWG apps read (Jc, Jmin, Jmax, S1 to S4, H1 to H4), and the
+ * Endpoint is the gateway's AmneziaWG listener. Import it into the AmneziaWG app, not the
+ * WireGuard one: a stock WireGuard app does not know these keys.
+ */
+export function buildAmneziaConfig(
+  keys: { privateKey: string; presharedKey: string },
+  device: ProfileDeviceResponse,
+  awg: AmneziaWgInfo
+): string {
+  const p = awg.params;
+  return configText(keys, device, { endpoint: awg.endpoint, keepalive: 25 }, [
+    `Jc = ${p.jc}`,
+    `Jmin = ${p.jmin}`,
+    `Jmax = ${p.jmax}`,
+    `S1 = ${p.s1}`,
+    `S2 = ${p.s2}`,
+    `S3 = ${p.s3}`,
+    `S4 = ${p.s4}`,
+    `H1 = ${p.h1}`,
+    `H2 = ${p.h2}`,
+    `H3 = ${p.h3}`,
+    `H4 = ${p.h4}`
+  ]);
+}
+
+/**
  * ADR 0029: NeroNet metadata as comment lines before [Interface]. Stock WireGuard apps
  * ignore them; the NeroNet apps read the device name, the console and the NeroDrop button
  * from them. The console is written as its origin and only when it is https.
@@ -92,7 +151,8 @@ function metadataLines(device: ProfileDeviceResponse): string[] {
 function configText(
   keys: { privateKey: string; presharedKey: string },
   device: ProfileDeviceResponse,
-  peer: { endpoint: string; keepalive: number; mtu?: number }
+  peer: { endpoint: string; keepalive: number; mtu?: number },
+  interfaceExtras: string[] = []
 ): string {
   const lines = [
     ...metadataLines(device),
@@ -106,6 +166,7 @@ function configText(
     lines.push(`DNS = ${entries.join(', ')}`);
   }
   if (peer.mtu) lines.push(`MTU = ${peer.mtu}`);
+  lines.push(...interfaceExtras);
   lines.push(
     '',
     '[Peer]',
@@ -148,6 +209,11 @@ export function configFileName(name: string): string {
  */
 export function strictConfigFileName(name: string): string {
   return `${fileStem(name, 28)}-443.conf`;
+}
+
+/** The AmneziaWG profile's file name: the same stem plus "-awg", at most 32 characters. */
+export function amneziaConfigFileName(name: string): string {
+  return `${fileStem(name, 28)}-awg.conf`;
 }
 
 function fileStem(name: string, max: number): string {

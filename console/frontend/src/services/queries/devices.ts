@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-query';
 
 import { apiDelete, apiGet, apiPost, apiPut, type ApiError } from '../apiClient';
-import type { ProfileDeviceResponse } from '../../devices/wgConfig';
+import type { AccessMethod, ProfileDeviceResponse } from '../../devices/wgConfig';
 /** The fleet list key, declared here so this file does not depend on keys.ts (same value: ['nodes']). */
 const nodesKey = ['nodes'] as const;
 
@@ -23,6 +23,8 @@ export interface RegisterProfileDeviceInput {
   preshared_key: string;
   /** ADR 0032: send all the device's traffic through this exit. Omitted for an overlay-only profile. */
   exit_node_id?: string;
+  /** ADR 0036: how the device connects. Omitted for plain WireGuard. */
+  access_method?: AccessMethod;
 }
 
 export interface ProfileExit {
@@ -47,6 +49,24 @@ export function useProfileExits(): UseQueryResult<ProfileExitsResponse, ApiError
   });
 }
 
+export interface ProfileMethod {
+  id: AccessMethod;
+  /** The server's plain English label; the console shows its own translation by id. */
+  label: string;
+}
+
+/** The ways the caller can connect a new device: allowed by the organisation and offered by the gateway. */
+export function useProfileMethods(): UseQueryResult<ProfileMethod[], ApiError> {
+  return useQuery({
+    queryKey: ['devices', 'profile-methods'],
+    queryFn: async ({ signal }) => {
+      const answer = await apiGet<{ methods?: ProfileMethod[] }>('/devices/profile/methods', { signal });
+      return Array.isArray(answer?.methods) ? answer.methods : [];
+    },
+    staleTime: 30_000
+  });
+}
+
 export interface RegistrationKey {
   id: string;
   key_prefix?: string;
@@ -66,11 +86,14 @@ export function useRegisterProfileDevice(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, public_key, preshared_key, exit_node_id }: RegisterProfileDeviceInput) =>
-      apiPost<ProfileDeviceResponse>(
-        '/devices/profile',
-        exit_node_id ? { name, public_key, preshared_key, exit_node_id } : { name, public_key, preshared_key }
-      ),
+    mutationFn: ({ name, public_key, preshared_key, exit_node_id, access_method }: RegisterProfileDeviceInput) =>
+      apiPost<ProfileDeviceResponse>('/devices/profile', {
+        name,
+        public_key,
+        preshared_key,
+        ...(exit_node_id ? { exit_node_id } : {}),
+        ...(access_method && access_method !== 'wireguard' ? { access_method } : {})
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: nodesKey });
     }

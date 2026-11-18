@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
+import goldenAmnezia from './golden/amneziawg.conf?raw';
+import goldenWireguard from './golden/wireguard.conf?raw';
+import goldenWss from './golden/wireguard-wss.conf?raw';
 import {
+  amneziaConfigFileName,
+  buildAmneziaConfig,
   buildProfileConfig,
   buildStrictNetworkConfig,
   configFileName,
   strictConfigFileName,
   wstunnelCommand,
+  type AmneziaWgInfo,
   type ProfileDeviceResponse,
   type StrictNetwork
 } from './wgConfig';
@@ -123,7 +129,11 @@ describe('QR code with the metadata header', () => {
       console_url: `https://${'c'.repeat(63)}.${'d'.repeat(63)}.example.com:8443/me`,
       dns_name: `${'x'.repeat(63)}.${'y'.repeat(63)}.example.com`
     };
-    for (const text of [buildProfileConfig(keys, longest), buildStrictNetworkConfig(keys, longest, strict)]) {
+    for (const text of [
+      buildProfileConfig(keys, longest),
+      buildStrictNetworkConfig(keys, longest, strict),
+      buildAmneziaConfig(keys, longest, awg)
+    ]) {
       expect(new TextEncoder().encode(text).length).toBeLessThan(2000);
       await expect(QRCode.toDataURL(text, { errorCorrectionLevel: 'M', margin: 2, width: 256 })).resolves.toMatch(
         /^data:image\/png/
@@ -197,5 +207,86 @@ describe('strictConfigFileName', () => {
   it('adds -443 and stays within the 32 characters the WireGuard app for Windows accepts', () => {
     expect(strictConfigFileName('Work laptop')).toBe('work-laptop-443.conf');
     expect(strictConfigFileName('a'.repeat(50)).replace(/\.conf$/, '')).toHaveLength(32);
+  });
+});
+
+// ADR 0036: one golden file per access method. The values are obviously made up; what is
+// pinned is which lines a method writes, in which order, under which names.
+const awg: AmneziaWgInfo = {
+  endpoint: 'gw.example.net:51821',
+  params: {
+    jc: 7,
+    jmin: 40,
+    jmax: 90,
+    s1: 21,
+    s2: 22,
+    s3: 23,
+    s4: 24,
+    h1: '100000-100999',
+    h2: '200000-200999',
+    h3: '300000-300999',
+    h4: '400000-400999'
+  }
+};
+const goldenDevice: ProfileDeviceResponse = { ...device, allowed_ips: ['100.64.0.0/10'] };
+const goldenKeys = { privateKey: 'PRIVKEY=', presharedKey: 'PSKKEY=' };
+
+describe('golden profiles per access method', () => {
+  it('wireguard', () => {
+    expect(buildProfileConfig(goldenKeys, goldenDevice)).toBe(goldenWireguard);
+  });
+
+  it('wireguard-wss', () => {
+    expect(buildStrictNetworkConfig(goldenKeys, goldenDevice, strict)).toBe(goldenWss);
+  });
+
+  it('amneziawg', () => {
+    expect(buildAmneziaConfig(goldenKeys, goldenDevice, awg)).toBe(goldenAmnezia);
+  });
+
+  it('amneziawg writes every key the official apps read, under their names, in [Interface] only', () => {
+    // Parameters made at test time, as the console makes them: nothing here is a stored value.
+    const rnd = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1));
+    const info: AmneziaWgInfo = {
+      endpoint: 'gw.example.net:51821',
+      params: {
+        jc: rnd(4, 12),
+        jmin: rnd(8, 60),
+        jmax: rnd(100, 400),
+        s1: rnd(15, 150),
+        s2: rnd(15, 150),
+        s3: rnd(8, 64),
+        s4: rnd(4, 32),
+        h1: '1000-1999',
+        h2: '3000-3999',
+        h3: '5000-5999',
+        h4: '7000-7999'
+      }
+    };
+    const text = buildAmneziaConfig(goldenKeys, goldenDevice, info);
+    const [iface, peer] = text.split('\n[Peer]\n');
+    for (const name of ['Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'S3', 'S4', 'H1', 'H2', 'H3', 'H4']) {
+      expect(iface).toMatch(new RegExp(`^${name} = [0-9]+(-[0-9]+)?$`, 'm'));
+      expect(peer).not.toContain(`${name} =`);
+    }
+    expect(peer).toContain('Endpoint = gw.example.net:51821');
+  });
+
+  it('keeps the NeroNet header lines in all three', () => {
+    for (const text of [goldenWireguard, goldenWss, goldenAmnezia]) {
+      expect(text.split('\n').slice(0, 4)).toEqual([
+        '# NeroNet-Profile: 1',
+        '# NeroNet-Console: https://console.example.net',
+        '# NeroNet-Device: dev-1',
+        '# NeroNet-DNS-Name: work-phone.acme.example.com'
+      ]);
+    }
+  });
+});
+
+describe('amneziaConfigFileName', () => {
+  it('adds -awg and stays within 32 characters', () => {
+    expect(amneziaConfigFileName('Work laptop')).toBe('work-laptop-awg.conf');
+    expect(amneziaConfigFileName('a'.repeat(50)).replace(/\.conf$/, '')).toHaveLength(32);
   });
 });

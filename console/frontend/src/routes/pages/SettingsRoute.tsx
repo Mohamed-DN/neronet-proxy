@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { ApiError } from '../../services/apiClient';
 import { useOrganization, useOrganizationModules, useUpdateOrganizationSettings } from '../../services/queries/users';
+import { AccessMethodsCard } from './AccessMethodsCard';
 import { GatewaysCard } from './GatewaysCard';
 import {
   Badge,
@@ -190,6 +191,8 @@ export default function SettingsRoute() {
 
       {/* The table needs the full width: name, address, default, devices, last seen, actions. */}
       <GatewaysCard user={user} />
+
+      <AccessMethodsCard orgId={orgId} user={user} />
     </div>
   );
 }

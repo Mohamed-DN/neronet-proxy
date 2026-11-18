@@ -72,5 +72,26 @@
     "failed": "The change was not saved. Try again.",
     "loadFailed": "The gateways could not be loaded.",
     "onlyAdmin": "Only a platform administrator or an administrator can manage gateways."
+  },
+  "accessMethods": {
+    "title": "Ways to connect",
+    "body": "How phones and computers reach the network. The normal connection is always on.",
+    "wss": "Networks that block VPNs (port 443)",
+    "wssHint": "For computers on hotel and office Wi-Fi that only let the web through. WireGuard inside a web connection.",
+    "awg": "Networks that recognise VPNs (AmneziaWG)",
+    "awgHint": "For networks that spot and stop VPNs. Needs a gateway with AmneziaWG running and the AmneziaWG app on the device.",
+    "saved": "Ways to connect saved. Gateways get them at their next check.",
+    "generated": "AmneziaWG is on. The secret parameters were created and reach the gateways at their next check.",
+    "regenerateBody": "The AmneziaWG parameters are secret and are not shown here. You can make new ones if you think they were found out.",
+    "regenerate": "Regenerate the parameters",
+    "regenerateTitle": "Regenerate the AmneziaWG parameters?",
+    "regenerateWarning": "Devices that use AmneziaWG will stop connecting until they download their profile again and import it in the app. Other devices do not change.",
+    "regenerateConfirm": "Regenerate",
+    "regenerateCancel": "Cancel",
+    "regenerated_one": "Parameters regenerated. 1 device must download its profile again.",
+    "regenerated_other": "Parameters regenerated. {{count}} devices must download their profile again.",
+    "failed": "The ways to connect were not saved. Try again.",
+    "loadError": "Could not load the ways to connect. Try again.",
+    "onlyAdmin": "Only the organisation owner or an administrator can change the ways to connect."
   }
 }

@@ -5,7 +5,13 @@ import { AlertTriangle, Check, Copy, Download, ExternalLink, Globe } from 'lucid
 import { useTranslation } from 'react-i18next';
 
 import { QrCode } from '../devices/QrCode';
-import { configFileName, strictConfigFileName, type StrictNetwork } from '../devices/wgConfig';
+import {
+  amneziaConfigFileName,
+  configFileName,
+  strictConfigFileName,
+  type AccessMethod,
+  type StrictNetwork
+} from '../devices/wgConfig';
 import { useNodes } from '../services/queries/nodes';
 import { Button } from '../ui/Button';
 import { cn } from '../ui/cn';
@@ -14,8 +20,15 @@ import { StationStatus } from '../ui/StationSymbol';
 import { useToast } from '../ui/Toast';
 import { deviceStatus } from './deviceStatus';
 import { fetchPublishedApps } from './downloads';
-import { isMobilePlatform, LINUX_INTERFACE, saveTextFile, WIREGUARD_INSTALL, type Platform } from './platform';
-import { StrictNetworkSection } from './StrictNetworkSection';
+import {
+  AMNEZIAWG_INSTALL,
+  isMobilePlatform,
+  LINUX_INTERFACE,
+  saveTextFile,
+  WIREGUARD_INSTALL,
+  type Platform
+} from './platform';
+import { StrictNetworkNotes, StrictNetworkSection, StrictNetworkSteps } from './StrictNetworkSection';
 
 /** How often the page asks whether the new device has been heard from, and when it stops saying "waiting" and offers help. */
 export const POLL_MS = 4_000;
@@ -30,6 +43,8 @@ export interface AddResultData {
   sameDevice: boolean;
   /** Set when all of the device's traffic goes through one exit. */
   exitName?: string;
+  /** How the device connects (ADR 0036). Absent: plain WireGuard. */
+  method?: AccessMethod;
   /** The profile text. It holds the device's secret and lives in memory only. */
   config: string;
   /** The profile for networks that block VPNs, when the installation offers it. Memory only. */
@@ -60,7 +75,22 @@ export function AddResult({ result }: { result: AddResultData }) {
   const showQr = isMobilePlatform(platform) && !sameDevice;
   const isLinux = platform === 'linux';
   const platformName = t(`add.platform.${platform}`);
-  const fileName = configFileName(result.name);
+  const method = result.method ?? 'wireguard';
+  const isAwg = method === 'amneziawg';
+  // The way for networks that block VPNs is a first-class choice: its steps are the main steps.
+  const isWss = method === 'wireguard-wss' && result.strict !== null;
+  const fileName = isWss
+    ? strictConfigFileName(result.name)
+    : isAwg
+      ? amneziaConfigFileName(result.name)
+      : configFileName(result.name);
+  const installUrl = isAwg ? AMNEZIAWG_INSTALL[platform] : WIREGUARD_INSTALL[platform];
+  const howKey = isAwg ? 'add.awg.how' : 'add.how';
+  // Linux: the commands differ for AmneziaWG (awg-quick, its own configuration folder).
+  const linuxInstall = isAwg
+    ? `sudo install -m 600 ~/Downloads/${fileName} /etc/amnezia/amneziawg/${LINUX_INTERFACE}.conf\nsudo awg-quick up ${LINUX_INTERFACE}`
+    : `sudo install -m 600 ~/Downloads/${fileName} /etc/wireguard/${LINUX_INTERFACE}.conf\nsudo wg-quick up ${LINUX_INTERFACE}`;
+  const linuxStop = `sudo ${isAwg ? 'awg-quick' : 'wg-quick'} down ${LINUX_INTERFACE}`;
 
   useEffect(() => {
     heading.current?.focus();
@@ -97,9 +127,9 @@ export function AddResult({ result }: { result: AddResultData }) {
     queryKey: ['portal', 'downloads'] as const,
     queryFn: () => fetchPublishedApps(),
     staleTime: 5 * 60_000,
-    enabled: isLinux
+    enabled: isLinux && !isAwg && !isWss
   });
-  const linuxApp = isLinux ? apps.data?.find((app) => app.platform === 'linux') : undefined;
+  const linuxApp = isLinux && !isAwg && !isWss ? apps.data?.find((app) => app.platform === 'linux') : undefined;
 
   async function copyConfig() {
     try {
@@ -139,29 +169,49 @@ export function AddResult({ result }: { result: AddResultData }) {
 
       <ol className="mt-6 list-decimal space-y-6 ps-5 text-body text-content marker:text-muted">
         <li>
-          <p>{t('add.result.install', { device: platformName })}</p>
+          <p>{t(isAwg ? 'add.awg.install' : 'add.result.install', { device: platformName })}</p>
           <a
-            href={WIREGUARD_INSTALL[platform]}
+            href={installUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-sm underline focus-visible:outline-focus"
           >
-            {t('add.result.installLink')}
+            {t(isAwg ? 'add.awg.installLink' : 'add.result.installLink')}
             <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
             <span className="sr-only"> {t('downloads.newTab')}</span>
           </a>
         </li>
 
-        {showQr ? (
+        {isWss && result.strict ? (
+          <>
+            <StrictNetworkSteps strict={result.strict.info} onDownload={() => saveTextFile(result.config, fileName)} />
+            <li>
+              {isLinux ? (
+                <>
+                  <p>{t('add.linux.intro')}</p>
+                  <pre className={COMMAND}>
+                    <code>{linuxInstall}</code>
+                  </pre>
+                  <p className="mt-3 text-muted">{t('add.linux.stop')}</p>
+                  <pre className={COMMAND}>
+                    <code>{linuxStop}</code>
+                  </pre>
+                </>
+              ) : (
+                t(`add.how.${platform}.activate`)
+              )}
+            </li>
+          </>
+        ) : showQr ? (
           <>
             <li>
-              <p>{t(`add.how.${platform}.scan`)}</p>
+              <p>{t(`${howKey}.${platform}.scan`)}</p>
               <div className="mt-3 flex justify-center rounded-card border border-border-subtle bg-surface-raised p-4 [&_img]:h-auto [&_img]:max-w-full">
                 <QrCode value={result.config} label={t('add.result.qrAlt', { name: result.name })} size={288} />
               </div>
               <p className="mt-2 text-center text-body font-medium text-content">{t('add.result.scan')}</p>
             </li>
-            <li>{t(`add.how.${platform}.activate`)}</li>
+            <li>{t(`${howKey}.${platform}.activate`)}</li>
           </>
         ) : isLinux ? (
           <>
@@ -185,11 +235,11 @@ export function AddResult({ result }: { result: AddResultData }) {
                 <summary className={SUMMARY}>{t('add.linux.show')}</summary>
                 <p className="mt-2 text-muted">{t('add.linux.intro')}</p>
                 <pre className={COMMAND}>
-                  <code>{`sudo install -m 600 ~/Downloads/${fileName} /etc/wireguard/${LINUX_INTERFACE}.conf\nsudo wg-quick up ${LINUX_INTERFACE}`}</code>
+                  <code>{linuxInstall}</code>
                 </pre>
                 <p className="mt-3 text-muted">{t('add.linux.stop')}</p>
                 <pre className={COMMAND}>
-                  <code>{`sudo wg-quick down ${LINUX_INTERFACE}`}</code>
+                  <code>{linuxStop}</code>
                 </pre>
               </details>
             </li>
@@ -200,12 +250,15 @@ export function AddResult({ result }: { result: AddResultData }) {
               <p>{t(sameDevice ? 'add.result.getFileHere' : 'add.result.getFileMove')}</p>
               <div className="mt-3">{download}</div>
             </li>
-            <li>{t(`add.how.${platform}.import`)}</li>
-            <li>{t(`add.how.${platform}.activate`)}</li>
+            <li>{t(`${howKey}.${platform}.import`)}</li>
+            <li>{t(`${howKey}.${platform}.activate`)}</li>
           </>
         )}
       </ol>
-      {!isLinux && <p className="mt-4 text-caption text-muted">{t('add.how.note')}</p>}
+      {isWss && result.strict && <StrictNetworkNotes />}
+      {!isLinux && !isWss && (
+        <p className="mt-4 text-caption text-muted">{t(isAwg ? 'add.awg.note' : 'add.how.note')}</p>
+      )}
 
       {result.exitName && (
         <div className="mt-6 rounded-card border border-border-subtle bg-surface-raised p-3 text-body text-content">
@@ -277,7 +330,7 @@ export function AddResult({ result }: { result: AddResultData }) {
               {t('add.result.copy')}
             </Button>
           </div>
-          {result.strict && (
+          {method === 'wireguard' && result.strict && (
             <StrictNetworkSection
               strict={result.strict.info}
               onDownload={() => result.strict && saveTextFile(result.strict.config, strictConfigFileName(result.name))}
