@@ -82,6 +82,23 @@ One name per thing, everywhere: **dispositivo** (never nodo), **gateway**, **usc
 map: *in servizio*, *interrotto*, *non misurato*, *bloccato*. End users never see: key, CIDR,
 endpoint, handshake, gateway, wstunnel, port.
 
+## Three sizes, three designs
+
+The admin console works at every width; each size has its own layout, not a squeezed desktop.
+
+- **Desktop (≥ 1280px):** the top bar with the four groups, 1360px pages, full tables, dialogs.
+- **Tablet (768–1279px), the iPad layout:** master–detail. A list on the left (devices, rules,
+  people) and the selected item's detail on the right in the same view instead of a dialog; the four
+  groups become a segmented tab row under the wordmark; touch targets ≥ 44px; hover-only affordances
+  have a visible equivalent.
+- **Phone (< 768px):** a bottom tab bar with the four groups (icon + word), reachable by thumb, and
+  the account at the top right. Pages are one column; tables become station rows (symbol, name, one
+  muted line) that open a full-screen detail; secondary actions live in a bottom sheet; the page's
+  primary action sits in a sticky bar above the tab bar. The overview map turns vertical, like the
+  poster of a single line on a station wall (after the map animation work lands).
+
+No size blocks the console any more; the "use a wider window" screen goes.
+
 ## Waves
 
 1. Tokens, Overpass, the top bar and the new information architecture; contrast gate extended to
