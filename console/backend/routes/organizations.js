@@ -4,6 +4,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { resolveUserOrg, requireRole, requireOrgRole, requireNotAuditor } = require('../middleware/rbac');
 const OrgService = require('../services/OrgService');
 const TransportPolicyService = require('../services/TransportPolicyService');
+const AccessMethodService = require('../services/AccessMethodService');
 const { logAuditEvent } = require('../utils/audit');
 
 router.use(authenticateToken);
@@ -118,6 +119,80 @@ router.put('/:id/transports', requireOrgRole('owner', 'admin'), async (req, res,
       return res.status(err.status).json({ error: err.message });
     }
     next(err);
+  }
+});
+
+// Access methods of the organisation's profile devices (ADR 0036). The answer carries the
+// switches only; the AmneziaWG parameters never leave the server through this route.
+router.get('/:id/access-methods', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'super-admin' && req.user.organization_id !== req.params.id) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    const settings = await AccessMethodService.getSettings(req.params.id);
+    if (!settings) return res.status(404).json({ error: 'Organization not found' });
+    return res.status(200).json(settings);
+  } catch (err) {
+    next(err);
+  }
+});
+
+function accessMethodFail(res, err, next) {
+  if (err instanceof AccessMethodService.AccessMethodError) {
+    return res.status(err.status).json({ error: err.code, code: err.code, message: err.message });
+  }
+  return next(err);
+}
+
+// The audit entries name the switches and counts, never a parameter.
+router.put('/:id/access-methods', requireOrgRole('owner', 'admin'), async (req, res, next) => {
+  try {
+    if (req.user.role !== 'super-admin' && req.user.organization_id !== req.params.id) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    const result = await AccessMethodService.setSettings(req.params.id, req.body);
+    if (!result) return res.status(404).json({ error: 'Organization not found' });
+    await logAuditEvent({
+      eventType: 'ACCESS_METHODS_UPDATED',
+      organizationId: result.organization_id,
+      severity: 'warn',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: result.organization_id,
+      targetType: 'organization',
+      message: `Access methods of ${result.organization_id} set to ${result.allowed_access_methods.join(',')}${result.generated ? '; AmneziaWG parameters generated' : ''}`,
+      ipAddress: req.ip,
+      metadata: { allowed_access_methods: result.allowed_access_methods, parameters_generated: result.generated }
+    });
+    const { generated: _generated, ...view } = result;
+    return res.status(200).json(view);
+  } catch (err) {
+    return accessMethodFail(res, err, next);
+  }
+});
+
+router.post('/:id/access-methods/regenerate', requireOrgRole('owner', 'admin'), async (req, res, next) => {
+  try {
+    if (req.user.role !== 'super-admin' && req.user.organization_id !== req.params.id) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    const result = await AccessMethodService.regenerateParams(req.params.id);
+    if (!result) return res.status(404).json({ error: 'Organization not found' });
+    await logAuditEvent({
+      eventType: 'ACCESS_METHODS_AWG_REGENERATED',
+      organizationId: result.organization_id,
+      severity: 'warn',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: result.organization_id,
+      targetType: 'organization',
+      message: `AmneziaWG parameters of ${result.organization_id} regenerated; ${result.devices_to_redo} device(s) must import their profile again`,
+      ipAddress: req.ip,
+      metadata: { devices_to_redo: result.devices_to_redo }
+    });
+    return res.status(200).json(result);
+  } catch (err) {
+    return accessMethodFail(res, err, next);
   }
 });
 

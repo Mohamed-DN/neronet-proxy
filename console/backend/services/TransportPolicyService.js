@@ -20,7 +20,8 @@ const { normalisePublicKeyHex } = require('../utils/crypto');
 const KNOWN_TRANSPORTS = ['udp', 'derp'];
 const CAPABILITY = 'derp-v2';
 // drop-v1: the node runs the NeroDrop mailbox (ADR 0033, pkg/drop).
-const KNOWN_CAPABILITIES = [CAPABILITY, 'drop-v1'];
+// awg-v1: the node runs an AmneziaWG listener on capability.awg_port (ADR 0036).
+const KNOWN_CAPABILITIES = [CAPABILITY, 'drop-v1', 'awg-v1'];
 const MAX_ENABLED_RELAYS = 32; // the node refuses a document with more candidates
 const MAX_HOMES = 2; // the node refuses a peer advertising more
 const RELAY_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -117,11 +118,15 @@ function sameList(a, b) {
 async function recordNodeCapability(nodeId, capability = {}, client = null) {
   const transports = canonical(capability.transports);
   const capabilities = canonical(capability.capabilities, KNOWN_CAPABILITIES);
+  // The AmneziaWG port counts only together with the capability that announces it.
+  const port = Number(capability.awg_port);
+  const awgPort = capabilities.includes('awg-v1') && Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
   const res = await pool(client).query(
-    `UPDATE nodes SET transports_built = $2, node_capabilities = $3, updated_at = NOW()
-      WHERE id = $1 AND (transports_built IS DISTINCT FROM $2 OR node_capabilities IS DISTINCT FROM $3)
+    `UPDATE nodes SET transports_built = $2, node_capabilities = $3, awg_port = $4, updated_at = NOW()
+      WHERE id = $1 AND (transports_built IS DISTINCT FROM $2 OR node_capabilities IS DISTINCT FROM $3
+                         OR awg_port IS DISTINCT FROM $4)
       RETURNING id`,
-    [nodeId, transports, capabilities]
+    [nodeId, transports, capabilities, awgPort]
   );
   if (res.rowCount === 0) return false;
   await AclEngine.bumpNetmap(client);

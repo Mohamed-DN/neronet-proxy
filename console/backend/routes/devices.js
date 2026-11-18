@@ -21,6 +21,7 @@ const ExitService = require('../services/ExitService');
 const { MESH_DNS, meshDnsEnabled, effectiveSearchDomain } = require('../utils/meshNames');
 const ProfileGatewayService = require('../services/ProfileGatewayService');
 const DeviceNameService = require('../services/DeviceNameService');
+const AccessMethodService = require('../services/AccessMethodService');
 
 router.use(authenticateToken);
 router.use(resolveUserOrg);
@@ -443,10 +444,37 @@ router.put('/:id/exit', async (req, res, next) => {
   }
 });
 
+// The ways the caller can connect a new device: allowed by the organisation and advertised by
+// the gateway that would serve it (the default one, or the administrator's choice). Labels
+// are plain English; the console translates them by id.
+router.get('/profile/methods', async (req, res, next) => {
+  try {
+    const wanted = req.query.gateway_node_id;
+    let gateway;
+    if (typeof wanted === 'string' && wanted) {
+      if (!(await ProfileGatewayService.mayUseGateway(req.user, orgOf(req), wanted))) {
+        return res.status(403).json({ error: 'gateway_not_permitted', code: 'gateway_not_permitted' });
+      }
+      gateway = await ProfileGatewayService.gatewayById(orgOf(req), wanted);
+      if (!gateway) return res.status(404).json({ error: 'no_such_gateway', code: 'no_such_gateway' });
+    } else {
+      gateway = await ProfileGatewayService.defaultGateway(orgOf(req));
+    }
+    const usable = await AccessMethodService.availableMethods(orgOf(req), gateway, strictNetworkOf(req) !== null);
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      default: 'wireguard',
+      methods: usable.map((id) => ({ id, label: AccessMethodService.LABELS[id] }))
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Register a profile device from its public key.
 router.post('/profile', async (req, res, next) => {
   try {
-    const { name, public_key, preshared_key, exit_node_id, gateway_node_id } = req.body || {};
+    const { name, public_key, preshared_key, exit_node_id, gateway_node_id, access_method } = req.body || {};
     const label = typeof name === 'string' ? name.trim() : '';
     if (!label || label.length > 64) return res.status(400).json({ error: 'name must be 1 to 64 characters' });
     if (!isKey(public_key)) return res.status(400).json({ error: 'public_key must be a 32-byte base64 key' });
@@ -490,6 +518,28 @@ router.post('/profile', async (req, res, next) => {
         code: 'no_profile_gateway',
         message: 'This organisation has no gateway for profile devices yet; an administrator must name one.'
       });
+    }
+
+    // ADR 0036: the method must be allowed by the organisation and advertised by this
+    // device's gateway. Absent means plain WireGuard, as before.
+    const method = access_method === undefined || access_method === null ? 'wireguard' : access_method;
+    if (typeof method !== 'string' || !AccessMethodService.METHODS.includes(method)) {
+      return res.status(400).json({ error: 'invalid_access_method', code: 'invalid_access_method' });
+    }
+    let awgParams = null;
+    if (method !== 'wireguard') {
+      const usable = await AccessMethodService.availableMethods(orgOf(req), gateway, strictNetworkOf(req) !== null);
+      if (!usable.includes(method)) {
+        return res.status(409).json({
+          error: 'method_not_available',
+          code: 'method_not_available',
+          message: 'This way of connecting is not available for this device.'
+        });
+      }
+      if (method === 'amneziawg') awgParams = await AccessMethodService.paramsForProfile(orgOf(req));
+      if (method === 'amneziawg' && !awgParams) {
+        return res.status(409).json({ error: 'method_not_available', code: 'method_not_available' });
+      }
     }
 
     // A full-tunnel profile (ADR 0032): every packet goes to the gateway and leaves through
@@ -537,8 +587,8 @@ router.post('/profile', async (req, res, next) => {
           client.query(
             `INSERT INTO nodes (id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6, role,
                               ip_class, is_healthy, is_quarantined, organization_id, device_kind, exit_node_id,
-                              gateway_node_id, dns_name)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9, $10, $11)`,
+                              gateway_node_id, dns_name, access_method)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9, $10, $11, $12)`,
             [
               id,
               actor.id,
@@ -550,7 +600,8 @@ router.post('/profile', async (req, res, next) => {
               organizationId,
               exit ? exit.node_id : null,
               gateway.id,
-              dnsName
+              dnsName,
+              method
             ]
           )
       );
@@ -573,11 +624,13 @@ router.post('/profile', async (req, res, next) => {
           name: label,
           overlay_ipv4: vips.overlayIpv4,
           gateway: gateway.id,
+          access_method: method,
           exit_node_id: exit ? exit.node_id : null
         }
       }
     });
 
+    res.set('Cache-Control', 'no-store');
     return res.status(201).json({
       device_id: id,
       name: label,
@@ -594,7 +647,13 @@ router.post('/profile', async (req, res, next) => {
       ...(exit ? { exit: { node_id: exit.node_id, name: exit.name, kind: exit.kind } } : {}),
       console_url: `https://${req.get('host')}/me`,
       dns_name: storedDnsName,
-      strict_network: strictNetworkOf(req)
+      strict_network: strictNetworkOf(req),
+      access_method: method,
+      // The organisation's obfuscation parameters, to the person who just made this device
+      // and only for an AmneziaWG one. The answer is never cached.
+      ...(method === 'amneziawg'
+        ? { amneziawg: { endpoint: AccessMethodService.awgEndpointOf(gateway), params: awgParams } }
+        : {})
     });
   } catch (err) {
     if (err && err.code === '23505') {

@@ -34,6 +34,7 @@ const RouteEngine = require('./RouteEngine');
 const RevocationEngine = require('./RevocationEngine');
 const ExitService = require('./ExitService');
 const ProfileGatewayService = require('./ProfileGatewayService');
+const AccessMethodService = require('./AccessMethodService');
 
 // --- Configured constants ----------------------------------------------------
 //
@@ -498,12 +499,12 @@ function computeDNSName(name, explicitDnsName, domain) {
  */
 async function buildNetmap(nodeId) {
   const selfRows = await query(
-    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, n.device_kind, n.profile_gateway_endpoint, n.role, o.search_domain, o.slug as org_slug
+    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, n.awg_port, n.device_kind, n.profile_gateway_endpoint, n.role, o.search_domain, o.slug as org_slug
        FROM nodes n
        LEFT JOIN organizations o ON n.organization_id = o.id
       WHERE n.id = $1`,
     [nodeId],
-    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, 'mesh' AS device_kind, NULL AS profile_gateway_endpoint, n.role, o.search_domain, o.slug as org_slug
+    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, NULL AS awg_port, 'mesh' AS device_kind, NULL AS profile_gateway_endpoint, n.role, o.search_domain, o.slug as org_slug
        FROM nodes n
        LEFT JOIN organizations o ON n.organization_id = o.id
       WHERE n.id = ?`,
@@ -533,6 +534,27 @@ async function buildNetmap(nodeId) {
   );
   const transports = await TransportPolicyService.planFor(self, orgPolicy[0] ? orgPolicy[0].allowed_transports : null);
 
+  // ADR 0036: the organisation's AmneziaWG parameters go to its own profile gateways that
+  // report a listener, while the method is allowed, and to no other node.
+  let awg = null;
+  if (isPostgres() && Boolean(self.profile_gateway_endpoint) && self.device_kind !== 'profile') {
+    const methods = await query(
+      'SELECT allowed_access_methods, awg_params FROM organizations WHERE id = $1',
+      [self.organization_id || 'org-default'],
+      'SELECT NULL AS allowed_access_methods, NULL AS awg_params',
+      []
+    );
+    const org = methods[0];
+    const params = org ? AccessMethodService.paramsOf(org) : null;
+    if (
+      params &&
+      AccessMethodService.allowedOf(org).includes('amneziawg') &&
+      AccessMethodService.gatewayRunsAmneziaWg(self)
+    ) {
+      awg = { listen_port: self.awg_port, params };
+    }
+  }
+
   const revoked = new Set(revokedKeys.map((k) => String(k).toLowerCase()));
   const permitted = permittedPeerVIPs(policy);
 
@@ -548,14 +570,14 @@ async function buildNetmap(nodeId) {
         // policy were ever to name one.
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
                 transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
-                device_kind, preshared_key, profile_gateway_endpoint, gateway_node_id, role
+                device_kind, preshared_key, profile_gateway_endpoint, gateway_node_id, access_method, role
            FROM nodes
           WHERE id <> $1 AND is_quarantined = FALSE AND is_healthy = TRUE
             AND COALESCE(organization_id, 'org-default') = $2`,
         [nodeId, self.organization_id || 'org-default'],
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
                 transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
-                'mesh' AS device_kind, NULL AS preshared_key, NULL AS profile_gateway_endpoint, NULL AS gateway_node_id, role
+                'mesh' AS device_kind, NULL AS preshared_key, NULL AS profile_gateway_endpoint, NULL AS gateway_node_id, 'wireguard' AS access_method, role
            FROM nodes
           WHERE id <> ? AND is_quarantined = 0 AND is_healthy = 1
             AND COALESCE(organization_id, 'org-default') = ?`,
@@ -668,6 +690,9 @@ async function buildNetmap(nodeId) {
         profile: true,
         preshared_key_hex: psk.toString('hex')
       };
+      // ADR 0036: only AmneziaWG needs the gateway to know the method. A WebSocket device
+      // reaches the gateway's ordinary WireGuard port through the tunnel server.
+      if (row.access_method === 'amneziawg') deviceEntry.access_method = 'amneziawg';
       if (devicePolicies.get(row.id)) deviceEntry.acl = devicePolicies.get(row.id);
       const exitAssignment = exitPlan && exitPlan.devices.get(row.id);
       if (exitAssignment) deviceEntry.exit = ExitService.exitEntry(exitAssignment);
@@ -793,6 +818,7 @@ async function buildNetmap(nodeId) {
   if (self.daita_mode && self.daita_mode !== 'off') {
     selfObj.daita_mode = self.daita_mode;
   }
+  if (awg) selfObj.awg = awg;
 
   const selfDNS = computeDNSName(self.name, self.dns_name, searchDomain);
   if (selfDNS) {

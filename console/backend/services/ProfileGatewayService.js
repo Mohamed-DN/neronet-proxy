@@ -43,7 +43,7 @@ function servingGatewaySql(d = 'd') {
 async function gateways(organizationId, client = getPgPool()) {
   const res = await client.query(
     `SELECT id, name, public_key, overlay_ipv4, profile_gateway_endpoint, is_default_profile_gateway,
-            is_healthy, is_quarantined, last_heartbeat
+            is_healthy, is_quarantined, last_heartbeat, node_capabilities, awg_port
        FROM nodes
       WHERE COALESCE(organization_id, '${DEFAULT_ORG}') = $1 AND ${IS_GATEWAY}
       ORDER BY ${DEFAULT_ORDER}`,

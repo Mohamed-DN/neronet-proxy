@@ -55,3 +55,30 @@ person adding a device to choose among open-source protocols, and AmneziaWG to r
 - One more WireGuard implementation on the gateway (amneziawg-go), isolated by build tag and port.
 - Per-organisation secrets of a new kind (AWG parameters): treated like keys, never logged.
 - The add-device flow gains one choice, shown only when more than one method is available.
+
+## Console side (implemented 18 November 2026)
+
+What the console stores and sends, so the gateway can be built against it:
+
+- **Schema** (migration 055): `nodes.access_method` (`wireguard` | `wireguard-wss` | `amneziawg`, default
+  `wireguard`), `nodes.awg_port`, `organizations.allowed_access_methods` (default
+  `{wireguard,wireguard-wss}`, plain WireGuard always present), `organizations.awg_params` (jsonb, NULL until
+  an administrator first switches AmneziaWG on).
+- **Gateway capability**: a gateway that runs the AmneziaWG listener registers with `capability.capabilities`
+  containing `awg-v1` and `capability.awg_port` (UDP port). The host is never reported: the profile's
+  endpoint is the host of the endpoint the administrator named for the gateway plus that port, so a node
+  cannot send people to an address of its own choosing. WebSocket availability stays installation-wide
+  (`NERONET_WSS_PATH_PREFIX` configured).
+- **Netmap**: for an organisation gateway that reports `awg-v1`, while the organisation allows `amneziawg`
+  and has parameters, `self.awg = { listen_port, params }`. No other node receives it. Each profile device
+  entry with `access_method: "amneziawg"` is served by the AmneziaWG device; any other device entry keeps
+  the plain WireGuard device (a WebSocket device reaches it through the tunnel server).
+- **Parameters** (`AccessMethodService.generateAwgParams`, random per organisation with `crypto.randomInt`;
+  ranges per the AmneziaWG 2.0 documentation, to be checked against the pinned `amneziawg-go` release):
+  Jc 4..12, Jmin 8..128, Jmax Jmin+32..Jmin+400 (at most 1280), S1 and S2 15..150 with S1+56 != S2, S3 8..64,
+  S4 4..32, H1..H4 four disjoint ranges `low-high` inside 5..4294967295, at least 1000 wide, each in its own
+  quarter of the space in a random order. They are never logged or audited, and the Settings route does not
+  return them.
+- **API**: `GET /api/devices/profile/methods`, `POST /api/devices/profile` with `access_method` (409
+  `method_not_available` unless allowed and advertised), `GET|PUT /api/organizations/:id/access-methods`,
+  `POST /api/organizations/:id/access-methods/regenerate` (owner or admin).
