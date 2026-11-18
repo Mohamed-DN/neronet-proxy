@@ -8,18 +8,54 @@ function digest(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
+const VARCHAR_LITERAL_ARRAY =
+  /ARRAY\[('(?:[^']|'')*'::character varying(?:::text)?(?:, '(?:[^']|'')*'::character varying(?:::text)?)*)\](?:::text\[\])?/y;
+const VARCHAR_LITERAL = /('(?:[^']|'')*')::character varying(?:::text)?/g;
+
 function normalizeConstraintDefinition(definition) {
   // PostgreSQL can deparse the same varchar CHECK as either a text[] cast
   // over the literal array or text casts on each varchar literal after pg_dump
-  // and restore. These casts are binary-coercible and do not change the CHECK.
-  // Restrict normalization to literal enum checks. Global replacements would
-  // also alter quoted values, hiding real changes to a constraint.
-  const match = definition.match(
-    /^CHECK \(((?:"(?:[^"]|"")*"|[a-zA-Z_][a-zA-Z0-9_$]*)::text) = ANY \(ARRAY\[('(?:[^']|'')*'::character varying(?:::text)?(?:, '(?:[^']|'')*'::character varying(?:::text)?)*)\](?:::text\[\])?\)\)$/
-  );
-  if (!match) return definition;
-  const values = match[2].replace(/('(?:[^']|'')*')::character varying(?:::text)?/g, '$1::text');
-  return `CHECK (${match[1]} = ANY (ARRAY[${values}]))`;
+  // and restore, wherever the array sits (also inside "x IS NULL OR ...").
+  // These casts are binary-coercible and do not change the CHECK. Only literal
+  // varchar arrays outside quoted text are rewritten; quoted values stay byte
+  // for byte so real changes to a constraint remain visible. Keep in step with
+  // pg_temp.neronet_normalize_constraint in docker/backup/digest-all.sql.
+  if (!definition.startsWith('CHECK ')) return definition;
+  let out = '';
+  let quote = null;
+  let i = 0;
+  while (i < definition.length) {
+    const ch = definition[i];
+    if (quote) {
+      out += ch;
+      i += 1;
+      if (ch === quote) {
+        if (definition[i] === quote) {
+          out += quote;
+          i += 1;
+        } else {
+          quote = null;
+        }
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      out += ch;
+      i += 1;
+      continue;
+    }
+    VARCHAR_LITERAL_ARRAY.lastIndex = i;
+    const match = VARCHAR_LITERAL_ARRAY.exec(definition);
+    if (match) {
+      out += `ARRAY[${match[1].replace(VARCHAR_LITERAL, '$1::text')}]`;
+      i = VARCHAR_LITERAL_ARRAY.lastIndex;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
 }
 
 // Ownership and grants are outside this comparison: pg_restore uses --no-owner
@@ -83,7 +119,10 @@ async function collectSchema(client) {
     const rows = (await client.query(sql)).rows;
     schema[kind] =
       kind === 'constraints'
-        ? rows.map((row) => ({ ...row, definition: normalizeConstraintDefinition(row.definition) }))
+        ? rows.map((row) => ({
+            ...row,
+            definition: normalizeConstraintDefinition(row.definition)
+          }))
         : rows;
   }
   return schema;

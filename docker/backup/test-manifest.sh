@@ -45,7 +45,9 @@ sql "DELETE FROM manifest_rows; INSERT INTO manifest_rows VALUES (2, '{\"value\"
 echo 'PASS: row order does not change the manifest'
 fixture
 sql "ALTER TABLE manifest_rows ADD COLUMN action varchar(128) DEFAULT 'ACCEPT'
-  CONSTRAINT manifest_action CHECK (action IN ('ACCEPT', 'DROP', 'QUOTE''S', '::character varying::text', '], ::text[]'))"
+  CONSTRAINT manifest_action CHECK (action IN ('ACCEPT', 'DROP', 'QUOTE''S', '::character varying::text', '], ::text[]'));
+  ALTER TABLE manifest_rows ADD COLUMN colour varchar(16)
+  CONSTRAINT manifest_colour CHECK (colour IS NULL OR colour IN ('red', 'sky'))"
 before=$(digest)
 pg_dump -Fc --no-owner --no-acl >"$work/roundtrip.dump"
 sql 'DROP SCHEMA public CASCADE; CREATE SCHEMA public'
@@ -57,6 +59,16 @@ sql "ALTER TABLE manifest_rows DROP CONSTRAINT manifest_action;
   ALTER TABLE manifest_rows ADD CONSTRAINT manifest_action CHECK (action IN ('ACCEPT', 'BLOCK'))"
 [ "$before" != "$(digest)" ] || { echo 'FAIL: manifest ignored a changed CHECK value' >&2; exit 1; }
 echo 'PASS: manifest detects a changed CHECK value'
+before=$(digest)
+sql "ALTER TABLE manifest_rows DROP CONSTRAINT manifest_colour;
+  ALTER TABLE manifest_rows ADD CONSTRAINT manifest_colour CHECK (colour IS NULL OR colour IN ('red', 'pink'))"
+[ "$before" != "$(digest)" ] || { echo 'FAIL: manifest ignored a changed nested CHECK value' >&2; exit 1; }
+echo 'PASS: manifest detects a changed nested CHECK value'
+before=$(digest)
+sql "ALTER TABLE manifest_rows ADD COLUMN note varchar(64)
+  CONSTRAINT manifest_note CHECK (note <> 'ARRAY[''x''::character varying]')"
+[ "$before" != "$(digest)" ] || { echo 'FAIL: manifest ignored an added CHECK' >&2; exit 1; }
+echo 'PASS: manifest detects an added CHECK'
 changed 'row content with unchanged count' "UPDATE manifest_rows SET payload = '{\"value\":3}' WHERE id = 1"
 changed 'sequence is_called' "SELECT setval('manifest_seq', 1, false)"
 changed 'enum labels' "ALTER TYPE manifest_status ADD VALUE 'new'"

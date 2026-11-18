@@ -12,17 +12,57 @@ SET search_path = public, pg_catalog;
 SET row_security = off;
 
 -- pg_dump may distribute a varchar-array to text-array cast over its literal
--- elements. Normalize only that enum CHECK shape, preserving quoted contents.
+-- elements, wherever the array sits in a CHECK (also inside "x IS NULL OR ...").
+-- Rewrite only literal varchar arrays found outside quoted text; everything else,
+-- quoted contents included, stays byte for byte. Keep in step with
+-- normalizeConstraintDefinition in console/backend/services/DatabaseRecoverySnapshot.js.
 -- The temporary helper never enters the public application-schema manifest.
 CREATE OR REPLACE FUNCTION pg_temp.neronet_normalize_constraint(definition text)
 RETURNS text LANGUAGE plpgsql IMMUTABLE AS $body$
-DECLARE parts text[];
+DECLARE
+  result text := '';
+  i integer := 1;
+  n integer := length(definition);
+  ch text;
+  quote text := NULL;
+  parts text[];
 BEGIN
-  parts := regexp_match(definition,
-    $re$^CHECK \(((?:"(?:[^"]|"")*"|[a-zA-Z_][a-zA-Z0-9_$]*)::text) = ANY \(ARRAY\[('(?:[^']|'')*'::character varying(?:::text)?(?:, '(?:[^']|'')*'::character varying(?:::text)?)*)\](?:::text\[\])?\)\)$$re$);
-  IF parts IS NULL THEN RETURN definition; END IF;
-  RETURN format('CHECK (%s = ANY (ARRAY[%s]))', parts[1],
-    regexp_replace(parts[2], $re$('(?:[^']|'')*')::character varying(?:::text)?$re$, E'\\1::text', 'g'));
+  IF definition NOT LIKE 'CHECK %' THEN RETURN definition; END IF;
+  WHILE i <= n LOOP
+    ch := substr(definition, i, 1);
+    IF quote IS NOT NULL THEN
+      result := result || ch;
+      i := i + 1;
+      IF ch = quote THEN
+        IF substr(definition, i, 1) = quote THEN
+          result := result || quote;
+          i := i + 1;
+        ELSE
+          quote := NULL;
+        END IF;
+      END IF;
+      CONTINUE;
+    END IF;
+    IF ch = '''' OR ch = '"' THEN
+      quote := ch;
+      result := result || ch;
+      i := i + 1;
+      CONTINUE;
+    END IF;
+    IF substr(definition, i, 6) = 'ARRAY[' THEN
+      parts := regexp_match(substr(definition, i),
+        $re$^(ARRAY\[('(?:[^']|'')*'::character varying(?:::text)?(?:, '(?:[^']|'')*'::character varying(?:::text)?)*)\](?:::text\[\])?)$re$);
+      IF parts IS NOT NULL THEN
+        result := result || 'ARRAY[' ||
+          regexp_replace(parts[2], $re$('(?:[^']|'')*')::character varying(?:::text)?$re$, E'\\1::text', 'g') || ']';
+        i := i + length(parts[1]);
+        CONTINUE;
+      END IF;
+    END IF;
+    result := result || ch;
+    i := i + 1;
+  END LOOP;
+  RETURN result;
 END
 $body$;
 

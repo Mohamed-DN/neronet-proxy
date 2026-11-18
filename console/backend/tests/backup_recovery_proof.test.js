@@ -43,11 +43,19 @@ describe('Disaster recovery proof against a separate restored database', () => {
       ]
     );
     superAdminToken = await issueConsoleTestToken(
-      { id: '11111111-1111-1111-1111-111111111111', username: 'dr_admin', role: 'super-admin' },
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        username: 'dr_admin',
+        role: 'super-admin'
+      },
       { expiresIn: '1h' }
     );
     memberToken = await issueConsoleTestToken(
-      { id: '22222222-2222-2222-2222-222222222222', username: 'dr_member', role: 'member' },
+      {
+        id: '22222222-2222-2222-2222-222222222222',
+        username: 'dr_member',
+        role: 'member'
+      },
       { expiresIn: '1h' }
     );
     await pool.query('CREATE TABLE dr_payloads (value text, metadata jsonb)');
@@ -57,7 +65,10 @@ describe('Disaster recovery proof against a separate restored database', () => {
       'second',
       '{}'
     ]);
-    await logAuditEvent({ eventType: 'SYSTEM_BOOTSTRAP', message: 'DR test event' });
+    await logAuditEvent({
+      eventType: 'SYSTEM_BOOTSTRAP',
+      message: 'DR test event'
+    });
     await AuditChainService.createCheckpoint();
   });
 
@@ -115,7 +126,11 @@ describe('Disaster recovery proof against a separate restored database', () => {
   }
 
   function verify(targetPool, options = {}) {
-    return BackupRecoveryProofService.verifyRestoredDatabase({ sourcePool: pool, targetPool, ...options });
+    return BackupRecoveryProofService.verifyRestoredDatabase({
+      sourcePool: pool,
+      targetPool,
+      ...options
+    });
   }
 
   it('rejects a changed value even when every table has the same row count', async () => {
@@ -137,6 +152,26 @@ describe('Disaster recovery proof against a separate restored database', () => {
 
     assert.equal(normalizeConstraintDefinition(source), normalizeConstraintDefinition(restored));
     assert.notEqual(normalizeConstraintDefinition(source), normalizeConstraintDefinition(changed));
+  });
+
+  it('canonicalizes varchar literal arrays nested inside a larger CHECK expression', () => {
+    // Migration 054 shape: NULL allowed, otherwise one of the line colours.
+    const source =
+      "CHECK (line_colour IS NULL OR (line_colour::text = ANY (ARRAY['red'::character varying, 'sky'::character varying]::text[])))";
+    const restored =
+      "CHECK (line_colour IS NULL OR (line_colour::text = ANY (ARRAY['red'::character varying::text, 'sky'::character varying::text])))";
+    const changed =
+      "CHECK (line_colour IS NULL OR (line_colour::text = ANY (ARRAY['red'::character varying::text, 'pink'::character varying::text])))";
+    const loosened =
+      "CHECK (line_colour IS NOT NULL OR (line_colour::text = ANY (ARRAY['red'::character varying::text, 'sky'::character varying::text])))";
+    assert.equal(normalizeConstraintDefinition(source), normalizeConstraintDefinition(restored));
+    assert.notEqual(normalizeConstraintDefinition(source), normalizeConstraintDefinition(changed));
+    assert.notEqual(normalizeConstraintDefinition(source), normalizeConstraintDefinition(loosened));
+  });
+
+  it('never rewrites an ARRAY-looking text inside a quoted CHECK value', () => {
+    const definition = "CHECK (note::text <> 'ARRAY[''x''::character varying]'::text)";
+    assert.equal(normalizeConstraintDefinition(definition), definition);
   });
 
   it('preserves quoted CHECK values and leaves unsupported expressions strict', () => {
