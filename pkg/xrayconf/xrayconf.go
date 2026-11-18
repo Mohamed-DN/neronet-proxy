@@ -153,4 +153,3 @@ func Render(s Spec) ([]byte, error) {
 	}
 	return json.MarshalIndent(cfg, "", "  ")
 }
-
