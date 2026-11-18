@@ -35,7 +35,6 @@ import (
 	"golang.zx2c4.com/wireguard/tun"
 
 	"github.com/sovereign/proxy/v4/pkg/dataplane/daita"
-	"github.com/sovereign/proxy/v4/pkg/dataplane/stealth"
 	"github.com/sovereign/proxy/v4/pkg/transport"
 	_ "github.com/sovereign/proxy/v4/pkg/transport/derp"
 	_ "github.com/sovereign/proxy/v4/pkg/transport/udp"
@@ -125,12 +124,6 @@ type Config struct {
 	// Logf receives wireguard-go log lines. Nil discards them.
 	Logf func(format string, args ...any)
 
-	// Stealth, when non-nil, enables AmneziaWG obfuscation and DPI protection.
-	Stealth *stealth.Config
-
-	// TransportMgr coordinates per-peer multi-protocol transport selection.
-	TransportMgr *stealth.TransportManager
-
 	// DaitaMode selects the DAITA protection level: "off", "balanced", or "paranoid".
 	DaitaMode string
 }
@@ -167,12 +160,6 @@ type Peer struct {
 	// installs rotating keys on the device through UpdatePeerPSK. A profile device on a
 	// gateway (ADR 0029) carries its static PSK here, and the rotation leaves it alone.
 	PresharedKey string `json:"preshared_key,omitempty"`
-
-	// Transport specifies the peer's preferred transport protocol ("wireguard", "amneziawg", "openvpn", "vless").
-	Transport string `json:"transport,omitempty"`
-
-	// Stealth carries AmneziaWG parameters when Transport is "amneziawg".
-	Stealth *stealth.Config `json:"stealth,omitempty"`
 
 	// Profile marks a profile device on a gateway (ADR 0029): it has no paths, and the
 	// transport mux answers it wherever its authenticated handshake came from.
@@ -240,11 +227,10 @@ type Device struct {
 	addresses     []netip.Prefix
 	filter        *filteredTUN
 
-	wg           *device.Device
-	backing      backend
-	transportMgr *stealth.TransportManager
-	daitaShaper  *daita.Shaper
-	mtu          int
+	wg          *device.Device
+	backing     backend
+	daitaShaper *daita.Shaper
+	mtu         int
 
 	mu     sync.Mutex
 	closed bool
@@ -338,12 +324,6 @@ func New(cfg Config) (*Device, error) {
 	if cfg.TransportMux != nil {
 		bind = cfg.TransportMux
 	}
-	if cfg.Stealth != nil {
-		obf, err := stealth.NewObfuscator(*cfg.Stealth)
-		if err == nil {
-			bind = newStealthBind(bind, obf, cfg.TransportMgr)
-		}
-	}
 
 	wgDev := device.NewDevice(filtered, bind, logger)
 
@@ -369,7 +349,6 @@ func New(cfg Config) (*Device, error) {
 		filter:        filtered,
 		wg:            wgDev,
 		backing:       back,
-		transportMgr:  cfg.TransportMgr,
 		daitaShaper:   shaper,
 		mtu:           cfg.MTU,
 		counterEpoch:  1,
@@ -533,16 +512,6 @@ func (d *Device) SetPeers(peers []Peer) error {
 	}
 	d.peerKeys = seen
 	applied = true
-
-	if d.transportMgr != nil {
-		for _, p := range peers {
-			var st stealth.Config
-			if p.Stealth != nil {
-				st = *p.Stealth
-			}
-			d.transportMgr.SetPeerTransport(p.PublicKey, p.Transport, st)
-		}
-	}
 
 	return nil
 }
