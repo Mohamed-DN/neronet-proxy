@@ -54,6 +54,9 @@
     "comfortable": "Comfortable",
     "compact": "Compact"
   },
+  "detail": {
+    "back": "Back"
+  },
   "dialog": {
     "close": "Close",
     "cancel": "Cancel",

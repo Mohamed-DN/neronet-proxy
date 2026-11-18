@@ -54,6 +54,9 @@
     "comfortable": "Comoda",
     "compact": "Compatta"
   },
+  "detail": {
+    "back": "Indietro"
+  },
   "dialog": {
     "close": "Chiudi",
     "cancel": "Annulla",
