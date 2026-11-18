@@ -16,6 +16,7 @@
     "stationGateway": "{{name}}, gateway, {{status}}",
     "stationExit": "{{name}}, exit to the internet, {{status}}",
     "summary": "{{count}} devices, {{status}}",
+    "flowLegend": "Moving lines carried traffic in the last 60 seconds.",
     "collapsedNote": "There are many devices, so each sub-network is a single stop. The list below shows every one.",
     "listToggle": "Show the devices as a list",
     "legend": "How to read the map",

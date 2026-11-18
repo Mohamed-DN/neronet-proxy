@@ -1,0 +1,164 @@
+/*
+ * "Allaccio" (the hook-up): the mark switches on once. The lower terminus pops,
+ * the wire is laid up the N, a short current runs along it, and the upper lamp
+ * lights with a soft glow, a ring and four rays. About 1.9 s at --allaccio-k: 1;
+ * a smaller --allaccio-k plays it faster (the sign-in panel finishes with its map).
+ *
+ * Colours come from the tokens. Under prefers-reduced-motion nothing runs and the
+ * mark is its final, lit state. The classes exist only on a mark that asks for it.
+ */
+.allaccio {
+  overflow: visible;
+  --allaccio-unlit: rgb(var(--color-plate));
+  --allaccio-flash: #fff3b0;
+}
+@supports (color: color-mix(in srgb, red 50%, white)) {
+  .allaccio {
+    --allaccio-flash: color-mix(in srgb, rgb(var(--color-signal)) 35%, white);
+  }
+}
+
+.allaccio .al-wire {
+  stroke-dasharray: 89;
+  stroke-dashoffset: 89;
+  animation: al-lay calc(720ms * var(--allaccio-k, 1)) cubic-bezier(0.55, 0.05, 0.25, 1)
+    calc(150ms * var(--allaccio-k, 1)) forwards;
+}
+.allaccio .al-current {
+  stroke-dasharray: 9 120;
+  stroke-dashoffset: 9;
+  opacity: 0;
+  animation: al-run calc(550ms * var(--allaccio-k, 1)) cubic-bezier(0.4, 0, 0.2, 1) calc(900ms * var(--allaccio-k, 1))
+    forwards;
+}
+.allaccio .al-start {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(0);
+  animation: al-pop calc(220ms * var(--allaccio-k, 1)) ease-out calc(50ms * var(--allaccio-k, 1)) forwards;
+}
+.allaccio .al-lamp {
+  transform-box: fill-box;
+  transform-origin: center;
+  fill: var(--allaccio-unlit);
+  animation: al-on calc(500ms * var(--allaccio-k, 1)) cubic-bezier(0.2, 1.4, 0.4, 1) calc(1330ms * var(--allaccio-k, 1))
+    forwards;
+}
+.allaccio .al-glow {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: al-glow calc(1100ms * var(--allaccio-k, 1)) ease-out calc(1330ms * var(--allaccio-k, 1)) forwards;
+}
+.allaccio .al-spark {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: al-spark calc(700ms * var(--allaccio-k, 1)) ease-out calc(1350ms * var(--allaccio-k, 1)) forwards;
+}
+.allaccio .al-ray {
+  opacity: 0;
+  stroke-dasharray: 4;
+  stroke-dashoffset: 4;
+  animation: al-ray calc(450ms * var(--allaccio-k, 1)) ease-out calc(1350ms * var(--allaccio-k, 1)) forwards;
+}
+
+@keyframes al-lay {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes al-run {
+  0% {
+    opacity: 1;
+    stroke-dashoffset: 9;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    stroke-dashoffset: -86;
+  }
+}
+@keyframes al-pop {
+  to {
+    transform: scale(1);
+  }
+}
+@keyframes al-on {
+  0% {
+    fill: var(--allaccio-unlit);
+    transform: scale(0.6);
+  }
+  40% {
+    fill: var(--allaccio-flash);
+    transform: scale(1.25);
+  }
+  100% {
+    fill: rgb(var(--color-signal));
+    transform: scale(1);
+  }
+}
+@keyframes al-glow {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  25% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.28;
+    transform: scale(1.15);
+  }
+}
+@keyframes al-spark {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.5);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+@keyframes al-ray {
+  0% {
+    opacity: 1;
+    stroke-dashoffset: 4;
+  }
+  60% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    opacity: 0;
+    stroke-dashoffset: -4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .allaccio .al-wire,
+  .allaccio .al-current,
+  .allaccio .al-start,
+  .allaccio .al-lamp,
+  .allaccio .al-glow,
+  .allaccio .al-spark,
+  .allaccio .al-ray {
+    animation: none;
+  }
+  .allaccio .al-wire {
+    stroke-dashoffset: 0;
+  }
+  .allaccio .al-start {
+    transform: none;
+  }
+  .allaccio .al-lamp {
+    fill: rgb(var(--color-signal));
+  }
+  .allaccio .al-glow {
+    opacity: 0.28;
+  }
+}

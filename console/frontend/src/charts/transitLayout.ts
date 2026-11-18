@@ -61,6 +61,8 @@ export interface PlacedLine {
   caps: Array<{ x: number; y: number }>;
   /** Where the lane's heading (the line's name) goes: left edge, text baseline. */
   heading: { x: number; y: number };
+  /** The widest the heading may be drawn, in px: what is free to its right before something else is drawn. */
+  headingMax: number;
   /** Top of the lane. */
   top: number;
 }
@@ -96,8 +98,8 @@ const HEADING_HEIGHT = 34;
 const LABEL_ABOVE = 26;
 const LABEL_BELOW = 30;
 const LANE_GAP = 14;
-/** Width reserved under a lane's heading before the first interchange. */
-const HEADING_ROOM = 190;
+/** Width reserved under a lane's heading before the first interchange, unless the names need more. */
+export const HEADING_ROOM = 190;
 /** Clear distance between an interchange and the next thing along the lane. */
 const HUB_GAP = 84;
 /** Half of a label's box: the room a terminus keeps to its right. */
@@ -156,7 +158,13 @@ type Demand = { demote: string };
 
 const median = <T>(items: T[]): T => items[Math.floor((items.length - 1) / 2)]!;
 
-function solve(lanes: Lane[], inter: LayoutHub[], term: LayoutHub | null, width: number): Raw | Demand {
+function solve(
+  lanes: Lane[],
+  inter: LayoutHub[],
+  term: LayoutHub | null,
+  width: number,
+  headingRoom: number
+): Raw | Demand {
   const index = new Map(lanes.map((lane, i) => [lane.key, i]));
   const hasHubs = inter.length > 0 || term !== null;
 
@@ -212,7 +220,7 @@ function solve(lanes: Lane[], inter: LayoutHub[], term: LayoutHub | null, width:
 
     // Interchange zones, left to right.
     const zones: Array<{ hub: LayoutHub; members: number[]; y: number; c: number; reach: number }> = [];
-    let zoneX = PAD + HEADING_ROOM;
+    let zoneX = PAD + headingRoom;
     for (const hub of inter) {
       const members = hub.lineKeys.map((key) => index.get(key)!).sort((a, b) => a - b);
       const y = firstY[median(members)]!;
@@ -374,7 +382,18 @@ function isDemand(result: Raw | Demand): result is Demand {
   return 'demote' in result;
 }
 
-export function layoutTransit(lines: LayoutLine[], width: number, hubs: LayoutHub[] = []): TransitLayout {
+export interface LayoutOptions {
+  /** Room the line names need before the first interchange; never less than HEADING_ROOM, never more than 40% of the width. */
+  headingRoom?: number;
+}
+
+export function layoutTransit(
+  lines: LayoutLine[],
+  width: number,
+  hubs: LayoutHub[] = [],
+  options: LayoutOptions = {}
+): TransitLayout {
+  const headingRoom = Math.max(HEADING_ROOM, Math.min(options.headingRoom ?? 0, Math.floor(width * 0.4)));
   const lanes: Lane[] = lines.map((line) => ({
     key: line.key,
     ids: [...line.stationIds],
@@ -412,7 +431,7 @@ export function layoutTransit(lines: LayoutLine[], width: number, hubs: LayoutHu
 
   let raw: Raw | Demand;
   for (;;) {
-    raw = solve(lanes, inter, term, width);
+    raw = solve(lanes, inter, term, width, headingRoom);
     if (!isDemand(raw)) break;
     const gone = raw.demote;
     if (term?.id === gone) {
@@ -438,6 +457,9 @@ export function layoutTransit(lines: LayoutLine[], width: number, hubs: LayoutHu
       stations: line.stations.map((station) => ({ ...station, x: station.x + ox })),
       caps: line.caps.map((cap) => ({ x: cap.x + ox, y: cap.y })),
       heading: { x: line.headingX + ox, y: line.top + 16 },
+      // Beside interchanges the names stop where the first one starts; otherwise they have the row.
+      headingMax:
+        raw.hubs.length > 0 ? headingRoom - 8 : Math.max(HEADING_ROOM - 8, width - (line.headingX + ox) - PAD),
       top: line.top
     }))
   };
