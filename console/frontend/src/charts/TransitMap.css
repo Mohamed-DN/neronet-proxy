@@ -125,9 +125,13 @@
   }
 }
 
-/* Live flow: a soft signal-tinted pulse travelling along a line that carried traffic. */
+/*
+ * Live flow: a pulse travelling along a line that carried traffic. A light tint on the
+ * dark lines and a dark one on orange and sky (charts/pulseTone.ts picks by contrast); signal
+ * yellow over blue or green read as mud.
+ */
 .map-flow {
-  stroke: rgb(var(--color-signal));
+  stroke: rgb(var(--color-pulse-light));
   stroke-dasharray: 0.07 1;
   stroke-dashoffset: 0.07;
   opacity: 0;
@@ -135,16 +139,19 @@
   animation-timing-function: linear;
   animation-iteration-count: infinite;
 }
+.map-flow[data-pulse='dark'] {
+  stroke: rgb(var(--color-pulse-dark));
+}
 @keyframes map-flow {
   0% {
     opacity: 0;
     stroke-dashoffset: 0.07;
   }
   10% {
-    opacity: 0.6;
+    opacity: 0.85;
   }
   90% {
-    opacity: 0.6;
+    opacity: 0.85;
   }
   100% {
     opacity: 0;

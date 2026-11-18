@@ -4,6 +4,7 @@ import { cn } from '../ui/cn';
 import { STATION_TONE, StationSymbol, type StationKind } from '../ui/StationSymbol';
 import { prefersReducedMotion } from '../ui/motion';
 import type { FlowParams } from './liveFlow';
+import { pulseTone } from './pulseTone';
 import { MAX_PLAYING, currentSpan, detectTransitions, snapshotService } from './transitEvents';
 import { useMeasuredWidth } from './useMeasuredWidth';
 import { layoutTransit } from './transitLayout';
@@ -245,12 +246,14 @@ export function TransitMap({ lines, hubs = [], onOpenStation, flow, label, class
                 fill="none"
                 strokeWidth={4}
                 strokeLinecap="round"
+            const tone = pulseTone(byKey.get(placed.key)!.colour);
                 strokeLinejoin="round"
                 className="map-current"
                 style={
                   {
                     '--from': start === 0 ? 9 : -start,
                     '--to': -Math.max(end - 9, start)
+                data-pulse={tone}
                   } as React.CSSProperties
                 }
               />

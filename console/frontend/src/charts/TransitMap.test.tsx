@@ -147,3 +147,27 @@ describe('TransitMap line names', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('TransitMap: pulse tint per line', () => {
+  it('draws the live pulse light on a blue line and dark on an orange one', () => {
+    stubMotion(false);
+    const lines: MapLine[] = (['blue', 'orange', 'violet', 'sky'] as const).map((colour) => ({
+      key: colour,
+      heading: colour,
+      colour,
+      stations: [
+        { id: `${colour}-a`, label: 'A', symbol: 'service', description: 'A, in service' },
+        { id: `${colour}-b`, label: 'B', symbol: 'service', description: 'B, in service' }
+      ]
+    }));
+    const flow = new Map(lines.map((line) => [line.key, { pulses: 1, durationMs: 4000 }]));
+    const { container } = render(
+      <TransitMap lines={lines} onOpenStation={() => {}} flow={flow as never} label="Map" />
+    );
+    const tone = (key: string) => container.querySelector(`[data-flow="${key}"]`)?.getAttribute('data-pulse');
+    expect(tone('blue')).toBe('light');
+    expect(tone('violet')).toBe('light');
+    expect(tone('orange')).toBe('dark');
+    expect(tone('sky')).toBe('dark');
+  });
+});

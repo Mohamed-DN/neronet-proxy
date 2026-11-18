@@ -103,6 +103,12 @@ The signal (`#F5C211`) is 1.5:1 on the light sheet, so it cannot be a focus ring
 | `line-sky` | `sheet` | `#3c8eb6` | `#f2f4f3` | 3.31:1 | 3:1 | pass | Line colour sky on the page |
 | `line-sky` | `plate` | `#3c8eb6` | `#ffffff` | 3.66:1 | 3:1 | pass | Line colour sky on a plate |
 | `line-sky` | `surface-sunken` | `#3c8eb6` | `#e8eceb` | 3.07:1 | 3:1 | pass | Line colour sky on a well |
+| `pulse-light@85/line-red` | `line-red` | `#f8e4e6` | `#d1495b` | 3.58:1 | 3:1 | pass | Live-flow pulse (light tint) on the red line |
+| `pulse-light@85/line-green` | `line-green` | `#ddece9` | `#1e7f6d` | 4.00:1 | 3:1 | pass | Live-flow pulse (light tint) on the green line |
+| `pulse-light@85/line-blue` | `line-blue` | `#dfe6f6` | `#2b59c3` | 5.06:1 | 3:1 | pass | Live-flow pulse (light tint) on the blue line |
+| `pulse-dark@85/line-orange` | `line-orange` | `#2e2f28` | `#ba7609` | 3.66:1 | 3:1 | pass | Live-flow pulse (dark tint) on the orange line |
+| `pulse-light@85/line-violet` | `line-violet` | `#ebe4f4` | `#7b4bb7` | 4.79:1 | 3:1 | pass | Live-flow pulse (light tint) on the violet line |
+| `pulse-dark@85/line-sky` | `line-sky` | `#1b3342` | `#3c8eb6` | 3.59:1 | 3:1 | pass | Live-flow pulse (dark tint) on the sky line |
 | `chart-1` | `plate` | `#1d4ed8` | `#ffffff` | 6.70:1 | 3:1 | pass | Chart series 1 |
 | `chart-2` | `plate` | `#d97706` | `#ffffff` | 3.19:1 | 3:1 | pass | Chart series 2 |
 | `chart-3` | `plate` | `#047857` | `#ffffff` | 5.48:1 | 3:1 | pass | Chart series 3 |
@@ -222,6 +228,12 @@ The closest pair of the eight categorical series, in CIE L\*a\*b\* distance, und
 | `line-sky` | `sheet` | `#3d8fb8` | `#0e1a22` | 4.89:1 | 3:1 | pass | Line colour sky on the page |
 | `line-sky` | `plate` | `#3d8fb8` | `#16252f` | 4.34:1 | 3:1 | pass | Line colour sky on a plate |
 | `line-sky` | `surface-sunken` | `#3d8fb8` | `#0a141b` | 5.16:1 | 3:1 | pass | Line colour sky on a well |
+| `pulse-light@85/line-red` | `line-red` | `#f8e4e6` | `#d1495b` | 3.58:1 | 3:1 | pass | Live-flow pulse (light tint) on the red line |
+| `pulse-light@85/line-green` | `line-green` | `#ddece9` | `#1e7f6d` | 4.00:1 | 3:1 | pass | Live-flow pulse (light tint) on the green line |
+| `pulse-light@85/line-blue` | `line-blue` | `#e2e9f7` | `#406ac9` | 4.18:1 | 3:1 | pass | Live-flow pulse (light tint) on the blue line |
+| `pulse-dark@85/line-orange` | `line-orange` | `#333328` | `#e08e0b` | 4.89:1 | 3:1 | pass | Live-flow pulse (dark tint) on the orange line |
+| `pulse-light@85/line-violet` | `line-violet` | `#ede6f5` | `#8458bc` | 4.20:1 | 3:1 | pass | Live-flow pulse (light tint) on the violet line |
+| `pulse-dark@85/line-sky` | `line-sky` | `#1b3342` | `#3d8fb8` | 3.64:1 | 3:1 | pass | Live-flow pulse (dark tint) on the sky line |
 | `chart-1` | `plate` | `#60a5fa` | `#16252f` | 6.17:1 | 3:1 | pass | Chart series 1 |
 | `chart-2` | `plate` | `#fbbf24` | `#16252f` | 9.39:1 | 3:1 | pass | Chart series 2 |
 | `chart-3` | `plate` | `#34d399` | `#16252f` | 8.15:1 | 3:1 | pass | Chart series 3 |
