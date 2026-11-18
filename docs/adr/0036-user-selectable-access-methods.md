@@ -86,7 +86,8 @@ What the console stores and sends, so the gateway can be built against it:
 
 ## Implementation: AmneziaWG on the gateway (18 November 2026)
 
-- **Engine.** `github.com/amnezia-vpn/amneziawg-go` v0.2.19 (MIT, June 2026), pinned. The `v1.0.x`
+- **Engine.** `github.com/amnezia-vpn/amneziawg-go` v0.2.19 (MIT, June 2026), vendored in
+  `third_party/amneziawg-go` with one race fix (PATCHES.md there). The `v1.0.x`
   tags sort higher but are older (July 2025) and have no S3/S4 or header ranges.
 - **Second device.** `pkg/dataplane/awg.go` (build tag `awg`) runs it under the gateway's identity
   key on its own UDP port, `SOVEREIGN_AWG_LISTEN` (default off; the node image is built with the
