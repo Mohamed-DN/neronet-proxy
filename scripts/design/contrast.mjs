@@ -53,6 +53,8 @@ const UI = 3;
  */
 const STATUSES = ['success', 'warning', 'danger', 'info'];
 const LINES = ['red', 'green', 'blue', 'orange', 'violet', 'sky'];
+/* Which tint of the pulse each line uses; the same table as console/frontend/src/charts/pulseTone.ts. */
+const PULSE = { red: 'light', green: 'light', blue: 'light', orange: 'dark', violet: 'light', sky: 'dark' };
 
 const PAIRS = [
   { fg: 'ink', bg: 'sheet', target: TEXT, use: 'Body text on the page' },
@@ -109,6 +111,14 @@ const PAIRS = [
     { fg: `line-${l}`, bg: 'plate', target: UI, use: `Line colour ${l} on a plate` },
     { fg: `line-${l}`, bg: 'surface-sunken', target: UI, use: `Line colour ${l} on a well` }
   ]),
+
+  /* The live-flow pulse, drawn at 0.85 opacity over its line (charts/pulseTone.ts picks the tint). */
+  ...Object.entries(PULSE).map(([l, tint]) => ({
+    fg: `pulse-${tint}@85/line-${l}`,
+    bg: `line-${l}`,
+    target: UI,
+    use: `Live-flow pulse (${tint} tint) on the ${l} line`
+  })),
 
   ...Array.from({ length: 8 }, (_, i) => ({
     fg: `chart-${i + 1}`,

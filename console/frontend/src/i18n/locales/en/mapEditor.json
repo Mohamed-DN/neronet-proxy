@@ -1,0 +1,146 @@
+{
+  "enter": "Edit the map",
+  "enterHint": "Change line colours, order and devices.",
+  "banner": "You are editing the network: changes alter who can reach whom.",
+  "done": "Done",
+  "newLine": "New line",
+  "collapsedNote": "There are many devices, so each line is a single stop. You can still rename, recolour, reorder and merge lines; to move devices use the list below the map.",
+  "keyboardHint": "Choose devices with Enter or Space, then use “Move to…”. Dragging is optional.",
+  "selection": {
+    "count_one": "{{count}} device chosen",
+    "count_other": "{{count}} devices chosen",
+    "move": "Move to…",
+    "split": "Cut into a new line",
+    "splitNeedsOne": "To cut, choose devices from one line only.",
+    "clear": "Clear choice",
+    "chooseHint": "Choose one or more devices to move them or cut them into a new line."
+  },
+  "station": {
+    "chosen": "{{description}}, chosen",
+    "notChosen": "{{description}}, not chosen"
+  },
+  "line": {
+    "edit": "{{name}}: edit the line",
+    "empty": "No devices: drag one here or use “Move to…”.",
+    "none": "No sub-network",
+    "devices_one": "{{count}} device",
+    "devices_other": "{{count}} devices",
+    "automatic": "Automatic",
+    "defaultLine": "Default line"
+  },
+  "lineMenu": {
+    "title": "Line {{name}}",
+    "description": "Changing a line does not move devices, except merging and deleting.",
+    "name": "Name",
+    "rename": "Rename",
+    "nameRequired": "Write a name for the line.",
+    "nameInUse": "A line with this name already exists. Choose another.",
+    "colour": "Line colour",
+    "colourHint": "The colour only helps you recognise the line on the map.",
+    "order": "Position",
+    "position": "Position {{position}} of {{total}}",
+    "up": "Move up",
+    "down": "Move down",
+    "merge": "Merge into another line",
+    "mergeInto": "Merge into",
+    "mergeAction": "Merge…",
+    "mergeNone": "There is no other line to merge it into.",
+    "delete": "Delete the line",
+    "deleteAction": "Delete…",
+    "deleteDefault": "The default line cannot be deleted.",
+    "close": "Close"
+  },
+  "colourName": {
+    "red": "Red",
+    "green": "Green",
+    "blue": "Blue",
+    "orange": "Orange",
+    "violet": "Violet",
+    "sky": "Sky blue"
+  },
+  "merge": {
+    "title": "Merge {{from}} into {{into}}?",
+    "description": "The devices of {{from}} move to {{into}} and the line {{from}} goes away. This cannot be undone.",
+    "devices_one": "{{count}} device moves to {{into}}.",
+    "devices_other": "{{count}} devices move to {{into}}.",
+    "droppedNone": "No connection between lines is removed.",
+    "dropped_one": "1 connection between lines is removed: with {{peers}}.",
+    "dropped_other": "{{count}} connections between lines are removed: with {{peers}}.",
+    "confirm": "Merge the lines"
+  },
+  "delete": {
+    "title": "Delete the line {{name}}?",
+    "description": "The line goes away with its connections to other lines. Its devices go back to the default line. This cannot be undone.",
+    "confirm": "Delete the line",
+    "devices_one": "{{count}} device goes back to the default line.",
+    "devices_other": "{{count}} devices go back to the default line."
+  },
+  "move": {
+    "pickTitle": "Move to…",
+    "pickDescription": "Choose the line. Before moving you will see who will reach whom.",
+    "pickList": "Lines",
+    "title": "Move to {{line}}",
+    "description": "Moving changes who can reach whom. Check the preview before you confirm.",
+    "loading": "Working out what changes…",
+    "error": "Could not work out the preview: {{message}}",
+    "retry": "Try again",
+    "back": "Choose another line",
+    "confirm": "Move",
+    "ignored_one": "{{count}} item cannot be moved and is ignored.",
+    "ignored_other": "{{count}} items cannot be moved and are ignored.",
+    "pairs": "In all, {{gains}} pairs of devices start reaching each other and {{losses}} stop.",
+    "moreDevices": "and {{count}} more devices moved"
+  },
+  "preview": {
+    "gain_one": "will reach {{count}} more device",
+    "gain_other": "will reach {{count}} more devices",
+    "loss_one": "will no longer reach {{count}} device",
+    "loss_other": "will no longer reach {{count}} devices",
+    "join": " and ",
+    "sentence": "{{name}} {{what}}.",
+    "same": "{{name}} will keep reaching the same devices.",
+    "gainNames": "Gained: {{names}}",
+    "lossNames": "Lost: {{names}}",
+    "andMore": "and {{count}} more",
+    "list": "What changes for each device"
+  },
+  "split": {
+    "title": "Cut into a new line",
+    "description": "The chosen devices leave {{from}} and form a new line. Check the preview before you confirm.",
+    "devices": "Devices to cut",
+    "name": "Name of the new line",
+    "colour": "Colour",
+    "confirm": "Cut the line",
+    "notInheritedNone": "The new line starts with no connections, and {{from}} had none.",
+    "notInherited_one": "The new line starts with no connections: 1 connection of {{from}} is not inherited, with {{peers}}.",
+    "notInherited_other": "The new line starts with no connections: {{count}} connections of {{from}} are not inherited, with {{peers}}."
+  },
+  "create": {
+    "title": "New line",
+    "description": "Give the line a name and a colour. You can move devices onto it right away.",
+    "name": "Name of the line",
+    "colour": "Colour",
+    "devices": "Devices to move (optional)",
+    "devicesHint": "Before they move you will see who will reach whom.",
+    "confirm": "Create the line"
+  },
+  "toast": {
+    "renamed": "Line renamed",
+    "recoloured": "Line colour changed",
+    "reordered": "Lines reordered",
+    "moved": "Moved to {{line}}",
+    "movedMany": "{{count}} devices moved to {{line}}",
+    "split": "New line {{name}} created",
+    "merged": "Line merged into {{into}}",
+    "mergedDropped_one": "Line merged into {{into}}. 1 connection removed.",
+    "mergedDropped_other": "Line merged into {{into}}. {{count}} connections removed.",
+    "deleted": "Line deleted",
+    "created": "Line {{name}} created",
+    "failed": "That did not work: {{message}}"
+  },
+  "panel": {
+    "title": "Lines and devices",
+    "description": "Choose devices with the checkboxes, then move them or cut them into a new line. A line's name opens its settings."
+  },
+  "cancel": "Cancel"
+}

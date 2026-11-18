@@ -22,7 +22,8 @@
     "legend": "Come leggere la mappa",
     "gateway": "Gateway",
     "exit": "Uscita",
-    "emptyHint": "Quando aggiungi il primo dispositivo, compare qui come prima fermata della linea."
+    "emptyHint": "Quando aggiungi il primo dispositivo, compare qui come prima fermata della linea.",
+    "editList": "Scegli i dispositivi da un elenco"
   },
   "state": {
     "service": "In servizio",

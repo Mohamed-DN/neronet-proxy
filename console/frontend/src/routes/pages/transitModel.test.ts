@@ -76,3 +76,98 @@ describe('buildTransit: interchanges and termini', () => {
     expect(buildTransit(plain, NOW, { ...options, links }).hubs).toEqual([]);
   });
 });
+
+describe('buildTransit: the operator’s colours and order', () => {
+  const nodes = [node('a1', 'Alpha'), node('a2', 'Alpha'), node('b1', 'Beta'), node('c1', 'Gamma')];
+  const compartment = (name: string, extra: Record<string, unknown> = {}) => ({
+    id: `cmp-${name}`,
+    name,
+    slug: name.toLowerCase(),
+    ...extra
+  });
+
+  it('uses line_colour when it is set and the index fallback otherwise', () => {
+    const model = buildTransit(nodes, NOW, {
+      ...options,
+      compartments: [compartment('Alpha'), compartment('Beta', { line_colour: 'violet' }), compartment('Gamma')]
+    });
+    const byKey = Object.fromEntries(model.lines.map((line) => [line.key, line]));
+    // Fallback: the key's place in sorted order (Alpha 0 red, Beta 1 green, Gamma 2 blue).
+    expect(byKey['cmp-Alpha']).toMatchObject({ colour: 'red', colourChosen: false });
+    expect(byKey['cmp-Beta']).toMatchObject({ colour: 'violet', colourChosen: true });
+    expect(byKey['cmp-Gamma']).toMatchObject({ colour: 'blue', colourChosen: false });
+  });
+
+  it('ignores a colour that is not one of the six tokens', () => {
+    const model = buildTransit(nodes, NOW, {
+      ...options,
+      compartments: [compartment('Alpha', { line_colour: '#ff00ff' })]
+    });
+    expect(model.lines.find((line) => line.key === 'cmp-Alpha')).toMatchObject({ colour: 'red', colourChosen: false });
+  });
+
+  it('keeps today’s colours and order when no compartment is given', () => {
+    const model = buildTransit(nodes, NOW, options);
+    expect(model.lines.map((line) => [line.key, line.colour])).toEqual([
+      ['cmp-Alpha', 'red'],
+      ['cmp-Beta', 'green'],
+      ['cmp-Gamma', 'blue']
+    ]);
+  });
+
+  it('orders the lines by sort_order when the operator arranged them', () => {
+    const model = buildTransit(nodes, NOW, {
+      ...options,
+      compartments: [
+        compartment('Alpha', { sort_order: 2 }),
+        compartment('Beta', { sort_order: 0 }),
+        compartment('Gamma', { sort_order: 1 })
+      ]
+    });
+    expect(model.lines.map((line) => line.key)).toEqual(['cmp-Beta', 'cmp-Gamma', 'cmp-Alpha']);
+  });
+
+  it('puts lines without a sort_order after the arranged ones, by size', () => {
+    const model = buildTransit(nodes, NOW, {
+      ...options,
+      compartments: [compartment('Gamma', { sort_order: 0 })]
+    });
+    expect(model.lines.map((line) => line.key)).toEqual(['cmp-Gamma', 'cmp-Alpha', 'cmp-Beta']);
+  });
+
+  it('falls back to size when every sort_order is the same', () => {
+    const model = buildTransit(nodes, NOW, {
+      ...options,
+      compartments: [
+        compartment('Alpha', { sort_order: 0 }),
+        compartment('Beta', { sort_order: 0 }),
+        compartment('Gamma', { sort_order: 0 })
+      ]
+    });
+    expect(model.lines.map((line) => line.key)).toEqual(['cmp-Alpha', 'cmp-Beta', 'cmp-Gamma']);
+  });
+
+  it('draws a line with no device only when asked, after the others and without moving their colours', () => {
+    const compartments = [compartment('Alpha'), compartment('Beta'), compartment('Gamma'), compartment('Delta')];
+    const plain = buildTransit(nodes, NOW, { ...options, compartments });
+    expect(plain.lines.map((line) => line.key)).not.toContain('cmp-Delta');
+    const withEmpty = buildTransit(nodes, NOW, { ...options, compartments, includeEmpty: true });
+    expect(withEmpty.lines.find((line) => line.key === 'cmp-Delta')).toMatchObject({
+      stations: [],
+      id: 'cmp-Delta',
+      label: 'Delta'
+    });
+    for (const line of plain.lines) {
+      expect(withEmpty.lines.find((other) => other.key === line.key)!.colour).toBe(line.colour);
+    }
+    expect(withEmpty.tally.total).toBe(plain.tally.total);
+  });
+
+  it('knows the default line, which cannot be deleted', () => {
+    const model = buildTransit([node('a1', 'Alpha')], NOW, {
+      ...options,
+      compartments: [{ id: 'cmp-Alpha', name: 'Alpha', slug: 'default' }]
+    });
+    expect(model.lines[0]).toMatchObject({ id: 'cmp-Alpha', isDefault: true });
+  });
+});

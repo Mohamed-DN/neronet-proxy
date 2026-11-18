@@ -48,6 +48,12 @@
   --color-line-violet: 123 75 183;
   --color-line-sky: 60 142 182;
 
+  /* The live-flow pulse that travels along a line, drawn at 0.85 opacity over it. Signal yellow
+     over a blue, green or violet line reads olive, so the pulse is a light or a dark tint chosen
+     per line by contrast (charts/pulseTone.ts). The same in both themes: it sits on the line. */
+  --color-pulse-light: 255 255 255;
+  --color-pulse-dark: 21 35 45;
+
   /* Surfaces. Page, plates, wells; no gradients, no glow. */
   --color-surface: var(--color-sheet);
   --color-surface-raised: var(--color-plate);
@@ -139,6 +145,9 @@
   --color-line-orange: 224 142 11;
   --color-line-violet: 132 88 188;
   --color-line-sky: 61 143 184;
+
+  --color-pulse-light: 255 255 255;
+  --color-pulse-dark: 21 35 45;
 
   --color-surface: var(--color-sheet);
   --color-surface-raised: var(--color-plate);
