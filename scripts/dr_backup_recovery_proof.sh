@@ -19,7 +19,7 @@ $ENGINE network create --disable-dns "$NET" >/dev/null 2>&1 || $ENGINE network c
 echo "== [2/5] Spawning clean ephemeral PostgreSQL 18 container..."
 $ENGINE run -d --rm --name "$RESTORE_PG" --network "$NET" \
   -e POSTGRES_USER=neronet -e POSTGRES_PASSWORD=neronet_dev_password -e POSTGRES_DB=neronet_restore \
-  docker.io/library/postgres:18-alpine >/dev/null
+  docker.io/library/postgres:18.6-alpine3.24 >/dev/null
 
 cleanup() {
   echo "== Cleaning up ephemeral DR verification container and network..."
@@ -44,7 +44,7 @@ DUMP_FILE="/tmp/neronet_dr_dump_$ID.sql"
 
 # Dump using pg_dump via the container or node
 $ENGINE run --rm --network "$NET" \
-  docker.io/library/postgres:18-alpine \
+  docker.io/library/postgres:18.6-alpine3.24 \
   pg_dump "$SOURCE_URL" --no-owner --no-acl --clean --if-exists > "$DUMP_FILE"
 
 echo "== [4/5] Restoring database dump into clean ephemeral container..."

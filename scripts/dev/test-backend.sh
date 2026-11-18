@@ -35,7 +35,7 @@ $ENGINE run -d --rm --name "$VK" --network "$NET" --network-alias valkey \
 $ENGINE run -d --rm --name "$PG" --network "$NET" --network-alias postgres \
   -e POSTGRES_USER=neronet -e POSTGRES_PASSWORD=neronet_dev_password -e POSTGRES_DB=neronet_test \
   -e PGDATA=/var/lib/postgresql/data \
-  docker.io/library/postgres:18-alpine >/dev/null
+  docker.io/library/postgres:18.6-alpine3.24 >/dev/null
 
 # Wait for Valkey rather than assuming it is ready.
 i=0
