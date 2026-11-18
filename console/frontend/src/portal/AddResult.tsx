@@ -9,6 +9,7 @@ import { configFileName, strictConfigFileName, type StrictNetwork } from '../dev
 import { useNodes } from '../services/queries/nodes';
 import { Button } from '../ui/Button';
 import { cn } from '../ui/cn';
+import { Logo } from '../ui/Logo';
 import { StationStatus } from '../ui/StationSymbol';
 import { useToast } from '../ui/Toast';
 import { deviceStatus } from './deviceStatus';
@@ -223,11 +224,16 @@ export function AddResult({ result }: { result: AddResultData }) {
       >
         {connected ? (
           <>
-            <p className="flex items-center gap-2 text-heading font-medium text-content">
-              <Check aria-hidden="true" className="h-5 w-5 text-success" />
-              {t('add.wait.connected', { name: result.name })}
-            </p>
-            <p className="mt-1 text-body text-muted">{t('add.wait.connectedBody', { name: result.name })}</p>
+            <div className="flex items-center gap-4">
+              <Logo size={64} ground="plate" decorative animate="allaccio" />
+              <div>
+                <p className="flex items-center gap-2 text-heading font-medium text-content">
+                  <Check aria-hidden="true" className="h-5 w-5 text-success" />
+                  {t('add.wait.connected', { name: result.name })}
+                </p>
+                <p className="mt-1 text-body text-muted">{t('add.wait.connectedBody', { name: result.name })}</p>
+              </div>
+            </div>
             <Link to="/me" className={cn(PRIMARY, 'mt-4 w-full sm:w-auto')}>
               {t('add.result.back')}
             </Link>

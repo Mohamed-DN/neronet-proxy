@@ -9,7 +9,7 @@ export * from './tokens';
 export * from './dataState';
 
 export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from './Button';
-export { Logo, LogoMark, SMALL_MARK_MAX_PX, logoPixels, type LogoProps, type LogoSize } from './Logo';
+export { Logo, LogoMark, SMALL_MARK_MAX_PX, logoPixels, type LogoHandle, type LogoProps, type LogoSize } from './Logo';
 export { IconButton, type IconButtonProps } from './IconButton';
 export { FormField, useField, type FormFieldProps } from './FormField';
 export { Input, type InputProps } from './Input';

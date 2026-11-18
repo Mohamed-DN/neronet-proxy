@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, Plus } from 'lucide-react';
@@ -8,7 +8,9 @@ import { ROUTES, nodePath, type RouteId } from '../paths';
 import { useShell } from '../shell';
 import { useStatsOverview, useStatsTimeseries } from '../../services/queries/stats';
 import { isDefaultCompartment, useCompartmentLabel } from '../../services/compartmentLabel';
-import { useTopology } from '../../services/queries';
+import { useNodes, useTopology } from '../../services/queries';
+import { flowForLines, lineRates, sampleCounters, type CounterSample, type FlowParams } from '../../charts/liveFlow';
+import { prefersReducedMotion } from '../../ui/motion';
 import { LineChart } from '../../charts/LineChart';
 import { TransitMap, mapTone, type MapHub, type MapLine, type MapStation } from '../../charts/TransitMap';
 import { Button } from '../../ui/Button';
@@ -84,6 +86,25 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
       ),
     [nodes, now, labelOf, noSubnetLabel, shareHubs, links]
   );
+
+  // Live flow: only from the byte counters the device list already carries, between two refreshes.
+  const nodesQuery = useNodes();
+  const lastSample = useRef<CounterSample | null>(null);
+  const flowState = useRef<{ at: number; flow: ReadonlyMap<string, FlowParams> }>({ at: -1, flow: new Map() });
+  const countersAt = nodesQuery.dataUpdatedAt;
+  const nodeList = nodesQuery.data;
+  if (nodeList && countersAt !== flowState.current.at) {
+    const current = sampleCounters(nodeList, countersAt);
+    const lineOf = new Map<string, string>();
+    for (const line of model.lines) for (const station of line.stations) lineOf.set(station.id, line.key);
+    flowState.current = {
+      at: countersAt,
+      flow: flowForLines(lineRates(lastSample.current, current, lineOf))
+    };
+    lastSample.current = current;
+  }
+  const flow = flowState.current.flow;
+  const flowing = flow.size > 0 && !prefersReducedMotion();
 
   const total = model.tally.total;
   const collapsed = total > COLLAPSE_ABOVE;
@@ -246,7 +267,13 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
                   </Button>
                 </div>
               ) : (
-                <TransitMap lines={mapLines} hubs={mapHubs} onOpenStation={openStation} label={t('map.title')} />
+                <TransitMap
+                  lines={mapLines}
+                  hubs={mapHubs}
+                  onOpenStation={openStation}
+                  flow={flow}
+                  label={t('map.title')}
+                />
               )}
             </div>
 
@@ -262,6 +289,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
               {sentence(model.tally)}
             </p>
             {collapsed && <p className="text-caption text-ink-muted">{t('map.collapsedNote')}</p>}
+            {flowing && <p className="text-caption text-ink-muted">{t('map.flowLegend')}</p>}
 
             <ul aria-label={t('map.legend')} className="flex flex-wrap gap-x-5 gap-y-1 text-caption text-ink-muted">
               {STATUS_ORDER.map((status) => (

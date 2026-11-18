@@ -51,11 +51,19 @@ interface MfaStep {
  * than replacing the whole console with a form and then dropping them on the
  * overview.
  */
+// The mark switches on once per page load, however often the route is shown.
+let markPlayed = false;
+
 export default function LoginRoute() {
   const { t } = useTranslation('chrome');
   const { login, completeMfaSignIn, isAuthenticated } = useAuth();
   const [params] = useSearchParams();
   const location = useLocation();
+  // Read purely, and recorded in an effect, so a development double render still plays it.
+  const [animateMark] = useState(() => !markPlayed);
+  useEffect(() => {
+    markPlayed = true;
+  }, []);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<PlainError | null>(null);
@@ -163,7 +171,7 @@ export default function LoginRoute() {
       >
         <div className="space-y-5 lg:space-y-8">
           <h1 className="text-ink">
-            <Logo wordmark size={48} />
+            <Logo wordmark size={48} animate={animateMark ? 'allaccio' : undefined} speed={0.75} />
           </h1>
           <p className="max-w-[22ch] text-title font-bold text-ink lg:text-[2.5rem] lg:leading-[1.1]">
             {t('login.subtitle')}

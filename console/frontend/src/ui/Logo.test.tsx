@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { createRef } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 
-import { Logo, SMALL_MARK_MAX_PX, logoPixels } from './Logo';
+import { ALLACCIO_LIT_MS, Logo, SMALL_MARK_MAX_PX, logoPixels, type LogoHandle } from './Logo';
 
 describe('Logo', () => {
   it('names the mark NeroNet when it stands alone', () => {
@@ -34,5 +35,38 @@ describe('Logo', () => {
     expect(logoPixels('sm')).toBeLessThanOrEqual(SMALL_MARK_MAX_PX);
     expect(logoPixels('md')).toBeGreaterThan(SMALL_MARK_MAX_PX);
     expect(logoPixels(33)).toBe(33);
+  });
+});
+
+describe('Logo animate', () => {
+  it('is the still mark by default', () => {
+    const { container } = render(<Logo />);
+    expect(container.querySelector('.allaccio')).toBeNull();
+  });
+
+  it('plays Allaccio and calls onDone once the lamp is lit, and can replay', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', (() => ({ matches: false, addEventListener() {}, removeEventListener() {} })) as never);
+    const onDone = vi.fn();
+    const ref = createRef<LogoHandle>();
+    const { container } = render(<Logo ref={ref} animate="allaccio" onDone={onDone} />);
+    expect(container.querySelector('.allaccio .al-lamp')).not.toBeNull();
+    expect(screen.getByRole('img', { name: 'NeroNet' })).toBeInTheDocument();
+    expect(onDone).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(ALLACCIO_LIT_MS + 10));
+    expect(onDone).toHaveBeenCalledTimes(1);
+    act(() => ref.current?.replay());
+    act(() => void vi.advanceTimersByTime(ALLACCIO_LIT_MS + 10));
+    expect(onDone).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('under reduced motion is done at once', () => {
+    vi.stubGlobal('matchMedia', (() => ({ matches: true, addEventListener() {}, removeEventListener() {} })) as never);
+    const onDone = vi.fn();
+    render(<Logo animate="allaccio" onDone={onDone} />);
+    expect(onDone).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
   });
 });

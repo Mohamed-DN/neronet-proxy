@@ -16,6 +16,7 @@
     "stationGateway": "{{name}}, gateway, {{status}}",
     "stationExit": "{{name}}, uscita verso internet, {{status}}",
     "summary": "{{count}} dispositivi, {{status}}",
+    "flowLegend": "Le linee in movimento hanno traffico negli ultimi 60 secondi.",
     "collapsedNote": "Ci sono molti dispositivi: ogni sotto-rete è una sola fermata. L'elenco qui sotto li mostra tutti.",
     "listToggle": "Mostra i dispositivi come elenco",
     "legend": "Come leggere la mappa",
