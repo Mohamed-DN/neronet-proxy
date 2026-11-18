@@ -22,7 +22,8 @@
     "legend": "How to read the map",
     "gateway": "Gateway",
     "exit": "Exit",
-    "emptyHint": "When you add the first device, it appears here as the first stop on the line."
+    "emptyHint": "When you add the first device, it appears here as the first stop on the line.",
+    "editList": "Choose devices from a list"
   },
   "state": {
     "service": "In service",

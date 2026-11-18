@@ -77,6 +77,10 @@ import {
 import { MeshLegend } from './mesh/MeshLegend';
 import { MeshMirror, type MirrorGroup } from './mesh/MeshMirror';
 import { DeviceDetails, InspectorFrame, LinkDetails, stateLabelKey, type PeerRow } from './mesh/MeshInspector';
+import { EditorPanel, MapEditorBar } from './mapEditor/MapEditorBar';
+import { toEditorLines } from './mapEditor/editorModel';
+import { MapEditorDialogs, useMapEditor } from './mapEditor/useMapEditor';
+import { buildTransit } from './transitModel';
 import './TopologyRoute.css';
 
 export type ViewMode = 'CANVAS' | 'LIST';
@@ -198,6 +202,28 @@ export function TopologyRoute() {
     () => nodes.some((n) => n.is_ghost_vault) || compartments.some((c) => c.is_hidden),
     [nodes, compartments]
   );
+
+  // "Modifica la mappa": the same editor as the overview, drawn here as a list of lines and
+  // devices next to this page's own map. It works from the transit model of the same inventory.
+  const { t: tEdit } = useTranslation('mapEditor');
+  const editorNoLine = tEdit('line.none');
+  const editorCompartments = useMemo(
+    () => compartments.map((compartment) => ({ ...compartment, name: labelOf(compartment) })),
+    [compartments, labelOf]
+  );
+  const editorLines = useMemo(
+    () =>
+      toEditorLines(
+        buildTransit(nodes, now, {
+          noSubnetLabel: editorNoLine,
+          shareHubs: false,
+          compartments: editorCompartments,
+          includeEmpty: true
+        }).lines
+      ),
+    [nodes, now, editorNoLine, editorCompartments]
+  );
+  const editor = useMapEditor(editorLines);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
   // --- Layout: computed once per inventory, remembered per grouping ---------
@@ -798,6 +824,7 @@ export function TopologyRoute() {
           description={t('description')}
           actions={
             <div className="flex items-center gap-2">
+              {!(topologyQuery.isSuccess && noNodesAtAll) && !editor.active && <MapEditorBar api={editor} />}
               {!(topologyQuery.isSuccess && noNodesAtAll) && (
                 <>
                   <Button
@@ -869,6 +896,14 @@ export function TopologyRoute() {
           )}
           <span className="mesh-summary-end">{isUnlocked ? t('vault.unlockedBadge') : t('vault.lockedBadge')}</span>
         </div>
+
+        {editor.active && (
+          <div className="space-y-4 py-3">
+            <MapEditorBar api={editor} />
+            <EditorPanel api={editor} />
+          </div>
+        )}
+        <MapEditorDialogs api={editor} />
 
         {topologyQuery.isPending ? (
           <div role="status" aria-label={t('radial.loading')} className="p-6">

@@ -8,7 +8,7 @@ import { ROUTES, nodePath, type RouteId } from '../paths';
 import { useShell } from '../shell';
 import { useStatsOverview, useStatsTimeseries } from '../../services/queries/stats';
 import { isDefaultCompartment, useCompartmentLabel } from '../../services/compartmentLabel';
-import { useNodes, useTopology } from '../../services/queries';
+import { useCompartments, useNodes, useTopology } from '../../services/queries';
 import { flowForLines, lineRates, sampleCounters, type CounterSample, type FlowParams } from '../../charts/liveFlow';
 import { prefersReducedMotion } from '../../ui/motion';
 import { LineChart } from '../../charts/LineChart';
@@ -17,6 +17,9 @@ import { Button } from '../../ui/Button';
 import { PageHeader } from '../../ui/PageHeader';
 import { StationStatus, StationSymbol } from '../../ui/StationSymbol';
 import { EmptyState, ErrorState, NotMeasured, Skeleton } from '../../ui/States';
+import { EditorPanel, MapEditorBar } from './mapEditor/MapEditorBar';
+import { toEditorLines } from './mapEditor/editorModel';
+import { MapEditorDialogs, useMapEditor } from './mapEditor/useMapEditor';
 import {
   COLLAPSE_ABOVE,
   buildTransit,
@@ -57,6 +60,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
   // The map is drawn from the same inventory the map page uses; the traffic
   // below it from the statistics endpoints.
   const topologyQuery = useTopology();
+  const compartmentsQuery = useCompartments();
   const overviewQuery = useStatsOverview();
   const timeseriesQuery = useStatsTimeseries(timeRange);
 
@@ -73,6 +77,12 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
   const noSubnetLabel = t('map.noSubnet');
   // Above the collapse threshold each line is one stop, so nothing is shared.
   const shareHubs = (nodes?.length ?? 0) <= COLLAPSE_ABOVE;
+  // The sub-networks give each line its chosen colour and its place; empty ones are kept for the editor.
+  const compartmentList = compartmentsQuery.data;
+  const compartments = useMemo(
+    () => compartmentList?.map((compartment) => ({ ...compartment, name: labelOf(compartment) })),
+    [compartmentList, labelOf]
+  );
   const model = useMemo(
     () =>
       buildTransit(
@@ -82,10 +92,12 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
             : node
         ),
         now,
-        { noSubnetLabel, shareHubs, links }
+        { noSubnetLabel, shareHubs, links, compartments, includeEmpty: true }
       ),
-    [nodes, now, labelOf, noSubnetLabel, shareHubs, links]
+    [nodes, now, labelOf, noSubnetLabel, shareHubs, links, compartments]
   );
+  const editorLines = useMemo(() => toEditorLines(model.lines), [model]);
+  const editor = useMapEditor(editorLines);
 
   // Live flow: only from the byte counters the device list already carries, between two refreshes.
   const nodesQuery = useNodes();
@@ -154,6 +166,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
     const lines: MapLine[] = model.lines.flatMap((line): MapLine[] => {
       const count = t('map.deviceCount', { count: line.stations.length });
       if (collapsed) {
+        if (line.stations.length === 0 && !editor.active) return [];
         const status = worstStatus(line.tally);
         const kind = status;
         const words = `${count}, ${statusWord(status)}`;
@@ -171,7 +184,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
       const drawn = line.stations.filter((station) => !station.shared);
       const ordered = drawn.map((station, index) => ({ station, index }));
       ordered.sort((a, b) => rank(a.station.role) - rank(b.station.role) || a.index - b.index);
-      if (ordered.length === 0 && !inHub.has(line.key)) return [];
+      if (ordered.length === 0 && !inHub.has(line.key) && !editor.active) return [];
       const stations = ordered.map(
         ({ station }): MapStation => ({
           id: station.id,
@@ -196,7 +209,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
     return { mapLines: lines, mapHubs: hubs };
     // statusWord, describe and t change together with the language.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, collapsed, t]);
+  }, [model, collapsed, t, editor.active]);
 
   const chartSeries = [
     {
@@ -243,6 +256,8 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
           <section aria-label={t('map.title')} className="space-y-4">
             <p className="max-w-[65ch] text-body text-ink-muted">{t('map.description')}</p>
 
+            {total > 0 && <MapEditorBar api={editor} collapsed={collapsed} />}
+
             <div className="relative rounded-plate border border-rule bg-sheet px-2 py-3">
               <div className="mb-1 flex justify-end sm:absolute sm:right-3 sm:top-3 sm:z-10 sm:mb-0">
                 <Link
@@ -271,6 +286,7 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
                   lines={mapLines}
                   hubs={mapHubs}
                   onOpenStation={openStation}
+                  edit={editor.active ? editor.mapEdit : undefined}
                   flow={flow}
                   label={t('map.title')}
                 />
@@ -308,38 +324,53 @@ export default function OverviewRoute({ onNavigateTab }: OverviewRouteProps) {
               </li>
             </ul>
 
-            {total > 0 && (
+            <MapEditorDialogs api={editor} />
+
+            {total > 0 && editor.active && (
+              <details open={collapsed} className="text-body text-ink">
+                <summary className="inline-flex min-h-8 cursor-pointer items-center rounded-control text-ink underline focus-visible:outline-focus">
+                  {t('map.editList')}
+                </summary>
+                <div className="mt-3">
+                  <EditorPanel api={editor} />
+                </div>
+              </details>
+            )}
+
+            {total > 0 && !editor.active && (
               <details className="text-body text-ink">
                 <summary className="inline-flex min-h-8 cursor-pointer items-center rounded-control text-ink underline focus-visible:outline-focus">
                   {t('map.listToggle')}
                 </summary>
                 <div className="mt-3 grid gap-6 sm:grid-cols-2">
-                  {model.lines.map((line) => (
-                    <section key={line.key} aria-label={line.label}>
-                      <h3 className="text-body font-semibold text-ink">
-                        {line.label}{' '}
-                        <span className="font-normal text-ink-muted">
-                          {t('map.deviceCount', { count: line.stations.length })}
-                        </span>
-                      </h3>
-                      <ul className="mt-1 divide-y divide-border-subtle">
-                        {line.stations.map((station) => (
-                          <li key={station.id}>
-                            <button
-                              type="button"
-                              onClick={() => openStation(station.id)}
-                              className="flex min-h-9 w-full items-center justify-between gap-3 rounded-control px-1 text-left hover:bg-surface-hover focus-visible:outline-focus"
-                            >
-                              <span className="truncate text-ink">{station.name}</span>
-                              <StationStatus kind={station.status} className="text-caption">
-                                {statusWord(station.status)}
-                              </StationStatus>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
-                  ))}
+                  {model.lines
+                    .filter((line) => line.stations.length > 0)
+                    .map((line) => (
+                      <section key={line.key} aria-label={line.label}>
+                        <h3 className="text-body font-semibold text-ink">
+                          {line.label}{' '}
+                          <span className="font-normal text-ink-muted">
+                            {t('map.deviceCount', { count: line.stations.length })}
+                          </span>
+                        </h3>
+                        <ul className="mt-1 divide-y divide-border-subtle">
+                          {line.stations.map((station) => (
+                            <li key={station.id}>
+                              <button
+                                type="button"
+                                onClick={() => openStation(station.id)}
+                                className="flex min-h-9 w-full items-center justify-between gap-3 rounded-control px-1 text-left hover:bg-surface-hover focus-visible:outline-focus"
+                              >
+                                <span className="truncate text-ink">{station.name}</span>
+                                <StationStatus kind={station.status} className="text-caption">
+                                  {statusWord(station.status)}
+                                </StationStatus>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    ))}
                 </div>
               </details>
             )}
