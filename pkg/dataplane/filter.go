@@ -136,6 +136,10 @@ type filteredTUN struct {
 	// both wrappers and says which one a relayed packet goes to.
 	route atomic.Pointer[relayRoute]
 
+	// virt maps the addresses of the gateway's virtual devices to their queues
+	// (virtdev.go). Only the first wrapper uses it.
+	virt atomic.Pointer[map[netip.Addr]*filteredTUN]
+
 	// The reader switch. Until forwarding is first switched on, Read reads the
 	// backend directly, exactly as before. From then on a pump goroutine reads the
 	// backend and Read serves whichever of the pump and the forwarding queue has a
@@ -245,6 +249,9 @@ func (f *filteredTUN) keepOutbound(bufs [][]byte, sizes []int, offset, n int) in
 			continue
 		}
 		if f.filter != nil && !f.allow(raw, true) {
+			continue
+		}
+		if f.divertToVirt(raw) {
 			continue
 		}
 		if f.divertToAWG(raw) {

@@ -257,6 +257,11 @@ func destinationOf(b []byte) (netip.Addr, bool) {
 // routed is the wrapper a relayed packet is queued on: this one unless the gateway runs
 // an AmneziaWG device that holds the destination.
 func (f *filteredTUN) routed(raw []byte) *filteredTUN {
+	if dst, ok := destinationOf(raw); ok {
+		if w, isVirtual := f.virtualWrapper(dst); isVirtual {
+			return w
+		}
+	}
 	r := f.route.Load()
 	if r == nil {
 		return f
