@@ -546,6 +546,15 @@ router.post('/profile', async (req, res, next) => {
       awgParams = await AccessMethodService.paramsForProfile(orgOf(req));
       if (!awgParams) return res.status(409).json({ error: 'method_not_available', code: 'method_not_available' });
     }
+    // vless-reality: the organisation's REALITY parameters (public side only) and a uuid of this
+    // device's own, made here so the link and the gateway's configuration agree on it.
+    let vlessParams = null;
+    let vlessUuid = null;
+    if (method === 'vless-reality') {
+      vlessParams = await AccessMethodService.vlessParamsForProfile(orgOf(req));
+      if (!vlessParams) return res.status(409).json({ error: 'method_not_available', code: 'method_not_available' });
+      vlessUuid = crypto.randomUUID();
+    }
     // A method the person's connection order leaves out is not offered, so it is not made either.
     if (!order.includes(method) && access_method !== undefined && access_method !== null) {
       return res.status(409).json({
@@ -600,8 +609,8 @@ router.post('/profile', async (req, res, next) => {
           client.query(
             `INSERT INTO nodes (id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6, role,
                               ip_class, is_healthy, is_quarantined, organization_id, device_kind, exit_node_id,
-                              gateway_node_id, dns_name, access_method)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9, $10, $11, $12)`,
+                              gateway_node_id, dns_name, access_method, vless_uuid)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLIENT_ORIGIN', 'UNKNOWN', TRUE, FALSE, $8, 'profile', $9, $10, $11, $12, $13)`,
             [
               id,
               actor.id,
@@ -614,7 +623,8 @@ router.post('/profile', async (req, res, next) => {
               exit ? exit.node_id : null,
               gateway.id,
               dnsName,
-              method
+              method,
+              vlessUuid
             ]
           )
       );
@@ -666,6 +676,10 @@ router.post('/profile', async (req, res, next) => {
       // and only for an AmneziaWG one. The answer is never cached.
       ...(method === 'amneziawg'
         ? { amneziawg: { endpoint: AccessMethodService.awgEndpointOf(gateway), params: awgParams } }
+        : {}),
+      // The device's own link, for the person who just made it. Never cached; it holds the uuid.
+      ...(method === 'vless-reality'
+        ? { vless: AccessMethodService.vlessProfile({ uuid: vlessUuid, params: vlessParams, gateway, name: label }) }
         : {})
     });
   } catch (err) {

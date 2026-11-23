@@ -187,7 +187,7 @@ describe('ADR 0037: connection order through the API', () => {
       assert.equal(await code({ order: [] }), 'invalid_order');
       assert.equal(await code({ order: [WG, WG] }), 'invalid_order');
       assert.equal(await code({ order: ['bogus'] }), 'invalid_order');
-      assert.equal(await code({ order: [WG, 'vless-reality'] }), 'method_reserved');
+      assert.equal(await code({ order: [WG, 'openvpn'] }), 'method_reserved');
       assert.equal(await code({ order: [WG], forced: 'yes' }), 'invalid_flag');
       assert.equal(await code({ forced: true }), 'forced_needs_order');
     });

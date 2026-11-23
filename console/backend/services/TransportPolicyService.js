@@ -21,7 +21,8 @@ const KNOWN_TRANSPORTS = ['udp', 'derp'];
 const CAPABILITY = 'derp-v2';
 // drop-v1: the node runs the NeroDrop mailbox (ADR 0033, pkg/drop).
 // awg-v1: the node runs an AmneziaWG listener on capability.awg_port (ADR 0036).
-const KNOWN_CAPABILITIES = [CAPABILITY, 'drop-v1', 'awg-v1'];
+// vless-v1: the node runs a VLESS + REALITY terminator on capability.vless_port (ADR 0036).
+const KNOWN_CAPABILITIES = [CAPABILITY, 'drop-v1', 'awg-v1', 'vless-v1'];
 const MAX_ENABLED_RELAYS = 32; // the node refuses a document with more candidates
 const MAX_HOMES = 2; // the node refuses a peer advertising more
 const RELAY_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -121,12 +122,17 @@ async function recordNodeCapability(nodeId, capability = {}, client = null) {
   // The AmneziaWG port counts only together with the capability that announces it.
   const port = Number(capability.awg_port);
   const awgPort = capabilities.includes('awg-v1') && Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
+  const vlessRaw = Number(capability.vless_port);
+  const vlessPort =
+    capabilities.includes('vless-v1') && Number.isInteger(vlessRaw) && vlessRaw >= 1 && vlessRaw <= 65535
+      ? vlessRaw
+      : null;
   const res = await pool(client).query(
-    `UPDATE nodes SET transports_built = $2, node_capabilities = $3, awg_port = $4, updated_at = NOW()
+    `UPDATE nodes SET transports_built = $2, node_capabilities = $3, awg_port = $4, vless_port = $5, updated_at = NOW()
       WHERE id = $1 AND (transports_built IS DISTINCT FROM $2 OR node_capabilities IS DISTINCT FROM $3
-                         OR awg_port IS DISTINCT FROM $4)
+                         OR awg_port IS DISTINCT FROM $4 OR vless_port IS DISTINCT FROM $5)
       RETURNING id`,
-    [nodeId, transports, capabilities, awgPort]
+    [nodeId, transports, capabilities, awgPort, vlessPort]
   );
   if (res.rowCount === 0) return false;
   await AclEngine.bumpNetmap(client);

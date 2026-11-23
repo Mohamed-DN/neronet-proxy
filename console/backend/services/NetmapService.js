@@ -500,12 +500,12 @@ function computeDNSName(name, explicitDnsName, domain) {
  */
 async function buildNetmap(nodeId) {
   const selfRows = await query(
-    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, n.awg_port, n.device_kind, n.profile_gateway_endpoint, n.role, o.search_domain, o.slug as org_slug
+    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, n.awg_port, n.vless_port, n.device_kind, n.profile_gateway_endpoint, n.role, o.search_domain, o.slug as org_slug
        FROM nodes n
        LEFT JOIN organizations o ON n.organization_id = o.id
       WHERE n.id = $1`,
     [nodeId],
-    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, NULL AS awg_port, 'mesh' AS device_kind, NULL AS profile_gateway_endpoint, n.role, o.search_domain, o.slug as org_slug
+    `SELECT n.id, n.name, n.dns_name, n.organization_id, n.overlay_ipv4, n.overlay_ipv6, n.is_quarantined, n.transport, n.stealth_config, n.daita_mode, n.transports_built, n.node_capabilities, NULL AS awg_port, NULL AS vless_port, 'mesh' AS device_kind, NULL AS profile_gateway_endpoint, n.role, o.search_domain, o.slug as org_slug
        FROM nodes n
        LEFT JOIN organizations o ON n.organization_id = o.id
       WHERE n.id = ?`,
@@ -538,11 +538,12 @@ async function buildNetmap(nodeId) {
   // ADR 0036: the organisation's AmneziaWG parameters go to its own profile gateways that
   // report a listener, while the method is allowed, and to no other node.
   let awg = null;
+  let vless = null;
   if (isPostgres() && Boolean(self.profile_gateway_endpoint) && self.device_kind !== 'profile') {
     const methods = await query(
-      'SELECT allowed_access_methods, awg_params FROM organizations WHERE id = $1',
+      'SELECT allowed_access_methods, awg_params, vless_params FROM organizations WHERE id = $1',
       [self.organization_id || 'org-default'],
-      'SELECT NULL AS allowed_access_methods, NULL AS awg_params',
+      'SELECT NULL AS allowed_access_methods, NULL AS awg_params, NULL AS vless_params',
       []
     );
     const org = methods[0];
@@ -553,6 +554,22 @@ async function buildNetmap(nodeId) {
       AccessMethodService.gatewayRunsAmneziaWg(self)
     ) {
       awg = { listen_port: self.awg_port, params };
+    }
+    // ADR 0036, vless-reality: the REALITY parameters, secret included, go to the organisation's own
+    // gateway that reports a running terminator, while the method is allowed, and to no other node.
+    const reality = org ? AccessMethodService.vlessParamsOf(org) : null;
+    if (
+      reality &&
+      AccessMethodService.allowedOf(org).includes('vless-reality') &&
+      AccessMethodService.gatewayRunsVless(self)
+    ) {
+      vless = {
+        listen_port: self.vless_port,
+        dest: reality.dest,
+        server_names: reality.server_names,
+        private_key: reality.private_key,
+        short_ids: reality.short_ids
+      };
     }
   }
 
@@ -571,7 +588,7 @@ async function buildNetmap(nodeId) {
         // policy were ever to name one.
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
                 transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
-                device_kind, preshared_key, profile_gateway_endpoint, gateway_node_id, access_method, role,
+                device_kind, preshared_key, profile_gateway_endpoint, gateway_node_id, access_method, vless_uuid, role,
                 user_id, compartment_id, connection_order, connection_forced, connection_locked, connection_owner_set
            FROM nodes
           WHERE id <> $1 AND is_quarantined = FALSE AND is_healthy = TRUE
@@ -579,7 +596,7 @@ async function buildNetmap(nodeId) {
         [nodeId, self.organization_id || 'org-default'],
         `SELECT id, name, dns_name, public_key, overlay_ipv4, overlay_ipv6, endpoints, transport, stealth_config, daita_mode,
                 transports_built, node_capabilities, relay_homes, relay_homes_reported_at,
-                'mesh' AS device_kind, NULL AS preshared_key, NULL AS profile_gateway_endpoint, NULL AS gateway_node_id, 'wireguard' AS access_method, role,
+                'mesh' AS device_kind, NULL AS preshared_key, NULL AS profile_gateway_endpoint, NULL AS gateway_node_id, 'wireguard' AS access_method, NULL AS vless_uuid, role,
                 NULL AS user_id, NULL AS compartment_id, NULL AS connection_order, 0 AS connection_forced,
                 0 AS connection_locked, 0 AS connection_owner_set
            FROM nodes
@@ -699,6 +716,13 @@ async function buildNetmap(nodeId) {
       // ADR 0036: only AmneziaWG needs the gateway to know the method. A WebSocket device
       // reaches the gateway's ordinary WireGuard port through the tunnel server.
       if (row.access_method === 'amneziawg') deviceEntry.access_method = 'amneziawg';
+      // vless-reality: the gateway serves the device as a virtual device and lists its uuid in
+      // Xray's configuration. Only while the organisation still allows the method and this gateway
+      // runs the terminator; otherwise the entry carries no uuid and the gateway serves nothing.
+      if (row.access_method === 'vless-reality') {
+        deviceEntry.access_method = 'vless-reality';
+        if (vless && row.vless_uuid) deviceEntry.vless_uuid = String(row.vless_uuid);
+      }
       // ADR 0037: the order this device walks and the scope it came from. Stock apps cannot walk
       // it (the profile is written for the first method); our own apps and the console read it.
       if (orderContext) {
@@ -832,6 +856,7 @@ async function buildNetmap(nodeId) {
     selfObj.daita_mode = self.daita_mode;
   }
   if (awg) selfObj.awg = awg;
+  if (vless) selfObj.vless = vless;
 
   const selfDNS = computeDNSName(self.name, self.dns_name, searchDomain);
   if (selfDNS) {

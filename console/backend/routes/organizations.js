@@ -182,15 +182,16 @@ router.put('/:id/access-methods', requireOrgRole('owner', 'admin'), async (req, 
       actorUsername: req.user.username,
       targetId: result.organization_id,
       targetType: 'organization',
-      message: `Access methods of ${result.organization_id} set to ${result.allowed_access_methods.join(',')}${result.generated ? '; AmneziaWG parameters generated' : ''}`,
+      message: `Access methods of ${result.organization_id} set to ${result.allowed_access_methods.join(',')}${result.generated ? '; AmneziaWG parameters generated' : ''}${result.vless_generated ? '; REALITY parameters generated' : ''}`,
       ipAddress: req.ip,
       metadata: {
         allowed_access_methods: result.allowed_access_methods,
         parameters_generated: result.generated,
+        reality_generated: result.vless_generated,
         devices_to_reimport: plan ? plan.reimport_total : 0
       }
     });
-    const { generated: _generated, ...view } = result;
+    const { generated: _generated, vless_generated: _vlessGenerated, ...view } = result;
     return res.status(200).json({ ...view, plan });
   } catch (err) {
     return accessMethodFail(res, err, next);
@@ -217,17 +218,18 @@ router.post('/:id/access-methods/regenerate', requireOrgRole('owner', 'admin'), 
     if (req.user.role !== 'super-admin' && req.user.organization_id !== req.params.id) {
       return res.status(404).json({ error: 'Organization not found' });
     }
-    const result = await AccessMethodService.regenerateParams(req.params.id);
+    const method = req.body && req.body.method !== undefined ? req.body.method : 'amneziawg';
+    const result = await AccessMethodService.regenerateParams(req.params.id, method);
     if (!result) return res.status(404).json({ error: 'Organization not found' });
     await logAuditEvent({
-      eventType: 'ACCESS_METHODS_AWG_REGENERATED',
+      eventType: method === 'vless-reality' ? 'ACCESS_METHODS_VLESS_REGENERATED' : 'ACCESS_METHODS_AWG_REGENERATED',
       organizationId: result.organization_id,
       severity: 'warn',
       actorUserId: req.user.id,
       actorUsername: req.user.username,
       targetId: result.organization_id,
       targetType: 'organization',
-      message: `AmneziaWG parameters of ${result.organization_id} regenerated; ${result.devices_to_redo} device(s) must import their profile again`,
+      message: `${method === 'vless-reality' ? 'REALITY' : 'AmneziaWG'} parameters of ${result.organization_id} regenerated; ${result.devices_to_redo} device(s) must import their profile again`,
       ipAddress: req.ip,
       metadata: { devices_to_redo: result.devices_to_redo }
     });
