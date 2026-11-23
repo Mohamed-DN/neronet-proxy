@@ -906,7 +906,7 @@ describe('AddDeviceRoute, VLESS + REALITY', () => {
     await user.click(screen.getByRole('radio', { name: /Heavily censored network/ }));
     await user.click(screen.getByRole('button', { name: 'Create the access' }));
 
-    expect(await screen.findByRole('img', { name: 'QR code of the link for Work phone' })).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: "QR code of the link for anna's iPhone" })).toBeInTheDocument();
     const qr = (await import('qrcode')).default as unknown as { toDataURL: ReturnType<typeof vi.fn> };
     expect(qr.toDataURL.mock.calls.some(([value]) => value === VLESS_LINK)).toBe(true);
     expect(screen.getByText('Scan the code with the app on your phone.')).toBeInTheDocument();

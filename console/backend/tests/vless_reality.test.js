@@ -220,8 +220,9 @@ describe('ADR 0036: vless-reality through the API', () => {
     const after = await stored();
     assert.notEqual(after.private_key, before.private_key);
     await settleAuditWrites();
-    const audit = (await pool.query("SELECT message, metadata_json FROM audit_events WHERE event_type LIKE 'ACCESS_METHODS%'"))
-      .rows;
+    const audit = (
+      await pool.query("SELECT message, metadata_json FROM audit_events WHERE event_type LIKE 'ACCESS_METHODS%'")
+    ).rows;
     assert.ok(audit.length >= 1);
     for (const row of audit) {
       const text = JSON.stringify(row);

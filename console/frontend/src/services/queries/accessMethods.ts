@@ -60,11 +60,7 @@ export function useAccessMethods(orgId: string | null): UseQueryResult<AccessMet
 
 export function useSetAccessMethods(
   orgId: string
-): UseMutationResult<
-  AccessMethodsSettings,
-  ApiError,
-  AccessMethodsInput & { confirm_reimport?: boolean }
-> {
+): UseMutationResult<AccessMethodsSettings, ApiError, AccessMethodsInput & { confirm_reimport?: boolean }> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input) => apiPut<AccessMethodsSettings>(base(orgId), input),

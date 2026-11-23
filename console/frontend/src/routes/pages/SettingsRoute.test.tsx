@@ -356,12 +356,12 @@ describe('SettingsRoute', () => {
     expect(screen.queryByRole('button', { name: 'Regenerate the parameters' })).toBeNull();
 
     await u.click(awg);
-    await waitFor(() => expect(accessPuts).toEqual([{ wireguard_wss: true, amneziawg: true }]));
+    await waitFor(() => expect(accessPuts).toEqual([{ wireguard_wss: true, amneziawg: true, vless: false }]));
     expect(await screen.findByText(/AmneziaWG is on\. The secret parameters were created/)).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Regenerate the parameters' })).toBeInTheDocument();
 
     await u.click(wss);
-    await waitFor(() => expect(accessPuts[1]).toEqual({ wireguard_wss: false, amneziawg: true }));
+    await waitFor(() => expect(accessPuts[1]).toEqual({ wireguard_wss: false, amneziawg: true, vless: false }));
   });
 
   it('warns that AmneziaWG devices must import their profile again before regenerating', async () => {
