@@ -155,7 +155,7 @@ describe('Devices page', () => {
 
     expect(screen.getByRole('heading', { name: 'Devices', level: 1 })).toBeInTheDocument();
     await within(await screen.findByRole('table')).findByText('Rome Gateway Alpha');
-    expect(screen.getByText('Checks passed')).toBeInTheDocument();
+    expect(screen.getByText('Checks passed, as reported by the device')).toBeInTheDocument();
     expect(screen.getByText('Not confirmed')).toBeInTheDocument();
     expect(screen.getByText('Checks failed')).toBeInTheDocument();
     const berlin = within(listTable()).getByText('Berlin Relay Bravo').closest('tr') as HTMLElement;

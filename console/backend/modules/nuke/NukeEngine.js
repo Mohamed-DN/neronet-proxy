@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const { isPostgres, getPgPool, getDatabase } = require('../../db/index');
 const { blacklistToken, publishTopologyEvent } = require('../../db/valkey');
 const { logAuditEvent } = require('../../utils/audit');
-const { generateCanary, invalidateCanary } = require('../../services/CanaryService');
+const { invalidateCanary } = require('../../services/CanaryService');
 const RevocationEngine = require('../../services/RevocationEngine');
 const { bumpNetmap } = require('../../services/AclEngine');
 const logger = require('../../utils/logger');
@@ -783,9 +783,6 @@ async function setupOwnerDMS(superAdminUserId, { passphrase, heartbeat_interval_
   inMemoryOwnerDms.last_heartbeat_at = now.getTime() / 1000;
   inMemoryOwnerDms.webhook_url = hookUrl;
 
-  // Refresh warrant canary
-  await generateCanary();
-
   return {
     success: true,
     message: "Owner Dead Man's Switch configured"
@@ -793,7 +790,7 @@ async function setupOwnerDMS(superAdminUserId, { passphrase, heartbeat_interval_
 }
 
 /**
- * Re-confirms owner heartbeat and refreshes the Warrant Canary.
+ * Re-confirms owner heartbeat.
  */
 async function heartbeatOwnerDMS(superAdminUserId, passphrase) {
   await ensureTables();
@@ -863,9 +860,6 @@ async function heartbeatOwnerDMS(superAdminUserId, passphrase) {
 
   const epochTime = now.getTime() / 1000;
   inMemoryOwnerDms.last_heartbeat_at = epochTime;
-
-  // Refresh warrant canary on valid heartbeat
-  await generateCanary();
 
   return {
     success: true,

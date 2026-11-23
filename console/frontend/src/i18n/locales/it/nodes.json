@@ -31,7 +31,7 @@
   },
   "posture": {
     "allUnverified": "Nessun dispositivo ha ancora riportato i controlli di sicurezza: finché non lo fanno, risultano tutti non confermati.",
-    "passed": "Controlli superati",
+    "passed": "Controlli superati, secondo il dispositivo",
     "failed": "Controlli non superati",
     "unverified": "Non confermati"
   },

@@ -45,7 +45,7 @@ Features that other products in this market do not offer, and that the code cont
 
 - **Onion routing** per node, inside the same mesh. Implemented in `pkg/routing`, not
   used by any running node (section 2.2).
-- **Warrant canary**, Ed25519-signed and published automatically.
+- **Warrant canary**: nothing is published automatically; a statement is shown only when an account published it.
 - **Cross-mesh federation** with signed agreements and an out-of-band fingerprint check.
 - **NeroNuke**, three tiers of destruction: scheduled, personal dead man's switch, and
   owner global cascade.
@@ -145,7 +145,7 @@ Line counts include everything in the file.
 | `PeeringEngine` | 703 | Cross-mesh federation, Ed25519 tokens | Signature and fingerprint verified. Imports fixed placeholder nodes; see the roadmap, section 4 |
 | `RiskEngine` | 478 | Behavioural risk scoring, impossible travel | Runs on the data nodes report |
 | `WebRtcSignalingEngine` | 456 | Cloud PC signalling | Rows only, no streaming. Behind a feature flag |
-| `CanaryService` | 302 | Warrant canary signing and publication | Runs |
+| `CanaryService` | 120 | Shows a warrant canary a person published; none by default | Runs |
 | `HeartbeatBuffer` | 347 | Heartbeat aggregation in Valkey | Runs |
 | `AclEngine` | 256 | Rule compilation and epochs | Runs; output is delivered and not enforced |
 | `PolicyEngine` | 266 | Country geofencing policies | Used by the geofencing routes |

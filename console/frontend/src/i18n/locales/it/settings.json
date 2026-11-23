@@ -22,12 +22,12 @@
   "moduleNames": {
     "deniability": "Modalità discreta",
     "nuke": "Cancellazione dei dati",
-    "onion": "Percorso a tre tappe"
+    "onion": "Percorso a tre tappe (non ancora attivo)"
   },
   "moduleOn": "Attivo",
   "moduleOff": "Spento",
   "sectionTransport": "Come viaggiano i dati",
-  "transportBody": "I dati viaggiano dentro un tunnel cifrato WireGuard. La chiave di ogni coppia di dispositivi cambia ogni due minuti. È cifratura classica, non resistente ai computer quantistici. Non è attivo il mascheramento del traffico e non sono disponibili OpenVPN né VLESS.",
+  "transportBody": "I dati viaggiano dentro un tunnel cifrato WireGuard. La chiave di ogni coppia di dispositivi cambia ogni due minuti. È cifratura classica, non resistente ai computer quantistici. Il mascheramento del traffico (DAITA) non è attivo. I dati di un dispositivo con un'app standard vengono decifrati dal suo gateway e cifrati di nuovo verso la destinazione.",
   "noOrganization": "La tua sessione non è collegata a un'organizzazione, quindi queste impostazioni non si possono mostrare né salvare. Esci e accedi di nuovo, oppure chiedi a un amministratore.",
   "modulesError": "Impossibile caricare le funzioni. Riprova.",
   "loadError": "Impossibile caricare le impostazioni. Riprova.",

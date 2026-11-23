@@ -383,7 +383,7 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
     });
   });
 
-  it("6. Dead Man's Switch & Warrant Canary tab interactions and DMS heartbeat reset", async () => {
+  it("6. Dead Man's Switch tab interactions and DMS heartbeat reset", async () => {
     const user = userEvent.setup();
 
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
@@ -404,13 +404,12 @@ describe('WP-409: NukeRoute (NeroNuke v2 Dual-Auth & Legal Hold UI)', () => {
 
     renderNuke();
 
-    // Switch to DMS & Canary tab
+    // Switch to the DMS tab
     const dmsTab = screen.getByRole('tab', { name: /Presence check and signals/i });
     await user.click(dmsTab);
 
-    // Verify Canary text and DMS form
-    expect(screen.getByText(/Transparency signal/i)).toBeInTheDocument();
-    expect(screen.getByText(/Valid signature/i)).toBeInTheDocument();
+    // Nothing on the page may state, in the operator's name, that no legal order was received.
+    expect(screen.queryByText(/Transparency signal|Valid signature|SUBPOENAS|WARRANT CANARY/i)).toBeNull();
 
     // Fill passphrase and submit heartbeat
     const passInput = screen.getByPlaceholderText(/Owner's main password/i);

@@ -696,25 +696,6 @@ export default function NukeRoute() {
                         </Button>
                       </form>
                     </Card>
-
-                    {/* Warrant Canary */}
-                    <Card>
-                      <CardHeader
-                        title={t('dms.canaryTitle')}
-                        description={t('dms.canaryUpdated')}
-                        actions={<Badge tone="success">{t('dms.canaryValid')}</Badge>}
-                      />
-                      <div className="p-3 bg-surface-sunken rounded border border-border text-micro font-mono whitespace-pre-wrap leading-relaxed">
-                        {`-----BEGIN NERONET WARRANT CANARY-----
-Status: ZERO SUBPOENAS OR GAG ORDERS RECEIVED
-Algorithm: Ed25519 Signed Signal
-Verification: Validated at /.well-known/canary.txt
-
-The operating team has received NO secret warrants,
-FISA court orders, or requests demanding backdoors.
------END NERONET WARRANT CANARY-----`}
-                      </div>
-                    </Card>
                   </div>
 
                   {/* Emergency Manual Global Purge */}

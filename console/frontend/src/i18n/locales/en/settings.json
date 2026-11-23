@@ -21,13 +21,13 @@
   "moduleNames": {
     "deniability": "Discreet mode",
     "nuke": "Data erasure",
-    "onion": "Three-hop routing"
+    "onion": "Three-hop routing (not active yet)"
   },
   "sectionModules": "Features",
   "moduleOn": "On",
   "moduleOff": "Off",
   "sectionTransport": "How data travels",
-  "transportBody": "Data travels inside an encrypted WireGuard tunnel. Each device pair's key changes every two minutes. This is classic encryption, not quantum-resistant. Traffic disguising is not active, and OpenVPN and VLESS are not available.",
+  "transportBody": "Data travels inside an encrypted WireGuard tunnel. Each device pair's key changes every two minutes. This is classic encryption, not quantum-resistant. Traffic disguising (DAITA) is not active. A device that uses a stock app is decrypted at its gateway and encrypted again towards the destination.",
   "noOrganization": "Your session is not linked to an organisation, so these settings cannot be shown or saved. Sign out and sign in again, or ask an administrator.",
   "modulesError": "Could not load the features. Try again.",
   "loadError": "Could not load the settings. Try again.",

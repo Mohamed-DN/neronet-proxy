@@ -23,7 +23,6 @@ const canaryRouter = require('../routes/canary');
 const { setupTestDatabase } = require('./helpers/db');
 const { initValkey, closeValkey } = require('../db/valkey');
 const NukeEngine = require('../modules/nuke/NukeEngine');
-const CanaryService = require('../services/CanaryService');
 
 function createNukeTestApp() {
   const app = express();
@@ -68,7 +67,6 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
 
   before(async () => {
     dbHelper = await setupTestDatabase();
-    await CanaryService.initCanaryService();
 
     app = createNukeTestApp();
 
@@ -490,7 +488,7 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
       assert.strictEqual(res.body.error, 'Invalid owner passphrase');
     });
 
-    it('should accept owner heartbeat with valid passphrase and refresh Warrant Canary', async () => {
+    it('should accept owner heartbeat with valid passphrase, publishing no warrant canary', async () => {
       const res = await request(app)
         .post('/api/nuke/owner-dms/heartbeat')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -501,6 +499,8 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
       assert.strictEqual(res.status, 200);
       assert.strictEqual(res.body.success, true);
       assert.ok(res.body.last_heartbeat_at !== undefined);
+      const canaries = await dbHelper.pool.query('SELECT count(*)::int AS n FROM warrant_canaries');
+      assert.strictEqual(canaries.rows[0].n, 0, 'a heartbeat must not publish a statement');
     });
 
     it('should return Owner DMS status for Super-Admin', async () => {
@@ -530,62 +530,7 @@ describe('Milestone 3: NeroNuke 3-Tier Self-Destruct & Dead Man Switch Engine', 
     });
   });
 
-  describe('Tier 3: Warrant Canary (Ed25519 Transparency Declaration)', () => {
-    it('should serve cryptographically signed canary at /.well-known/canary.txt', async () => {
-      const res = await request(app).get('/.well-known/canary.txt');
-      assert.strictEqual(res.status, 200);
-      assert.strictEqual(res.body.valid, true);
-      assert.ok(res.body.raw.includes('BEGIN NERONET WARRANT CANARY'));
-      assert.ok(res.body.raw.includes('END NERONET WARRANT CANARY'));
-      assert.ok(res.body.signature.length > 30);
-      assert.ok(res.body.signer_public_key.length > 30);
-    });
-
-    it('should serve JSON canary declaration at /api/nuke/canary', async () => {
-      const res = await request(app).get('/api/nuke/canary');
-      assert.strictEqual(res.status, 200);
-      assert.strictEqual(res.body.valid, true);
-      assert.ok(res.body.statement_text.includes('NERONET SOVEREIGN MESH WARRANT CANARY'));
-      assert.ok(res.body.signature);
-      assert.ok(res.body.signer_public_key);
-    });
-
-    it('should independently verify Ed25519 signature validity against statement', async () => {
-      const canary = await CanaryService.getLatestCanary();
-      const isValid = CanaryService.verifyCanary(
-        canary.statement_text,
-        canary.ed25519_signature,
-        canary.signer_public_key
-      );
-      assert.strictEqual(isValid, true, 'Original canary signature must be valid');
-    });
-
-    it('should reject tampered statement text during Ed25519 verification', async () => {
-      const canary = await CanaryService.getLatestCanary();
-      const tamperedStatement = canary.statement_text + ' [TAMPERED_INJECTED_DATA]';
-      const isTamperedValid = CanaryService.verifyCanary(
-        tamperedStatement,
-        canary.ed25519_signature,
-        canary.signer_public_key
-      );
-      assert.strictEqual(isTamperedValid, false, 'Tampered canary text must be cryptographically rejected');
-    });
-
-    it('should reject forged public key during Ed25519 verification', async () => {
-      const canary = await CanaryService.getLatestCanary();
-      const fakePubKey = crypto.randomBytes(32).toString('base64');
-      const isFakeValid = CanaryService.verifyCanary(canary.statement_text, canary.ed25519_signature, fakePubKey);
-      assert.strictEqual(isFakeValid, false, 'Canary with forged public key must fail verification');
-    });
-
-    it('should serve raw plain text canary when Accept text/plain header is sent', async () => {
-      const res = await request(app).get('/.well-known/canary.txt').set('Accept', 'text/plain');
-      assert.strictEqual(res.status, 200);
-      assert.ok(typeof res.text === 'string');
-      assert.ok(res.text.includes('BEGIN NERONET WARRANT CANARY'));
-      assert.ok(res.text.includes('END NERONET WARRANT CANARY'));
-    });
-
+  describe('Tier 3: global wipe', () => {
     it('should execute checkExpiredDeadManSwitches without errors', async () => {
       await assert.doesNotReject(async () => {
         await NukeEngine.checkExpiredDeadManSwitches();

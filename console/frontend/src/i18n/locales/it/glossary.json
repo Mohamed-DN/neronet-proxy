@@ -247,7 +247,7 @@
     },
     "warrantCanary": {
       "term": "Segnale di trasparenza",
-      "body": "Un segnale firmato e aggiornato periodicamente: se smette di essere aggiornato, può voler dire che qualcosa è successo. In inglese: warrant canary."
+      "body": "Una dichiarazione firmata che una persona pubblica e rinnova: se smette di rinnovarla, può voler dire che qualcosa è successo. NeroNet non ne pubblica da solo. In inglese: warrant canary."
     },
     "splitTunneling": {
       "term": "App fuori dal tunnel",

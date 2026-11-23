@@ -247,7 +247,7 @@
     },
     "warrantCanary": {
       "term": "Warrant canary",
-      "body": "A signed signal updated regularly: if it stops being updated, something may have happened."
+      "body": "A signed statement a person publishes and renews: if it stops being renewed, something may have happened. NeroNet publishes none by itself."
     },
     "splitTunneling": {
       "term": "Split tunneling",

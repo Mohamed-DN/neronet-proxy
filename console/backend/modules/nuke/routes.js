@@ -56,7 +56,8 @@ router.get('/state', authenticateToken, async (req, res, next) => {
       tier3_warrant_canary: canary?.error
         ? { error: canary.error }
         : {
-            canary_url: '/api/nuke/canary.txt',
+            published: Boolean(canary),
+            canary_url: canary ? '/api/nuke/canary.txt' : null,
             signature_valid: Boolean(canary?.valid),
             last_signed_at: canary?.published_at || null,
             signer_public_key: canary?.signer_public_key || null,

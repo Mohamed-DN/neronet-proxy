@@ -21,6 +21,8 @@ const router = express.Router();
 async function handleCanaryRequest(req, res, next) {
   try {
     const canary = await CanaryService.getLatestCanary();
+    res.setHeader('Cache-Control', 'no-store');
+    if (!canary) return res.status(404).json({ error: 'canary_not_published' });
 
     if (req.headers.accept === 'text/plain' && !req.headers.accept.includes('json')) {
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');

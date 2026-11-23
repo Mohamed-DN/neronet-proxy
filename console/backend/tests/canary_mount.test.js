@@ -1,5 +1,8 @@
-const { describe, it, before, after } = require('node:test');
+const { describe, it, before, after, afterEach } = require('node:test');
 const assert = require('node:assert');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const request = require('supertest');
 const { setupTestDatabase } = require('./helpers/db');
 const { createApp } = require('../server');
@@ -19,7 +22,6 @@ describe('Root mount', () => {
   before(async () => {
     dbHelper = await setupTestDatabase();
     app = createApp();
-    await CanaryService.generateCanary();
   });
 
   after(async () => {
@@ -51,28 +53,71 @@ describe('Root mount', () => {
     assert.strictEqual(res.status, 401);
   });
 
-  for (const route of ['/canary', '/canary.txt', '/.well-known/canary.txt']) {
-    it(`serves the warrant canary at ${route}`, async () => {
-      const res = await request(app).get(route);
+  const PATHS = ['/canary', '/canary.txt', '/.well-known/canary.txt', '/api/nuke/canary', '/api/nuke/canary.txt'];
+  const rows = async () => (await dbHelper.pool.query('SELECT count(*)::int AS n FROM warrant_canaries')).rows[0].n;
 
-      assert.strictEqual(res.status, 200);
-      assert.ok(res.body.signature, 'the canary must carry its Ed25519 signature');
-      assert.strictEqual(res.body.valid, true);
+  // The console used to write and sign a legal statement in the operator's name whenever one of
+  // these addresses was opened.
+  for (const route of PATHS) {
+    it(`publishes nothing by itself at ${route}`, async () => {
+      const before = await rows();
+      const res = await request(app).get(route);
+      assert.strictEqual(res.status, 404);
+      assert.strictEqual(res.body.error, 'canary_not_published');
+      assert.strictEqual(await rows(), before, 'a read must not create a statement');
     });
   }
 
-  it('serves the raw signed canary as text when the caller asks for text/plain', async () => {
-    const res = await request(app).get('/.well-known/canary.txt').set('Accept', 'text/plain');
+  describe('a statement in the database', () => {
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
+    const publicRaw = publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('base64');
+    const statement = 'A statement a person made.';
+    const signature = crypto.sign(null, Buffer.from(statement), privateKey).toString('base64');
 
-    assert.strictEqual(res.status, 200);
-    assert.match(res.headers['content-type'], /text\/plain/);
-    assert.match(res.text, /BEGIN NERONET WARRANT CANARY/);
+    const insert = (id, publishedBy, text = statement) =>
+      dbHelper.pool.query(
+        `INSERT INTO warrant_canaries (id, statement_text, ed25519_signature, signer_public_key, is_active, published_by)
+         VALUES ($1, $2, $3, $4, TRUE, $5)`,
+        [id, text, signature, publicRaw, publishedBy]
+      );
+
+    afterEach(() => dbHelper.pool.query('DELETE FROM warrant_canaries'));
+
+    it('is not served when no account published it', async () => {
+      await insert('c-auto', null);
+      assert.strictEqual((await request(app).get('/.well-known/canary.txt')).status, 404);
+    });
+
+    it('is served with its signature checked when an account published it', async () => {
+      await insert('c-person', 'usr-person');
+      const res = await request(app).get('/.well-known/canary.txt');
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.body.valid, true);
+      const text = await request(app).get('/.well-known/canary.txt').set('Accept', 'text/plain');
+      assert.match(text.headers['content-type'], /text\/plain/);
+      assert.match(text.text, /A statement a person made/);
+    });
+
+    it('is reported invalid when the text does not match the signature', async () => {
+      await insert('c-tampered', 'usr-person', `${statement} Changed.`);
+      assert.strictEqual((await request(app).get('/canary')).body.valid, false);
+    });
+
+    it('is reported invalid under another key', () => {
+      const other = crypto.randomBytes(32).toString('base64');
+      assert.strictEqual(CanaryService.verifyCanary(statement, signature, other), false);
+    });
   });
 
-  it('keeps serving the canary under /api/nuke for the console', async () => {
-    const res = await request(app).get('/api/nuke/canary');
-
-    assert.strictEqual(res.status, 200);
-    assert.ok(res.body.signature);
+  it('withdraws what the console wrote by itself: migration 061', async () => {
+    await dbHelper.pool.query(
+      `INSERT INTO warrant_canaries (id, statement_text, ed25519_signature, signer_public_key, is_active)
+       VALUES ('c-old', 'x', 'x', 'x', TRUE)`
+    );
+    await dbHelper.pool.query(
+      fs.readFileSync(path.join(__dirname, '../db/migrations/061_withdraw_automatic_canaries.sql'), 'utf8')
+    );
+    const row = (await dbHelper.pool.query("SELECT is_active FROM warrant_canaries WHERE id = 'c-old'")).rows[0];
+    assert.strictEqual(row.is_active, false);
   });
 });
