@@ -55,7 +55,7 @@ describe('ADR 0037: organisation scope', () => {
   });
 
   it('ignores reserved or unknown names in stored data', () => {
-    const r = resolve({ organization: org({ order: ['vless-reality', 'openvpn', WSS, 'bogus'] }) });
+    const r = resolve({ organization: org({ order: ['openvpn', 'ikev2', WSS, 'bogus'] }) });
     assert.deepEqual(r.order, [WSS]);
   });
 });
@@ -281,7 +281,7 @@ describe('ADR 0037: validating an order before it is stored', () => {
     }
   });
   it('names reserved methods as not selectable yet', () => {
-    for (const reserved of ['vless-reality', 'openvpn']) {
+    for (const reserved of ['openvpn', 'ikev2']) {
       const v = validateOrder([WG, reserved]);
       assert.equal(v.ok, false);
       assert.equal(v.code, 'method_reserved');

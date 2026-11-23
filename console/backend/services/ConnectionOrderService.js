@@ -44,7 +44,7 @@ const listOrNull = (value) => (Array.isArray(value) && value.length > 0 ? value 
 async function loadContext(organizationId, client = getPgPool()) {
   const org = orgKey(organizationId);
   const orgRes = await client.query(
-    `SELECT id, allowed_access_methods, awg_params, connection_order, connection_forced, members_choose_connection
+    `SELECT id, allowed_access_methods, awg_params, vless_params, connection_order, connection_forced, members_choose_connection
        FROM organizations WHERE id = $1`,
     [org]
   );
@@ -217,9 +217,12 @@ async function planAllowedChange(organizationId, body) {
   if (typeof input.wireguard_wss !== 'boolean' || typeof input.amneziawg !== 'boolean') return null;
   const ctx = await loadContext(organizationId);
   if (!ctx) return null;
+  if (input.vless !== undefined && typeof input.vless !== 'boolean') return null;
   const allowed = [Resolver.WIREGUARD];
   if (input.wireguard_wss) allowed.push(Resolver.WIREGUARD_WSS);
   if (input.amneziawg) allowed.push(Resolver.AMNEZIAWG);
+  // `vless` is optional in the request: absent leaves the method as it is.
+  if (input.vless === undefined ? ctx.org.allowed.includes(Resolver.VLESS) : input.vless) allowed.push(Resolver.VLESS);
   const removed = ctx.org.allowed.filter((m) => !allowed.includes(m));
   const after = {
     ...ctx,

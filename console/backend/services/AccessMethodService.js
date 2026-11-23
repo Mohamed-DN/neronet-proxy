@@ -20,16 +20,20 @@ const AclEngine = require('./AclEngine');
 const WIREGUARD = 'wireguard';
 const WIREGUARD_WSS = 'wireguard-wss';
 const AMNEZIAWG = 'amneziawg';
+const VLESS = 'vless-reality';
 /** In the order the person sees them. */
-const METHODS = [WIREGUARD, WIREGUARD_WSS, AMNEZIAWG];
+const METHODS = [WIREGUARD, WIREGUARD_WSS, AMNEZIAWG, VLESS];
 /** Plain labels, English and jargon-free; the console translates by id. */
 const LABELS = {
   [WIREGUARD]: 'Normal',
   [WIREGUARD_WSS]: 'Network that blocks VPNs (port 443)',
-  [AMNEZIAWG]: 'Network that recognises VPNs (AmneziaWG)'
+  [AMNEZIAWG]: 'Network that recognises VPNs (AmneziaWG)',
+  [VLESS]: 'Heavily censored network (VLESS)'
 };
 /** The capability a gateway reports when it runs the AmneziaWG listener (node_capabilities). */
 const AWG_CAPABILITY = 'awg-v1';
+/** The capability a gateway reports when its VLESS + REALITY terminator runs (node_capabilities). */
+const VLESS_CAPABILITY = 'vless-v1';
 const DEFAULT_ALLOWED = [WIREGUARD, WIREGUARD_WSS];
 
 /**
@@ -131,6 +135,64 @@ function validAwgParams(params) {
   return true;
 }
 
+/**
+ * REALITY parameters (Xray-core): an X25519 key pair, written the way Xray and the clients read
+ * it (base64url without padding, 43 characters), one or two short ids, and the fallback target
+ * REALITY shows to anyone who cannot authenticate. The target is the operator's choice
+ * (NERONET_REALITY_DEST, host:port of a TLS 1.3 site); there is no default, because a default
+ * would make every installation look like the same one.
+ */
+const REALITY_KEY = /^[A-Za-z0-9_-]{43}$/;
+const REALITY_SHORT_ID = /^([0-9a-f]{2}){1,8}$/;
+const REALITY_DEST = /^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+:([0-9]{1,5})$/;
+const VLESS_KEYS = ['private_key', 'public_key', 'short_ids', 'dest', 'server_names'];
+
+function realityDestOk(dest) {
+  if (typeof dest !== 'string') return false;
+  const m = REALITY_DEST.exec(dest);
+  if (!m) return false;
+  const port = Number(m[m.length - 1]);
+  return port >= 1 && port <= 65535;
+}
+
+/** Fresh REALITY parameters for an organisation. `dest` is "host:port". */
+function generateVlessParams(dest, randomBytes = crypto.randomBytes) {
+  if (!realityDestOk(dest)) throw new Error('dest must be host:port of the REALITY fallback site');
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('x25519');
+  const d = privateKey.export({ format: 'jwk' }).d;
+  const x = publicKey.export({ format: 'jwk' }).x;
+  return {
+    private_key: d,
+    public_key: x,
+    // Two ids of different lengths: a link names one, the other is there to rotate to.
+    short_ids: [randomBytes(8).toString('hex'), randomBytes(4).toString('hex')],
+    dest,
+    server_names: [dest.slice(0, dest.lastIndexOf(':'))]
+  };
+}
+
+/** True when `params` is what generateVlessParams could have made: nothing else is stored or sent. */
+function validVlessParams(params) {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return false;
+  const keys = Object.keys(params);
+  if (keys.length !== VLESS_KEYS.length || !VLESS_KEYS.every((k) => keys.includes(k))) return false;
+  if (!REALITY_KEY.test(params.private_key) || !REALITY_KEY.test(params.public_key)) return false;
+  if (!Array.isArray(params.short_ids) || params.short_ids.length < 1 || params.short_ids.length > 8) return false;
+  if (!params.short_ids.every((id) => typeof id === 'string' && REALITY_SHORT_ID.test(id))) return false;
+  if (!realityDestOk(params.dest)) return false;
+  if (!Array.isArray(params.server_names) || params.server_names.length < 1) return false;
+  if (!params.server_names.every((n) => typeof n === 'string' && n.length > 0 && n.length <= 253)) return false;
+  try {
+    const priv = crypto.createPrivateKey({
+      key: { kty: 'OKP', crv: 'X25519', d: params.private_key, x: params.public_key },
+      format: 'jwk'
+    });
+    return crypto.createPublicKey(priv).export({ format: 'jwk' }).x === params.public_key;
+  } catch {
+    return false;
+  }
+}
+
 function parseColumn(value) {
   if (value == null) return null;
   if (typeof value === 'string') {
@@ -149,6 +211,12 @@ function paramsOf(orgRow) {
   return validAwgParams(params) ? params : null;
 }
 
+/** The organisation's stored REALITY parameters when they are intact, otherwise null. */
+function vlessParamsOf(orgRow) {
+  const params = parseColumn(orgRow && orgRow.vless_params);
+  return validVlessParams(params) ? params : null;
+}
+
 function allowedOf(orgRow) {
   const list = orgRow && Array.isArray(orgRow.allowed_access_methods) ? orgRow.allowed_access_methods : DEFAULT_ALLOWED;
   return METHODS.filter((m) => m === WIREGUARD || list.includes(m));
@@ -162,14 +230,17 @@ function settingsView(orgRow) {
     allowed_access_methods: allowed,
     wireguard_wss: allowed.includes(WIREGUARD_WSS),
     amneziawg: allowed.includes(AMNEZIAWG),
-    amneziawg_ready: paramsOf(orgRow) !== null
+    amneziawg_ready: paramsOf(orgRow) !== null,
+    vless: allowed.includes(VLESS),
+    vless_ready: vlessParamsOf(orgRow) !== null
   };
 }
 
 async function organisationRow(organizationId, client = getPgPool()) {
-  const res = await client.query('SELECT id, allowed_access_methods, awg_params FROM organizations WHERE id = $1', [
-    organizationId
-  ]);
+  const res = await client.query(
+    'SELECT id, allowed_access_methods, awg_params, vless_params FROM organizations WHERE id = $1',
+    [organizationId]
+  );
   return res.rows[0] || null;
 }
 
@@ -179,9 +250,10 @@ async function getSettings(organizationId) {
 }
 
 /**
- * Switch the two optional methods. Turning AmneziaWG on for the first time generates the
- * parameters; turning it off keeps them, so turning it on again does not break the devices
- * that already have a profile. Moves the netmap version: gateways start or stop the listener.
+ * Switch the optional methods. Turning AmneziaWG or VLESS on for the first time generates the
+ * parameters; turning one off keeps them, so turning it on again does not break the devices that
+ * already have a profile. `vless` is optional in the request: absent leaves it as it is. Moves the
+ * netmap version: gateways start or stop their listeners.
  */
 async function setSettings(organizationId, input) {
   const wanted = input || {};
@@ -190,31 +262,44 @@ async function setSettings(organizationId, input) {
       throw new AccessMethodError(400, `${key} must be true or false`, 'invalid_access_methods');
     }
   }
+  if (wanted.vless !== undefined && typeof wanted.vless !== 'boolean') {
+    throw new AccessMethodError(400, 'vless must be true or false', 'invalid_access_methods');
+  }
   const client = await getPgPool().connect();
   try {
     await client.query('BEGIN');
     const found = await client.query(
-      'SELECT id, allowed_access_methods, awg_params FROM organizations WHERE id = $1 FOR UPDATE',
+      'SELECT id, allowed_access_methods, awg_params, vless_params FROM organizations WHERE id = $1 FOR UPDATE',
       [organizationId]
     );
     if (found.rows.length === 0) {
       await client.query('ROLLBACK');
       return null;
     }
+    const wantVless = wanted.vless === undefined ? allowedOf(found.rows[0]).includes(VLESS) : wanted.vless;
     const allowed = [WIREGUARD];
     if (wanted.wireguard_wss) allowed.push(WIREGUARD_WSS);
     if (wanted.amneziawg) allowed.push(AMNEZIAWG);
+    if (wantVless) allowed.push(VLESS);
     let params = paramsOf(found.rows[0]);
     const generated = wanted.amneziawg && params === null;
     if (generated) params = generateAwgParams();
+    let vless = vlessParamsOf(found.rows[0]);
+    const vlessGenerated = wantVless && vless === null;
+    if (vlessGenerated) vless = generateVlessParams(configuredRealityDest());
     const updated = await client.query(
-      `UPDATE organizations SET allowed_access_methods = $2::text[], awg_params = $3::jsonb
-        WHERE id = $1 RETURNING id, allowed_access_methods, awg_params`,
-      [organizationId, allowed, params === null ? null : JSON.stringify(params)]
+      `UPDATE organizations SET allowed_access_methods = $2::text[], awg_params = $3::jsonb, vless_params = $4::jsonb
+        WHERE id = $1 RETURNING id, allowed_access_methods, awg_params, vless_params`,
+      [
+        organizationId,
+        allowed,
+        params === null ? null : JSON.stringify(params),
+        vless === null ? null : JSON.stringify(vless)
+      ]
     );
     await AclEngine.bumpNetmap(client);
     await client.query('COMMIT');
-    return { ...settingsView(updated.rows[0]), generated };
+    return { ...settingsView(updated.rows[0]), generated, vless_generated: vlessGenerated };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -223,11 +308,28 @@ async function setSettings(organizationId, input) {
   }
 }
 
+/** The fallback site the operator chose for REALITY; refuses when there is none. */
+function configuredRealityDest() {
+  const dest = String(process.env.NERONET_REALITY_DEST || '').trim();
+  if (!realityDestOk(dest)) {
+    throw new AccessMethodError(
+      409,
+      'The operator has not set NERONET_REALITY_DEST (host:port of the REALITY fallback site)',
+      'reality_dest_not_configured'
+    );
+  }
+  return dest;
+}
+
 /**
- * New parameters. Every existing AmneziaWG device must import its profile again, so the
- * count is returned for the warning and the audit entry.
+ * New parameters for AmneziaWG (the default) or vless-reality. Every existing device on that method
+ * must import its profile again, so the count is returned for the warning and the audit entry.
+ * A VLESS device keeps its uuid; the key pair and short ids in its link change.
  */
-async function regenerateParams(organizationId) {
+async function regenerateParams(organizationId, method = AMNEZIAWG) {
+  if (method !== AMNEZIAWG && method !== VLESS) {
+    throw new AccessMethodError(400, 'method must be amneziawg or vless-reality', 'invalid_access_methods');
+  }
   const client = await getPgPool().connect();
   try {
     await client.query('BEGIN');
@@ -238,22 +340,29 @@ async function regenerateParams(organizationId) {
       await client.query('ROLLBACK');
       return null;
     }
-    if (!allowedOf(found.rows[0]).includes(AMNEZIAWG)) {
-      throw new AccessMethodError(409, 'AmneziaWG is not switched on', 'amneziawg_not_enabled');
+    if (!allowedOf(found.rows[0]).includes(method)) {
+      throw new AccessMethodError(
+        409,
+        method === VLESS ? 'VLESS is not switched on' : 'AmneziaWG is not switched on',
+        method === VLESS ? 'vless_not_enabled' : 'amneziawg_not_enabled'
+      );
     }
+    const column = method === VLESS ? 'vless_params' : 'awg_params';
+    const fresh = method === VLESS ? generateVlessParams(configuredRealityDest()) : generateAwgParams();
     const updated = await client.query(
-      'UPDATE organizations SET awg_params = $2::jsonb WHERE id = $1 RETURNING id, allowed_access_methods, awg_params',
-      [organizationId, JSON.stringify(generateAwgParams())]
+      `UPDATE organizations SET ${column} = $2::jsonb WHERE id = $1
+        RETURNING id, allowed_access_methods, awg_params, vless_params`,
+      [organizationId, JSON.stringify(fresh)]
     );
     const devices = await client.query(
       `SELECT COUNT(*)::int AS n FROM nodes
-        WHERE device_kind = 'profile' AND access_method = 'amneziawg'
+        WHERE device_kind = 'profile' AND access_method = $2
           AND COALESCE(organization_id, 'org-default') = $1`,
-      [organizationId]
+      [organizationId, method]
     );
     await AclEngine.bumpNetmap(client);
     await client.query('COMMIT');
-    return { ...settingsView(updated.rows[0]), devices_to_redo: devices.rows[0].n };
+    return { ...settingsView(updated.rows[0]), devices_to_redo: devices.rows[0].n, method };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -281,6 +390,61 @@ function awgEndpointOf(gateway) {
   return `${named.slice(0, at)}:${gateway.awg_port}`;
 }
 
+/** True when the gateway row reports a running VLESS + REALITY terminator. */
+function gatewayRunsVless(gateway) {
+  return (
+    Boolean(gateway) &&
+    Array.isArray(gateway.node_capabilities) &&
+    gateway.node_capabilities.includes(VLESS_CAPABILITY) &&
+    Number.isInteger(gateway.vless_port)
+  );
+}
+
+/** [host, port] a VLESS link names: the gateway's named host, the port it reported. */
+function vlessEndpointOf(gateway) {
+  if (!gatewayRunsVless(gateway)) return null;
+  const named = String(gateway.profile_gateway_endpoint || '');
+  const at = named.lastIndexOf(':');
+  if (at <= 0) return null;
+  return { host: named.slice(0, at), port: gateway.vless_port };
+}
+
+const VLESS_FLOW = 'xtls-rprx-vision';
+const VLESS_FINGERPRINT = 'chrome';
+
+/**
+ * What the person who just added a VLESS device needs: the share link every v2ray-family app imports
+ * and the same values for an app that wants them typed. The private key is never part of it.
+ * `link` follows the VLESS share-link convention of Xray-core (XTLS/Xray-core discussion 716).
+ */
+function vlessProfile({ uuid, params, gateway, name }) {
+  const endpoint = vlessEndpointOf(gateway);
+  if (!endpoint || !params || !uuid) return null;
+  const hostPart = endpoint.host.includes(':') && !endpoint.host.startsWith('[') ? `[${endpoint.host}]` : endpoint.host;
+  const shortId = params.short_ids[0];
+  const sni = params.server_names[0];
+  const query = new URLSearchParams({
+    encryption: 'none',
+    flow: VLESS_FLOW,
+    security: 'reality',
+    sni,
+    fp: VLESS_FINGERPRINT,
+    pbk: params.public_key,
+    sid: shortId,
+    type: 'tcp'
+  });
+  return {
+    link: `vless://${uuid}@${hostPart}:${endpoint.port}?${query.toString()}#${encodeURIComponent(name)}`,
+    endpoint: `${endpoint.host}:${endpoint.port}`,
+    uuid,
+    server_name: sni,
+    public_key: params.public_key,
+    short_id: shortId,
+    flow: VLESS_FLOW,
+    fingerprint: VLESS_FINGERPRINT
+  };
+}
+
 /**
  * The methods usable for a device behind `gateway`, in display order. `wssAvailable` is
  * whether the installation runs the WebSocket tunnel (it is installation-wide, not a
@@ -293,6 +457,7 @@ function usableMethods(row, gateway, wssAvailable) {
     if (!allowed.includes(method)) return false;
     if (method === WIREGUARD_WSS) return Boolean(wssAvailable);
     if (method === AMNEZIAWG) return gatewayRunsAmneziaWg(gateway) && paramsOf(row) !== null;
+    if (method === VLESS) return gatewayRunsVless(gateway) && vlessParamsOf(row) !== null;
     return true;
   });
 }
@@ -306,21 +471,34 @@ async function paramsForProfile(organizationId) {
   return paramsOf(await organisationRow(organizationId));
 }
 
+/** The REALITY parameters for a VLESS profile, or null when the organisation has none. */
+async function vlessParamsForProfile(organizationId) {
+  return vlessParamsOf(await organisationRow(organizationId));
+}
+
 module.exports = {
   METHODS,
   LABELS,
   AWG_CAPABILITY,
+  VLESS_CAPABILITY,
   AccessMethodError,
   generateAwgParams,
   validAwgParams,
+  generateVlessParams,
+  validVlessParams,
   paramsOf,
+  vlessParamsOf,
   allowedOf,
   getSettings,
   setSettings,
   regenerateParams,
   gatewayRunsAmneziaWg,
+  gatewayRunsVless,
   awgEndpointOf,
+  vlessEndpointOf,
+  vlessProfile,
   availableMethods,
   usableMethods,
-  paramsForProfile
+  paramsForProfile,
+  vlessParamsForProfile
 };

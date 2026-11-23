@@ -19,12 +19,13 @@
 const WIREGUARD = 'wireguard';
 const WIREGUARD_WSS = 'wireguard-wss';
 const AMNEZIAWG = 'amneziawg';
+const VLESS = 'vless-reality';
 
 /** Selectable methods, in the order Automatico tries them. */
-const METHODS = [WIREGUARD, WIREGUARD_WSS, AMNEZIAWG];
+const METHODS = [WIREGUARD, WIREGUARD_WSS, AMNEZIAWG, VLESS];
 const DEFAULT_ORDER = METHODS.slice();
 /** Names the design reserves; they cannot be selected until a gateway can run them. */
-const RESERVED_METHODS = ['vless-reality', 'openvpn', 'ikev2'];
+const RESERVED_METHODS = ['openvpn', 'ikev2'];
 
 const isList = (value) => Array.isArray(value) && value.length > 0;
 
@@ -49,7 +50,7 @@ function ceilingOf(allowed) {
 
 /**
  * Check an order a person typed before it is stored. `null` means "inherit". A list must hold
- * between one and three known methods, none twice; reserved names are refused with their own code
+ * between one and four known methods, none twice; reserved names are refused with their own code
  * so the console can say "not available yet".
  */
 function validateOrder(value) {
@@ -166,6 +167,7 @@ module.exports = {
   WIREGUARD,
   WIREGUARD_WSS,
   AMNEZIAWG,
+  VLESS,
   METHODS,
   DEFAULT_ORDER,
   RESERVED_METHODS,
