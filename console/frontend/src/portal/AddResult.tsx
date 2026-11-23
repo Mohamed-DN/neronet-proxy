@@ -137,7 +137,8 @@ export function AddResult({ result }: { result: AddResultData }) {
     staleTime: 5 * 60_000,
     enabled: isLinux && !isAwg && !isWss && !isVless
   });
-  const linuxApp = isLinux && !isAwg && !isWss && !isVless ? apps.data?.find((app) => app.platform === 'linux') : undefined;
+  const linuxApp =
+    isLinux && !isAwg && !isWss && !isVless ? apps.data?.find((app) => app.platform === 'linux') : undefined;
 
   async function copyConfig() {
     try {

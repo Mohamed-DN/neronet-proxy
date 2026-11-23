@@ -194,7 +194,7 @@ export function AccessMethodsCard({ orgId, user }: { orgId: string; user: RoleUs
         confirmLabel={t('accessMethods.reimportConfirm')}
         cancelLabel={t('accessMethods.reimportCancel')}
         tone="danger"
-        onConfirm={() => asking && void commit(asking.next, false, true)}
+        onConfirm={() => asking && void commit(asking.next, null, true)}
         busy={save.isPending}
       />
 

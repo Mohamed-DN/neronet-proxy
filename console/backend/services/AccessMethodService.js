@@ -144,7 +144,8 @@ function validAwgParams(params) {
  */
 const REALITY_KEY = /^[A-Za-z0-9_-]{43}$/;
 const REALITY_SHORT_ID = /^([0-9a-f]{2}){1,8}$/;
-const REALITY_DEST = /^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+:([0-9]{1,5})$/;
+const REALITY_DEST =
+  /^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+:([0-9]{1,5})$/;
 const VLESS_KEYS = ['private_key', 'public_key', 'short_ids', 'dest', 'server_names'];
 
 function realityDestOk(dest) {

@@ -211,7 +211,7 @@
       },
       "vless-reality": {
         "title": "Rete molto censurata",
-        "body": "Per i paesi e le reti che ispezionano il traffico e bloccano le VPN: il collegamento somiglia al normale traffico web. Usa un'app compatibile con VLESS al posto di WireGuard."
+        "body": "Per i paesi e le reti che ispezionano il traffico e fermano i collegamenti come questo: somiglia al normale traffico web. Usa un'app compatibile con VLESS al posto di WireGuard."
       }
     },
     "awg": {

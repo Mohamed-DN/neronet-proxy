@@ -211,7 +211,7 @@
       },
       "vless-reality": {
         "title": "Heavily censored network",
-        "body": "For countries and networks that inspect traffic and block VPNs: the connection looks like ordinary web traffic. Uses an app that speaks VLESS instead of WireGuard."
+        "body": "For countries and networks that inspect traffic and stop connections like this: it looks like ordinary web traffic. Uses an app that speaks VLESS instead of WireGuard."
       }
     },
     "awg": {
