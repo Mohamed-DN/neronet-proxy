@@ -152,7 +152,26 @@ Decision taken before coding, checked against what the code allows.
 - **Port.** `docker-compose.gateway-vless.yml` publishes `NERONET_VLESS_PORT` (443 when free). On a host whose 443 is
   owned by the console's reverse proxy, use another port or an SNI router; REALITY on a non-standard port is easier to
   block. The gateway reports capability `vless-v1` and `capability.vless_port`, a port, never a host.
-- **Not covered yet.** The console side (migration for the `vless-reality` value, per-device uuid, organisation REALITY
-  parameters and key generation, the share link, QR and per-platform steps, the label "Rete molto censurata (VLESS)"),
-  exit clients on VLESS (the egress table is keyed by the same addresses, so it should work, untested), and the
-  connection-order entry of ADR 0037, which stays reserved until `wp/connection-order-nov18` is merged.
+- **Console side (migration 057).** `nodes.vless_uuid` (unique, one per device, random, gone with the row) and
+  `nodes.vless_port` (reported with `vless-v1`, a port only), `organizations.vless_params` (X25519 private and public
+  key in base64url, two short ids, the fallback `dest` and `server_names`), the method value in every CHECK, and
+  connection orders of up to four methods. Keys and short ids come from `crypto.generateKeyPairSync('x25519')` and
+  `crypto.randomBytes`; the fallback site is the operator's `NERONET_REALITY_DEST` (host:port), with no default,
+  and switching the method on without it answers 409 `reality_dest_not_configured`. Parameters are never returned by
+  the Settings route or written to an audit entry; the netmap carries the private key and the uuid to the
+  organisation's own gateway only (`self.vless`, `vless_uuid`), and none to any other node. Switching off keeps the
+  parameters; "regenerate" (`POST .../regenerate` with `{"method":"vless-reality"}`) replaces the key pair and counts
+  the devices that must import their link again, their uuids unchanged. Switching off, and the preview behind it,
+  go through the ADR 0037 safety rule (409 `would_strand_devices`, `reimport_confirmation_required`).
+- **Share link.** `vless://<uuid>@<host>:<port>?encryption=none&flow=xtls-rprx-vision&security=reality&sni=...&fp=chrome&pbk=<public key>&sid=<short id>&type=tcp#<name>`,
+  the convention of Xray-core (XTLS/Xray-core discussion 716). The answer to the person who just added the device also
+  carries the same values for an app that wants them typed. It never contains the private key and is `no-store`.
+- **Client apps** (checked 18 November 2026 in the Xray-core README, "GUI clients", and the projects' own pages):
+  v2rayNG for Android (GitHub releases), Streisand for iOS (the App Store listing the README names; the page did not
+  load when opened), v2rayN for Windows, macOS and Linux (GitHub releases; its README lists all three). Not shipped,
+  not confirmed: FoXray (no listing found) and nekoray (archived by its owner on 17 March 2025). Menu names inside the
+  apps are not confirmed, so the steps say "add a profile from the clipboard or a QR code" and name no button.
+- **Connection order.** `vless-reality` is a selectable method, last in Automatico and only where the organisation
+  allows it; `openvpn` and `ikev2` stay reserved.
+- **Not covered yet.** Exit clients on VLESS (the egress table is keyed by the same addresses, so it should work;
+  untested) and hot add/remove through Xray's API.
