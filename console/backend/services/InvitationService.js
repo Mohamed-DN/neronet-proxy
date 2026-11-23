@@ -41,6 +41,12 @@ const MAX_PASSWORD_LENGTH = 1024;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{12}$/;
+const MAX_EMAIL_LENGTH = 255;
+// Deliberately simple: one @, no spaces, a dot in the domain. Mail is not delivered from here.
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// Addresses no person owns: the placeholder every invitation-less account gets, and the
+// reserved TLD that single sign-on uses for accounts without one.
+const RESERVED_EMAIL = /@sovereign\.local$|\.invalid$/;
 const USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
 
 const CODE_LABEL = 'neronet-invitation-code-v1';
@@ -64,6 +70,15 @@ const INVALID = Object.freeze({
 
 function invalid() {
   return new InvitationError(400, INVALID.error, INVALID.message);
+}
+
+// The invitation is fine but cannot be completed as issued; says nothing about why.
+function unavailable() {
+  return new InvitationError(
+    409,
+    'invitation_unavailable',
+    'This invitation cannot be completed right now. Ask the person who invited you.'
+  );
 }
 
 function sha256Hex(value) {
@@ -135,7 +150,7 @@ const STATUS_SQL = `CASE
     WHEN i.expires_at <= now() THEN 'expired'
     ELSE 'pending' END`;
 
-const PUBLIC_COLUMNS = `i.id, i.organization_id, i.role, i.display_name_hint, i.created_by,
+const PUBLIC_COLUMNS = `i.id, i.organization_id, i.role, i.display_name_hint, i.email, i.created_by,
     i.created_at, i.expires_at, i.used_at, i.used_by, i.revoked_at, i.revoked_by,
     ${STATUS_SQL} AS status`;
 
@@ -164,6 +179,27 @@ function readHint(body) {
   return clean || null;
 }
 
+/**
+ * The address an administrator binds to an invitation: trimmed, lowercase, null when none.
+ * It is read from the issuing request only; the accepting person never sends one.
+ */
+function readEmail(body) {
+  const raw = body.email;
+  if (raw === undefined || raw === null) return null;
+  const bad = () =>
+    new InvitationError(400, 'invalid_email', 'email must be a valid address of at most 255 characters');
+  if (typeof raw !== 'string') throw bad();
+  const email = raw.trim().toLowerCase();
+  if (email === '') return null;
+  if (email.length > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.test(email) || RESERVED_EMAIL.test(email)) throw bad();
+  return email;
+}
+
+async function emailInUse(client, email) {
+  const res = await client.query('SELECT 1 FROM users WHERE lower(email) = $1 LIMIT 1', [email]);
+  return res.rows.length > 0;
+}
+
 async function create({ actorId, orgId, body = {} }) {
   const pool = getPgPool();
   const rank = await issuerRank(pool, actorId, orgId);
@@ -177,6 +213,11 @@ async function create({ actorId, orgId, body = {} }) {
   }
   const days = readLifetime(body);
   const hint = readHint(body);
+  const email = readEmail(body);
+  // The administrator can see the members anyway, so naming the clash here leaks nothing.
+  if (email && (await emailInUse(pool, email))) {
+    throw new InvitationError(409, 'email_taken', 'An account already uses that email address');
+  }
 
   const token = crypto.randomBytes(32).toString('base64url');
   const code = deriveCode(token);
@@ -184,10 +225,10 @@ async function create({ actorId, orgId, body = {} }) {
 
   const res = await pool.query(
     `INSERT INTO invitations AS i (id, organization_id, token_hash, code_hash, role, display_name_hint,
-                                   created_by, created_at, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now() + make_interval(days => $8))
+                                   created_by, created_at, expires_at, email)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now() + make_interval(days => $8), $9)
      RETURNING ${PUBLIC_COLUMNS}`,
-    [id, orgId, sha256Hex(token), await codeHash(code), role, hint, actorId, days]
+    [id, orgId, sha256Hex(token), await codeHash(code), role, hint, actorId, days, email]
   );
   return { invitation: res.rows[0], token, code: formatCode(code) };
 }
@@ -300,13 +341,20 @@ async function accept(body) {
     const spent = await client.query(
       `UPDATE invitations SET used_at = now()
         WHERE ${column} = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now()
-        RETURNING id, organization_id, role, created_by`,
+        RETURNING id, organization_id, role, created_by, email`,
       [hash]
     );
     const invitation = spent.rows[0];
     if (!invitation || !(await issuerStillEntitled(client, invitation))) {
       await client.query('ROLLBACK');
       throw invalid();
+    }
+
+    // The address was fixed by the administrator. If someone has taken it since, the
+    // invitation cannot be completed as issued; it is not spent, and nothing names the address.
+    if (invitation.email && (await emailInUse(client, invitation.email))) {
+      await client.query('ROLLBACK');
+      throw unavailable();
     }
 
     const userId = `usr-${crypto.randomBytes(8).toString('hex')}`;
@@ -316,11 +364,14 @@ async function accept(body) {
        VALUES ($1, $2, $3, $4, 'user', 'active', '[]'::jsonb, $5)
        ON CONFLICT DO NOTHING
        RETURNING id`,
-      [userId, username, `${username}@sovereign.local`, passwordHash, invitation.organization_id]
+      [userId, username, invitation.email || `${username}@sovereign.local`, passwordHash, invitation.organization_id]
     );
     if (created.rows.length === 0) {
       // The invitation is not spent: the person picks another name and tries again.
       await client.query('ROLLBACK');
+      const nameTaken = await pool.query('SELECT 1 FROM users WHERE username = $1', [username]);
+      // Lost a race for the address, not the name: do not blame the name.
+      if (nameTaken.rows.length === 0) throw unavailable();
       throw new InvitationError(409, 'username_taken', 'That username is already in use. Choose another one.');
     }
     await client.query('INSERT INTO memberships (id, user_id, organization_id, role) VALUES ($1, $2, $3, $4)', [
@@ -348,6 +399,7 @@ module.exports = {
   InvitationError,
   INVALID,
   INVITABLE_ROLES,
+  RESERVED_EMAIL,
   // Exposed for tests.
   deriveCode,
   normaliseCode,

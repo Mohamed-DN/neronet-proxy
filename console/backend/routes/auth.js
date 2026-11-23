@@ -21,9 +21,29 @@ const Browser = require('../services/BrowserContextService');
 const { SessionAuthorityError, authenticateConsoleRequest } = require('../services/SessionAuthority');
 const { setBrowserCookies, clearBrowserCookies, browserOperation } = require('../utils/browserCredentials');
 const jwt = require('jsonwebtoken');
+const { RESERVED_EMAIL } = require('../services/InvitationService');
 
 // Pre-computed constant-time dummy bcrypt hash to prevent timing side-channel attacks on non-existent usernames
 const DUMMY_BCRYPT_HASH = '$2a$10$wN3t8gX1ZkGkR0e2M8t0y.9gZ0n4p7s2e6u1v8w5x9y2z3a4b5c6d';
+
+/**
+ * The account a sign-in name refers to. The name is a username or an email address:
+ * an exact username match always wins; only when there is none and the input holds an
+ * "@" is it read as an email, case-insensitively. An email counts only when it is unique
+ * (several accounts differing only in case match nobody) and is not a placeholder
+ * nobody owns, so this can never sign someone in through an address they were not given.
+ * Every non-match is the same null, which takes the same dummy-bcrypt path.
+ */
+async function findUserForSignIn(pool, identifier) {
+  if (typeof identifier !== 'string') return null;
+  const byName = await pool.query('SELECT * FROM users WHERE username = $1', [identifier]);
+  if (byName.rows[0]) return byName.rows[0];
+  if (!identifier.includes('@') || identifier.length > 255) return null;
+  const byEmail = await pool.query('SELECT * FROM users WHERE lower(email) = lower($1) LIMIT 2', [identifier]);
+  if (byEmail.rows.length !== 1) return null;
+  if (RESERVED_EMAIL.test(byEmail.rows[0].email.toLowerCase())) return null;
+  return byEmail.rows[0];
+}
 
 /**
  * Issue new session (access token + refresh token) and store in database
@@ -123,8 +143,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     }
 
     const pool = getPgPool();
-    const userRes = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-    const user = userRes.rows[0] || null;
+    const user = await findUserForSignIn(pool, username);
 
     // Timing side-channel mitigation: If user doesn't exist, perform dummy bcrypt comparison
     if (!user) {
