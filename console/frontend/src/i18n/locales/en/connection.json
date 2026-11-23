@@ -32,6 +32,11 @@
       "name": "Network that recognises VPNs (AmneziaWG)",
       "short": "AmneziaWG",
       "hint": "For networks that spot and stop VPNs. Needs the AmneziaWG app."
+    },
+    "vless-reality": {
+      "name": "Heavily censored network (VLESS)",
+      "short": "VLESS",
+      "hint": "For networks that inspect and actively block VPNs. Needs an app that speaks VLESS (for example v2rayNG)."
     }
   },
   "mode": {

@@ -208,6 +208,10 @@
       "amneziawg": {
         "title": "Rete che riconosce le VPN",
         "body": "Per le reti che riconoscono e fermano i collegamenti come questo. Usa l'app AmneziaWG al posto di WireGuard."
+      },
+      "vless-reality": {
+        "title": "Rete molto censurata",
+        "body": "Per i paesi e le reti che ispezionano il traffico e bloccano le VPN: il collegamento somiglia al normale traffico web. Usa un'app compatibile con VLESS al posto di WireGuard."
       }
     },
     "awg": {
@@ -234,6 +238,40 @@
           "activate": "Seleziona il collegamento nell'elenco e clicca \"Activate\"."
         }
       }
+    },
+    "vless": {
+      "install": "Installa l'app {{app}} su {{device}}, se non l'hai già. WireGuard non basta: serve un'app compatibile con VLESS.",
+      "installLink": "Scarica {{app}}",
+      "qrAlt": "Codice QR del collegamento di {{name}}",
+      "copyHere": "Copia il collegamento. Contiene il segreto di questo dispositivo: non condividerlo con nessuno.",
+      "copyMove": "Copia il collegamento e fallo arrivare al dispositivo, per esempio con un gestore di password. Contiene un segreto: cancellalo dopo l'uso.",
+      "copyLink": "Copia il collegamento",
+      "note": "I nomi dei pulsanti dipendono dall'app e dalla sua versione: cerca la voce per importare dagli appunti o da un codice QR.",
+      "how": {
+        "ios": {
+          "scan": "Sul telefono apri Streisand e scegli di aggiungere un profilo da un codice QR. Poi inquadra il codice qui sotto.",
+          "import": "Apri Streisand e scegli di aggiungere un profilo dagli appunti: legge il collegamento che hai appena copiato.",
+          "activate": "Seleziona il profilo e attiva il collegamento, poi conferma la richiesta di iPhone."
+        },
+        "android": {
+          "scan": "Sul telefono apri v2rayNG e scegli di aggiungere un profilo da un codice QR. Poi inquadra il codice qui sotto.",
+          "import": "Apri v2rayNG e scegli di aggiungere un profilo dagli appunti: legge il collegamento che hai appena copiato.",
+          "activate": "Seleziona il profilo e attiva il collegamento, poi conferma la richiesta di Android."
+        },
+        "windows": {
+          "import": "Apri v2rayN e scegli di importare un collegamento dagli appunti: legge quello che hai appena copiato.",
+          "activate": "Seleziona il profilo e attiva il collegamento."
+        },
+        "macos": {
+          "import": "Apri v2rayN e scegli di importare un collegamento dagli appunti: legge quello che hai appena copiato.",
+          "activate": "Seleziona il profilo e attiva il collegamento."
+        },
+        "linux": {
+          "import": "Apri v2rayN e scegli di importare un collegamento dagli appunti: legge quello che hai appena copiato.",
+          "activate": "Seleziona il profilo e attiva il collegamento."
+        }
+      },
+      "scan": "Inquadra il codice con l'app sul telefono."
     }
   }
 }

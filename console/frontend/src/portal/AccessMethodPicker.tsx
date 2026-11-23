@@ -9,7 +9,8 @@ import { cn } from '../ui/cn';
 const PROTOCOL: Record<AccessMethod, string> = {
   wireguard: 'WireGuard',
   'wireguard-wss': 'WireGuard + WebSocket',
-  amneziawg: 'AmneziaWG'
+  amneziawg: 'AmneziaWG',
+  'vless-reality': 'VLESS + REALITY'
 };
 
 export interface AccessMethodPickerProps {

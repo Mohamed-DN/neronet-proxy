@@ -836,3 +836,97 @@ describe('AddDeviceRoute, access methods', () => {
     await expectNoAxeViolations(dark.container, 'dark');
   });
 });
+
+// ADR 0036, vless-reality: the profile is a link, not a file.
+const VLESS_LINK =
+  'vless://6f0f2a6e-1c5b-4f43-9a52-0b3c1d2e4f60@gw.example.net:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.example.com&fp=chrome&pbk=PUBLICKEY&sid=0123456789abcdef&type=tcp#Work%20phone';
+const VLESS_INFO = {
+  link: VLESS_LINK,
+  endpoint: 'gw.example.net:443',
+  uuid: '6f0f2a6e-1c5b-4f43-9a52-0b3c1d2e4f60',
+  server_name: 'www.example.com',
+  public_key: 'PUBLICKEY',
+  short_id: '0123456789abcdef',
+  flow: 'xtls-rprx-vision',
+  fingerprint: 'chrome'
+};
+const WITH_VLESS = [...ALL_METHODS, M('vless-reality')];
+
+describe('AddDeviceRoute, VLESS + REALITY', () => {
+  it('offers it in words about the situation, with the protocol muted', async () => {
+    setUserAgent(UA.windows);
+    stubApi({ methods: WITH_VLESS });
+    renderAdd();
+
+    await screen.findByText('How do you connect?');
+    const radio = screen.getByRole('radio', { name: /Heavily censored network.*VLESS \+ REALITY/ });
+    expect(radio).toHaveAttribute('value', 'vless-reality');
+    expect(screen.getByText(/looks like ordinary web traffic/)).toBeInTheDocument();
+  });
+
+  it('on the same phone: copies the link, names the app from its official page, offers no file', async () => {
+    setUserAgent(UA.android);
+    const fetchMock = stubApi({
+      methods: WITH_VLESS,
+      registerBody: { ...DEVICE, access_method: 'vless-reality', vless: VLESS_INFO }
+    });
+    renderAdd();
+
+    await screen.findByText('How do you connect?');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /Heavily censored network/ }));
+    await user.click(screen.getByRole('button', { name: 'Create the access' }));
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Connect Android' })).toBeInTheDocument();
+    expect(registrations(fetchMock)[0]).toMatchObject({ access_method: 'vless-reality' });
+    expect(screen.getByRole('link', { name: /Get v2rayNG/ })).toHaveAttribute(
+      'href',
+      'https://github.com/2dust/v2rayNG/releases'
+    );
+    expect(screen.queryByRole('link', { name: /Get WireGuard/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Download the profile' })).toBeNull();
+    expect(screen.queryByRole('img', { name: /QR code/ })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Copy the link' }));
+    await expect(navigator.clipboard.readText()).resolves.toBe(VLESS_LINK);
+    expect(screen.getByText(/add a profile from the clipboard/)).toBeInTheDocument();
+  });
+
+  it('adding a phone from a computer shows the link as a QR code', async () => {
+    setUserAgent(UA.windows);
+    stubApi({
+      methods: WITH_VLESS,
+      registerBody: { ...DEVICE, access_method: 'vless-reality', vless: VLESS_INFO }
+    });
+    renderAdd();
+
+    await screen.findByText('How do you connect?');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /iPhone or iPad/ }));
+    await user.click(screen.getByRole('radio', { name: /Heavily censored network/ }));
+    await user.click(screen.getByRole('button', { name: 'Create the access' }));
+
+    expect(await screen.findByRole('img', { name: 'QR code of the link for Work phone' })).toBeInTheDocument();
+    const qr = (await import('qrcode')).default as unknown as { toDataURL: ReturnType<typeof vi.fn> };
+    expect(qr.toDataURL.mock.calls.some(([value]) => value === VLESS_LINK)).toBe(true);
+    expect(screen.getByText('Scan the code with the app on your phone.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Get Streisand/ })).toHaveAttribute(
+      'href',
+      'https://apps.apple.com/app/streisand/id6450534064'
+    );
+  });
+
+  it('an answer without a link is a failure, never a profile that would not connect', async () => {
+    setUserAgent(UA.windows);
+    stubApi({ methods: WITH_VLESS, registerBody: { ...DEVICE, access_method: 'vless-reality' } });
+    renderAdd();
+
+    await screen.findByText('How do you connect?');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: /Heavily censored network/ }));
+    await user.click(screen.getByRole('button', { name: 'Create the access' }));
+
+    await waitFor(() => expect(screen.getAllByRole('alert').some((a) => a.textContent)).toBe(true));
+    expect(screen.queryByRole('button', { name: 'Copy the link' })).toBeNull();
+  });
+});

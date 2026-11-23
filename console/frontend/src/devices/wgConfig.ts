@@ -31,9 +31,29 @@ export interface ProfileDeviceResponse {
   access_method?: AccessMethod;
   /** Present for an AmneziaWG device: the listener's address and the organisation's obfuscation parameters. */
   amneziawg?: AmneziaWgInfo | null;
+  /** Present for a VLESS + REALITY device: its own link and the same values for typing in. */
+  vless?: VlessInfo | null;
 }
 
-export type AccessMethod = 'wireguard' | 'wireguard-wss' | 'amneziawg';
+export type AccessMethod = 'wireguard' | 'wireguard-wss' | 'amneziawg' | 'vless-reality';
+
+/**
+ * What the person who just added a VLESS device is given. The link holds the device's uuid: it is a
+ * secret of the same kind as a key, shown once, kept in memory only, never cached. The REALITY
+ * private key is not part of it.
+ */
+export interface VlessInfo {
+  /** vless:// share link, imported by every v2ray-family app (copy it, or scan its QR code). */
+  link: string;
+  /** host:port the app connects to. */
+  endpoint: string;
+  uuid: string;
+  server_name: string;
+  public_key: string;
+  short_id: string;
+  flow: string;
+  fingerprint: string;
+}
 
 /**
  * The organisation's AmneziaWG obfuscation parameters, as the console generated them. They
@@ -217,6 +237,13 @@ export function strictConfigFileName(name: string): string {
 }
 
 /** The AmneziaWG profile's file name: the same stem plus "-awg", at most 32 characters. */
+/** The text a VLESS device imports: its share link, as the server built it. */
+export function buildVlessLink(device: ProfileDeviceResponse): string {
+  const link = device.vless?.link ?? '';
+  if (!link.startsWith('vless://')) throw new Error('vless answer incomplete');
+  return link;
+}
+
 export function amneziaConfigFileName(name: string): string {
   return `${fileStem(name, 28)}-awg.conf`;
 }

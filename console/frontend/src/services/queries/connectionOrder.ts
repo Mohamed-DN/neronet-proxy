@@ -13,8 +13,13 @@ import { apiGet, apiPost, apiPut, type ApiError } from '../apiClient';
  * only edits one scope at a time and shows where the effective order came from.
  */
 
-export type AccessMethodId = 'wireguard' | 'wireguard-wss' | 'amneziawg';
-export const ACCESS_METHOD_IDS: readonly AccessMethodId[] = ['wireguard', 'wireguard-wss', 'amneziawg'];
+export type AccessMethodId = 'wireguard' | 'wireguard-wss' | 'amneziawg' | 'vless-reality';
+export const ACCESS_METHOD_IDS: readonly AccessMethodId[] = [
+  'wireguard',
+  'wireguard-wss',
+  'amneziawg',
+  'vless-reality'
+];
 
 export type ConnectionScope = 'default' | 'organization' | 'line' | 'device' | 'person';
 

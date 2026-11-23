@@ -290,3 +290,18 @@ describe('amneziaConfigFileName', () => {
     expect(amneziaConfigFileName('a'.repeat(50)).replace(/\.conf$/, '')).toHaveLength(32);
   });
 });
+
+describe('VLESS profile', () => {
+  const link = 'vless://6f0f2a6e-1c5b-4f43-9a52-0b3c1d2e4f60@gw.example.net:443?security=reality#Work%20phone';
+
+  it('is the share link the server built, unchanged', async () => {
+    const { buildVlessLink } = await import('./wgConfig');
+    expect(buildVlessLink({ ...device, access_method: 'vless-reality', vless: { link } as never })).toBe(link);
+  });
+
+  it('refuses an answer with no link or a link of another kind', async () => {
+    const { buildVlessLink } = await import('./wgConfig');
+    expect(() => buildVlessLink({ ...device, access_method: 'vless-reality' })).toThrow('vless answer incomplete');
+    expect(() => buildVlessLink({ ...device, vless: { link: 'https://example.com' } as never })).toThrow();
+  });
+});

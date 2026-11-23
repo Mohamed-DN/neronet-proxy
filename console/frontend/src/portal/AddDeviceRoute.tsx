@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { generateDeviceKeys, KeyGenerationUnavailable } from '../devices/keys';
 import {
   buildAmneziaConfig,
+  buildVlessLink,
   buildProfileConfig,
   buildStrictNetworkConfig,
   type AccessMethod
@@ -156,6 +157,8 @@ export default function AddDeviceRoute() {
       if (method === 'amneziawg') {
         if (!device.amneziawg?.endpoint || !device.amneziawg.params) throw new Error('amneziawg answer incomplete');
         config = buildAmneziaConfig(keys, device, device.amneziawg);
+      } else if (method === 'vless-reality') {
+        config = buildVlessLink(device);
       } else if (method === 'wireguard-wss') {
         if (!strict) throw new Error('strict network answer incomplete');
         config = strict.config;

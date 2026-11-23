@@ -27,3 +27,23 @@ describe('detectPlatform', () => {
     expect(isMobilePlatform('linux')).toBe(false);
   });
 });
+
+describe('VLESS client apps (ADR 0036)', () => {
+  it('has an install page for every platform, over https, from the hosts the Xray-core README names', async () => {
+    const { VLESS_INSTALL, VLESS_APP, PLATFORMS } = await import('./platform');
+    const hosts = new Set(['github.com', 'apps.apple.com']);
+    for (const platform of PLATFORMS) {
+      const url = new URL(VLESS_INSTALL[platform]);
+      expect(url.protocol).toBe('https:');
+      expect(hosts.has(url.host)).toBe(true);
+      expect(VLESS_APP[platform].length).toBeGreaterThan(0);
+    }
+  });
+
+  it('ships no app that is archived or that could not be confirmed', async () => {
+    const { VLESS_INSTALL, VLESS_APP } = await import('./platform');
+    const everything = JSON.stringify([VLESS_INSTALL, VLESS_APP]).toLowerCase();
+    expect(everything).not.toContain('nekoray');
+    expect(everything).not.toContain('foxray');
+  });
+});
