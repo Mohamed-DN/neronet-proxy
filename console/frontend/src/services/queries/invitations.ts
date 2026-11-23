@@ -11,6 +11,8 @@ export interface Invitation {
   organization_id: string;
   role: InvitableRole;
   display_name_hint: string | null;
+  /** Set by the issuing administrator only; shown to administrators, never on the public page. */
+  email?: string | null;
   created_by: string | null;
   created_by_username?: string | null;
   created_at: string;
@@ -26,6 +28,7 @@ export interface CreateInvitationPayload {
   role: InvitableRole;
   expires_in_days: number;
   display_name_hint?: string;
+  email?: string;
 }
 
 /** The answer to a creation: the only time the secret is ever sent. */

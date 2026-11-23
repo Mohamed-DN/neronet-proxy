@@ -40,7 +40,7 @@ function renderLogin() {
 
 async function submitPassword() {
   const user = userEvent.setup();
-  await user.type(await screen.findByLabelText('Username'), 'admin');
+  await user.type(await screen.findByLabelText('Username or email'), 'admin');
   await user.type(screen.getByLabelText('Password'), 'pw');
   await user.click(screen.getByRole('button', { name: L('login.submit') }));
   return user;
@@ -166,7 +166,7 @@ describe('sign-in with MFA', () => {
     expect(screen.getByText(L('login.mfa.discardWarning'))).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: L('login.mfa.discardConfirm') }));
-    expect(await screen.findByLabelText('Username')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Username or email')).toBeInTheDocument();
     expect(screen.queryByText('bbbb-2222')).not.toBeInTheDocument();
   });
 

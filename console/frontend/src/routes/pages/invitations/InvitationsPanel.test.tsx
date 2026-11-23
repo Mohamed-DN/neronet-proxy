@@ -167,6 +167,22 @@ describe('InvitationsPanel', () => {
     expect(await screen.findByRole('button', { name: /create the invitation/i })).toBeInTheDocument();
   });
 
+  it('binds the invitation to an email when one is typed, and sends none otherwise', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(await screen.findByRole('button', { name: /invite a person/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/^email/i), 'piero@example.com');
+    await user.click(within(dialog).getByRole('button', { name: /create the invitation/i }));
+    await within(dialog).findByText(/you will not see them again/i);
+    const [, init] = calls('POST', '/api/organizations/org-a/invitations')[0]!;
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+      role: 'member',
+      expires_in_days: 7,
+      email: 'piero@example.com'
+    });
+  });
+
   it('offers only the roles at or below the caller’s own, never owner', async () => {
     const user = userEvent.setup();
     renderPanel(authAs('user', 'admin'));

@@ -210,6 +210,7 @@ function CreateInvitationDialog({ orgId, roles, open, onOpenChange }: CreateDial
   const { t } = useTranslation(['invitations', 'glossary', 'ui']);
   const create = useCreateInvitation(orgId);
   const [hint, setHint] = useState('');
+  const [email, setEmail] = useState('');
   const [role, setRole] = useState<InvitableRole>('member');
   const [days, setDays] = useState<number>(DEFAULT_LIFETIME);
   const [error, setError] = useState<string | null>(null);
@@ -220,6 +221,7 @@ function CreateInvitationDialog({ orgId, roles, open, onOpenChange }: CreateDial
     if (open) return;
     setCreated(null);
     setHint('');
+    setEmail('');
     setRole('member');
     setDays(DEFAULT_LIFETIME);
     setError(null);
@@ -230,14 +232,19 @@ function CreateInvitationDialog({ orgId, roles, open, onOpenChange }: CreateDial
     setError(null);
     try {
       const trimmed = hint.trim();
+      const trimmedEmail = email.trim();
       const result = await create.mutateAsync({
         role,
         expires_in_days: days,
-        ...(trimmed ? { display_name_hint: trimmed } : {})
+        ...(trimmed ? { display_name_hint: trimmed } : {}),
+        ...(trimmedEmail ? { email: trimmedEmail } : {})
       });
       setCreated(result);
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 403 ? t('create.forbidden') : t('create.failed'));
+      if (err instanceof ApiError && err.status === 403) setError(t('create.forbidden'));
+      else if (err instanceof ApiError && err.code === 'email_taken') setError(t('create.emailTaken'));
+      else if (err instanceof ApiError && err.code === 'invalid_email') setError(t('create.emailInvalid'));
+      else setError(t('create.failed'));
     }
   }
 
@@ -254,6 +261,15 @@ function CreateInvitationDialog({ orgId, roles, open, onOpenChange }: CreateDial
         <form onSubmit={onSubmit} noValidate className="space-y-4 pt-2">
           <FormField label={t('create.name')} hint={t('create.nameHint')}>
             <Input value={hint} onChange={(e) => setHint(e.target.value)} maxLength={128} autoComplete="off" />
+          </FormField>
+          <FormField label={t('create.email')} hint={t('create.emailHint')}>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              maxLength={255}
+              autoComplete="off"
+            />
           </FormField>
           <FormField label={t('create.role')} hint={t(`roles.${role}.body`, { ns: 'glossary', defaultValue: '' })}>
             <Select
