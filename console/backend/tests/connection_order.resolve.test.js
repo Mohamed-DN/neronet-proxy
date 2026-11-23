@@ -14,7 +14,8 @@ const org = (extra = {}) => ({ allowed: ALL, order: null, forced: false, members
 
 describe('ADR 0037: organisation scope', () => {
   it('defaults to Automatico: wireguard, then 443, then AmneziaWG, filtered to what is allowed', () => {
-    assert.deepEqual(DEFAULT_ORDER, [WG, WSS, AWG]);
+    // vless-reality is tried last, and only where the organisation allows it (ADR 0037).
+    assert.deepEqual(DEFAULT_ORDER, [WG, WSS, AWG, 'vless-reality']);
     const all = resolve({ organization: org() });
     assert.deepEqual(all.order, [WG, WSS, AWG]);
     assert.equal(all.origin.scope, 'default');
