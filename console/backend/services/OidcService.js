@@ -413,7 +413,7 @@ async function exchangeCodeAndAuthenticate(organizationId, code, state, redirect
     user = updateRes.rows[0];
   } else {
     const email = claims.email || fallbackEmail(config.id, claims.sub);
-    const clash = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    const clash = await pool.query('SELECT id FROM users WHERE lower(email) = lower($1)', [email]);
     if (clash.rows.length > 0) {
       // Linking here would let any organisation's provider take over the account
       // that owns this address, in whichever organisation it lives.
