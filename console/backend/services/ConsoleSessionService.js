@@ -84,7 +84,13 @@ async function persistPair(client, user, family, ipAddress, root = false) {
     ]);
   }
   const { sid, root_grant_id, ...visibleUser } = payload;
-  return { token, refreshToken, user: visibleUser };
+  // For the console to choose what to show, as GET /api/auth/me does. Not in the token: every
+  // request reads the membership again.
+  const membership = await client.query('SELECT role FROM memberships WHERE user_id = $1 AND organization_id = $2', [
+    user.id,
+    payload.organization_id
+  ]);
+  return { token, refreshToken, user: { ...visibleUser, org_role: membership.rows[0]?.role || null } };
 }
 
 async function issueSession({ user: verifiedUser, ipAddress }) {

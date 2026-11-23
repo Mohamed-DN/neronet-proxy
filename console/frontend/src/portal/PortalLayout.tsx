@@ -9,7 +9,7 @@ import { cn } from '../ui/cn';
 import { Disclosure } from '../ui/Disclosure';
 import { Logo } from '../ui/Logo';
 import { LanguageSwitcher } from '../ui/LanguageSwitcher';
-import { MENU_CONTENT, MENU_ITEM } from '../ui/menuStyles';
+import { MENU_CONTENT } from '../ui/menuStyles';
 import { SkipLink } from '../ui/SkipLink';
 import { ThemeToggle } from '../ui/ThemeToggle';
 
@@ -20,9 +20,10 @@ const ACTIVE_MARK =
 
 /**
  * The frame around the member pages: one narrow column, the wordmark (a link
- * home), two places to go and an account menu. The account menu holds language,
- * theme, the way back to the console for roles that have one, and a sign-out
- * with a visible word. The portal does not show the console's chrome.
+ * home), the places to go and an account menu. The way back to the console (for
+ * roles that have one) and the sign-out are on the page, not behind the menu:
+ * people looked for a way out and did not find it there. The menu keeps language
+ * and theme. The portal does not show the console's chrome.
  */
 export default function PortalLayout() {
   const { t } = useTranslation('portal');
@@ -77,17 +78,6 @@ export default function PortalLayout() {
               <span className="text-caption text-muted">{tUi('theme.label')}</span>
               <ThemeToggle />
             </div>
-            <hr className="my-1 border-rule" />
-            {!isSelf && (
-              <Link to={ROUTES.overview} className={MENU_ITEM}>
-                <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-muted" />
-                {t('layout.adminConsole')}
-              </Link>
-            )}
-            <button type="button" onClick={() => void signOut()} className={cn(MENU_ITEM, 'w-full text-start')}>
-              <LogOut aria-hidden="true" className="h-4 w-4 shrink-0 text-muted" />
-              {t('layout.signOut')}
-            </button>
           </Disclosure>
         </div>
 
@@ -107,6 +97,20 @@ export default function PortalLayout() {
                 </NavLink>
               </li>
             ))}
+            {!isSelf && (
+              <li>
+                <Link to={ROUTES.overview} className={cn(NAV_LINK, 'gap-2')}>
+                  <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-muted" />
+                  {t('layout.adminConsole')}
+                </Link>
+              </li>
+            )}
+            <li className="ms-auto">
+              <button type="button" onClick={() => void signOut()} className={cn(NAV_LINK, 'gap-2')}>
+                <LogOut aria-hidden="true" className="h-4 w-4 shrink-0 text-muted" />
+                {t('layout.signOut')}
+              </button>
+            </li>
           </ul>
         </nav>
       </header>

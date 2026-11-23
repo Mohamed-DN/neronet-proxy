@@ -60,7 +60,9 @@ export default function DownloadApps() {
                           size: formatBytes(i18n.language, app.size_bytes) ?? ''
                         })}
                       </p>
-                      <p className="text-caption text-subtle">{t('downloads.checksum', { sha: app.sha256 })}</p>
+                      <p className="break-all text-caption text-subtle">
+                        {t('downloads.checksum', { sha: app.sha256 })}
+                      </p>
                     </>
                   ) : (
                     <p className="text-caption text-muted">{t('downloads.notPublished', { platform: platformName })}</p>

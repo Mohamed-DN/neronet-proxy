@@ -54,32 +54,35 @@ describe('PortalLayout', () => {
     expect(screen.getByRole('link', { name: 'My devices' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('puts language, theme and a labelled sign-out in the account menu', async () => {
+  it('keeps language and theme in the account menu', async () => {
     auth.user = MEMBER;
     renderLayout();
     const user = userEvent.setup();
 
-    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Account: anna' }));
 
     expect(screen.getByRole('group', { name: 'Language' })).toBeInTheDocument();
     expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
-    const signOut = screen.getByRole('button', { name: 'Sign out' });
-    expect(signOut).toHaveTextContent('Sign out');
-    expect(screen.queryByRole('link', { name: 'Admin console' })).toBeNull();
+  });
 
-    await user.click(signOut);
+  it('shows the console and the sign-out on the page, without opening a menu', async () => {
+    auth.user = ADMIN;
+    renderLayout();
+
+    const nav = screen.getByRole('navigation', { name: 'Navigation' });
+    expect(within(nav).getByRole('link', { name: 'Admin console' })).toHaveAttribute('href', '/overview');
+    await userEvent.click(within(nav).getByRole('button', { name: 'Sign out' }));
     expect(auth.logout).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('Login page')).toBeInTheDocument();
   });
 
-  it('shows the way back to the console only to roles that have one', async () => {
-    auth.user = ADMIN;
+  it('shows a member the sign-out and no way to a console they do not have', () => {
+    auth.user = MEMBER;
     renderLayout();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Account: root' }));
-
-    expect(screen.getByRole('link', { name: 'Admin console' })).toHaveAttribute('href', '/overview');
+    const nav = screen.getByRole('navigation', { name: 'Navigation' });
+    expect(within(nav).getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: 'Admin console' })).toBeNull();
   });
 
   it('is accessible in both themes, with the menu open', async () => {
