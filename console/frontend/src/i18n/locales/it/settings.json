@@ -100,6 +100,13 @@
     "reimportBody": "Questi dispositivi si connettono con il modo che stai spegnendo: {{devices}}. Smettono di connettersi finché la persona non scarica un profilo per un altro modo e lo importa nell'app.",
     "reimportConfirm": "Spegni",
     "reimportCancel": "Lascia acceso",
-    "onlyAdmin": "Solo il proprietario o un amministratore dell'organizzazione può cambiare i metodi di accesso."
+    "onlyAdmin": "Solo il proprietario o un amministratore dell'organizzazione può cambiare i metodi di accesso.",
+    "vless": "Reti molto censurate (VLESS)",
+    "vlessHint": "Per paesi e reti che ispezionano il traffico e bloccano le VPN. Serve un gateway con il terminatore VLESS attivo e un'app compatibile con VLESS sul dispositivo.",
+    "vlessGenerated": "VLESS attivato. Le chiavi REALITY segrete sono state create e arriveranno ai gateway al prossimo controllo.",
+    "vlessNoDest": "Manca un'impostazione dell'operatore: NERONET_REALITY_DEST (il sito che REALITY mostra a chi non è autorizzato). Impostala e riprova.",
+    "vlessRegenerateBody": "Le chiavi REALITY di VLESS sono segrete e non si vedono qui. Puoi crearne di nuove se pensi che siano state scoperte.",
+    "vlessRegenerateTitle": "Rigenerare le chiavi di VLESS?",
+    "vlessRegenerateWarning": "I dispositivi che usano VLESS smetteranno di collegarsi finché non scaricano di nuovo il loro collegamento e lo importano nell'app. Gli altri dispositivi non cambiano."
   }
 }

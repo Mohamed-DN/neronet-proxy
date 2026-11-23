@@ -32,6 +32,11 @@
       "name": "Rete che riconosce le VPN (AmneziaWG)",
       "short": "AmneziaWG",
       "hint": "Per le reti che riconoscono e fermano le VPN. Serve l'app AmneziaWG."
+    },
+    "vless-reality": {
+      "name": "Rete molto censurata (VLESS)",
+      "short": "VLESS",
+      "hint": "Per le reti che ispezionano e bloccano attivamente le VPN. Serve un'app compatibile con VLESS (per esempio v2rayNG)."
     }
   },
   "mode": {

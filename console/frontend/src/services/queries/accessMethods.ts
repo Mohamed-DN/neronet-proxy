@@ -19,6 +19,17 @@ export interface AccessMethodsSettings {
   amneziawg: boolean;
   /** The parameters exist (generated when AmneziaWG was first switched on). */
   amneziawg_ready: boolean;
+  /** VLESS + REALITY is allowed. Absent on an older server: off. */
+  vless?: boolean;
+  /** The REALITY keys exist (generated when VLESS was first switched on). */
+  vless_ready?: boolean;
+}
+
+/** What the switches are set to, as the server takes them. `vless` absent leaves it as it is. */
+export interface AccessMethodsInput {
+  wireguard_wss: boolean;
+  amneziawg: boolean;
+  vless?: boolean;
 }
 
 /** Who switching a method off would affect (the server's simulation, nothing written). */
@@ -52,7 +63,7 @@ export function useSetAccessMethods(
 ): UseMutationResult<
   AccessMethodsSettings,
   ApiError,
-  { wireguard_wss: boolean; amneziawg: boolean; confirm_reimport?: boolean }
+  AccessMethodsInput & { confirm_reimport?: boolean }
 > {
   const queryClient = useQueryClient();
   return useMutation({
@@ -69,7 +80,7 @@ export function useSetAccessMethods(
 
 export function usePreviewAccessMethods(
   orgId: string
-): UseMutationResult<AccessMethodsPlan, ApiError, { wireguard_wss: boolean; amneziawg: boolean }> {
+): UseMutationResult<AccessMethodsPlan, ApiError, AccessMethodsInput> {
   return useMutation({ mutationFn: (input) => apiPost<AccessMethodsPlan>(`${base(orgId)}/preview`, input) });
 }
 
@@ -82,7 +93,27 @@ export function useRegenerateAwgParams(orgId: string): UseMutationResult<Regener
         organization_id: data.organization_id,
         wireguard_wss: data.wireguard_wss,
         amneziawg: data.amneziawg,
-        amneziawg_ready: data.amneziawg_ready
+        amneziawg_ready: data.amneziawg_ready,
+        vless: data.vless,
+        vless_ready: data.vless_ready
+      });
+    }
+  });
+}
+
+/** New REALITY keys. Every VLESS device must import its link again; its uuid stays. */
+export function useRegenerateVlessParams(orgId: string): UseMutationResult<RegenerateResult, ApiError, void> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<RegenerateResult>(`${base(orgId)}/regenerate`, { method: 'vless-reality' }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(keyFor(orgId), {
+        organization_id: data.organization_id,
+        wireguard_wss: data.wireguard_wss,
+        amneziawg: data.amneziawg,
+        amneziawg_ready: data.amneziawg_ready,
+        vless: data.vless,
+        vless_ready: data.vless_ready
       });
     }
   });

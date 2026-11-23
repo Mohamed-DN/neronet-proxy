@@ -208,6 +208,10 @@
       "amneziawg": {
         "title": "Network that recognises VPNs",
         "body": "For networks that spot and stop connections like this one. It uses the AmneziaWG app instead of WireGuard."
+      },
+      "vless-reality": {
+        "title": "Heavily censored network",
+        "body": "For countries and networks that inspect traffic and block VPNs: the connection looks like ordinary web traffic. Uses an app that speaks VLESS instead of WireGuard."
       }
     },
     "awg": {
@@ -234,6 +238,40 @@
           "activate": "Select the connection in the list and click \"Activate\"."
         }
       }
+    },
+    "vless": {
+      "install": "Install the {{app}} app on {{device}}, if you do not have it yet. WireGuard is not enough: you need an app that speaks VLESS.",
+      "installLink": "Get {{app}}",
+      "qrAlt": "QR code of the link for {{name}}",
+      "copyHere": "Copy the link. It holds this device's secret: do not share it with anyone.",
+      "copyMove": "Copy the link and get it to the device, for example with a password manager. It holds a secret: delete it after use.",
+      "copyLink": "Copy the link",
+      "note": "Button names depend on the app and its version: look for the option to import from the clipboard or from a QR code.",
+      "how": {
+        "ios": {
+          "scan": "On the phone open Streisand and choose to add a profile from a QR code. Then point it at the code below.",
+          "import": "Open Streisand and choose to add a profile from the clipboard: it reads the link you just copied.",
+          "activate": "Select the profile and switch the connection on, then confirm the iPhone prompt."
+        },
+        "android": {
+          "scan": "On the phone open v2rayNG and choose to add a profile from a QR code. Then point it at the code below.",
+          "import": "Open v2rayNG and choose to add a profile from the clipboard: it reads the link you just copied.",
+          "activate": "Select the profile and switch the connection on, then confirm the Android prompt."
+        },
+        "windows": {
+          "import": "Open v2rayN and choose to import a link from the clipboard: it reads the one you just copied.",
+          "activate": "Select the profile and switch the connection on."
+        },
+        "macos": {
+          "import": "Open v2rayN and choose to import a link from the clipboard: it reads the one you just copied.",
+          "activate": "Select the profile and switch the connection on."
+        },
+        "linux": {
+          "import": "Open v2rayN and choose to import a link from the clipboard: it reads the one you just copied.",
+          "activate": "Select the profile and switch the connection on."
+        }
+      },
+      "scan": "Scan the code with the app on your phone."
     }
   }
 }

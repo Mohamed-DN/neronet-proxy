@@ -50,6 +50,34 @@ export const AMNEZIAWG_INSTALL: Record<Platform, string> = {
   linux: 'https://github.com/amnezia-vpn/amneziawg-tools/releases'
 };
 
+/**
+ * Where an app that imports a VLESS + REALITY link comes from (ADR 0036). Only apps that the Xray-core
+ * project itself lists (github.com/XTLS/Xray-core, README, "GUI clients", read 18 November 2026) and whose
+ * official page was reachable:
+ *   Android            v2rayNG (GPL-3.0), the project's GitHub releases
+ *   iOS                Streisand, App Store listing named in the Xray-core README (the page itself did not
+ *                      load when checked, so the link is the README's own)
+ *   Windows/macOS/Linux v2rayN, the project's GitHub releases (its README lists all three)
+ * Not shipped because not confirmed: FoXray (no listing found), nekoray (archived by its owner on
+ * 17 March 2025). Menu names inside these apps are not confirmed either, so the steps stay generic.
+ */
+export const VLESS_INSTALL: Record<Platform, string> = {
+  ios: 'https://apps.apple.com/app/streisand/id6450534064',
+  android: 'https://github.com/2dust/v2rayNG/releases',
+  windows: 'https://github.com/2dust/v2rayN/releases',
+  macos: 'https://github.com/2dust/v2rayN/releases',
+  linux: 'https://github.com/2dust/v2rayN/releases'
+};
+
+/** The name of the app the steps tell the person to open, per platform. */
+export const VLESS_APP: Record<Platform, string> = {
+  ios: 'Streisand',
+  android: 'v2rayNG',
+  windows: 'v2rayN',
+  macos: 'v2rayN',
+  linux: 'v2rayN'
+};
+
 /** The interface name used in the Linux commands: short, because Linux limits it to 15 characters. */
 export const LINUX_INTERFACE = 'neronet';
 

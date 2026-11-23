@@ -25,6 +25,8 @@ import {
   isMobilePlatform,
   LINUX_INTERFACE,
   saveTextFile,
+  VLESS_APP,
+  VLESS_INSTALL,
   WIREGUARD_INSTALL,
   type Platform
 } from './platform';
@@ -77,6 +79,8 @@ export function AddResult({ result }: { result: AddResultData }) {
   const platformName = t(`add.platform.${platform}`);
   const method = result.method ?? 'wireguard';
   const isAwg = method === 'amneziawg';
+  // VLESS + REALITY: the profile is a link, imported by copying it or scanning its code, not a file.
+  const isVless = method === 'vless-reality';
   // The way for networks that block VPNs is a first-class choice: its steps are the main steps.
   const isWss = method === 'wireguard-wss' && result.strict !== null;
   const fileName = isWss
@@ -84,8 +88,12 @@ export function AddResult({ result }: { result: AddResultData }) {
     : isAwg
       ? amneziaConfigFileName(result.name)
       : configFileName(result.name);
-  const installUrl = isAwg ? AMNEZIAWG_INSTALL[platform] : WIREGUARD_INSTALL[platform];
-  const howKey = isAwg ? 'add.awg.how' : 'add.how';
+  const installUrl = isVless
+    ? VLESS_INSTALL[platform]
+    : isAwg
+      ? AMNEZIAWG_INSTALL[platform]
+      : WIREGUARD_INSTALL[platform];
+  const howKey = isVless ? 'add.vless.how' : isAwg ? 'add.awg.how' : 'add.how';
   // Linux: the commands differ for AmneziaWG (awg-quick, its own configuration folder).
   const linuxInstall = isAwg
     ? `sudo install -m 600 ~/Downloads/${fileName} /etc/amnezia/amneziawg/${LINUX_INTERFACE}.conf\nsudo awg-quick up ${LINUX_INTERFACE}`
@@ -127,9 +135,9 @@ export function AddResult({ result }: { result: AddResultData }) {
     queryKey: ['portal', 'downloads'] as const,
     queryFn: () => fetchPublishedApps(),
     staleTime: 5 * 60_000,
-    enabled: isLinux && !isAwg && !isWss
+    enabled: isLinux && !isAwg && !isWss && !isVless
   });
-  const linuxApp = isLinux && !isAwg && !isWss ? apps.data?.find((app) => app.platform === 'linux') : undefined;
+  const linuxApp = isLinux && !isAwg && !isWss && !isVless ? apps.data?.find((app) => app.platform === 'linux') : undefined;
 
   async function copyConfig() {
     try {
@@ -169,20 +177,58 @@ export function AddResult({ result }: { result: AddResultData }) {
 
       <ol className="mt-6 list-decimal space-y-6 ps-5 text-body text-content marker:text-muted">
         <li>
-          <p>{t(isAwg ? 'add.awg.install' : 'add.result.install', { device: platformName })}</p>
+          <p>
+            {isVless
+              ? t('add.vless.install', { device: platformName, app: VLESS_APP[platform] })
+              : t(isAwg ? 'add.awg.install' : 'add.result.install', { device: platformName })}
+          </p>
           <a
             href={installUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-sm underline focus-visible:outline-focus"
           >
-            {t(isAwg ? 'add.awg.installLink' : 'add.result.installLink')}
+            {isVless
+              ? t('add.vless.installLink', { app: VLESS_APP[platform] })
+              : t(isAwg ? 'add.awg.installLink' : 'add.result.installLink')}
             <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
             <span className="sr-only"> {t('downloads.newTab')}</span>
           </a>
         </li>
 
-        {isWss && result.strict ? (
+        {isVless ? (
+          showQr ? (
+            <>
+              <li>
+                <p>{t(`add.vless.how.${platform}.scan`)}</p>
+                <div className="mt-3 flex justify-center rounded-card border border-border-subtle bg-surface-raised p-4 [&_img]:h-auto [&_img]:max-w-full">
+                  <QrCode value={result.config} label={t('add.vless.qrAlt', { name: result.name })} size={288} />
+                </div>
+                <p className="mt-2 text-center text-body font-medium text-content">{t('add.vless.scan')}</p>
+              </li>
+              <li>{t(`add.vless.how.${platform}.activate`)}</li>
+            </>
+          ) : (
+            <>
+              <li>
+                <p>{t(sameDevice ? 'add.vless.copyHere' : 'add.vless.copyMove')}</p>
+                <div className="mt-3">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    icon={Copy}
+                    onClick={() => void copyConfig()}
+                    className="w-full sm:w-auto"
+                  >
+                    {t('add.vless.copyLink')}
+                  </Button>
+                </div>
+              </li>
+              <li>{t(`add.vless.how.${platform}.import`)}</li>
+              <li>{t(`add.vless.how.${platform}.activate`)}</li>
+            </>
+          )
+        ) : isWss && result.strict ? (
           <>
             <StrictNetworkSteps strict={result.strict.info} onDownload={() => saveTextFile(result.config, fileName)} />
             <li>
@@ -256,8 +302,11 @@ export function AddResult({ result }: { result: AddResultData }) {
         )}
       </ol>
       {isWss && result.strict && <StrictNetworkNotes />}
-      {!isLinux && !isWss && (
-        <p className="mt-4 text-caption text-muted">{t(isAwg ? 'add.awg.note' : 'add.how.note')}</p>
+      {isVless ? (
+        <p className="mt-4 text-caption text-muted">{t('add.vless.note')}</p>
+      ) : (
+        !isLinux &&
+        !isWss && <p className="mt-4 text-caption text-muted">{t(isAwg ? 'add.awg.note' : 'add.how.note')}</p>
       )}
 
       {result.exitName && (
@@ -309,7 +358,7 @@ export function AddResult({ result }: { result: AddResultData }) {
         <div className="mt-2 space-y-4">
           <p className="max-w-prose text-body text-muted">{t('add.trouble.body')}</p>
           <div className="flex flex-col gap-3 sm:flex-row">
-            {showQr && (
+            {showQr && !isVless && (
               <Button
                 variant="secondary"
                 size="lg"

@@ -100,6 +100,13 @@
     "reimportBody": "These devices connect the way you are switching off: {{devices}}. They stop connecting until their person downloads a profile for another way and imports it in the app.",
     "reimportConfirm": "Switch it off",
     "reimportCancel": "Keep it on",
-    "onlyAdmin": "Only the organisation owner or an administrator can change the ways to connect."
+    "onlyAdmin": "Only the organisation owner or an administrator can change the ways to connect.",
+    "vless": "Heavily censored networks (VLESS)",
+    "vlessHint": "For countries and networks that inspect traffic and block VPNs. Needs a gateway with the VLESS terminator running and an app that speaks VLESS on the device.",
+    "vlessGenerated": "VLESS is on. The secret REALITY keys were created and reach the gateways at their next check.",
+    "vlessNoDest": "An operator setting is missing: NERONET_REALITY_DEST (the site REALITY shows to anyone not authorised). Set it and try again.",
+    "vlessRegenerateBody": "The VLESS REALITY keys are secret and are not shown here. You can make new ones if you think they were found out.",
+    "vlessRegenerateTitle": "Regenerate the VLESS keys?",
+    "vlessRegenerateWarning": "Devices that use VLESS will stop connecting until they download their link again and import it in the app. Other devices do not change."
   }
 }
