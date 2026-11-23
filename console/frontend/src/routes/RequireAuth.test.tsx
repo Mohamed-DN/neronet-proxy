@@ -65,7 +65,7 @@ describe('RequireAuth keeps a fragment out of the server', () => {
   it('lands on /drop with the link intact after sign-in', async () => {
     const router = renderAt(`${ROUTES.drop}${LINK}`);
     const user = userEvent.setup();
-    await user.type(await screen.findByLabelText('Username'), 'admin');
+    await user.type(await screen.findByLabelText('Username or email'), 'admin');
     await user.type(screen.getByLabelText('Password'), 'pw');
     await user.click(screen.getByRole('button', { name: /sign in|accedi/i }));
     await screen.findByRole('heading', { name: 'Drop page' });

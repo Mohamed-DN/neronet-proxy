@@ -102,7 +102,7 @@
     "title": "NeroNet",
     "brandLabel": "NeroNet",
     "subtitle": "Your network, line by line.",
-    "username": "Username",
+    "username": "Username or email",
     "password": "Password",
     "submit": "Sign in to the console",
     "working": "Signing in",
