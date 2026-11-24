@@ -97,6 +97,12 @@ describe('Live truth: location, round trip, connection test', () => {
   after(async () => {
     NodeLive.reset();
     if (db) await db.cleanup();
+    // The topology subscriber opened a Valkey connection; unclosed, the process never exits.
+    try {
+      await require('../db/valkey').closeValkey();
+    } catch {
+      // already closed
+    }
   });
 
   describe('A. location: unknown is NULL', () => {
