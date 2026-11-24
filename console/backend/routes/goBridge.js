@@ -33,6 +33,7 @@ const RevocationEngine = require('../services/RevocationEngine');
 const NetmapService = require('../services/NetmapService');
 const ControlPlaneKeyService = require('../services/ControlPlaneKeyService');
 const PreAuthKeyService = require('../services/PreAuthKeyService');
+const AppAuthService = require('../services/AppAuthService');
 const NodeCredentialService = require('../services/NodeCredentialService');
 const EnrollmentService = require('../services/EnrollmentService');
 const NativeTelemetry = require('../services/NativeTelemetry');
@@ -206,6 +207,12 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
           ipAddress: req.ip
         };
         throw refusal;
+      }
+
+      // An app that was signed out or cut for reusing a token stays out after the 24 hour revoked-key
+      // list has forgotten it: the app sessions remember which installation keys were revoked.
+      if (await AppAuthService.keyWasRevoked(publicKeyHex, client)) {
+        throw EnrollmentService.denied(403, 'this key has been revoked');
       }
 
       if (preauthKey) {

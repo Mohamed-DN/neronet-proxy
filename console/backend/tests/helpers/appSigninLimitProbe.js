@@ -11,21 +11,27 @@ const request = require('supertest');
 const crypto = require('crypto');
 const { setupTestDatabase } = require('./db');
 const { createApp } = require('../../server');
+const { createOrgFixture } = require('./orgFixture');
+const { nodeKey, proveKey } = require('./nodeEnrolment');
 
 async function main() {
   const dbHelper = await setupTestDatabase();
   try {
     const app = createApp();
-    const start = (ip) =>
-      request(app)
+    const start = async (ip) => {
+      const key = nodeKey();
+      const proof = await proveKey(app, key, 'APP_SIGNIN');
+      return request(app)
         .post('/api/app-auth/device/start')
         .set('X-Forwarded-For', ip)
         .send({
           platform: 'linux',
           device_name: 'probe',
-          public_key_hex: crypto.randomBytes(32).toString('hex'),
-          signing_key: crypto.randomBytes(32).toString('hex')
+          public_key_hex: key,
+          signing_key: crypto.randomBytes(32).toString('hex'),
+          ...proof
         });
+    };
 
     const startCodes = [];
     for (let i = 0; i < 31; i++) startCodes.push((await start('203.0.113.5')).status);
@@ -52,6 +58,25 @@ async function main() {
         ).status
       );
     }
+    // Approving is metered on its own, 5 per person per 15 minutes: it is where a second-factor code is guessed.
+    const fx = await createOrgFixture(dbHelper.pool);
+    const approveCodes = [];
+    for (let i = 0; i < 6; i++) {
+      approveCodes.push(
+        (
+          await request(app)
+            .post('/api/app-auth/device/approve')
+            .set('Authorization', `Bearer ${fx.tokens.memberA}`)
+            .send({ user_code: 'ZZZZ-ZZZZ', totp_code: '000000' })
+        ).status
+      );
+    }
+    const approveOtherPerson = (
+      await request(app)
+        .post('/api/app-auth/device/approve')
+        .set('Authorization', `Bearer ${fx.tokens.member2A}`)
+        .send({ user_code: 'ZZZZ-ZZZZ', totp_code: '000000' })
+    ).status;
     console.log(
       `PROBE_RESULT ${JSON.stringify({
         startAllowed: startCodes.filter((c) => c === 200).length,
@@ -61,7 +86,9 @@ async function main() {
         pollFirst: pollCodes[0],
         pollOtherCode,
         refreshLast: refresh[refresh.length - 1],
-        refreshFirst: refresh[0]
+        refreshFirst: refresh[0],
+        approveCodes,
+        approveOtherPerson
       })}`
     );
   } finally {

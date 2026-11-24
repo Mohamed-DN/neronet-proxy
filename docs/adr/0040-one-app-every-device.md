@@ -89,7 +89,18 @@ routes live under `/api/app-auth/app/*`. Choices worth knowing:
   an account that must have one and has none is refused with `mfa_setup_required`.
 - Replaying a replaced refresh token revokes the app and cuts its node. Revoking from the console uses
   the existing key revocation path (revoked key to every peer, credentials dead, ACL epoch bumped).
-- Binding of a refresh to the installation is by public key match, not by a fresh proof of possession.
+- The installation proves possession twice. At sign-in start it answers the console's challenge with its
+  WireGuard key (purpose `APP_SIGNIN`), so nobody can name a key they do not hold. Every refresh is signed
+  with an Ed25519 key kept in the key store (method, path, hash of the refresh token, time, nonce): a stolen
+  token without the key is useless and revokes nothing. A lost answer is survivable for 24 hours (the
+  previous token, freshly signed, returns a new pair and never leaves two live chains); a token two
+  rotations old, or a replaced one after the window, revokes the app and removes its node.
+- Revoking an app is one transaction: the session, the grant, the key on the revoked list and the node row
+  (kept if an administrator blocked it, left alone if it serves profile devices, never touched unless it is
+  this session's own node by owner and full key). The console remembers revoked installation keys beyond
+  the 24 hour list, so a registration without a grant is refused the day after too. Removing a node in the
+  console ends its app, and an app's person must stay active, in the same role and organisation, with an
+  unchanged authentication epoch and no blocked device, at approval, collection, refresh and every request.
 
 Slice B, `pkg/clientcore`: device-code client, enrolment through `pkg/control`, connection order walk
 (each method once, bounded, forced means first only, a removed device never falls back), state stream,

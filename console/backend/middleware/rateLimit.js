@@ -282,6 +282,22 @@ const appCodeAttemptLimiter = rateLimit({
   }
 });
 
+// Approving an app is where a second-factor code is guessed, so it has a budget of its own: five tries
+// per person in fifteen minutes, whatever the other code attempts did.
+const appApproveLimiter = rateLimit({
+  name: 'app-approve',
+  limit: 5,
+  windowMs: 15 * 60_000,
+  failClosed: true,
+  message: 'too many approval attempts; wait before trying again',
+  keyFn: (req) => {
+    const id = req.user?.id;
+    if (typeof id === 'string' && id) return `user:${id}`;
+    const ip = clientIp(req);
+    return ip ? `address:${ip}` : null;
+  }
+});
+
 const appRefreshLimiter = rateLimit({
   name: 'app-refresh',
   limit: 60,
@@ -429,6 +445,7 @@ module.exports = {
   appSigninStartLimiter,
   appSigninPollLimiter,
   appCodeAttemptLimiter,
+  appApproveLimiter,
   appRefreshLimiter,
   apiLimiter,
   writeLimiter,

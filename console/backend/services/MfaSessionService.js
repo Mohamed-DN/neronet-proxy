@@ -295,33 +295,58 @@ async function complete(caller, { code, recovery_code, ipAddress }, browser = nu
   });
 }
 
-// A fresh second-factor proof for a person who is already signed in, for one sensitive
-// step (approving an app). It opens no session and changes nothing but a spent recovery
-// code. Returns 'ok', 'required' (no code given), 'invalid' or 'setup' (the account must
-// have a second factor and has none enrolled).
-async function verifyFreshProof(userId, { code, recovery_code } = {}) {
-  const loaded = await getPgPool().query('SELECT * FROM users WHERE id=$1', [userId]);
-  const snapshot = loaded.rows[0];
-  if (!snapshot || snapshot.status !== 'active') return 'invalid';
-  if (!(await MfaPolicy.isMfaRequired(snapshot))) return 'ok';
-  if (!snapshot.totp_enabled) return 'setup';
+// A fresh second-factor proof for a person who is already signed in, for one sensitive step
+// (approving an app). It opens no session. It is judged in two parts so that it can be part of the
+// caller's transaction: prepareFreshProof runs first and may touch the organisation's key (it must
+// finish before the account lock is taken), applyFreshProof runs inside the transaction, with the
+// account locked, and spends what the proof spends (a recovery code, or the time step of a code)
+// there. If the transaction then fails for any other reason nothing was spent.
+//
+// Results: 'ok', 'required' (no code given), 'invalid' (wrong, or a code already used once), and
+// 'setup' (the account must have a second factor and has none enrolled).
+async function prepareFreshProof(userId) {
+  const snapshot = (await getPgPool().query('SELECT * FROM users WHERE id=$1', [userId])).rows[0];
+  if (!snapshot || snapshot.status !== 'active') return { state: 'invalid' };
+  if (!(await MfaPolicy.isMfaRequired(snapshot))) return { state: 'ok' };
+  if (!snapshot.totp_enabled) return { state: 'setup' };
+  return { state: 'needed', sealed: snapshot.totp_secret, secret: await openSecret(snapshot, snapshot.totp_secret) };
+}
+
+const TOTP_STEP_MS = 30000;
+
+async function applyFreshProof(client, userId, prepared, { code, recovery_code } = {}) {
+  if (prepared.state === 'ok') return 'ok';
+  if (prepared.state === 'setup') return 'setup';
+  if (prepared.state !== 'needed') return 'invalid';
   const hasCode = typeof code === 'string' && code.length > 0;
   const hasRecovery = typeof recovery_code === 'string' && recovery_code.length > 0;
   if (!hasCode && !hasRecovery) return 'required';
+  const user = await lockedUser(client, userId);
+  // The factor must be the one the secret was opened for.
+  if (!user.totp_enabled || user.totp_secret !== prepared.sealed) return 'invalid';
   if (hasRecovery) {
-    return Sessions.transaction(async (client) => {
-      const user = await lockedUser(client, userId);
-      const consumed = TotpService.verifyAndConsumeRecoveryCode(recovery_code, parseCodes(user.totp_recovery_codes));
-      if (!consumed.valid) return 'invalid';
-      await client.query('UPDATE users SET totp_recovery_codes=$2::jsonb WHERE id=$1', [
-        userId,
-        JSON.stringify(consumed.remainingCodes)
-      ]);
-      return 'ok';
-    });
+    const consumed = TotpService.verifyAndConsumeRecoveryCode(recovery_code, parseCodes(user.totp_recovery_codes));
+    if (!consumed.valid) return 'invalid';
+    await client.query('UPDATE users SET totp_recovery_codes=$2::jsonb WHERE id=$1', [
+      userId,
+      JSON.stringify(consumed.remainingCodes)
+    ]);
+    return 'ok';
   }
-  const secret = await openSecret(snapshot, snapshot.totp_secret);
-  return TotpService.verifyTotp(String(code), secret) ? 'ok' : 'invalid';
+  const counter = Math.floor(Date.now() / TOTP_STEP_MS);
+  let matched = null;
+  for (let i = -1; i <= 1; i++) {
+    const step = counter + i;
+    if (TotpService.generateTotp(prepared.secret, { time: step * TOTP_STEP_MS }) === String(code).trim())
+      matched = step;
+  }
+  if (matched === null) return 'invalid';
+  // A code is good once: the step must be later than the last one accepted for this account.
+  const spent = await client.query(
+    'UPDATE users SET totp_last_used_step=$2 WHERE id=$1 AND (totp_last_used_step IS NULL OR totp_last_used_step < $2)',
+    [userId, matched]
+  );
+  return spent.rowCount === 1 ? 'ok' : 'invalid';
 }
 
-module.exports = { signIn, resolveCaller, setup, complete, verifyFreshProof };
+module.exports = { signIn, resolveCaller, setup, complete, prepareFreshProof, applyFreshProof };

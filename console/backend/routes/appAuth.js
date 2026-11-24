@@ -4,6 +4,7 @@ const {
   appSigninStartLimiter,
   appSigninPollLimiter,
   appCodeAttemptLimiter,
+  appApproveLimiter,
   appRefreshLimiter
 } = require('../middleware/rateLimit');
 const App = require('../services/AppAuthService');
@@ -75,9 +76,14 @@ router.post('/device/lookup', authenticateToken, appCodeAttemptLimiter, async (r
   }
 });
 
-router.post('/device/approve', authenticateToken, appCodeAttemptLimiter, async (req, res, next) => {
+router.post('/device/approve', authenticateToken, appApproveLimiter, appCodeAttemptLimiter, async (req, res, next) => {
   try {
-    return res.json(await App.approveSignIn(req.user, req.body || {}, ctx(req)));
+    return res.json(
+      await App.approveSignIn(req.user, req.body || {}, {
+        ...ctx(req),
+        organizationIdAtIssue: req.sessionAuthority?.organizationIdAtIssue
+      })
+    );
   } catch (err) {
     return sendError(res, next, err);
   }

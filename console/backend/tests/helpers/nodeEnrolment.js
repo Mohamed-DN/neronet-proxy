@@ -37,4 +37,20 @@ async function register(app, body, { token } = {}) {
   return req.send({ ...body, nonce: ch.body.nonce, proof });
 }
 
-module.exports = { nodeKey, register };
+/**
+ * The nonce and proof a caller sends to show it holds the private half of `publicKeyHex`, for any
+ * endpoint that wants the same proof of possession as registration. `role` is covered by the
+ * proof, so a proof made for one purpose cannot be spent on another.
+ */
+async function proveKey(app, publicKeyHex, role) {
+  const privateKeyHex = privateKeys.get(String(publicKeyHex || '').toLowerCase());
+  if (!privateKeyHex) throw new Error(`proveKey(): ${publicKeyHex} was not made with nodeKey()`);
+  const ch = await request(app).post('/v4/control/challenge').send({});
+  if (ch.status !== 200) throw new Error(`challenge failed: ${ch.status}`);
+  return {
+    nonce: ch.body.nonce,
+    proof: ControlPlaneKeyService.computeClientProof(privateKeyHex, ch.body.cp_public_key, ch.body.nonce, role)
+  };
+}
+
+module.exports = { nodeKey, register, proveKey };

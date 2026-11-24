@@ -649,6 +649,8 @@ class CryptoShreddingService {
     );
     await client.query('DELETE FROM nodes WHERE organization_id = $1', [orgId]);
     await client.query('DELETE FROM acl_rules WHERE organization_id = $1', [orgId]);
+    await client.query('DELETE FROM app_sessions WHERE organization_id = $1', [orgId]);
+    await client.query('DELETE FROM app_device_codes WHERE approved_organization_id = $1', [orgId]);
     await client.query('DELETE FROM preauth_keys WHERE organization_id = $1', [orgId]);
     await client.query('DELETE FROM compartments WHERE organization_id = $1', [orgId]);
     await client.query('DELETE FROM organization_oidc_configs WHERE organization_id = $1', [orgId]);
@@ -719,6 +721,8 @@ class CryptoShreddingService {
     await client.query('DELETE FROM acl_rules');
     await client.query('DELETE FROM network_routes');
     await client.query('DELETE FROM nodes');
+    await client.query('DELETE FROM app_sessions');
+    await client.query('DELETE FROM app_device_codes');
     await client.query('DELETE FROM preauth_keys');
     await client.query("UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = NOW() WHERE name = 'netmap'");
     afterCommit.push(() => AclEngine.bumpNetmap());
