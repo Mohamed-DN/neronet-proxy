@@ -242,7 +242,7 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       const role = requestedRole;
       const capability = req.body.capability || {};
       // The country the operator set in the node's own configuration, or none. There is
-      // no default: a node that states nothing is in an unknown place (ADR 0040), and a
+      // no default: a node that states nothing is in an unknown place (ADR 0042), and a
       // value that is not a known ISO code is treated as not stated rather than stored.
       const statedCountry = capability.country_code;
       const countryCode = NodeLocation.parseCountry(statedCountry);
@@ -707,7 +707,7 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
     // origin has nothing to offer another node.
     const filters = ["role IN ('EXIT_BRIDGE', 'RELAY', 'HYBRID')", 'is_healthy = TRUE', 'is_quarantined = FALSE'];
     const params = [];
-    // Where a node is belongs to its own organisation (ADR 0040). The caller's
+    // Where a node is belongs to its own organisation (ADR 0042). The caller's
     // organisation: its node's, or, for a fleet-token caller that names no node, the one
     // the token enrols into. A peer of another organisation (compartment peering) is
     // still offered where the data plane needs it, but without a country or city, and a
@@ -814,7 +814,7 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
 
 // POST /v4/control/probe/poll
 //
-// The connection test (ADR 0040). A profile gateway holds this request open; it answers
+// The connection test (ADR 0042). A profile gateway holds this request open; it answers
 // the moment a console user asks for a probe of one of the devices the gateway serves, or
 // with an empty list after ProbeService.POLL_HOLD_MS. Only a node credential is accepted,
 // and a request is handed only to the gateway that serves the device. The body carries

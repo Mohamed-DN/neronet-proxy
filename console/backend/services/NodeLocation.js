@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Where a node is (ADR 0040).
+ * Where a node is (ADR 0042).
  *
  * Nothing in the control plane measures a node's position. The country is NULL until
  * someone states it, and it carries who stated it: an owner or administrator through the

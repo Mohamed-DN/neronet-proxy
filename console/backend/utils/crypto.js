@@ -161,7 +161,7 @@ function buildNoiseJsonProfile({
     routing: {
       egress_mode: role || 'CLIENT_ORIGIN',
       // Only a country someone stated. The list used to end in 'US' and 'DE' whatever the
-      // device was, which invented a preference (ADR 0040); empty means none.
+      // device was, which invented a preference (ADR 0042); empty means none.
       preferred_countries: countryCode ? [countryCode] : [],
       onion_hops: hops,
       onion_routing_enabled: hops > 0

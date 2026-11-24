@@ -14,7 +14,7 @@ import (
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
 )
 
-// ADR 0040: the gateway measures a real round trip to each profile device it serves. A
+// ADR 0042: the gateway measures a real round trip to each profile device it serves. A
 // reply is a number; no reply is a null value with its time; a peer without a recent
 // handshake is not pinged; closing the device while a ping is in flight records nothing.
 

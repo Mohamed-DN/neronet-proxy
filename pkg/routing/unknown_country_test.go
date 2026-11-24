@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// ADR 0040: an exit whose country is unknown never satisfies a request for a country, and
+// ADR 0042: an exit whose country is unknown never satisfies a request for a country, and
 // a request that names no country is refused rather than answered with an unknown one.
 
 func exit(id, country string) *NodeCandidate {

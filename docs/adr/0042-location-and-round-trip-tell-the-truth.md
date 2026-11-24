@@ -1,4 +1,4 @@
-# ADR 0040: Location, round trip and the connection test tell the truth
+# ADR 0042: Location, round trip and the connection test tell the truth
 
 Status: accepted. 23 November 2026.
 

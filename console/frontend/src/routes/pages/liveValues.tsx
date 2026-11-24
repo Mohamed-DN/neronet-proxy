@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { formatRelativeTime } from '../../i18n/format';
 
 /**
- * Values that age (ADR 0040): where a device is, and how fast it answered. Each one says
+ * Values that age (ADR 0042): where a device is, and how fast it answered. Each one says
  * what it is, who or what produced it and how old it is, and never fills a gap with a
  * plausible number.
  */

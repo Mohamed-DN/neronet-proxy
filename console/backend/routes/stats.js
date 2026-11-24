@@ -308,7 +308,7 @@ async function topologyHandler(req, res, next) {
       // The heartbeat's round trip to the console, not how fast the device answers.
       latency_ms: Number(n.latency_ms) > 0 ? Number(n.latency_ms) : null,
       // A ping from the serving gateway: null when none was sent or the device did not reply,
-      // with the time of the sample so the console can show its age (ADR 0040).
+      // with the time of the sample so the console can show its age (ADR 0042).
       rtt_ms: n.rtt_ms === null || n.rtt_ms === undefined ? null : Number(n.rtt_ms),
       rtt_measured_at: n.rtt_measured_at ? new Date(n.rtt_measured_at).toISOString() : null,
       compartment_id: n.compartment_id || null,

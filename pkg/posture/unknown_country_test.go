@@ -2,7 +2,7 @@ package posture
 
 import "testing"
 
-// ADR 0040: nothing measures a country. A node that states none has an unknown location,
+// ADR 0042: nothing measures a country. A node that states none has an unknown location,
 // and a rule that names countries must not pass on unknown.
 
 func geoPolicy(allowed, prohibited []string) *PosturePolicy {

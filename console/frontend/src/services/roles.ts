@@ -131,7 +131,7 @@ export function canChooseGateway(user: RoleUser | null): boolean {
 }
 
 /**
- * Who may state where a device is (ADR 0040): the people who run the organisation. The
+ * Who may state where a device is (ADR 0042): the people who run the organisation. The
  * control plane checks the organisation role; the console reads the same two fields.
  */
 export function canDeclareLocation(user: RoleUser | null): boolean {

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// ADR 0040: no country unless the operator sets one.
+// ADR 0042: no country unless the operator sets one.
 
 func TestNoCountryIsReportedUnlessTheOperatorSetsOne(t *testing.T) {
 	got, err := normaliseCountry("")

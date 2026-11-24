@@ -61,7 +61,7 @@ router.post('/generate', async (req, res, next) => {
     const kp = generateCurve25519Keypair();
     const VALID_ROLES = ['CLIENT_ORIGIN', 'EXIT_BRIDGE', 'HYBRID', 'RELAY'];
     const nodeRole = role && VALID_ROLES.includes(role) ? role : 'CLIENT_ORIGIN';
-    // No default country (ADR 0040): a profile states one only when an administrator does.
+    // No default country (ADR 0042): a profile states one only when an administrator does.
     let nodeCountry = null;
     if (country_code !== undefined && country_code !== null && country_code !== '') {
       nodeCountry = NodeLocation.parseCountry(country_code);

@@ -160,7 +160,7 @@ export function useDeleteOwnDevice() {
 }
 
 /**
- * States where a device is (ADR 0040). Administrators only; the control plane validates the
+ * States where a device is (ADR 0042). Administrators only; the control plane validates the
  * code and records who stated it. `null` marks the location as unknown again.
  */
 export function useDeclareLocation() {

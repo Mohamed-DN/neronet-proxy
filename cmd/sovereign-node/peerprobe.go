@@ -14,7 +14,7 @@ import (
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
 )
 
-// Round trips to the devices this gateway serves (ADR 0040).
+// Round trips to the devices this gateway serves (ADR 0042).
 //
 // The console used to show the gateway's HTTP round trip to the console as a device's
 // "response time", and a profile device had none. The gateway now pings each profile

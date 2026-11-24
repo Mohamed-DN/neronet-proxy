@@ -1,4 +1,4 @@
--- Location and round trip tell the truth (ADR 0040).
+-- Location and round trip tell the truth (ADR 0042).
 --
 -- 1. LOCATION. nodes.country_code defaulted to 'US' and several writers added their own
 --    'US' / Washington / Frankfurt fallbacks, so a device whose position nothing had ever

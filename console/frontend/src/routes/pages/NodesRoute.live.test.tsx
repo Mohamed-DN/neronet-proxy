@@ -12,7 +12,7 @@ import { renderUI } from '../../test/harness';
 import { ShellProvider } from '../shell';
 import NodesRoute from './NodesRoute';
 
-// ADR 0040 and ADR 0040: the device page tells where a device is only when someone stated
+// ADR 0042 and ADR 0042: the device page tells where a device is only when someone stated
 // it, shows how it answered the gateway with the age of that answer, and the connection
 // test shows its own request, not a stored number.
 

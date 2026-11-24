@@ -223,10 +223,11 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
   test('POST /api/nodes should register a new node with VIP allocation', async () => {
     const res = await request(app).post('/api/nodes').set('Authorization', `Bearer ${regularUserToken}`).send({
       name: 'Work-MacBook-M3',
-      role: 'CLIENT_ORIGIN',
-      country_code: 'US'
+      role: 'CLIENT_ORIGIN'
+      // No country: stating a location is for administrators only (ADR 0042).
     });
     assert.strictEqual(res.status, 201);
+    assert.strictEqual(res.body.node.country_code, null);
     assert(res.body.node.id);
     assert.strictEqual(res.body.node.name, 'Work-MacBook-M3');
     assert(res.body.node.overlay_ipv4.startsWith('100.64.0.'));
@@ -317,8 +318,8 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
       .set('Authorization', `Bearer ${regularUserToken}`)
       .send({
         name: 'iPhone-Mobile-Client',
-        role: 'CLIENT_ORIGIN',
-        country_code: 'US'
+        role: 'CLIENT_ORIGIN'
+        // No country: a plain member cannot state one (ADR 0042).
       });
     assert.strictEqual(res.status, 200);
     assert(res.body.node_id);
@@ -344,7 +345,6 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
       .send({
         name: 'Tor-Obfuscated-MacBook',
         role: 'CLIENT_ORIGIN',
-        country_code: 'DE',
         onion_routing_enabled: true
       });
     assert.strictEqual(res.status, 200);

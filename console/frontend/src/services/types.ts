@@ -19,7 +19,7 @@ export interface MeshNode {
   hostname?: string;
   user_id?: string;
   role?: string;
-  /** null when nobody stated it: the location is unknown, never a default (ADR 0040). */
+  /** null when nobody stated it: the location is unknown, never a default (ADR 0042). */
   country_code?: string | null;
   /** Who stated it: an administrator ('declared') or the device's operator ('agent'). */
   location_source?: 'declared' | 'agent' | null;

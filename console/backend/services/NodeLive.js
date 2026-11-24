@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * "Something about this device changed" (ADR 0040).
+ * "Something about this device changed" (ADR 0042).
  *
  * Handshake, round trip, status and location changes are announced on the existing
  * topology socket as `node:updated`, carrying the device id and nothing else about it:

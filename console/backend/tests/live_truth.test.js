@@ -1,4 +1,4 @@
-// Location, round trip and the connection test tell the truth (ADR 0040, ADR 0040).
+// Location, round trip and the connection test tell the truth (ADR 0042, ADR 0042).
 //
 // Unknown is NULL and nothing invents a place; the only sources are an administrator
 // ('declared') and the node operator's explicit setting ('agent'); a ping is a ping from

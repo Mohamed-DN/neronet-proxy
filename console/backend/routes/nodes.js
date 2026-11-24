@@ -95,7 +95,7 @@ async function formatNode(row, telemetry) {
     overlay_ipv6: row.overlay_ipv6,
     role: row.role,
     ip_class: row.ip_class,
-    // Unknown is null, never a default country (ADR 0040). The caller's route has already
+    // Unknown is null, never a default country (ADR 0042). The caller's route has already
     // decided the reader may see the device; location_source says who stated the value.
     country_code: row.country_code || null,
     city: row.city || '',
@@ -118,7 +118,7 @@ async function formatNode(row, telemetry) {
     // (routes/stats.js), so 0 is "not measured" here; a row with no heartbeat has measured nothing.
     //
     // This is the gateway's HTTP heartbeat round trip to the console (the link with the
-    // console), not how fast the device answers: that is rtt_ms below (ADR 0040).
+    // console), not how fast the device answers: that is rtt_ms below (ADR 0042).
     latency_ms: Number(row.latency_ms) > 0 ? Number(row.latency_ms) : null,
     console_link_ms: Number(row.latency_ms) > 0 ? Number(row.latency_ms) : null,
     // A ping the serving gateway sent through the tunnel: value, when, and how. rtt_ms is
@@ -273,7 +273,7 @@ router.post('/', async (req, res, next) => {
         (field) => req.body[field] !== undefined && req.body[field] !== null
       );
     // Where a device is can be stated only by the people who run the organisation, and
-    // only as a real country; there is no default (ADR 0040).
+    // only as a real country; there is no default (ADR 0042).
     let statedCountry = null;
     if (country_code !== undefined && country_code !== null && country_code !== '') {
       statedCountry = NodeLocation.parseCountry(country_code);
@@ -417,7 +417,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// 3b. State where a device is (ADR 0040). Owner/admin only, a real ISO country, audited.
+// 3b. State where a device is (ADR 0042). Owner/admin only, a real ISO country, audited.
 // `{ country_code: null }` clears it back to unknown. Nothing else writes a 'declared' value.
 router.put('/:id/location', async (req, res, next) => {
   try {
@@ -470,7 +470,7 @@ router.put('/:id/location', async (req, res, next) => {
   }
 });
 
-// 3c. The connection test (ADR 0040): ask the serving gateway to ping the device now, and
+// 3c. The connection test (ADR 0042): ask the serving gateway to ping the device now, and
 // read the answer. The device's owner or an organisation administrator only.
 router.post('/:id/probe', async (req, res, next) => {
   try {
@@ -831,7 +831,7 @@ router.post('/:id/action', async (req, res, next) => {
     }
 
     if (action === 'ping') {
-      // Kept for older consoles: it now starts a real probe (ADR 0040) and answers with its
+      // Kept for older consoles: it now starts a real probe (ADR 0042) and answers with its
       // request id, instead of reporting the last stored number as if it were a test.
       const outcome = await ProbeService.request(node, req.user);
       return res.status(outcome.http).json({ success: outcome.http < 300, result: outcome.body });

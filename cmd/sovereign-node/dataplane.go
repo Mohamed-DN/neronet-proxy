@@ -287,7 +287,7 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 	go dev.WatchAuthenticatedPaths(loopCtx, 200*time.Millisecond)
 	go reportDrops(loopCtx, dev, dropReportInterval)
 	// Round trips to the profile devices this gateway serves, and the console's connection
-	// test (ADR 0040). Both ping through the netstack; neither runs for a node with no
+	// test (ADR 0042). Both ping through the netstack; neither runs for a node with no
 	// profile device.
 	prober := newPeerProber(dev)
 	manager.prober = prober

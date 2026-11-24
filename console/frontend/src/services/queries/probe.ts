@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, apiPost, apiRequest } from '../apiClient';
 
 /**
- * The connection test (ADR 0040).
+ * The connection test (ADR 0042).
  *
  * The button asks the control plane to have the device's gateway ping it now, then reads
  * the request until it is answered. Every figure shown comes from that one request: a

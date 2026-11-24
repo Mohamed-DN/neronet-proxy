@@ -4,7 +4,7 @@ Status: proposed (design only, nothing implemented). 23 November 2026.
 
 ## Context
 
-ADR 0040 makes location a stated value: unknown unless an administrator or the node operator says
+ADR 0042 makes location a stated value: unknown unless an administrator or the node operator says
 where a device is. That is true but sparse. A measured source would fill the gaps without asking
 anyone to type a country.
 
@@ -30,7 +30,7 @@ database, and store it as `location_source = 'geoip'` with the date of the datab
 - **Freshness.** Address allocations move; the database needs a refresh schedule and the stored value
   keeps the database date so stale ones can be found.
 - **Privacy.** A public endpoint is personal data. Resolving it locally keeps it on the server; the
-  result is visible only to the readers ADR 0040 names.
+  result is visible only to the readers ADR 0042 names.
 - **Cost.** One file read per endpoint change, no network, no new service.
 
 ## Not decided

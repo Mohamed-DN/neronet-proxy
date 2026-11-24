@@ -159,10 +159,12 @@ describe('Discovery confines node credentials to their permitted overlay peers',
     }
   });
 
-  it('keeps the explicitly authenticated fleet-inventory compatibility path', async () => {
+  it('keeps the fleet-token path, but only for the organisation it enrols into (ADR 0042)', async () => {
+    // Before, the fleet token listed another organisation's relay with its country, city and
+    // endpoints. Location belongs to the organisation: the token now sees only its own.
     const response = await discover({ explicit_host_id: NODES.b1.id }, 'discovery-scope-enrolment-only');
     assert.strictEqual(response.status, 200);
-    assert.deepStrictEqual(ids(response), [NODES.b1.id]);
+    assert.deepStrictEqual(ids(response), []);
   });
 
   it('refuses a revoked caller credential before discovery', async () => {

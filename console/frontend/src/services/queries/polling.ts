@@ -1,5 +1,5 @@
 /**
- * How often a live view reads again when no event arrives (ADR 0040).
+ * How often a live view reads again when no event arrives (ADR 0042).
  *
  * Events on the live channel are the primary way a view learns that something changed;
  * this is the fallback for a missed event and for values that age without one (a device

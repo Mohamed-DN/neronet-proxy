@@ -85,14 +85,14 @@ describe('Declared node location', () => {
     assert.strictEqual(node.city, 'Sydney');
     assert.strictEqual(node.latitude, SYDNEY.latitude);
     assert.strictEqual(node.longitude, SYDNEY.longitude);
-    assert.strictEqual(node.location_source, 'declared');
+    assert.strictEqual(node.location_source, 'agent'); // ADR 0042: stated by the node operator, so 'agent'; 'declared' is for an administrator
   });
 
   it('lists the declared location in the node list as well', async () => {
     const res = await request(app).get('/api/nodes?limit=200').set('Authorization', `Bearer ${token}`);
     const node = res.body.nodes.find((n) => n.id === nodeIdOf(KEY_SYDNEY));
     assert.ok(node, 'the node is missing from the list');
-    assert.strictEqual(node.location_source, 'declared');
+    assert.strictEqual(node.location_source, 'agent'); // ADR 0042: stated by the node operator, so 'agent'; 'declared' is for an administrator
     assert.strictEqual(node.latitude, SYDNEY.latitude);
   });
 
@@ -114,7 +114,7 @@ describe('Declared node location', () => {
     const node = await apiNode(key);
     assert.strictEqual(node.latitude, 0);
     assert.strictEqual(node.longitude, 0);
-    assert.strictEqual(node.location_source, 'declared');
+    assert.strictEqual(node.location_source, 'agent'); // ADR 0042: stated by the node operator, so 'agent'; 'declared' is for an administrator
   });
 
   it('refuses coordinates that are not a valid pair', async () => {
@@ -177,7 +177,7 @@ describe('Declared node location', () => {
     const node = await apiNode(KEY_LATE);
     assert.strictEqual(node.city, 'Reykjavik');
     assert.strictEqual(node.latitude, 64.1466);
-    assert.strictEqual(node.location_source, 'declared');
+    assert.strictEqual(node.location_source, 'agent'); // ADR 0042: stated by the node operator, so 'agent'; 'declared' is for an administrator
   });
 
   it('keeps other metadata when it marks the position as declared', async () => {
@@ -191,7 +191,7 @@ describe('Declared node location', () => {
     await register(app, key, SYDNEY);
 
     const node = await apiNode(key);
-    assert.strictEqual(node.location_source, 'declared');
+    assert.strictEqual(node.location_source, 'agent'); // ADR 0042: stated by the node operator, so 'agent'; 'declared' is for an administrator
     assert.strictEqual(node.metadata.label, 'kept');
   });
 });

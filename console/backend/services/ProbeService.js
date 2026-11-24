@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * The connection test (ADR 0040).
+ * The connection test (ADR 0042).
  *
  * The console button used to send nothing and show the last stored number. Now a request
  * is written here, the serving gateway collects it through a held-open poll

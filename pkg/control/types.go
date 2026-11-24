@@ -214,7 +214,7 @@ type PeerPathObservation struct {
 	RTTObservedAtUnix *int64   `json:"rtt_observed_at_unix,omitempty"`
 }
 
-// ProbeRequest is one connection test the console asked for (ADR 0040): ping this
+// ProbeRequest is one connection test the console asked for (ADR 0042): ping this
 // device now. PeerID is a node id from the gateway's own netmap; the console cannot name
 // an address.
 type ProbeRequest struct {
