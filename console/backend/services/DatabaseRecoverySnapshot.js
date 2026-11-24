@@ -15,12 +15,13 @@ const VARCHAR_LITERAL = /('(?:[^']|'')*')::character varying(?:::text)?/g;
 function normalizeConstraintDefinition(definition) {
   // PostgreSQL can deparse the same varchar CHECK as either a text[] cast
   // over the literal array or text casts on each varchar literal after pg_dump
-  // and restore, wherever the array sits (also inside "x IS NULL OR ...").
+  // and restore, wherever the array sits (also inside "x IS NULL OR ...", and in the
+  // predicate of a partial index).
   // These casts are binary-coercible and do not change the CHECK. Only literal
   // varchar arrays outside quoted text are rewritten; quoted values stay byte
   // for byte so real changes to a constraint remain visible. Keep in step with
   // pg_temp.neronet_normalize_constraint in docker/backup/digest-all.sql.
-  if (!definition.startsWith('CHECK ')) return definition;
+  if (!definition.startsWith('CHECK ') && !/^CREATE (UNIQUE )?INDEX /.test(definition)) return definition;
   let out = '';
   let quote = null;
   let i = 0;
@@ -81,7 +82,7 @@ async function collectSchema(client) {
       FROM pg_constraint co JOIN pg_namespace n ON n.oid = co.connamespace
       LEFT JOIN pg_class c ON c.oid = co.conrelid LEFT JOIN pg_type t ON t.oid = co.contypid
       WHERE n.nspname = 'public' ORDER BY c.relname COLLATE "C", t.typname COLLATE "C", co.conname COLLATE "C"`,
-    indexes: `SELECT c.relname AS table_name, i.relname AS name, pg_get_indexdef(x.indexrelid) AS definition,
+    indexes: `SELECT c.relname AS table_name, i.relname AS name, pg_get_indexdef(x.indexrelid, 0, true) AS definition,
       x.indisvalid AS valid, x.indisready AS ready FROM pg_index x JOIN pg_class c ON c.oid = x.indrelid
       JOIN pg_class i ON i.oid = x.indexrelid JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' ORDER BY c.relname COLLATE "C", i.relname COLLATE "C"`,
@@ -118,7 +119,7 @@ async function collectSchema(client) {
   for (const [kind, sql] of Object.entries(queries)) {
     const rows = (await client.query(sql)).rows;
     schema[kind] =
-      kind === 'constraints'
+      kind === 'constraints' || kind === 'indexes'
         ? rows.map((row) => ({
             ...row,
             definition: normalizeConstraintDefinition(row.definition)

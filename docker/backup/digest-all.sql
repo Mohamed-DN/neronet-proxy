@@ -12,7 +12,8 @@ SET search_path = public, pg_catalog;
 SET row_security = off;
 
 -- pg_dump may distribute a varchar-array to text-array cast over its literal
--- elements, wherever the array sits in a CHECK (also inside "x IS NULL OR ...").
+-- elements, wherever the array sits in a CHECK (also inside "x IS NULL OR ...") or in
+-- the predicate of a partial index.
 -- Rewrite only literal varchar arrays found outside quoted text; everything else,
 -- quoted contents included, stays byte for byte. Keep in step with
 -- normalizeConstraintDefinition in console/backend/services/DatabaseRecoverySnapshot.js.
@@ -27,7 +28,7 @@ DECLARE
   quote text := NULL;
   parts text[];
 BEGIN
-  IF definition NOT LIKE 'CHECK %' THEN RETURN definition; END IF;
+  IF definition NOT LIKE 'CHECK %' AND definition NOT LIKE 'CREATE %INDEX %' THEN RETURN definition; END IF;
   WHILE i <= n LOOP
     ch := substr(definition, i, 1);
     IF quote IS NOT NULL THEN
@@ -104,9 +105,15 @@ SELECT 'schema:constraints', count(*), encode(sha256(convert_to(coalesce(string_
   FROM pg_constraint c JOIN pg_class r ON r.oid = c.conrelid
   JOIN pg_namespace n ON n.oid = r.relnamespace WHERE n.nspname = 'public';
 
+-- Only an index whose predicate holds a varchar list is written in the normalized form. Every
+-- other line stays what pg_indexes shows, because the manifests of older backups hold that.
 SELECT 'schema:indexes', count(*), encode(sha256(convert_to(coalesce(string_agg(
-       indexdef, E'\n' ORDER BY tablename, indexname), ''), 'UTF8')), 'hex')
-  FROM pg_indexes WHERE schemaname = 'public';
+       CASE WHEN pg_temp.neronet_normalize_constraint(pg_get_indexdef(i.oid, 0, true)) <> pg_get_indexdef(i.oid, 0, true)
+            THEN pg_temp.neronet_normalize_constraint(pg_get_indexdef(i.oid, 0, true))
+            ELSE pg_get_indexdef(i.oid) END, E'\n' ORDER BY r.relname, i.relname), ''), 'UTF8')), 'hex')
+  FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid JOIN pg_class r ON r.oid = x.indrelid
+  JOIN pg_namespace n ON n.oid = r.relnamespace
+ WHERE n.nspname = 'public' AND r.relkind IN ('r', 'm', 'p') AND i.relkind IN ('i', 'I');
 
 SELECT 'schema:views', count(*), encode(sha256(convert_to(coalesce(string_agg(
        r.relname || ':' || pg_get_viewdef(r.oid, true), E'\n' ORDER BY r.relname), ''), 'UTF8')), 'hex')

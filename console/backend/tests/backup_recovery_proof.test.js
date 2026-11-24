@@ -169,6 +169,22 @@ describe('Disaster recovery proof against a separate restored database', () => {
     assert.notEqual(normalizeConstraintDefinition(source), normalizeConstraintDefinition(loosened));
   });
 
+  it('canonicalizes varchar literal arrays in a partial index predicate', () => {
+    // Migration 060 shape.
+    const head = 'CREATE UNIQUE INDEX one_live ON probe_requests USING btree (device_id) WHERE state::text = ANY ';
+    const source = `${head}(ARRAY['pending'::character varying, 'delivered'::character varying]::text[])`;
+    const restored = `${head}(ARRAY['pending'::character varying::text, 'delivered'::character varying::text])`;
+    assert.equal(normalizeConstraintDefinition(source), normalizeConstraintDefinition(restored));
+    assert.notEqual(
+      normalizeConstraintDefinition(source),
+      normalizeConstraintDefinition(restored.replace('delivered', 'done'))
+    );
+    assert.notEqual(
+      normalizeConstraintDefinition(source),
+      normalizeConstraintDefinition(restored.replace('UNIQUE ', ''))
+    );
+  });
+
   it('never rewrites an ARRAY-looking text inside a quoted CHECK value', () => {
     const definition = "CHECK (note::text <> 'ARRAY[''x''::character varying]'::text)";
     assert.equal(normalizeConstraintDefinition(definition), definition);

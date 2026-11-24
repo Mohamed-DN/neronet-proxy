@@ -43,11 +43,20 @@ before=$(digest)
 sql "DELETE FROM manifest_rows; INSERT INTO manifest_rows VALUES (2, '{\"value\":2}', 'stale'), (1, '{\"value\":1}', 'ready');"
 [ "$before" = "$(digest)" ] || { echo 'FAIL: row order changed the manifest' >&2; exit 1; }
 echo 'PASS: row order does not change the manifest'
+# A stored manifest is compared with what this script computes today, so the line of an index
+# without a varchar list must stay exactly the hash of pg_indexes it has always been.
+fixture
+sql "CREATE INDEX manifest_expr ON manifest_rows((payload ->> 'value')) WHERE id > 0 AND (status = 'ready' OR status = 'stale')"
+digest >/dev/null
+plain=$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT encode(sha256(convert_to(string_agg(indexdef, E'\n' ORDER BY tablename, indexname), 'UTF8')), 'hex') FROM pg_indexes WHERE schemaname = 'public'")
+grep -q "schema:indexes.*$plain" "$work/digest" || { echo 'FAIL: the manifest of existing indexes changed: stored backups would not verify' >&2; exit 1; }
+echo 'PASS: existing indexes keep the manifest stored with older backups'
 fixture
 sql "ALTER TABLE manifest_rows ADD COLUMN action varchar(128) DEFAULT 'ACCEPT'
   CONSTRAINT manifest_action CHECK (action IN ('ACCEPT', 'DROP', 'QUOTE''S', '::character varying::text', '], ::text[]'));
   ALTER TABLE manifest_rows ADD COLUMN colour varchar(16)
-  CONSTRAINT manifest_colour CHECK (colour IS NULL OR colour IN ('red', 'sky'))"
+  CONSTRAINT manifest_colour CHECK (colour IS NULL OR colour IN ('red', 'sky'));
+  CREATE UNIQUE INDEX manifest_partial ON manifest_rows(id) WHERE action IN ('ACCEPT', 'QUOTE''S', '::character varying::text')"
 before=$(digest)
 pg_dump -Fc --no-owner --no-acl >"$work/roundtrip.dump"
 sql 'DROP SCHEMA public CASCADE; CREATE SCHEMA public'
@@ -64,6 +73,14 @@ sql "ALTER TABLE manifest_rows DROP CONSTRAINT manifest_colour;
   ALTER TABLE manifest_rows ADD CONSTRAINT manifest_colour CHECK (colour IS NULL OR colour IN ('red', 'pink'))"
 [ "$before" != "$(digest)" ] || { echo 'FAIL: manifest ignored a changed nested CHECK value' >&2; exit 1; }
 echo 'PASS: manifest detects a changed nested CHECK value'
+before=$(digest)
+sql "DROP INDEX manifest_partial; CREATE UNIQUE INDEX manifest_partial ON manifest_rows(id) WHERE action IN ('ACCEPT', 'BLOCK')"
+[ "$before" != "$(digest)" ] || { echo 'FAIL: manifest ignored a changed index predicate' >&2; exit 1; }
+echo 'PASS: manifest detects a changed index predicate'
+before=$(digest)
+sql "DROP INDEX manifest_partial; CREATE INDEX manifest_partial ON manifest_rows(id) WHERE action IN ('ACCEPT', 'BLOCK')"
+[ "$before" != "$(digest)" ] || { echo 'FAIL: manifest ignored a lost uniqueness' >&2; exit 1; }
+echo 'PASS: manifest detects a lost uniqueness'
 before=$(digest)
 sql "ALTER TABLE manifest_rows ADD COLUMN note varchar(64)
   CONSTRAINT manifest_note CHECK (note <> 'ARRAY[''x''::character varying]')"
