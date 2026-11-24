@@ -68,7 +68,7 @@ type fakeConsole struct {
 	refreshErr error
 }
 
-func (f *fakeConsole) SignOut(_ context.Context, access string) error {
+func (f *fakeConsole) SignOut(_ context.Context, access string, _ ed25519.PrivateKey) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.signedOut = append(f.signedOut, access)
@@ -179,7 +179,7 @@ func controlPlanePub() string { return hex.EncodeToString(testKey().PublicKey[:]
 
 func instantSleep(ctx context.Context, _ time.Duration) error { return ctx.Err() }
 
-func newCore(t *testing.T, c *fakeConsole, e *fakeEnroller, tun *fakeTunnel) (*Core, *memStore) {
+func newCore(t *testing.T, c *fakeConsole, e Enroller, tun *fakeTunnel) (*Core, *memStore) {
 	t.Helper()
 	st := newMemStore()
 	core, err := New(Config{Platform: "linux", DeviceName: "Test box", Console: c, Enroller: e, Tunnel: tun, Store: st, Sleep: instantSleep, PerAttempt: time.Second})
@@ -845,12 +845,228 @@ func TestCoreRefreshesItsTokenAndHandlesRefusal(t *testing.T) {
 	if core.State().Phase != PhaseDisconnected {
 		t.Error("a network failure signed the app out")
 	}
-	// The console saying no means the app was removed or the token stolen and replayed: forget it.
+	// A plain 401 is a signature the console did not accept (a wrong clock, a replay of ours): nothing
+	// is forgotten, the next attempt may succeed.
 	cons.refreshErr = &ConsoleError{Status: 401, Code: "invalid_refresh"}
 	if err := core.RefreshNow(context.Background()); err == nil {
 		t.Error("refusal reported success")
 	}
+	if core.State().Phase != PhaseDisconnected {
+		t.Errorf("%s: a plain 401 made the app forget its sign-in", core.State().Phase)
+	}
+	// "suspended" is recoverable: the approval ended, the installation and its keys are still good, so
+	// they are kept and the person is asked to sign in again.
+	keyBefore, signBefore := core.PublicKeyHex(), core.SigningKeyHex()
+	cons.refreshErr = &ConsoleError{Status: 401, Code: "app_suspended"}
+	if err := core.RefreshNow(context.Background()); err == nil {
+		t.Error("suspension reported success")
+	}
+	st := core.State()
+	if st.Phase != PhaseSignedOut || !strings.Contains(st.Message, "Sign in again") {
+		t.Errorf("%s %q: a suspended app is not asked to sign in again", st.Phase, st.Message)
+	}
+	if core.PublicKeyHex() != keyBefore || core.SigningKeyHex() != signBefore {
+		t.Error("the keys were replaced for a recoverable suspension: the same installation could no longer come back")
+	}
+	if _, err := store.LoadKey(aliasToken); err == nil {
+		t.Error("token kept after suspension")
+	}
+}
+
+func TestRevokedAppForgetsEverythingAndGetsNewKeys(t *testing.T) {
+	cons := &fakeConsole{polls: []PollResult{approved()}}
+	core, store := newCore(t, cons, &fakeEnroller{}, &fakeTunnel{})
+	if err := core.SignIn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitPhase(t, core, PhaseDisconnected)
+	keyBefore := core.PublicKeyHex()
+	cons.refreshErr = &ConsoleError{Status: 401, Code: "app_revoked"}
+	if err := core.RefreshNow(context.Background()); err == nil {
+		t.Fatal("revocation reported success")
+	}
+	st := core.State()
+	if st.Phase != PhaseSignedOut || !strings.Contains(st.Message, "removed") {
+		t.Errorf("%s %q", st.Phase, st.Message)
+	}
+	if core.PublicKeyHex() == keyBefore {
+		t.Error("a revoked installation kept its key, which the console refuses for good")
+	}
+	if _, err := store.LoadKey(aliasEnrolment); err == nil {
+		t.Error("enrolment kept")
+	}
+}
+
+func TestSignOutDuringAnEnrolmentThatIsStillBlockedEndsTheConsoleSession(t *testing.T) {
+	cons := &fakeConsole{polls: []PollResult{approved()}}
+	blocked := &blockingEnroller{entered: make(chan struct{})}
+	core, store := newCore(t, cons, blocked, &fakeTunnel{})
+	if err := core.SignIn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-blocked.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("enrolment never started")
+	}
+	done := make(chan error, 1)
+	go func() { done <- core.SignOut(context.Background(), false) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("SignOut hung on an enrolment that never returns")
+	}
+	if len(cons.signedOut) != 1 || cons.signedOut[0] != goodAccess {
+		t.Errorf("the console session of a half-joined app was left alive: %v", cons.signedOut)
+	}
 	if core.State().Phase != PhaseSignedOut {
-		t.Errorf("%s: the app kept a sign-in the console refused", core.State().Phase)
+		t.Errorf("%s", core.State().Phase)
+	}
+	if _, err := store.LoadKey(aliasToken); err == nil {
+		t.Error("token kept")
+	}
+}
+
+type blockingEnroller struct{ entered chan struct{} }
+
+func (b *blockingEnroller) Enrol(ctx context.Context, _ *crypto.Keypair, _ Grant) (*Enrolment, error) {
+	close(b.entered)
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// failingStore refuses to delete one alias, as a locked or read-only key store would.
+type failingStore struct {
+	*memStore
+	failAlias string
+}
+
+func (f *failingStore) DeleteKey(a string) error {
+	if a == f.failAlias {
+		return errors.New("key store is read-only")
+	}
+	return f.memStore.DeleteKey(a)
+}
+
+func TestRotationThatCannotDeleteTheOldKeysFailsLoudly(t *testing.T) {
+	st := &failingStore{memStore: newMemStore(), failAlias: aliasInstallation}
+	cons := &fakeConsole{polls: []PollResult{approved()}}
+	core, err := New(Config{Platform: "linux", DeviceName: "Test box", Console: cons, Enroller: &fakeEnroller{}, Tunnel: &fakeTunnel{}, Store: st, Sleep: instantSleep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := core.SignIn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitPhase(t, core, PhaseDisconnected)
+	old := core.PublicKeyHex()
+	if err := core.SignOut(context.Background(), false); err == nil {
+		t.Error("a sign-out that could not replace the installation key said it had")
+	}
+	if core.PublicKeyHex() != old {
+		t.Error("the in-memory key changed although the stored one could not be removed")
+	}
+}
+
+func TestRefreshAndSignOutDoNotRace(t *testing.T) {
+	fresh := &AppToken{AccessToken: "nna_" + strings.Repeat("1", 64), RefreshToken: "nnr_" + strings.Repeat("2", 64), ExpiresIn: 3600, RefreshExpiresIn: 86400}
+	cons := &fakeConsole{polls: []PollResult{approved()}, refreshTok: fresh}
+	core, _ := newCore(t, cons, &fakeEnroller{}, &fakeTunnel{})
+	if err := core.SignIn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitPhase(t, core, PhaseDisconnected)
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _ = core.RefreshNow(context.Background()) }()
+	}
+	wg.Add(1)
+	go func() { defer wg.Done(); _ = core.SignOut(context.Background(), true) }()
+	wg.Wait()
+	if core.State().Phase != PhaseSignedOut {
+		t.Errorf("%s", core.State().Phase)
+	}
+}
+
+func TestClockSkewIsCorrectedFromTheConsolesDateAndRetriedOnce(t *testing.T) {
+	_, priv, _ := ed25519.GenerateKey(nil)
+	offset := 2 * time.Hour // the console's clock is two hours ahead of ours
+	var attempts int
+	c := consoleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		serverNow := time.Now().Add(offset)
+		w.Header().Set("Date", serverNow.UTC().Format(http.TimeFormat))
+		ts := int64(body["timestamp"].(float64))
+		if d := serverNow.Unix() - ts; d > 60 || d < -60 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"invalid_refresh","code":"invalid_refresh"}`))
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"token_type":"Bearer","access_token":%q,"expires_in":3600,"refresh_token":%q,"refresh_expires_in":86400,"scopes":["app:self"]}`, goodAccess, goodRefresh)
+	})
+	if _, err := c.Refresh(context.Background(), goodRefresh, priv); err != nil {
+		t.Fatalf("a skewed clock was not corrected: %v", err)
+	}
+	if attempts != 2 {
+		t.Errorf("expected one failed attempt and one corrected retry, got %d", attempts)
+	}
+	// Remembered: the next refresh is right the first time.
+	attempts = 0
+	if _, err := c.Refresh(context.Background(), goodRefresh, priv); err != nil || attempts != 1 {
+		t.Errorf("the skew was not remembered: %v after %d attempts", err, attempts)
+	}
+	// A 401 that is not about the clock is not retried.
+	attempts = 0
+	c2 := consoleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.Header().Set("Date", time.Now().UTC().Format(http.TimeFormat))
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"app_suspended","code":"app_suspended"}`))
+	})
+	_, err := c2.Refresh(context.Background(), goodRefresh, priv)
+	var ce *ConsoleError
+	if !errors.As(err, &ce) || ce.Code != "app_suspended" || attempts != 1 {
+		t.Errorf("%v after %d attempts", err, attempts)
+	}
+}
+
+func TestSignOutIsSignedWithTheInstallationKey(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	var gotBearer string
+	var body map[string]any
+	c := consoleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/api/app-auth/app/session" {
+			http.NotFound(w, r)
+			return
+		}
+		gotBearer = r.Header.Get("Authorization")
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		ts := int64(body["timestamp"].(float64))
+		sig, _ := hex.DecodeString(body["signature"].(string))
+		if !ed25519.Verify(pub, SignOutMessage(goodAccess, ts, body["nonce"].(string)), sig) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"signature_required","code":"signature_required"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"revoked":true}`))
+	})
+	if err := c.SignOut(context.Background(), goodAccess, priv); err != nil {
+		t.Fatal(err)
+	}
+	if gotBearer != "Bearer "+goodAccess {
+		t.Errorf("bearer %q", gotBearer)
+	}
+	if strings.Contains(string(SignOutMessage(goodAccess, 1, "n")), goodAccess) {
+		t.Error("the signed message carries the access token itself instead of its hash")
+	}
+	_, other, _ := ed25519.GenerateKey(nil)
+	if err := c.SignOut(context.Background(), goodAccess, other); err == nil {
+		t.Error("a sign-out signed by another key was accepted by the verifier")
 	}
 }

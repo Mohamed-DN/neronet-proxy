@@ -130,7 +130,17 @@ func (t UnixTransport) Listen() (net.Listener, error) {
 		if fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() || st == nil {
 			return nil, fmt.Errorf("clientcore: %s is not a plain directory", inst)
 		}
-		if !t.testOpen && (st.Uid != t.OwnerUID || fi.Mode().Perm()&0o077 != 0) {
+		switch {
+		case t.testOpen:
+		case st.Uid == t.OwnerUID && fi.Mode().Perm()&0o077 == 0:
+		case st.Uid == euid && t.OwnerUID != euid && fi.Mode().Perm() == 0o700 && holdsOnlyOurSocket(inst):
+			// Made by an earlier start that stopped before handing it over: finish the job. Only a plain,
+			// private directory of the service with nothing in it (or only the socket) is completed; it is
+			// in a parent nobody else can write, so nobody can have swapped it.
+			if err := os.Lchown(inst, int(t.OwnerUID), -1); err != nil {
+				return nil, err
+			}
+		default:
 			return nil, fmt.Errorf("clientcore: %s must belong to the owner and be private (mode 0700); it is not repaired automatically", inst)
 		}
 	}
@@ -143,15 +153,40 @@ func (t UnixTransport) Listen() (net.Listener, error) {
 			return nil, err
 		}
 	}
-	// Created fully open: the owner's private directory is what keeps everyone else out, and there
-	// is no chmod or chown by path afterwards for a racer to redirect.
-	old := syscall.Umask(0)
+	// The process umask is not touched: it is shared with every other goroutine that creates a file. The
+	// socket is made with whatever it is, and then handed to its owner with Lchown, which never follows
+	// a symlink, so a path swapped in the meantime is changed itself and nothing it points at.
 	ln, err := net.Listen("unix", sock)
-	syscall.Umask(old)
 	if err != nil {
 		return nil, err
 	}
+	if t.OwnerUID != euid {
+		if err := os.Lchown(sock, int(t.OwnerUID), -1); err != nil {
+			_ = ln.Close()
+			return nil, err
+		}
+	}
+	if t.testOpen {
+		if err := os.Chmod(sock, 0o666); err != nil {
+			_ = ln.Close()
+			return nil, err
+		}
+	}
 	return ln, nil
+}
+
+// holdsOnlyOurSocket is true for an empty directory, or one that holds nothing but a stale socket.
+func holdsOnlyOurSocket(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.Name() != socketName || e.Type()&os.ModeSocket == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func peerOf(conn net.Conn) (Peer, error) {

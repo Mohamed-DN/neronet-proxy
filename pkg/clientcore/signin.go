@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/sovereign/proxy/v4/pkg/control"
@@ -177,7 +178,7 @@ type Console interface {
 	// Start asks for a code. key is the installation key, which proves possession at the console.
 	Start(ctx context.Context, req StartRequest, key *crypto.Keypair) (*DeviceCode, error)
 	// SignOut ends the app's session at the console, which also removes its node there.
-	SignOut(ctx context.Context, accessToken string) error
+	SignOut(ctx context.Context, accessToken string, key ed25519.PrivateKey) error
 	// VerifyURL turns the console's verification path into the address to show a person, and refuses
 	// anything that is not a path on the console itself.
 	VerifyURL(path string) (string, error)
@@ -190,7 +191,13 @@ type HTTPConsole struct {
 	base *url.URL
 	http *http.Client
 	ctl  *control.Client
+	// skew is how far the console's clock is ahead of ours, learned from its Date header when a signed
+	// request is refused for its time, so that the retry (and the requests after it) are right.
+	skew atomic.Int64
 }
+
+// now is the time to sign with: ours, corrected by what the console's clock was last seen to say.
+func (c *HTTPConsole) now() time.Time { return time.Now().Add(time.Duration(c.skew.Load())) }
 
 // NewHTTPConsole builds a client for a console base URL. caPEM, when given, is the only
 // trust root, as for the node agent; without it the system roots apply. Plain http is
@@ -276,7 +283,11 @@ func (c *HTTPConsole) do(ctx context.Context, method, path, bearer string, in, o
 			Code string `json:"code"`
 		}
 		_ = json.Unmarshal(raw, &e)
-		return &ConsoleError{Status: resp.StatusCode, Code: e.Code}
+		ce := &ConsoleError{Status: resp.StatusCode, Code: e.Code}
+		if t, err := http.ParseTime(resp.Header.Get("Date")); err == nil {
+			ce.ServerTime = t
+		}
+		return ce
 	}
 	if out == nil {
 		return nil
@@ -284,15 +295,34 @@ func (c *HTTPConsole) do(ctx context.Context, method, path, bearer string, in, o
 	return json.NewDecoder(bytes.NewReader(raw)).Decode(out)
 }
 
-// SignOut ends the app's session. A session the console no longer knows (401, 404) is already
-// ended, which is the outcome asked for.
-func (c *HTTPConsole) SignOut(ctx context.Context, accessToken string) error {
-	if !accessRe.MatchString(accessToken) {
-		return errors.New("malformed app token")
+// SignOutMessage is exactly what an installation signs to sign itself out: method, path, the hash of
+// its access token (never the token), the time and a random nonce. A leaked access token alone
+// cannot do this, so it cannot be used to delete the app's node.
+func SignOutMessage(accessToken string, timestamp int64, nonce string) []byte {
+	sum := sha256.Sum256([]byte(accessToken))
+	return []byte(strings.Join([]string{
+		"NERONET-APP-SIGNOUT-V1", "DELETE", "/api/app-auth/app/session",
+		hex.EncodeToString(sum[:]), fmt.Sprint(timestamp), nonce,
+	}, "\n"))
+}
+
+// SignOut ends the app's session, signed with the installation's key. A session the console no
+// longer knows (401, 404) is already ended, which is the outcome asked for.
+func (c *HTTPConsole) SignOut(ctx context.Context, accessToken string, key ed25519.PrivateKey) error {
+	if !accessRe.MatchString(accessToken) || len(key) != ed25519.PrivateKeySize {
+		return errors.New("malformed sign-out request")
 	}
-	err := c.do(ctx, http.MethodDelete, "/api/app-auth/app/session", accessToken, nil, nil)
+	nb := make([]byte, 16)
+	if _, err := rand.Read(nb); err != nil {
+		return err
+	}
+	nonce := hex.EncodeToString(nb)
+	ts := c.now().Unix()
+	body := map[string]any{"timestamp": ts, "nonce": nonce, "signature": hex.EncodeToString(ed25519.Sign(key, SignOutMessage(accessToken, ts, nonce)))}
+	err := c.do(ctx, http.MethodDelete, "/api/app-auth/app/session", accessToken, body, nil)
 	var ce *ConsoleError
-	if errors.As(err, &ce) && (ce.Status == http.StatusUnauthorized || ce.Status == http.StatusNotFound) {
+	// A session the console does not know answers 401 or 404; a signature it did not accept says so, and is an error.
+	if errors.As(err, &ce) && ce.Code != "signature_required" && (ce.Status == http.StatusUnauthorized || ce.Status == http.StatusNotFound) {
 		return nil
 	}
 	return err
@@ -318,6 +348,8 @@ var ErrRateLimited = errors.New("console is rate limiting this app")
 type ConsoleError struct {
 	Status int
 	Code   string
+	// ServerTime is the console's own clock as it answered (its Date header), zero if it sent none.
+	ServerTime time.Time
 }
 
 func (e *ConsoleError) Error() string {
@@ -383,26 +415,38 @@ func (c *HTTPConsole) Refresh(ctx context.Context, refreshToken string, key ed25
 	if !refreshRe.MatchString(refreshToken) || len(key) != ed25519.PrivateKeySize {
 		return nil, errors.New("malformed refresh request")
 	}
-	nb := make([]byte, 16)
-	if _, err := rand.Read(nb); err != nil {
-		return nil, err
+	for attempt := 0; ; attempt++ {
+		nb := make([]byte, 16)
+		if _, err := rand.Read(nb); err != nil {
+			return nil, err
+		}
+		nonce := hex.EncodeToString(nb)
+		ts := c.now().Unix()
+		sig := ed25519.Sign(key, RefreshMessage(refreshToken, ts, nonce))
+		var t struct {
+			AppToken
+			TokenType string `json:"token_type"`
+		}
+		req := map[string]any{"refresh_token": refreshToken, "timestamp": ts, "nonce": nonce, "signature": hex.EncodeToString(sig)}
+		err := c.post(ctx, "/api/app-auth/token/refresh", req, &t)
+		if err != nil {
+			// A plain refusal with the console's clock far from ours is a signature rejected for its time:
+			// take the console's time and ask once more. Any other refusal is not about the clock.
+			var ce *ConsoleError
+			if attempt == 0 && errors.As(err, &ce) && ce.Status == http.StatusUnauthorized && ce.Code == "invalid_refresh" && !ce.ServerTime.IsZero() {
+				if off := time.Until(ce.ServerTime); off > 5*time.Second || off < -5*time.Second {
+					c.skew.Store(int64(off))
+					continue
+				}
+			}
+			return nil, err
+		}
+		if !accessRe.MatchString(t.AccessToken) || !refreshRe.MatchString(t.RefreshToken) {
+			return nil, errors.New("console sent a malformed app token")
+		}
+		tok := t.AppToken
+		return &tok, nil
 	}
-	nonce := hex.EncodeToString(nb)
-	ts := time.Now().Unix()
-	sig := ed25519.Sign(key, RefreshMessage(refreshToken, ts, nonce))
-	var t struct {
-		AppToken
-		TokenType string `json:"token_type"`
-	}
-	req := map[string]any{"refresh_token": refreshToken, "timestamp": ts, "nonce": nonce, "signature": hex.EncodeToString(sig)}
-	if err := c.post(ctx, "/api/app-auth/token/refresh", req, &t); err != nil {
-		return nil, err
-	}
-	if !accessRe.MatchString(t.AccessToken) || !refreshRe.MatchString(t.RefreshToken) {
-		return nil, errors.New("console sent a malformed app token")
-	}
-	tok := t.AppToken
-	return &tok, nil
 }
 
 // WaitApproved polls until the person decides, honouring the console's interval and

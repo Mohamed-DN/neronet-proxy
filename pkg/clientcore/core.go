@@ -279,8 +279,13 @@ func (c *Core) finishSignIn(ctx context.Context, dc *DeviceCode) {
 	key, _ := c.keys()
 	en, err := c.cfg.Enroller.Enrol(enrolCtx, key, *res.Grant)
 	if err != nil {
-		_ = c.cfg.Store.DeleteKey(aliasToken)
-		c.fail("this device could not join the network")
+		// The console already holds a session for this app. A join that did not happen must not leave one
+		// behind, nor an unspent grant: end it (signed), and go on with new keys, since the console refuses
+		// a signed-out installation's key for good.
+		c.abortJoin()
+		if !errors.Is(err, context.Canceled) {
+			c.fail("this device could not join the network")
+		}
 		return
 	}
 	en.Account = res.Account.Username
@@ -296,6 +301,18 @@ func (c *Core) finishSignIn(ctx context.Context, dc *DeviceCode) {
 		s.Overlay = en.OverlayIPv4
 		s.Account = en.Account
 	})
+}
+
+// abortJoin ends the console session of an app that did not finish joining and replaces its keys.
+func (c *Core) abortJoin() {
+	if tok, err := c.loadToken(); err == nil {
+		_, sign := c.keys()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = c.cfg.Console.SignOut(ctx, tok.AccessToken, sign)
+		cancel()
+	}
+	_ = c.cfg.Store.DeleteKey(aliasToken)
+	_ = c.rotateKeys()
 }
 
 func (c *Core) storeToken(t AppToken) error {
@@ -334,10 +351,17 @@ func (c *Core) CancelSignIn() {
 	}
 }
 
-// RefreshNow rotates the app token. A network failure changes nothing, so the next try uses the
-// same token. The console refusing means the app was removed or its token was replayed: the sign-in
-// is forgotten, because every other call would be refused too.
+// RefreshNow rotates the app token. A network failure changes nothing, so the next try uses the same
+// token, and a plain refusal (a signature the console did not accept, for example for a wrong clock)
+// changes nothing either. When the console says it ended the approval, what is kept depends on why:
+//   - suspended: something that can be put right (a blocked device, a changed password, an expired
+//     lifetime). The installation and its keys are still good: they are kept and the person is asked
+//     to sign in again, which brings the same device back.
+//   - revoked: removed by the person or an administrator. Everything is forgotten and the keys are
+//     replaced, since the console refuses that key for good.
 func (c *Core) RefreshNow(ctx context.Context) error {
+	c.ops.Lock()
+	defer c.ops.Unlock()
 	tok, err := c.loadToken()
 	if err != nil {
 		return errors.New("not signed in")
@@ -347,9 +371,19 @@ func (c *Core) RefreshNow(ctx context.Context) error {
 	if err != nil {
 		var ce *ConsoleError
 		if errors.As(err, &ce) && ce.Status == 401 {
-			c.ops.Lock()
-			c.forget("this device was signed out by the console")
-			c.ops.Unlock()
+			switch ce.Code {
+			case "app_revoked":
+				if ferr := c.forget("This device was removed from your account. Install the app again to sign in."); ferr != nil {
+					return ferr
+				}
+				if rerr := c.rotateKeys(); rerr != nil {
+					return rerr
+				}
+			case "app_suspended":
+				if ferr := c.forget("Your approval ended. Sign in again to continue."); ferr != nil {
+					return ferr
+				}
+			}
 		}
 		return err
 	}
@@ -398,7 +432,8 @@ func (c *Core) Connect(ctx context.Context) error {
 		return c.cfg.Tunnel.Up(actx, UpRequest{Method: m, Exit: st.Exit, Key: key, NodeID: st.NodeID})
 	}, c.cfg.PerAttempt)
 	if errors.Is(err, ErrRevoked) {
-		c.forget("this device was removed from the network")
+		_ = c.forget("This device was removed from your account. Install the app again to sign in.")
+		_ = c.rotateKeys()
 		return ErrRevoked
 	}
 	if err != nil {
@@ -472,18 +507,26 @@ func (c *Core) SignOut(ctx context.Context, force bool) error {
 		return ctx.Err()
 	}
 	if tok, err := c.loadToken(); err == nil {
-		if err := c.cfg.Console.SignOut(ctx, tok.AccessToken); err != nil && !force {
+		_, sign := c.keys()
+		if err := c.cfg.Console.SignOut(ctx, tok.AccessToken, sign); err != nil && !force {
 			return fmt.Errorf("the console could not end this sign-in: %w", err)
 		}
 	}
 	_ = c.cfg.Tunnel.Down(ctx)
-	c.forget("")
+	if err := c.forget(""); err != nil {
+		return err
+	}
 	return c.rotateKeys()
 }
 
+// rotateKeys replaces both installation keys. It fails loudly if an old key cannot be removed from the
+// key store: carrying on would sign in again with a key the console has refused for good.
 func (c *Core) rotateKeys() error {
-	_ = c.cfg.Store.DeleteKey(aliasInstallation)
-	_ = c.cfg.Store.DeleteKey(aliasSigning)
+	for _, alias := range []string{aliasInstallation, aliasSigning} {
+		if err := c.cfg.Store.DeleteKey(alias); err != nil && !errors.Is(err, keystore.ErrKeyNotFound) {
+			return fmt.Errorf("clientcore: could not remove the old %s: %w", alias, err)
+		}
+	}
 	key, err := loadOrCreateKey(c.cfg.Store)
 	if err != nil {
 		return err
@@ -498,13 +541,18 @@ func (c *Core) rotateKeys() error {
 	return nil
 }
 
-func (c *Core) forget(msg string) {
-	_ = c.cfg.Store.DeleteKey(aliasToken)
-	_ = c.cfg.Store.DeleteKey(aliasEnrolment)
+func (c *Core) forget(msg string) error {
+	var failed error
+	for _, alias := range []string{aliasToken, aliasEnrolment} {
+		if err := c.cfg.Store.DeleteKey(alias); err != nil && !errors.Is(err, keystore.ErrKeyNotFound) && failed == nil {
+			failed = fmt.Errorf("clientcore: could not remove %s: %w", alias, err)
+		}
+	}
 	c.hub.Update(func(s *State) {
 		s.Phase = PhaseSignedOut
 		s.Message = msg
 		s.NodeID, s.Overlay, s.Method, s.UserCode, s.VerifyPath, s.Account = "", "", "", "", "", ""
 		s.KillSwitch = c.cfg.Tunnel.KillSwitch()
 	})
+	return failed
 }

@@ -334,3 +334,95 @@ func TestHelperClient(t *testing.T) {
 	}
 	fmt.Printf("SERVED {\"ok\":%v}\n", r.OK)
 }
+
+// What the owner reaches is a socket the service made without opening it to everybody: owned by the
+// owner, no write for anyone else.
+func TestSocketIsHandedToItsOwnerNotOpenedToEveryone(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("handing a socket to another user needs root")
+	}
+	run := runDir(t)
+	tr := UnixTransport{RunDir: run, OwnerUID: otherUID}
+	serveUnix(t, tr)
+	fi, err := os.Lstat(tr.SocketPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := fi.Sys().(*syscall.Stat_t); st.Uid != otherUID {
+		t.Errorf("the socket belongs to uid %d, not its owner", st.Uid)
+	}
+	if fi.Mode().Perm()&0o002 != 0 {
+		t.Errorf("the socket is writable by everybody: %v", fi.Mode().Perm())
+	}
+}
+
+// A crash between making the owner's directory and handing it over leaves a directory of the service.
+// The next start finishes the job instead of refusing for ever, but only for a plain, empty, private one.
+func TestAHalfMadeOwnerDirectoryIsCompletedSafely(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("handing a directory to another user needs root")
+	}
+	run := runDir(t)
+	inst := filepath.Join(run, fmt.Sprint(otherUID))
+	if err := os.Mkdir(inst, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tr := UnixTransport{RunDir: run, OwnerUID: otherUID}
+	serveUnix(t, tr)
+	if st := statOfPath(t, inst); st.Uid != otherUID {
+		t.Errorf("the half-made directory was not handed to its owner: uid %d", st.Uid)
+	}
+	// One that holds something is not completed: it is somebody's.
+	run2 := runDir(t)
+	inst2 := filepath.Join(run2, fmt.Sprint(otherUID))
+	if err := os.Mkdir(inst2, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inst2, "secret"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (UnixTransport{RunDir: run2, OwnerUID: otherUID}).Listen(); err == nil {
+		t.Error("a directory that holds files was taken over")
+	}
+	if st := statOfPath(t, inst2); st.Uid == otherUID {
+		t.Error("a directory that holds files was chowned")
+	}
+}
+
+func statOfPath(t *testing.T, p string) *syscall.Stat_t {
+	t.Helper()
+	fi, err := os.Lstat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fi.Sys().(*syscall.Stat_t)
+}
+
+// The service runs as root. A symlink planted where the socket belongs must not make it change the
+// owner or the mode of whatever the link points at.
+func TestASymlinkAtTheSocketPathLeavesItsTargetUntouched(t *testing.T) {
+	run := runDir(t)
+	tr := UnixTransport{RunDir: run, OwnerUID: me()}
+	inst := filepath.Dir(tr.SocketPath())
+	if err := os.Mkdir(inst, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(filepath.Dir(run), "victim")
+	if err := os.WriteFile(victim, []byte("precious"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	before := statOfPath(t, victim)
+	if err := os.Symlink(victim, tr.SocketPath()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tr.Listen(); err == nil {
+		t.Error("listened over a symlink")
+	}
+	after := statOfPath(t, victim)
+	if after.Uid != before.Uid || after.Mode != before.Mode {
+		t.Errorf("the target of the symlink was changed: %o/%d -> %o/%d", before.Mode, before.Uid, after.Mode, after.Uid)
+	}
+	if b, _ := os.ReadFile(victim); string(b) != "precious" {
+		t.Error("the target was damaged")
+	}
+}
