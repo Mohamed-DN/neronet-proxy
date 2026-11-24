@@ -30,7 +30,9 @@ async function createPreAuthKey({
   allowedRole = null,
   isReusable = false,
   maxUses = null,
-  expiresInHours = 24
+  expiresInHours = 24,
+  boundPublicKey = null,
+  client = null
 }) {
   if (!ownerId) {
     throw new Error('ownerId is required to create a pre-auth key');
@@ -46,12 +48,24 @@ async function createPreAuthKey({
   const effectiveMaxUses = isReusable ? (maxUses ? Number(maxUses) : null) : 1;
   const orgId = organizationId || 'org-default';
 
-  const pool = getPgPool();
-  const inserted = await pool.query(
+  // An app's grant names the one key it may enrol; ordinary keys leave this null.
+  const bound = boundPublicKey ? String(boundPublicKey).toLowerCase() : null;
+  const inserted = await (client || getPgPool()).query(
     `INSERT INTO preauth_keys
-       (id, key_hash, key_prefix, owner_id, organization_id, allowed_role, is_reusable, used_count, max_uses, expires_at, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, NOW()) RETURNING organization_id`,
-    [keyId, keyHash, keyPrefix, ownerId, orgId, allowedRole || null, Boolean(isReusable), effectiveMaxUses, expiresAt]
+       (id, key_hash, key_prefix, owner_id, organization_id, allowed_role, is_reusable, used_count, max_uses, expires_at, created_at, bound_public_key)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, NOW(), $10) RETURNING organization_id`,
+    [
+      keyId,
+      keyHash,
+      keyPrefix,
+      ownerId,
+      orgId,
+      allowedRole || null,
+      Boolean(isReusable),
+      effectiveMaxUses,
+      expiresAt,
+      bound
+    ]
   );
 
   return {
@@ -74,7 +88,8 @@ async function validateAndConsumePreAuthKey(
   secret,
   requestedRole = null,
   targetOwnerId = null,
-  transactionClient = null
+  transactionClient = null,
+  presentedPublicKey = null
 ) {
   if (!secret || typeof secret !== 'string') {
     return { ok: false, status: 401, error: 'pre-auth key is required' };
@@ -122,6 +137,11 @@ async function validateAndConsumePreAuthKey(
         status: 403,
         error: `pre-auth key restricts enrolment to role '${key.allowed_role}', cannot enrol as '${requestedRole}'`
       };
+    }
+
+    if (key.bound_public_key && key.bound_public_key !== String(presentedPublicKey || '').toLowerCase()) {
+      if (!transactionClient) await client.query('ROLLBACK');
+      return { ok: false, status: 403, error: 'pre-auth key was issued for a different key' };
     }
 
     if (targetOwnerId && key.owner_id !== targetOwnerId) {

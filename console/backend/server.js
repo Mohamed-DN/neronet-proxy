@@ -42,6 +42,7 @@ const devicesRoutes = require('./routes/devices');
 const compartmentsRoutes = require('./routes/compartments');
 const connectionOrderRoutes = require('./routes/connectionOrder');
 const dropRoutes = require('./routes/drop');
+const appAuthRoutes = require('./routes/appAuth');
 const ModuleLoader = require('./services/ModuleLoader');
 const securityHeaders = require('./middleware/securityHeaders');
 const { requireFeature } = require('./middleware/featureFlag');
@@ -113,6 +114,7 @@ function createApp() {
   app.use('/api/compartments', compartmentsRoutes);
   app.use('/api/connection-order', connectionOrderRoutes);
   app.use('/api/drop', dropRoutes);
+  app.use('/api/app-auth', appAuthRoutes);
 
   // Load and mount discrete feature modules (WP-107: nuke, onion, deniability)
   ModuleLoader.loadModules(app);

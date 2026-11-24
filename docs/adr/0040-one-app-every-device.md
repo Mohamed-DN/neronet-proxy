@@ -72,3 +72,28 @@ double click; the download page says so plainly.
   and are removed once the core covers them.
 - Two new attack surfaces, the app token and the local API, get their own tests before any interface.
 - Feature work happens once in the core and once in the desktop interface, instead of four times.
+
+## Phase 0 as built (23 November 2026)
+
+Slice A, console (migration 059): `POST /api/app-auth/device/start|poll`, `token/refresh`, and for a
+signed-in person `device/lookup|approve|deny`, `GET /sessions`, `DELETE /sessions/:id`; the app's own
+routes live under `/api/app-auth/app/*`. Choices worth knowing:
+
+- An app token (`nna_`, refresh `nnr_`) is an opaque secret, not a console JWT. No console route reads it,
+  so reaching admin or NeroNuke with it is impossible by construction; a test walks the whole route
+  table and checks it gains nothing over no credential at all. Hashes only are stored.
+- The enrolment grant is the existing single-use pre-auth key, now bound to the installation public key
+  (`preauth_keys.bound_public_key`), so it enrols exactly one node, owned by the approving person in
+  their organisation. Registration itself proves possession of the key.
+- Approval needs a fresh TOTP (or recovery) code when the account has a second factor or must have one;
+  an account that must have one and has none is refused with `mfa_setup_required`.
+- Replaying a replaced refresh token revokes the app and cuts its node. Revoking from the console uses
+  the existing key revocation path (revoked key to every peer, credentials dead, ACL epoch bumped).
+- Binding of a refresh to the installation is by public key match, not by a fresh proof of possession.
+
+Slice B, `pkg/clientcore`: device-code client, enrolment through `pkg/control`, connection order walk
+(each method once, bounded, forced means first only, a removed device never falls back), state stream,
+and the versioned local API (newline-delimited JSON, strict decoding) over a `Transport` interface with
+a Linux unix-socket implementation (0600 file, peer credentials checked). The Windows named pipe is
+phase 1. Starting the real tunnel from the core (reusing the netmap manager that still lives in
+`cmd/sovereign-node`'s `main` package) and the real-stack end-to-end proof are not done yet.

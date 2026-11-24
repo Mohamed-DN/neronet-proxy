@@ -295,4 +295,33 @@ async function complete(caller, { code, recovery_code, ipAddress }, browser = nu
   });
 }
 
-module.exports = { signIn, resolveCaller, setup, complete };
+// A fresh second-factor proof for a person who is already signed in, for one sensitive
+// step (approving an app). It opens no session and changes nothing but a spent recovery
+// code. Returns 'ok', 'required' (no code given), 'invalid' or 'setup' (the account must
+// have a second factor and has none enrolled).
+async function verifyFreshProof(userId, { code, recovery_code } = {}) {
+  const loaded = await getPgPool().query('SELECT * FROM users WHERE id=$1', [userId]);
+  const snapshot = loaded.rows[0];
+  if (!snapshot || snapshot.status !== 'active') return 'invalid';
+  if (!(await MfaPolicy.isMfaRequired(snapshot))) return 'ok';
+  if (!snapshot.totp_enabled) return 'setup';
+  const hasCode = typeof code === 'string' && code.length > 0;
+  const hasRecovery = typeof recovery_code === 'string' && recovery_code.length > 0;
+  if (!hasCode && !hasRecovery) return 'required';
+  if (hasRecovery) {
+    return Sessions.transaction(async (client) => {
+      const user = await lockedUser(client, userId);
+      const consumed = TotpService.verifyAndConsumeRecoveryCode(recovery_code, parseCodes(user.totp_recovery_codes));
+      if (!consumed.valid) return 'invalid';
+      await client.query('UPDATE users SET totp_recovery_codes=$2::jsonb WHERE id=$1', [
+        userId,
+        JSON.stringify(consumed.remainingCodes)
+      ]);
+      return 'ok';
+    });
+  }
+  const secret = await openSecret(snapshot, snapshot.totp_secret);
+  return TotpService.verifyTotp(String(code), secret) ? 'ok' : 'invalid';
+}
+
+module.exports = { signIn, resolveCaller, setup, complete, verifyFreshProof };

@@ -240,6 +240,57 @@ const enrolmentLimiter = rateLimit({
   keyFn: clientIp
 });
 
+// App sign-in (ADR 0040). Starting is public and writes a row, so it is metered by address.
+// Polling is every few seconds per app, so it is metered per device code (hashed), not by
+// the address a whole office shares. Typing a code is the thing that can be guessed, so
+// looking up, approving and denying share one small budget per signed-in person.
+const appSigninStartLimiter = rateLimit({
+  name: 'app-signin-start',
+  limit: 30,
+  windowMs: 15 * 60_000,
+  failClosed: true,
+  message: 'too many sign-in requests from this address',
+  keyFn: clientIp
+});
+
+const appSigninPollLimiter = rateLimit({
+  name: 'app-signin-poll',
+  limit: 240,
+  windowMs: 10 * 60_000,
+  failClosed: true,
+  message: 'too many sign-in polls',
+  keyFn: (req) => {
+    const code = typeof req.body?.device_code === 'string' ? req.body.device_code : '';
+    if (/^[0-9a-f]{64}$/.test(code))
+      return `code:${crypto.createHash('sha256').update(code).digest('hex').slice(0, 32)}`;
+    const ip = clientIp(req);
+    return ip ? `address:${ip}` : null;
+  }
+});
+
+const appCodeAttemptLimiter = rateLimit({
+  name: 'app-code-attempt',
+  limit: 20,
+  windowMs: 15 * 60_000,
+  failClosed: true,
+  message: 'too many code attempts; wait before trying again',
+  keyFn: (req) => {
+    const id = req.user?.id;
+    if (typeof id === 'string' && id) return `user:${id}`;
+    const ip = clientIp(req);
+    return ip ? `address:${ip}` : null;
+  }
+});
+
+const appRefreshLimiter = rateLimit({
+  name: 'app-refresh',
+  limit: 60,
+  windowMs: 10 * 60_000,
+  failClosed: true,
+  message: 'too many token refreshes from this address',
+  keyFn: clientIp
+});
+
 /**
  * The identity a node presents on authenticated control traffic: a digest of its
  * bearer credential together with the node id it claims. Hashing keeps the credential
@@ -375,6 +426,10 @@ module.exports = {
   registerLimiter,
   invitationAcceptLimiter,
   enrolmentLimiter,
+  appSigninStartLimiter,
+  appSigninPollLimiter,
+  appCodeAttemptLimiter,
+  appRefreshLimiter,
   apiLimiter,
   writeLimiter,
   dmsUnlockLimiter,

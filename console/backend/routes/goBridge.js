@@ -213,7 +213,8 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
           preauthKey,
           requestedRole,
           existing[0]?.user_id,
-          client
+          client,
+          publicKeyHex
         );
         if (!preauthResult.ok) {
           throw EnrollmentService.denied(preauthResult.status || 401, preauthResult.error);
