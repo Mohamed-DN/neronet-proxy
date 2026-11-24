@@ -107,7 +107,10 @@ func TestGatewayMeasuresAnAnsweringDeviceAndReportsNoReplyForOneThatDropsICMP(t 
 
 	// The silent device: drive a handshake with its own traffic, then ping it.
 	for ctx.Err() == nil {
-		_, _ = silent.dev.Ping(ctx, gateway.addr) // gateway answers; the handshake completes
+		// The reply is dropped by the silent device itself, so bound each ping.
+		hs, cancelHS := context.WithTimeout(ctx, 500*time.Millisecond)
+		_, _ = silent.dev.Ping(hs, gateway.addr) // the handshake completes on the way
+		cancelHS()
 		if !targetFor("dev-silent", silent).LastHandshake.IsZero() {
 			break
 		}

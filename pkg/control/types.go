@@ -195,15 +195,15 @@ type RelayHome struct {
 // They are cumulative uint64 values sent as decimal strings, as NativeTelemetry
 // does: the control plane is JavaScript, and a JSON number above 2^53 is rounded.
 type PeerPathObservation struct {
-	PeerID            string   `json:"peer_id"`
-	Transport         string   `json:"transport,omitempty"`
-	RelayID           string   `json:"relay_id,omitempty"`
-	LastHandshakeUnix *int64   `json:"last_handshake_unix" jsonschema:"nullable"`
-	WGRxBytes         string   `json:"wg_rx_bytes"`
-	WGTxBytes         string   `json:"wg_tx_bytes"`
-	ObservedAtUnix    int64    `json:"observed_at_unix"`
-	State             string   `json:"state"`
-	Reason            string   `json:"reason,omitempty"`
+	PeerID            string `json:"peer_id"`
+	Transport         string `json:"transport,omitempty"`
+	RelayID           string `json:"relay_id,omitempty"`
+	LastHandshakeUnix *int64 `json:"last_handshake_unix" jsonschema:"nullable"`
+	WGRxBytes         string `json:"wg_rx_bytes"`
+	WGTxBytes         string `json:"wg_tx_bytes"`
+	ObservedAtUnix    int64  `json:"observed_at_unix"`
+	State             string `json:"state"`
+	Reason            string `json:"reason,omitempty"`
 	// RTTMillis is a ping this gateway sent through its own tunnel to the peer, and
 	// RTTObservedAtUnix is when it was sent. A reply gives a number; a ping that got no
 	// answer in the timeout gives a null RTTMillis with its time (no reply, never a
