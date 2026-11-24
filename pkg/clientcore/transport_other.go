@@ -5,7 +5,6 @@ package clientcore
 import (
 	"errors"
 	"net"
-	"os"
 )
 
 // ErrNoTransport is returned on platforms whose local transport is not built yet: the
@@ -16,14 +15,20 @@ var ErrNoTransport = errors.New("clientcore: no secure local transport on this p
 
 // UnixTransport is not available here.
 type UnixTransport struct {
-	Path      string
+	RunDir    string
 	OwnerUID  uint32
 	AdmitRoot bool
-	FileMode  os.FileMode
+	testOpen  bool
 }
+
+// SocketPath has no meaning here.
+func (UnixTransport) SocketPath() string { return "" }
 
 // Listen always refuses.
 func (UnixTransport) Listen() (net.Listener, error) { return nil, ErrNoTransport }
 
 // Authorize always refuses.
 func (UnixTransport) Authorize(net.Conn) (Peer, error) { return Peer{}, ErrNoTransport }
+
+// DialUnix always refuses.
+func DialUnix(string, uint32) (net.Conn, error) { return nil, ErrNoTransport }

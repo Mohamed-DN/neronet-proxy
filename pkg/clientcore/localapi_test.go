@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -17,7 +18,9 @@ type memTransport struct {
 	deny  bool
 }
 
-func (m *memTransport) Listen() (net.Listener, error) { return &memListener{m: m}, nil }
+func (m *memTransport) Listen() (net.Listener, error) {
+	return &memListener{m: m, done: make(chan struct{})}, nil
+}
 func (m *memTransport) Authorize(net.Conn) (Peer, error) {
 	if m.deny {
 		return Peer{}, errors.New("no")
@@ -25,16 +28,24 @@ func (m *memTransport) Authorize(net.Conn) (Peer, error) {
 	return Peer{}, nil
 }
 
-type memListener struct{ m *memTransport }
+type memListener struct {
+	m    *memTransport
+	once sync.Once
+	done chan struct{}
+}
 
 func (l *memListener) Accept() (net.Conn, error) {
-	c, ok := <-l.m.conns
-	if !ok {
+	select {
+	case c, ok := <-l.m.conns:
+		if !ok {
+			return nil, net.ErrClosed
+		}
+		return c, nil
+	case <-l.done:
 		return nil, net.ErrClosed
 	}
-	return c, nil
 }
-func (l *memListener) Close() error   { return nil }
+func (l *memListener) Close() error   { l.once.Do(func() { close(l.done) }); return nil }
 func (l *memListener) Addr() net.Addr { return &net.UnixAddr{Name: "mem", Net: "unix"} }
 
 func startServer(t *testing.T, core *Core, tr *memTransport) (connect func() *Client) {
@@ -157,4 +168,51 @@ func TestAPIWatchStreamsStateChanges(t *testing.T) {
 	if err != nil || next.State.Exit != "roma" {
 		t.Fatalf("second frame: %+v %v", next, err)
 	}
+}
+
+func TestAPIStrictArgumentsOnEveryCommand(t *testing.T) {
+	core := apiCore(t)
+	tr := &memTransport{conns: make(chan net.Conn, 16)}
+	connect := startServer(t, core, tr)
+	for _, cmd := range []string{"state.get", "signin.start", "signin.cancel", "connect", "disconnect", "signout"} {
+		cl := connect()
+		line := `{"v":1,"id":"1","cmd":"` + cmd + `","args":{"surprise":true}}` + "\n"
+		r, err := cl.Raw([]byte(line))
+		cl.Close()
+		if err != nil || r.OK || r.Code != "bad_args" {
+			t.Errorf("%s accepted an argument it does not define: %+v %v", cmd, r, err)
+		}
+	}
+	cl := connect()
+	defer cl.Close()
+	r, err := cl.Raw([]byte(`{"v":1,"id":"1","cmd":"signout","args":{"force":"yes"}}` + "\n"))
+	if err != nil || r.OK || r.Code != "bad_args" {
+		t.Errorf("a mistyped force was accepted: %+v %v", r, err)
+	}
+	if core.State().Phase != PhaseDisconnected {
+		t.Errorf("rejected commands changed the state: %s", core.State().Phase)
+	}
+}
+
+func TestServeShutsDownPromptlyEvenWithIdleConnections(t *testing.T) {
+	core := apiCore(t)
+	tr := &memTransport{conns: make(chan net.Conn, 4)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = NewServer(core, tr).Serve(ctx); close(done) }()
+	a, b := net.Pipe()
+	tr.conns <- b
+	cl := NewClient(a)
+	if r, err := cl.Do("state.get", nil); err != nil || !r.OK {
+		t.Fatal(err)
+	}
+	// The connection is now idle, held open by a client that never says anything more.
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Serve did not return while a client held a connection open")
+	}
+	close(tr.conns)
+	_ = a.Close()
 }

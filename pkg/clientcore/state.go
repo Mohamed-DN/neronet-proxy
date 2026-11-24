@@ -36,6 +36,7 @@ type State struct {
 	Method     Method            `json:"method,omitempty"`
 	Exit       string            `json:"exit,omitempty"`
 	NodeID     string            `json:"node_id,omitempty"`
+	Account    string            `json:"account,omitempty"`
 	Overlay    string            `json:"overlay_address,omitempty"`
 	KillSwitch KillSwitchState   `json:"kill_switch"`
 	Order      Order             `json:"order"`

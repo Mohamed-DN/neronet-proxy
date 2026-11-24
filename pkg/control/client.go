@@ -367,6 +367,44 @@ func registrationProof(derivedKey, nonce []byte, nodePub [crypto.KeySize]byte, r
 	return mac.Sum(nil)
 }
 
+// proofFromChallenge answers a challenge: HMAC(HKDF(X25519(node private, control plane public)),
+// nonce || node public || role). Only the holder of the private key can compute it, and the role
+// is covered, so a proof made for one purpose is no proof for another.
+func proofFromChallenge(ch *ChallengeResponse, nodePriv, nodePub [crypto.KeySize]byte, role string) (string, error) {
+	rawCpPub, err := hex.DecodeString(ch.ControlPlanePubHex)
+	if err != nil || len(rawCpPub) != 32 {
+		return "", fmt.Errorf("invalid control plane public key: %v", err)
+	}
+	sharedSecret, err := curve25519.X25519(nodePriv[:], rawCpPub)
+	if err != nil {
+		return "", fmt.Errorf("Diffie-Hellman derivation failed: %w", err)
+	}
+	hkdfReader := hkdf.New(sha256.New, sharedSecret, nil, []byte("neronet/v4/register"))
+	derivedKey := make([]byte, 32)
+	if _, err := io.ReadFull(hkdfReader, derivedKey); err != nil {
+		return "", fmt.Errorf("HKDF key derivation failed: %w", err)
+	}
+	nonceBytes, err := hex.DecodeString(ch.Nonce)
+	if err != nil {
+		return "", fmt.Errorf("invalid nonce hex: %w", err)
+	}
+	return hex.EncodeToString(registrationProof(derivedKey, nonceBytes, nodePub, role)), nil
+}
+
+// ProveKey fetches a challenge and proves possession of the private key for a purpose other than
+// registering (the app's sign-in). The nonce and proof go to the endpoint that asked for them.
+func (c *Client) ProveKey(ctx context.Context, nodePriv, nodePub [crypto.KeySize]byte, role string) (nonce, proof string, err error) {
+	ch, err := c.GetChallenge(ctx)
+	if err != nil {
+		return "", "", fmt.Errorf("failed fetching challenge: %w", err)
+	}
+	proof, err = proofFromChallenge(ch, nodePriv, nodePub, role)
+	if err != nil {
+		return "", "", err
+	}
+	return ch.Nonce, proof, nil
+}
+
 // RegisterWithProof enrols a node using the ADR 0017 challenge-response proof of
 // possession. It is the only way to register: the control plane refuses a
 // registration that does not prove the node holds its private key.
@@ -419,23 +457,10 @@ func (c *Client) RegisterWithProof(
 		}
 	}
 
-	sharedSecret, err := curve25519.X25519(nodePriv[:], rawCpPub)
+	proofHex, err := proofFromChallenge(ch, nodePriv, nodePub, role)
 	if err != nil {
-		return nil, fmt.Errorf("Diffie-Hellman derivation failed: %w", err)
+		return nil, err
 	}
-
-	hkdfReader := hkdf.New(sha256.New, sharedSecret, nil, []byte("neronet/v4/register"))
-	derivedKey := make([]byte, 32)
-	if _, err := io.ReadFull(hkdfReader, derivedKey); err != nil {
-		return nil, fmt.Errorf("HKDF key derivation failed: %w", err)
-	}
-
-	nonceBytes, err := hex.DecodeString(ch.Nonce)
-	if err != nil {
-		return nil, fmt.Errorf("invalid nonce hex: %w", err)
-	}
-
-	proofHex := hex.EncodeToString(registrationProof(derivedKey, nonceBytes, nodePub, role))
 
 	reqBody := RegisterRequest{
 		PublicKeyHex:  hex.EncodeToString(nodePub[:]),

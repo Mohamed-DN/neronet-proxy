@@ -56,21 +56,37 @@ func (s *memStore) DeleteKey(a string) error {
 func (s *memStore) BackendType() string { return "memory" }
 
 type fakeConsole struct {
-	mu       sync.Mutex
-	polls    []PollResult
-	pollErr  error
-	started  []StartRequest
-	startErr error
+	mu         sync.Mutex
+	polls      []PollResult
+	pollErr    error
+	started    []StartRequest
+	startErr   error
+	signedOut  []string
+	signOutErr error
+	refreshed  int
+	refreshTok *AppToken
+	refreshErr error
 }
 
-func (f *fakeConsole) Start(_ context.Context, r StartRequest) (*DeviceCode, error) {
+func (f *fakeConsole) SignOut(_ context.Context, access string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.signedOut = append(f.signedOut, access)
+	return f.signOutErr
+}
+
+func (f *fakeConsole) VerifyURL(path string) (string, error) {
+	return "https://console.example.com" + path, nil
+}
+
+func (f *fakeConsole) Start(_ context.Context, r StartRequest, _ *crypto.Keypair) (*DeviceCode, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.started = append(f.started, r)
 	if f.startErr != nil {
 		return nil, f.startErr
 	}
-	return &DeviceCode{DeviceCode: goodDevice, UserCode: "ABCD-EFGH", VerificationURI: "/collega", VerificationURIComplete: "/collega?code=ABCD-EFGH", Interval: 1, ExpiresIn: 600}, nil
+	return &DeviceCode{DeviceCode: goodDevice, UserCode: "ABCD-EFGH", VerificationURI: "/collega", VerificationURIComplete: "/collega#code=ABCD-EFGH", Interval: 1, ExpiresIn: 600}, nil
 }
 func (f *fakeConsole) Poll(context.Context, string) (*PollResult, error) {
 	f.mu.Lock()
@@ -86,13 +102,20 @@ func (f *fakeConsole) Poll(context.Context, string) (*PollResult, error) {
 	return &p, nil
 }
 func (f *fakeConsole) Refresh(context.Context, string, ed25519.PrivateKey) (*AppToken, error) {
-	return nil, errors.New("not used")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.refreshed++
+	if f.refreshErr != nil {
+		return nil, f.refreshErr
+	}
+	return f.refreshTok, nil
 }
 
 func approved() PollResult {
 	return PollResult{Status: "approved",
-		Token: &AppToken{AccessToken: goodAccess, RefreshToken: goodRefresh, ExpiresIn: 3600, RefreshExpiresIn: 86400, Scopes: []string{"app:self"}},
-		Grant: &Grant{PreauthKey: goodGrant, NodeID: "pk_0123456789abcdef", Role: "CLIENT_ORIGIN"}}
+		Token:   &AppToken{AccessToken: goodAccess, RefreshToken: goodRefresh, ExpiresIn: 3600, RefreshExpiresIn: 86400, Scopes: []string{"app:self"}},
+		Grant:   &Grant{PreauthKey: goodGrant, NodeID: "pk_0123456789abcdef", Role: "CLIENT_ORIGIN"},
+		Account: &Account{Username: "carla", OrganizationID: "org-a"}}
 }
 
 type fakeEnroller struct {
@@ -142,6 +165,17 @@ func (t *fakeTunnel) KillSwitch() KillSwitchState {
 	}
 	return t.killState
 }
+
+func testKey() *crypto.Keypair {
+	kp, err := crypto.GenerateKeypair()
+	if err != nil {
+		panic(err)
+	}
+	return kp
+}
+
+// controlPlanePub is a usable control plane X25519 public key for a fake console.
+func controlPlanePub() string { return hex.EncodeToString(testKey().PublicKey[:]) }
 
 func instantSleep(ctx context.Context, _ time.Duration) error { return ctx.Err() }
 
@@ -220,16 +254,19 @@ func TestHTTPConsoleStartAndPollAgainstTheWireShape(t *testing.T) {
 	var gotStart StartRequest
 	c := consoleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/v4/control/challenge":
+			_, _ = fmt.Fprintf(w, `{"nonce":%q,"cp_public_key":%q,"expires_at":"2099-01-01T00:00:00Z"}`, goodDevice, controlPlanePub())
 		case "/api/app-auth/device/start":
 			_ = json.NewDecoder(r.Body).Decode(&gotStart)
-			_, _ = fmt.Fprintf(w, `{"device_code":%q,"user_code":"ABCD-EFGH","verification_uri":"/collega","verification_uri_complete":"/collega?code=ABCD-EFGH","interval":5,"expires_in":600,"public_key_hex":%q}`, goodDevice, goodDevice)
+			_, _ = fmt.Fprintf(w, `{"device_code":%q,"user_code":"ABCD-EFGH","verification_uri":"/collega","verification_uri_complete":"/collega#code=ABCD-EFGH","interval":5,"expires_in":600,"public_key_hex":%q}`, goodDevice, goodDevice)
 		case "/api/app-auth/device/poll":
-			_, _ = fmt.Fprintf(w, `{"status":"approved","app_token":{"token_type":"Bearer","access_token":%q,"expires_in":3600,"refresh_token":%q,"refresh_expires_in":86400,"scopes":["app:self"]},"enrolment":{"preauth_key":%q,"node_id":"pk_0123456789abcdef","role":"CLIENT_ORIGIN"},"account":{"username":"x"}}`, goodAccess, goodRefresh, goodGrant)
+			_, _ = fmt.Fprintf(w, `{"status":"approved","app_token":{"token_type":"Bearer","access_token":%q,"expires_in":3600,"refresh_token":%q,"refresh_expires_in":86400,"scopes":["app:self"]},"enrolment":{"preauth_key":%q,"node_id":"pk_0123456789abcdef","role":"CLIENT_ORIGIN"},"account":{"username":"carla","organization_id":"org-a"}}`, goodAccess, goodRefresh, goodGrant)
 		default:
 			http.NotFound(w, r)
 		}
 	})
-	dc, err := c.Start(context.Background(), StartRequest{Platform: "windows", DeviceName: "Desk PC", PublicKeyHex: goodDevice, SigningKeyHex: goodDevice})
+	kp := testKey()
+	dc, err := c.Start(context.Background(), StartRequest{Platform: "windows", DeviceName: "Desk PC", PublicKeyHex: hex.EncodeToString(kp.PublicKey[:]), SigningKeyHex: goodDevice}, kp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,17 +281,26 @@ func TestHTTPConsoleStartAndPollAgainstTheWireShape(t *testing.T) {
 
 func TestHTTPConsoleRejectsAHostileAnswer(t *testing.T) {
 	cases := map[string]string{
-		"verification on another host": `{"device_code":"` + goodDevice + `","user_code":"ABCD-EFGH","verification_uri":"//evil.example/x","interval":5,"expires_in":600}`,
-		"scheme-relative":              `{"device_code":"` + goodDevice + `","user_code":"ABCD-EFGH","verification_uri":"https://evil.example/x","interval":5,"expires_in":600}`,
-		"short device code":            `{"device_code":"abc","user_code":"ABCD-EFGH","verification_uri":"/collega","interval":5,"expires_in":600}`,
-		"bad user code":                `{"device_code":"` + goodDevice + `","user_code":"hello","verification_uri":"/collega","interval":5,"expires_in":600}`,
-		"interval absurd":              `{"device_code":"` + goodDevice + `","user_code":"ABCD-EFGH","verification_uri":"/collega","interval":0,"expires_in":600}`,
-		"not json":                     `<html>`,
+		"verification on another host":  `{"device_code":"` + goodDevice + `","user_code":"ABCD-EFGH","verification_uri":"//evil.example/x","interval":5,"expires_in":600}`,
+		"scheme-relative":               `{"device_code":"` + goodDevice + `","user_code":"ABCD-EFGH","verification_uri":"https://evil.example/x","interval":5,"expires_in":600}`,
+		"short device code":             `{"device_code":"abc","user_code":"ABCD-EFGH","verification_uri":"/collega","interval":5,"expires_in":600}`,
+		"bad user code":                 `{"device_code":"` + goodDevice + `","user_code":"hello","verification_uri":"/collega","interval":5,"expires_in":600}`,
+		"interval absurd":               `{"device_code":"` + goodDevice + `","user_code":"ABCD-EFGH","verification_uri":"/collega","interval":0,"expires_in":600}`,
+		"not json":                      `<html>`,
+		"complete address with a query": `{"device_code":"` + goodDevice + `","user_code":"ABCD-EFGH","verification_uri":"/collega","verification_uri_complete":"/collega?code=ABCD-EFGH","interval":5,"expires_in":600}`,
+		"complete address elsewhere":    `{"device_code":"` + goodDevice + `","user_code":"ABCD-EFGH","verification_uri":"/collega","verification_uri_complete":"//evil.example/collega","interval":5,"expires_in":600}`,
 	}
 	for name, body := range cases {
 		body := body
-		c := consoleServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) })
-		if _, err := c.Start(context.Background(), StartRequest{Platform: "linux", DeviceName: "x", PublicKeyHex: goodDevice, SigningKeyHex: goodDevice}); err == nil {
+		c := consoleServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v4/control/challenge" {
+				_, _ = fmt.Fprintf(w, `{"nonce":%q,"cp_public_key":%q,"expires_at":"2099-01-01T00:00:00Z"}`, goodDevice, controlPlanePub())
+				return
+			}
+			_, _ = w.Write([]byte(body))
+		})
+		kp := testKey()
+		if _, err := c.Start(context.Background(), StartRequest{Platform: "linux", DeviceName: "x", PublicKeyHex: hex.EncodeToString(kp.PublicKey[:]), SigningKeyHex: goodDevice}, kp); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
@@ -633,5 +679,178 @@ func TestStateStreamDeliversTheLatestToASlowWatcher(t *testing.T) {
 	}
 	if last.Message != "49" {
 		t.Errorf("slow watcher is left with %q", last.Message)
+	}
+}
+
+// ---- findings of the independent review -------------------------------------------------------
+
+func TestStartProvesPossessionOfTheInstallationKey(t *testing.T) {
+	var sawChallenge bool
+	var start map[string]any
+	c := consoleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v4/control/challenge":
+			sawChallenge = true
+			_, _ = fmt.Fprintf(w, `{"nonce":%q,"cp_public_key":%q,"expires_at":"2099-01-01T00:00:00Z"}`, goodDevice, controlPlanePub())
+		case "/api/app-auth/device/start":
+			_ = json.NewDecoder(r.Body).Decode(&start)
+			_, _ = fmt.Fprintf(w, `{"device_code":%q,"user_code":"ABCD-EFGH","verification_uri":"/collega","verification_uri_complete":"/collega#code=ABCD-EFGH","interval":5,"expires_in":600}`, goodDevice)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	kp := testKey()
+	req := StartRequest{Platform: "linux", DeviceName: "x", PublicKeyHex: hex.EncodeToString(kp.PublicKey[:]), SigningKeyHex: goodDevice}
+	if _, err := c.Start(context.Background(), req, kp); err != nil {
+		t.Fatal(err)
+	}
+	if !sawChallenge {
+		t.Error("start did not fetch a challenge")
+	}
+	if n, _ := start["nonce"].(string); n != goodDevice {
+		t.Errorf("the challenge nonce was not sent: %v", start["nonce"])
+	}
+	if p, _ := start["proof"].(string); !hex64.MatchString(p) {
+		t.Errorf("no proof of possession sent: %v", start["proof"])
+	}
+	// A key that is not the installation's cannot be proven.
+	if _, err := c.Start(context.Background(), req, testKey()); err == nil {
+		t.Error("start accepted a key pair that does not match the key it names")
+	}
+}
+
+func TestVerifyURLStaysOnTheConsole(t *testing.T) {
+	c, err := NewHTTPConsole("https://console.example.com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, err := c.VerifyURL("/collega#code=ABCD-EFGH"); err != nil || u != "https://console.example.com/collega#code=ABCD-EFGH" {
+		t.Errorf("%q %v", u, err)
+	}
+	for _, bad := range []string{"", "collega", "//evil.example/x", "https://evil.example/x", "/a\r\nb", "/collega?code=ABCD-EFGH", "/\\evil.example", "/x y"} {
+		if _, err := c.VerifyURL(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
+
+func TestStateNamesTheAccountTheAppJoined(t *testing.T) {
+	core, _ := signedInCore(t, &fakeTunnel{})
+	if st := core.State(); st.Account != "carla" {
+		t.Errorf("state shows account %q, want the one the console approved", st.Account)
+	}
+	st := core.State()
+	if !strings.HasPrefix(st.Account, "carla") {
+		t.Fatal("account missing")
+	}
+}
+
+func TestSignOutEndsTheServerSessionAndTheKeysChange(t *testing.T) {
+	cons := &fakeConsole{polls: []PollResult{approved()}}
+	core, store := newCore(t, cons, &fakeEnroller{}, &fakeTunnel{})
+	if err := core.SignIn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitPhase(t, core, PhaseDisconnected)
+	oldKey, oldSigning := core.PublicKeyHex(), core.SigningKeyHex()
+	if err := core.SignOut(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if len(cons.signedOut) != 1 || cons.signedOut[0] != goodAccess {
+		t.Errorf("the console session was not ended with the app token: %v", cons.signedOut)
+	}
+	if core.State().Phase != PhaseSignedOut || core.State().Account != "" {
+		t.Errorf("%+v", core.State())
+	}
+	if core.PublicKeyHex() == oldKey || core.SigningKeyHex() == oldSigning {
+		t.Error("the same installation keys would be offered for the next sign-in, which the console refuses for a signed-out app")
+	}
+	if _, err := store.LoadKey(aliasToken); err == nil {
+		t.Error("token kept")
+	}
+}
+
+func TestSignOutThatCannotReachTheConsoleKeepsTheSignInUnlessForced(t *testing.T) {
+	cons := &fakeConsole{polls: []PollResult{approved()}, signOutErr: errors.New("unreachable")}
+	core, store := newCore(t, cons, &fakeEnroller{}, &fakeTunnel{})
+	if err := core.SignIn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitPhase(t, core, PhaseDisconnected)
+	if err := core.SignOut(context.Background(), false); err == nil {
+		t.Fatal("a sign-out the console never heard of reported success")
+	}
+	if core.State().Phase != PhaseDisconnected {
+		t.Errorf("the app forgot its sign-in although the console still holds the session: %s", core.State().Phase)
+	}
+	if _, err := store.LoadKey(aliasToken); err != nil {
+		t.Error("token dropped")
+	}
+	if err := core.SignOut(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	if core.State().Phase != PhaseSignedOut {
+		t.Error("a forced sign-out did not sign out")
+	}
+}
+
+func TestSignOutWhileWaitingForApprovalStopsTheFlowAndWaitsForIt(t *testing.T) {
+	core, _ := newCore(t, &fakeConsole{}, &fakeEnroller{}, &fakeTunnel{})
+	if err := core.SignIn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := core.SignOut(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-core.flowDone():
+	default:
+		t.Error("SignOut returned while the sign-in goroutine was still running")
+	}
+	if core.State().Phase != PhaseSignedOut {
+		t.Errorf("%s", core.State().Phase)
+	}
+}
+
+func TestDisconnectWhileSignedOutStaysSignedOut(t *testing.T) {
+	core, _ := newCore(t, &fakeConsole{}, &fakeEnroller{}, &fakeTunnel{})
+	if err := core.Disconnect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if core.State().Phase != PhaseSignedOut {
+		t.Errorf("a disconnect moved a signed-out app to %s", core.State().Phase)
+	}
+}
+
+func TestCoreRefreshesItsTokenAndHandlesRefusal(t *testing.T) {
+	fresh := &AppToken{AccessToken: "nna_" + strings.Repeat("1", 64), RefreshToken: "nnr_" + strings.Repeat("2", 64), ExpiresIn: 3600, RefreshExpiresIn: 86400}
+	cons := &fakeConsole{polls: []PollResult{approved()}, refreshTok: fresh}
+	core, store := newCore(t, cons, &fakeEnroller{}, &fakeTunnel{})
+	if err := core.SignIn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitPhase(t, core, PhaseDisconnected)
+	if err := core.RefreshNow(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := store.LoadKey(aliasToken)
+	if !strings.Contains(string(raw), fresh.RefreshToken) {
+		t.Error("the rotated token was not stored")
+	}
+	// A network failure changes nothing: the old token is still the one to use.
+	cons.refreshErr = errors.New("unreachable")
+	if err := core.RefreshNow(context.Background()); err == nil {
+		t.Error("a failed refresh reported success")
+	}
+	if core.State().Phase != PhaseDisconnected {
+		t.Error("a network failure signed the app out")
+	}
+	// The console saying no means the app was removed or the token stolen and replayed: forget it.
+	cons.refreshErr = &ConsoleError{Status: 401, Code: "invalid_refresh"}
+	if err := core.RefreshNow(context.Background()); err == nil {
+		t.Error("refusal reported success")
+	}
+	if core.State().Phase != PhaseSignedOut {
+		t.Errorf("%s: the app kept a sign-in the console refused", core.State().Phase)
 	}
 }

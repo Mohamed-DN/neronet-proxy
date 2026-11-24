@@ -29,11 +29,19 @@ const (
 // ErrRevoked is what a Tunnel returns when the console no longer accepts this node.
 var ErrRevoked = errors.New("this device was removed from the network")
 
-// Enrolment is what the console assigned to this installation.
+// Enrolment is what the console assigned to this installation, and the account it belongs to.
 type Enrolment struct {
 	NodeID      string `json:"node_id"`
 	OverlayIPv4 string `json:"overlay_ipv4"`
 	OverlayIPv6 string `json:"overlay_ipv6,omitempty"`
+	Account     string `json:"account,omitempty"`
+}
+
+// storedToken is the app token as kept in the key store, with when it was issued so the core
+// knows when to refresh it.
+type storedToken struct {
+	AppToken
+	IssuedAt int64 `json:"issued_at"`
 }
 
 // Enroller joins the mesh as one node with a grant.
@@ -71,18 +79,19 @@ type Config struct {
 
 // Core is the app's brain. Its methods are what the local API exposes, and nothing else.
 type Core struct {
-	cfg  Config
-	hub  *Hub
-	ops  sync.Mutex // one command at a time
-	mu   sync.Mutex
-	key  *crypto.Keypair
-	sign ed25519.PrivateKey
-	flow context.CancelFunc // the running sign-in, if any
+	cfg     Config
+	hub     *Hub
+	ops     sync.Mutex // one command at a time
+	mu      sync.Mutex // guards the fields below
+	key     *crypto.Keypair
+	sign    ed25519.PrivateKey
+	flow    context.CancelFunc // the running sign-in, if any
+	flowEnd chan struct{}      // closed when the running sign-in's goroutine has finished
 }
 
 var exitName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
-// New loads or creates the installation key and restores a previous sign-in.
+// New loads or creates the installation keys and restores a previous sign-in.
 func New(cfg Config) (*Core, error) {
 	if cfg.Console == nil || cfg.Enroller == nil || cfg.Tunnel == nil || cfg.Store == nil {
 		return nil, errors.New("clientcore: console, enroller, tunnel and key store are required")
@@ -112,6 +121,7 @@ func New(cfg Config) (*Core, error) {
 			initial.Phase = PhaseDisconnected
 			initial.NodeID = e.NodeID
 			initial.Overlay = e.OverlayIPv4
+			initial.Account = e.Account
 		}
 	}
 	c.hub = NewHub(initial)
@@ -168,19 +178,41 @@ func loadOrCreateSigningKey(ks keystore.KeyStore) (ed25519.PrivateKey, error) {
 	return ed25519.NewKeyFromSeed(seed), nil
 }
 
+func (c *Core) keys() (*crypto.Keypair, ed25519.PrivateKey) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.key, c.sign
+}
+
 // SigningKeyHex is the public half of the key that signs token refreshes.
 func (c *Core) SigningKeyHex() string {
-	return fmt.Sprintf("%x", c.sign.Public().(ed25519.PublicKey))
+	_, sign := c.keys()
+	return fmt.Sprintf("%x", sign.Public().(ed25519.PublicKey))
 }
 
 // PublicKeyHex is the installation's public key, which the console binds the app to.
-func (c *Core) PublicKeyHex() string { return fmt.Sprintf("%x", c.key.PublicKey[:]) }
+func (c *Core) PublicKeyHex() string {
+	key, _ := c.keys()
+	return fmt.Sprintf("%x", key.PublicKey[:])
+}
 
 // State is the current state. Subscribe is the stream.
 func (c *Core) State() State { return c.hub.Get() }
 
 // Subscribe returns a stream of states, starting with the current one.
 func (c *Core) Subscribe() (<-chan State, func()) { return c.hub.Subscribe() }
+
+// flowDone is closed when no sign-in goroutine is running.
+func (c *Core) flowDone() <-chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.flowEnd == nil {
+		done := make(chan struct{})
+		close(done)
+		return done
+	}
+	return c.flowEnd
+}
 
 // SignIn starts the device-code flow. It returns once the console has issued a code; the
 // wait for approval, the storing of the token and the enrolment continue in the background
@@ -191,22 +223,34 @@ func (c *Core) SignIn(ctx context.Context) error {
 	if ph := c.hub.Get().Phase; ph != PhaseSignedOut && ph != PhaseFailed {
 		return fmt.Errorf("cannot sign in while %s", ph)
 	}
-	dc, err := c.cfg.Console.Start(ctx, StartRequest{Platform: c.cfg.Platform, DeviceName: c.cfg.DeviceName, PublicKeyHex: c.PublicKeyHex(), SigningKeyHex: c.SigningKeyHex()})
+	key, _ := c.keys()
+	dc, err := c.cfg.Console.Start(ctx, StartRequest{Platform: c.cfg.Platform, DeviceName: c.cfg.DeviceName, PublicKeyHex: c.PublicKeyHex(), SigningKeyHex: c.SigningKeyHex()}, key)
 	if err != nil {
 		c.fail("could not reach the console to sign in")
 		return err
 	}
+	// The address the person is shown is checked to be on the console, whatever the console sent.
+	verifyURL, err := c.cfg.Console.VerifyURL(dc.VerificationURIComplete)
+	if err != nil {
+		c.fail("the console sent a sign-in address that is not its own")
+		return err
+	}
 	flowCtx, cancel := context.WithCancel(context.Background())
+	end := make(chan struct{})
 	c.mu.Lock()
 	c.flow = cancel
+	c.flowEnd = end
 	c.mu.Unlock()
 	c.hub.Update(func(s *State) {
 		s.Phase = PhaseSigningIn
 		s.Message = ""
 		s.UserCode = dc.UserCode
-		s.VerifyPath = dc.VerificationURIComplete
+		s.VerifyPath = verifyURL
 	})
-	go c.finishSignIn(flowCtx, dc)
+	go func() {
+		defer close(end)
+		c.finishSignIn(flowCtx, dc)
+	}()
 	return nil
 }
 
@@ -225,20 +269,21 @@ func (c *Core) finishSignIn(ctx context.Context, dc *DeviceCode) {
 		}
 		return
 	}
-	tok, _ := json.Marshal(res.Token)
-	if err := c.cfg.Store.StoreKey(aliasToken, tok); err != nil {
+	if err := c.storeToken(*res.Token); err != nil {
 		c.fail("the sign-in could not be saved on this device")
 		return
 	}
 	c.hub.Update(func(s *State) { s.Phase = PhaseEnrolling; s.UserCode = ""; s.VerifyPath = "" })
 	enrolCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	en, err := c.cfg.Enroller.Enrol(enrolCtx, c.key, *res.Grant)
+	key, _ := c.keys()
+	en, err := c.cfg.Enroller.Enrol(enrolCtx, key, *res.Grant)
 	if err != nil {
 		_ = c.cfg.Store.DeleteKey(aliasToken)
 		c.fail("this device could not join the network")
 		return
 	}
+	en.Account = res.Account.Username
 	raw, _ := json.Marshal(en)
 	if err := c.cfg.Store.StoreKey(aliasEnrolment, raw); err != nil {
 		c.fail("the enrolment could not be saved on this device")
@@ -249,7 +294,25 @@ func (c *Core) finishSignIn(ctx context.Context, dc *DeviceCode) {
 		s.Message = ""
 		s.NodeID = en.NodeID
 		s.Overlay = en.OverlayIPv4
+		s.Account = en.Account
 	})
+}
+
+func (c *Core) storeToken(t AppToken) error {
+	raw, _ := json.Marshal(storedToken{AppToken: t, IssuedAt: time.Now().Unix()})
+	return c.cfg.Store.StoreKey(aliasToken, raw)
+}
+
+func (c *Core) loadToken() (*storedToken, error) {
+	raw, err := c.cfg.Store.LoadKey(aliasToken)
+	if err != nil {
+		return nil, err
+	}
+	var t storedToken
+	if err := json.Unmarshal(raw, &t); err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 
 func (c *Core) fail(msg string) {
@@ -271,6 +334,56 @@ func (c *Core) CancelSignIn() {
 	}
 }
 
+// RefreshNow rotates the app token. A network failure changes nothing, so the next try uses the
+// same token. The console refusing means the app was removed or its token was replayed: the sign-in
+// is forgotten, because every other call would be refused too.
+func (c *Core) RefreshNow(ctx context.Context) error {
+	tok, err := c.loadToken()
+	if err != nil {
+		return errors.New("not signed in")
+	}
+	_, sign := c.keys()
+	fresh, err := c.cfg.Console.Refresh(ctx, tok.RefreshToken, sign)
+	if err != nil {
+		var ce *ConsoleError
+		if errors.As(err, &ce) && ce.Status == 401 {
+			c.ops.Lock()
+			c.forget("this device was signed out by the console")
+			c.ops.Unlock()
+		}
+		return err
+	}
+	return c.storeToken(*fresh)
+}
+
+// Run keeps the token fresh until ctx ends: it refreshes when 80% of the access token's life is
+// gone, and tries again a minute after a failure.
+func (c *Core) Run(ctx context.Context) {
+	sleep := c.cfg.Sleep
+	if sleep == nil {
+		sleep = sleepCtx
+	}
+	for {
+		wait := time.Minute
+		if tok, err := c.loadToken(); err == nil {
+			age := time.Since(time.Unix(tok.IssuedAt, 0))
+			due := time.Duration(tok.ExpiresIn) * time.Second * 8 / 10
+			if age >= due {
+				if err := c.RefreshNow(ctx); err != nil && ctx.Err() == nil {
+					wait = time.Minute
+				} else {
+					wait = time.Second
+				}
+			} else {
+				wait = due - age
+			}
+		}
+		if err := sleep(ctx, wait); err != nil {
+			return
+		}
+	}
+}
+
 // Connect brings the tunnel up by walking the connection order.
 func (c *Core) Connect(ctx context.Context) error {
 	c.ops.Lock()
@@ -279,9 +392,10 @@ func (c *Core) Connect(ctx context.Context) error {
 	if st.Phase != PhaseDisconnected && st.Phase != PhaseFailed || st.NodeID == "" {
 		return fmt.Errorf("cannot connect while %s", st.Phase)
 	}
+	key, _ := c.keys()
 	c.hub.Update(func(s *State) { s.Phase = PhaseConnecting; s.Message = ""; s.Skipped = nil; s.Failed = nil })
 	res, err := Walk(ctx, st.Order, c.cfg.Tunnel.Available, func(actx context.Context, m Method) error {
-		return c.cfg.Tunnel.Up(actx, UpRequest{Method: m, Exit: st.Exit, Key: c.key, NodeID: st.NodeID})
+		return c.cfg.Tunnel.Up(actx, UpRequest{Method: m, Exit: st.Exit, Key: key, NodeID: st.NodeID})
 	}, c.cfg.PerAttempt)
 	if errors.Is(err, ErrRevoked) {
 		c.forget("this device was removed from the network")
@@ -305,7 +419,8 @@ func (c *Core) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Disconnect brings the tunnel down.
+// Disconnect brings the tunnel down. A signed-out app stays signed out: disconnecting must not
+// make it look like it has a node to connect.
 func (c *Core) Disconnect(ctx context.Context) error {
 	c.ops.Lock()
 	defer c.ops.Unlock()
@@ -313,9 +428,11 @@ func (c *Core) Disconnect(ctx context.Context) error {
 		return err
 	}
 	c.hub.Update(func(s *State) {
-		s.Phase = PhaseDisconnected
 		s.Method = ""
 		s.KillSwitch = c.cfg.Tunnel.KillSwitch()
+		if s.NodeID != "" && (s.Phase == PhaseConnected || s.Phase == PhaseConnecting || s.Phase == PhaseFailed) {
+			s.Phase = PhaseDisconnected
+		}
 	})
 	return nil
 }
@@ -338,14 +455,46 @@ func (c *Core) SetOrder(o Order) error {
 	return nil
 }
 
-// SignOut forgets the sign-in on this device and brings the tunnel down. It does not revoke
-// anything at the console: that is the person's or an administrator's act, from the console.
-func (c *Core) SignOut(ctx context.Context) error {
+// SignOut stops a sign-in in progress and waits for it, brings the tunnel down, ends the session at
+// the console (which also removes this device's node there), and forgets the sign-in here. The
+// installation keys are replaced: the console refuses a signed-out installation's key for good, so
+// the next sign-in must come from new ones.
+//
+// If the console cannot be reached the sign-in is kept and an error returned, so that nothing looks
+// signed out here while the console still holds a live session; force signs out locally anyway.
+func (c *Core) SignOut(ctx context.Context, force bool) error {
 	c.ops.Lock()
 	defer c.ops.Unlock()
 	c.CancelSignIn()
+	select {
+	case <-c.flowDone():
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if tok, err := c.loadToken(); err == nil {
+		if err := c.cfg.Console.SignOut(ctx, tok.AccessToken); err != nil && !force {
+			return fmt.Errorf("the console could not end this sign-in: %w", err)
+		}
+	}
 	_ = c.cfg.Tunnel.Down(ctx)
 	c.forget("")
+	return c.rotateKeys()
+}
+
+func (c *Core) rotateKeys() error {
+	_ = c.cfg.Store.DeleteKey(aliasInstallation)
+	_ = c.cfg.Store.DeleteKey(aliasSigning)
+	key, err := loadOrCreateKey(c.cfg.Store)
+	if err != nil {
+		return err
+	}
+	sign, err := loadOrCreateSigningKey(c.cfg.Store)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.key, c.sign = key, sign
+	c.mu.Unlock()
 	return nil
 }
 
@@ -355,7 +504,7 @@ func (c *Core) forget(msg string) {
 	c.hub.Update(func(s *State) {
 		s.Phase = PhaseSignedOut
 		s.Message = msg
-		s.NodeID, s.Overlay, s.Method, s.UserCode, s.VerifyPath = "", "", "", "", ""
+		s.NodeID, s.Overlay, s.Method, s.UserCode, s.VerifyPath, s.Account = "", "", "", "", "", ""
 		s.KillSwitch = c.cfg.Tunnel.KillSwitch()
 	})
 }

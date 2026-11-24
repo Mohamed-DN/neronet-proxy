@@ -25,6 +25,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/sovereign/proxy/v4/pkg/control"
+	"github.com/sovereign/proxy/v4/pkg/crypto"
 )
 
 // Platforms the console accepts, in the console's own words.
@@ -52,8 +55,12 @@ type StartRequest struct {
 	PublicKeyHex string `json:"public_key_hex"`
 	// SigningKeyHex is the installation's Ed25519 public key. Every token refresh is signed with
 	// its private half, so a stolen refresh token cannot be used without the device.
-	SigningKeyHex string   `json:"signing_key"`
-	Scopes        []string `json:"scopes,omitempty"`
+	SigningKeyHex string `json:"signing_key"`
+	// Nonce and Proof show that the app holds the private half of PublicKeyHex: the console's own
+	// challenge, answered with the key. Filled in by Start; a public key alone proves nothing.
+	Nonce  string   `json:"nonce"`
+	Proof  string   `json:"proof"`
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 // Validate refuses anything the console would refuse, before it leaves the machine.
@@ -94,6 +101,11 @@ func (d DeviceCode) validate() error {
 	if !strings.HasPrefix(d.VerificationURI, "/") || strings.HasPrefix(d.VerificationURI, "//") {
 		return errors.New("console sent a verification address that is not a path")
 	}
+	// The complete address is the same path with the code in the fragment, never a query: a fragment
+	// never reaches a server or a proxy log.
+	if !strings.HasPrefix(d.VerificationURIComplete, d.VerificationURI) || strings.ContainsAny(d.VerificationURIComplete, "?\\ \r\n\t") {
+		return errors.New("console sent a complete verification address that is not its path with a fragment")
+	}
 	if d.Interval < 1 || d.Interval > 60 || d.ExpiresIn < 1 || d.ExpiresIn > 3600 {
 		return errors.New("console sent an interval or expiry out of range")
 	}
@@ -123,12 +135,19 @@ var (
 	nodeIDRe  = regexp.MustCompile(`^pk_[0-9a-f]{16}$`)
 )
 
+// Account is who approved: shown to the person on the app so they can see which account joined.
+type Account struct {
+	Username       string `json:"username"`
+	OrganizationID string `json:"organization_id"`
+}
+
 // PollResult is one answer to a poll. Token and Grant are set only when Status is approved.
 type PollResult struct {
 	Status   string    `json:"status"`
 	Interval int       `json:"interval,omitempty"`
 	Token    *AppToken `json:"app_token,omitempty"`
 	Grant    *Grant    `json:"enrolment,omitempty"`
+	Account  *Account  `json:"account,omitempty"`
 }
 
 func (p PollResult) validate() error {
@@ -136,8 +155,11 @@ func (p PollResult) validate() error {
 	case "pending", "slow_down", "denied", "expired":
 		return nil
 	case "approved":
-		if p.Token == nil || p.Grant == nil {
-			return errors.New("console approved without a token and a grant")
+		if p.Token == nil || p.Grant == nil || p.Account == nil {
+			return errors.New("console approved without a token, a grant and an account")
+		}
+		if n := len(p.Account.Username); n < 1 || n > 128 {
+			return errors.New("console sent an account name out of range")
 		}
 		if !accessRe.MatchString(p.Token.AccessToken) || !refreshRe.MatchString(p.Token.RefreshToken) {
 			return errors.New("console sent a malformed app token")
@@ -152,7 +174,13 @@ func (p PollResult) validate() error {
 
 // Console is the console's public sign-in surface.
 type Console interface {
-	Start(ctx context.Context, req StartRequest) (*DeviceCode, error)
+	// Start asks for a code. key is the installation key, which proves possession at the console.
+	Start(ctx context.Context, req StartRequest, key *crypto.Keypair) (*DeviceCode, error)
+	// SignOut ends the app's session at the console, which also removes its node there.
+	SignOut(ctx context.Context, accessToken string) error
+	// VerifyURL turns the console's verification path into the address to show a person, and refuses
+	// anything that is not a path on the console itself.
+	VerifyURL(path string) (string, error)
 	Poll(ctx context.Context, deviceCode string) (*PollResult, error)
 	Refresh(ctx context.Context, refreshToken string, key ed25519.PrivateKey) (*AppToken, error)
 }
@@ -161,6 +189,7 @@ type Console interface {
 type HTTPConsole struct {
 	base *url.URL
 	http *http.Client
+	ctl  *control.Client
 }
 
 // NewHTTPConsole builds a client for a console base URL. caPEM, when given, is the only
@@ -188,7 +217,16 @@ func NewHTTPConsole(baseURL string, caPEM []byte) (*HTTPConsole, error) {
 		}
 		tr.TLSClientConfig.RootCAs = pool
 	}
-	return &HTTPConsole{base: u, http: &http.Client{Transport: tr, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	var ctl *control.Client
+	if len(caPEM) > 0 {
+		ctl, err = control.NewClientWithCA(u.String(), caPEM)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		ctl = control.NewClient(u.String())
+	}
+	return &HTTPConsole{base: u, ctl: ctl, http: &http.Client{Transport: tr, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
 func isLoopbackHost(h string) bool {
@@ -196,15 +234,28 @@ func isLoopbackHost(h string) bool {
 }
 
 func (c *HTTPConsole) post(ctx context.Context, path string, in, out any) error {
-	body, err := json.Marshal(in)
+	return c.do(ctx, http.MethodPost, path, "", in, out)
+}
+
+func (c *HTTPConsole) do(ctx context.Context, method, path, bearer string, in, out any) error {
+	var rdr io.Reader
+	if in != nil {
+		body, err := json.Marshal(in)
+		if err != nil {
+			return err
+		}
+		rdr = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.base.String()+path, rdr)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base.String()+path, bytes.NewReader(body))
-	if err != nil {
-		return err
+	if in != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("console unreachable: %w", err)
@@ -227,8 +278,37 @@ func (c *HTTPConsole) post(ctx context.Context, path string, in, out any) error 
 		_ = json.Unmarshal(raw, &e)
 		return &ConsoleError{Status: resp.StatusCode, Code: e.Code}
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	return dec.Decode(out)
+	if out == nil {
+		return nil
+	}
+	return json.NewDecoder(bytes.NewReader(raw)).Decode(out)
+}
+
+// SignOut ends the app's session. A session the console no longer knows (401, 404) is already
+// ended, which is the outcome asked for.
+func (c *HTTPConsole) SignOut(ctx context.Context, accessToken string) error {
+	if !accessRe.MatchString(accessToken) {
+		return errors.New("malformed app token")
+	}
+	err := c.do(ctx, http.MethodDelete, "/api/app-auth/app/session", accessToken, nil, nil)
+	var ce *ConsoleError
+	if errors.As(err, &ce) && (ce.Status == http.StatusUnauthorized || ce.Status == http.StatusNotFound) {
+		return nil
+	}
+	return err
+}
+
+// VerifyURL is the address a person opens to approve this app: the console's own origin and the
+// console's path, with the code in the fragment. Anything that could lead elsewhere is refused.
+func (c *HTTPConsole) VerifyURL(path string) (string, error) {
+	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.ContainsAny(path, "?\\ \r\n\t") {
+		return "", errors.New("verification address is not a plain path on the console")
+	}
+	u, err := url.Parse(c.base.String() + path)
+	if err != nil || u.Host != c.base.Host || u.Scheme != c.base.Scheme || u.User != nil {
+		return "", errors.New("verification address leaves the console")
+	}
+	return u.String(), nil
 }
 
 // ErrRateLimited is returned when the console asks the app to slow down.
@@ -248,10 +328,18 @@ func (e *ConsoleError) Error() string {
 }
 
 // Start asks for a device code.
-func (c *HTTPConsole) Start(ctx context.Context, req StartRequest) (*DeviceCode, error) {
+func (c *HTTPConsole) Start(ctx context.Context, req StartRequest, key *crypto.Keypair) (*DeviceCode, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
+	if key == nil || req.PublicKeyHex != hex.EncodeToString(key.PublicKey[:]) {
+		return nil, errors.New("the key pair is not the installation key the request names")
+	}
+	nonce, proof, err := c.ctl.ProveKey(ctx, key.PrivateKey, key.PublicKey, "APP_SIGNIN")
+	if err != nil {
+		return nil, err
+	}
+	req.Nonce, req.Proof = nonce, proof
 	var d DeviceCode
 	if err := c.post(ctx, "/api/app-auth/device/start", req, &d); err != nil {
 		return nil, err

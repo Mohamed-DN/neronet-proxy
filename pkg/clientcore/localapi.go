@@ -61,17 +61,23 @@ type Transport interface {
 
 // Server serves the API on a Transport.
 type Server struct {
-	core *Core
-	tr   Transport
-	mu   sync.Mutex
-	ln   net.Listener
-	wg   sync.WaitGroup
+	core  *Core
+	tr    Transport
+	mu    sync.Mutex
+	ln    net.Listener
+	wg    sync.WaitGroup
+	conns map[net.Conn]struct{}
 }
+
+// shutdownGrace is how long Serve waits for handlers after it has closed every connection.
+const shutdownGrace = 5 * time.Second
 
 // NewServer builds a server for a core.
 func NewServer(core *Core, tr Transport) *Server { return &Server{core: core, tr: tr} }
 
-// Serve listens and handles connections until ctx ends.
+// Serve listens and handles connections until ctx ends. When it ends, the listener and every open
+// connection are closed, so a client that holds a connection and says nothing cannot keep the
+// service from stopping; handlers get a few seconds to finish and are then left behind.
 func (s *Server) Serve(ctx context.Context) error {
 	ln, err := s.tr.Listen()
 	if err != nil {
@@ -79,25 +85,53 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 	s.mu.Lock()
 	s.ln = ln
+	s.conns = map[net.Conn]struct{}{}
 	s.mu.Unlock()
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
+		s.mu.Lock()
+		for c := range s.conns {
+			_ = c.Close()
+		}
+		s.mu.Unlock()
 	}()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			s.wg.Wait()
+			s.waitHandlers()
 			if ctx.Err() != nil {
 				return nil
 			}
 			return err
 		}
+		s.mu.Lock()
+		if ctx.Err() != nil {
+			s.mu.Unlock()
+			_ = conn.Close()
+			continue
+		}
+		s.conns[conn] = struct{}{}
+		s.mu.Unlock()
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
+			defer func() {
+				s.mu.Lock()
+				delete(s.conns, conn)
+				s.mu.Unlock()
+			}()
 			s.handle(ctx, conn)
 		}()
+	}
+}
+
+func (s *Server) waitHandlers() {
+	done := make(chan struct{})
+	go func() { s.wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(shutdownGrace):
 	}
 }
 
@@ -125,6 +159,10 @@ func (s *Server) handle(ctx context.Context, conn net.Conn) {
 			continue
 		}
 		if req.Cmd == "state.watch" {
+			if err := noArgs(req.Args); err != nil {
+				_ = enc.Encode(Response{V: APIVersion, ID: req.ID, Code: "bad_args", Error: err.Error()})
+				continue
+			}
 			s.watch(ctx, conn, enc, req)
 			return
 		}
@@ -169,6 +207,12 @@ func parseRequest(line []byte) (Request, error) {
 		return req, errors.New("unsupported api version")
 	}
 	return req, nil
+}
+
+// noArgs accepts no arguments at all: absent, null or an empty object.
+func noArgs(raw json.RawMessage) error {
+	var none struct{}
+	return strictArgs(raw, &none)
 }
 
 func strictArgs(raw json.RawMessage, into any) error {
@@ -219,10 +263,12 @@ func (s *Server) dispatch(ctx context.Context, req Request) Response {
 	defer cancel()
 	switch req.Cmd {
 	case "state.get":
+		if err := noArgs(req.Args); err != nil {
+			return fail("bad_args", err)
+		}
 		return ok()
 	case "signin.start":
-		var a struct{}
-		if err := strictArgs(req.Args, &a); err != nil {
+		if err := noArgs(req.Args); err != nil {
 			return fail("bad_args", err)
 		}
 		if err := s.core.SignIn(cctx); err != nil {
@@ -230,11 +276,13 @@ func (s *Server) dispatch(ctx context.Context, req Request) Response {
 		}
 		return ok()
 	case "signin.cancel":
+		if err := noArgs(req.Args); err != nil {
+			return fail("bad_args", err)
+		}
 		s.core.CancelSignIn()
 		return ok()
 	case "connect":
-		var a struct{}
-		if err := strictArgs(req.Args, &a); err != nil {
+		if err := noArgs(req.Args); err != nil {
 			return fail("bad_args", err)
 		}
 		if err := s.core.Connect(cctx); err != nil {
@@ -242,6 +290,9 @@ func (s *Server) dispatch(ctx context.Context, req Request) Response {
 		}
 		return ok()
 	case "disconnect":
+		if err := noArgs(req.Args); err != nil {
+			return fail("bad_args", err)
+		}
 		if err := s.core.Disconnect(cctx); err != nil {
 			return fail("disconnect_failed", err)
 		}
@@ -267,7 +318,13 @@ func (s *Server) dispatch(ctx context.Context, req Request) Response {
 		}
 		return ok()
 	case "signout":
-		if err := s.core.SignOut(cctx); err != nil {
+		var a struct {
+			Force bool `json:"force"`
+		}
+		if err := strictArgs(req.Args, &a); err != nil {
+			return fail("bad_args", err)
+		}
+		if err := s.core.SignOut(cctx, a.Force); err != nil {
 			return fail("signout_failed", err)
 		}
 		return ok()
