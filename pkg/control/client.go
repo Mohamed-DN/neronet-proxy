@@ -547,6 +547,52 @@ func (c *Client) RequestCircuitPath(ctx context.Context, country string) (*Circu
 	return &circResp, nil
 }
 
+// ProbePollHold is how long the control plane holds a probe poll open; the client waits a
+// little longer before it gives up on the connection.
+const ProbePollHold = 20 * time.Second
+
+// PollProbes asks the control plane for connection tests to run. The call returns as soon
+// as one exists, or with none after the control plane's hold time. A gateway calls it in a
+// loop; it uses its own client so the 10 second request timeout does not cut the hold.
+func (c *Client) PollProbes(ctx context.Context) ([]ProbeRequest, error) {
+	req, err := c.newRequest(ctx, "/v4/control/probe/poll", struct{}{})
+	if err != nil {
+		return nil, err
+	}
+	long := *c.httpClient
+	long.Timeout = ProbePollHold + 10*time.Second
+	resp, err := long.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, errorFromResponse("probe poll refused", resp)
+	}
+	var out ProbePollResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Requests, nil
+}
+
+// SendProbeResult reports the outcome of one connection test.
+func (c *Client) SendProbeResult(ctx context.Context, result ProbeResult) error {
+	req, err := c.newRequest(ctx, "/v4/control/probe/result", result)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errorFromResponse("probe result refused", resp)
+	}
+	return nil
+}
+
 // SyncACLs retrieves compiled ACL filter table for a client node
 func (c *Client) SyncACLs(ctx context.Context, nodeID string, currentEpoch uint64) (*acl.CompiledPeerPolicy, uint64, error) {
 	reqBody := ACLSyncRequest{

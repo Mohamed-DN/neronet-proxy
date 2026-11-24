@@ -14,6 +14,7 @@
 
 const { getPgPool } = require('../db/index');
 const ProfileGatewayService = require('./ProfileGatewayService');
+const NodeLive = require('./NodeLive');
 
 // WireGuard rekeys every two minutes while traffic flows and the profile keepalive is
 // 25 s, so a connected device handshakes at least every 2 min; one more minute of slack.
@@ -69,10 +70,64 @@ async function record(gatewayNodeId, peerPaths, client = null) {
         AND d.device_kind = 'profile'
         AND COALESCE(d.organization_id, 'org-default') = COALESCE(g.organization_id, 'org-default')
         AND g.id = ${ProfileGatewayService.servingGatewaySql('d')}
-        AND (d.last_handshake_at IS NULL OR d.last_handshake_at < v.at)`,
+        AND (d.last_handshake_at IS NULL OR d.last_handshake_at < v.at)
+      RETURNING d.id`,
     [gatewayNodeId, ids, stamps]
   );
+  // A new handshake is a change the open consoles should show now (debounced per device).
+  NodeLive.notifyMany(result.rows.map((row) => row.id));
   return result.rowCount;
 }
 
-module.exports = { status, record, windowSeconds, DEFAULT_WINDOW_SECONDS };
+// A sample may not be older than this when it arrives, nor lie in the future: a gateway
+// reports a round trip it measured in the last half minute.
+const MAX_SAMPLE_AGE_SECONDS = 300;
+
+/**
+ * Store the round trips a gateway measured to the profile devices it serves: a ping sent
+ * through its own tunnel. rtt_ms null with a sample time is "pinged, no reply" and is
+ * stored as exactly that (never as a number, never as "offline"). Same trust rule as the
+ * handshake: only the serving gateway, only for its organisation's profile devices. A
+ * sample never replaces a newer one.
+ */
+async function recordRtt(gatewayNodeId, peerPaths, client = null, nowMs = Date.now()) {
+  if (!Array.isArray(peerPaths) || peerPaths.length === 0 || peerPaths.length > MAX_REPORTED) return 0;
+  const latest = new Map();
+  for (const p of peerPaths) {
+    if (!p || typeof p.peer_id !== 'string' || !Number.isSafeInteger(p.rtt_observed_at_unix)) continue;
+    const at = p.rtt_observed_at_unix;
+    if (at <= 0 || at * 1000 > nowMs + 5000 || nowMs - at * 1000 > MAX_SAMPLE_AGE_SECONDS * 1000) continue;
+    let rtt = null;
+    if (p.rtt_ms !== null && p.rtt_ms !== undefined) {
+      if (typeof p.rtt_ms !== 'number' || !Number.isFinite(p.rtt_ms) || p.rtt_ms < 0 || p.rtt_ms > 60000) continue;
+      rtt = p.rtt_ms;
+    }
+    const before = latest.get(p.peer_id);
+    if (!before || before.at < at) latest.set(p.peer_id, { at, rtt });
+  }
+  if (latest.size === 0) return 0;
+  const ids = [...latest.keys()];
+  const stamps = ids.map((id) => latest.get(id).at);
+  const rtts = ids.map((id) => latest.get(id).rtt);
+  const result = await (client || getPgPool()).query(
+    `UPDATE nodes d SET rtt_ms = v.rtt, rtt_measured_at = v.at, rtt_method = 'icmp'
+       FROM (SELECT r.id, r.rtt, LEAST(to_timestamp(r.unix), now()) AS at
+               FROM unnest($2::text[], $3::bigint[], $4::float8[]) AS r(id, unix, rtt)) v,
+            nodes g
+      WHERE g.id = $1
+        AND g.device_kind = 'mesh'
+        AND g.profile_gateway_endpoint IS NOT NULL
+        AND g.is_quarantined IS NOT TRUE
+        AND d.id = v.id
+        AND d.device_kind = 'profile'
+        AND COALESCE(d.organization_id, 'org-default') = COALESCE(g.organization_id, 'org-default')
+        AND g.id = ${ProfileGatewayService.servingGatewaySql('d')}
+        AND (d.rtt_measured_at IS NULL OR d.rtt_measured_at < v.at)
+      RETURNING d.id`,
+    [gatewayNodeId, ids, stamps, rtts]
+  );
+  NodeLive.notifyMany(result.rows.map((row) => row.id));
+  return result.rowCount;
+}
+
+module.exports = { status, record, recordRtt, windowSeconds, DEFAULT_WINDOW_SECONDS };

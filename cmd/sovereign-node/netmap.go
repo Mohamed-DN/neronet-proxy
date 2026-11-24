@@ -84,6 +84,11 @@ type netmapManager struct {
 	netfilter *acl.NetstackFilter
 	path      string
 
+	// prober pings the profile devices this gateway serves (peerprobe.go); nil when the
+	// data plane has no netstack to ping through. Set once, before the first heartbeat
+	// report reads it.
+	prober *peerProber
+
 	// listenPort is the local WireGuard port, reported as part of this node's
 	// candidate endpoints.
 	listenPort uint16

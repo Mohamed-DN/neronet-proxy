@@ -29,6 +29,7 @@ import { Input } from '../../ui/Input';
 import { Select } from '../../ui/Select';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { EmptyState, ErrorState, NotMeasured, Skeleton } from '../../ui/States';
+import { ResponseValue } from './liveValues';
 import { StationStatus } from '../../ui/StationSymbol';
 import { Table, type TableColumn } from '../../ui/Table';
 
@@ -228,7 +229,9 @@ export function TopologyRoute() {
 
   // --- Layout: computed once per inventory, remembered per grouping ---------
   const memory = useRef<Partial<Record<GroupBy, Map<string, Point>>>>({});
-  const otherLabel = t(groupBy === 'none' ? 'radial.allNodes' : 'canvas.clusterOther');
+  const otherLabel = t(
+    groupBy === 'none' ? 'radial.allNodes' : groupBy === 'country' ? 'canvas.clusterUnknownLocation' : 'canvas.clusterOther'
+  );
   const layout = useMemo(
     () => layoutMesh(nodes, links, groupBy, { otherLabel, previous: memory.current[groupBy] }),
     // layoutEpoch forces a fresh arrangement after "Rearrange" cleared the memory.
@@ -719,6 +722,16 @@ export function TopologyRoute() {
     {
       id: 'latency',
       header: t('nodeDrawer.latency'),
+      numeric: true,
+      cell: (row) => (
+        <span className="text-caption text-muted">
+          <ResponseValue rttMs={row.rtt_ms} measuredAt={row.rtt_measured_at} />
+        </span>
+      )
+    },
+    {
+      id: 'consoleLink',
+      header: t('nodeDrawer.consoleLink'),
       numeric: true,
       cell: (row) =>
         row.latency_ms === null || row.latency_ms === undefined ? (

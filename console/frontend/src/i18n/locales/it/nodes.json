@@ -24,7 +24,9 @@
     "checks": "Controlli di sicurezza",
     "reachability": "Raggiungibilità",
     "risk": "Rischio",
-    "actions": "Azioni"
+    "actions": "Azioni",
+    "location": "Posizione",
+    "response": "Tempo di risposta"
   },
   "row": {
     "openDetails": "Apri dettagli"
@@ -87,8 +89,6 @@
     "connectionTest": "Verifica del collegamento",
     "testButton": "Verifica collegamento",
     "testing": "Verifica in corso…",
-    "replied": "Risposta in {{rtt}} ms. Variazione: {{jitter}} ms.",
-    "notMeasured": "Non misurato. Per questo dispositivo non è ancora stato registrato alcun tempo di risposta.",
     "testFailed": "Verifica non riuscita: il dispositivo non ha risposto. Riprova.",
     "actions": "Azioni sul dispositivo",
     "block": "Blocca dispositivo",
@@ -104,7 +104,38 @@
     "revokeDefaultReason": "Chiave revocata da un amministratore",
     "close": "Chiudi",
     "loadFailed": "Impossibile caricare il dispositivo. Riprova.",
-    "title": "Dettagli del dispositivo"
+    "title": "Dettagli del dispositivo",
+    "location": {
+      "title": "Posizione",
+      "label": "Paese",
+      "choose": "Scegli un paese",
+      "save": "Salva il paese",
+      "clear": "Segna come sconosciuta",
+      "saved": "Posizione salvata.",
+      "failed": "La posizione non è stata salvata. Controlla il paese e riprova.",
+      "notice": "Nulla misura dove si trova un dispositivo. Il paese compare solo se lo ha indicato un amministratore o chi gestisce il dispositivo."
+    },
+    "response": {
+      "title": "Tempo di risposta",
+      "deviceAnswer": "Risposta al ping del gateway",
+      "deviceAnswerHelp": "Il gateway che serve questo dispositivo lo contatta con un ping attraverso il tunnel circa ogni 30 secondi. Nessuna risposta non significa scollegato: Windows blocca il ping per impostazione predefinita.",
+      "meshNotMeasured": "Non misurato. Solo i dispositivi che usano l’app WireGuard vengono contattati dal loro gateway.",
+      "consoleLink": "Collegamento con la console",
+      "consoleLinkValue": "{{ms}} ms, {{when}}",
+      "consoleLinkHelp": "Quanto ha impiegato l’ultimo segnale di questo dispositivo ad arrivare alla console. Non indica la rapidità con cui il dispositivo risponde.",
+      "notMeasured": "Non misurato"
+    },
+    "test": {
+      "measuring": "Misurazione in corso…",
+      "replied": "Ha risposto in {{rtt}} ms (ICMP), {{when}}.",
+      "justNow": "adesso",
+      "noReply": "Nessuna risposta entro 3 secondi, ma il dispositivo è collegato: ultimo contatto {{ago}}. Windows blocca il ping per impostazione predefinita, quindi un dispositivo collegato può non rispondere.",
+      "notConnected": "Non collegato. Ultimo contatto {{ago}}.",
+      "neverConnected": "Non collegato. Questo dispositivo non si è mai collegato.",
+      "gatewayUnreachable": "Il gateway che serve questo dispositivo non ha risposto. Riprova tra poco.",
+      "unsupported": "Questo dispositivo non si può provare da qui: solo i dispositivi che usano l’app WireGuard vengono contattati dal loro gateway.",
+      "rateLimited": "Attendi un momento prima di riprovare."
+    }
   },
   "gateway": {
     "title": "Gateway",

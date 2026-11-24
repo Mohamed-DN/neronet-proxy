@@ -130,6 +130,15 @@ export function canChooseGateway(user: RoleUser | null): boolean {
   return user?.role === 'super-admin' || user?.role === 'admin';
 }
 
+/**
+ * Who may state where a device is (ADR 0040): the people who run the organisation. The
+ * control plane checks the organisation role; the console reads the same two fields.
+ */
+export function canDeclareLocation(user: RoleUser | null): boolean {
+  const role = effectiveRole(user);
+  return role === 'super-admin' || role === 'owner' || role === 'admin' || role === 'network_admin';
+}
+
 /** The organisation roles a person can be invited into, highest first. Owner never is. */
 export type InvitableRole = 'admin' | 'network_admin' | 'auditor' | 'member';
 const INVITABLE: readonly InvitableRole[] = ['admin', 'network_admin', 'auditor', 'member'];

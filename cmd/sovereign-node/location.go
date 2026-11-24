@@ -20,6 +20,19 @@ type declaredLocation struct {
 	Longitude *float64
 }
 
+// normaliseCountry validates the operator's -country value. Empty is valid and means the
+// location is unknown: there is no default country, and nothing on the node measures one.
+func normaliseCountry(value string) (string, error) {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if value == "" {
+		return "", nil
+	}
+	if len(value) != 2 || value[0] < 'A' || value[0] > 'Z' || value[1] < 'A' || value[1] > 'Z' {
+		return "", fmt.Errorf("country %q is not a two-letter ISO 3166-1 code", value)
+	}
+	return value, nil
+}
+
 // bindLocationFlags registers -city, -lat and -lon (env SOVEREIGN_CITY, SOVEREIGN_LAT,
 // SOVEREIGN_LON) and returns a function that reads and validates them after the flag
 // set has been parsed.

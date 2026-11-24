@@ -95,5 +95,13 @@
   },
   "compartment": {
     "default": "Sotto-rete principale"
+  },
+  "live": {
+    "locationUnknown": "Posizione sconosciuta",
+    "locationDeclared": "{{country}} · indicata da un amministratore",
+    "locationAgent": "{{country}} · impostata da chi gestisce il dispositivo",
+    "responseValue": "{{rtt}} ms · {{when}}",
+    "responseNoReply": "Nessuna risposta · {{when}}",
+    "responseNotMeasured": "Non misurato"
   }
 }

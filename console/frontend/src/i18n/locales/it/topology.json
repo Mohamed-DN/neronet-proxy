@@ -56,7 +56,8 @@
     "groupRole": "Tipo",
     "groupNone": "Nessun raggruppamento",
     "clusterOther": "Non assegnati",
-    "relayout": "Ridisponi la mappa"
+    "relayout": "Ridisponi la mappa",
+    "clusterUnknownLocation": "Posizione sconosciuta"
   },
   "nodeDrawer": {
     "title": "Dettagli del dispositivo",
@@ -70,7 +71,8 @@
     "ghostVaultNode": "Dispositivo nascosto",
     "viewDetails": "Apri i dettagli del dispositivo",
     "close": "Chiudi",
-    "unhealthy": "Ha problemi"
+    "unhealthy": "Ha problemi",
+    "consoleLink": "Collegamento con la console"
   },
   "policyOpenNotice": "Le regole permettono i collegamenti tra tutti i dispositivi, tranne quelli bloccati. Per comunicare serve anche un percorso disponibile.",
   "empty": {

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import { apiRequest } from '../apiClient';
+import { visibleInterval } from './polling';
 import { captureSession, isCurrentCredential, readAccessToken, storeAccessToken } from '../authToken';
 import { BROWSER_PROTOCOL, beginBrowserOperation, rememberSelection, type Selection } from '../browserContext';
 import type {
@@ -193,8 +194,9 @@ export function useTopology(): UseQueryResult<TopologyData, Error> {
   return useQuery({
     queryKey: queryKeys.statsTopology,
     queryFn: ({ signal }) => apiRequest<TopologyData>('/stats/topology', { signal }),
-    staleTime: 15_000,
-    refetchInterval: 30_000
+    staleTime: 5_000,
+    // The map reads again on node:updated and, as a fallback, every 10 s while visible.
+    refetchInterval: () => visibleInterval()
   });
 }
 

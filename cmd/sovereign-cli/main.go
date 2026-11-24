@@ -115,7 +115,9 @@ func main() {
 		fmt.Println()
 
 	case "circuit":
-		country := "US"
+		// No country unless one is named: the old default asked for an exit in the United
+		// States whatever the person wanted.
+		country := ""
 		if len(cmdArgs) > 1 {
 			country = strings.ToUpper(cmdArgs[1])
 		}

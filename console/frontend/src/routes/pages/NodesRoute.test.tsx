@@ -367,57 +367,6 @@ describe('Devices page', () => {
     expect(within(listTable()).getByText('Rome Gateway Alpha')).toBeInTheDocument();
   });
 
-  it('says Not measured when the test did not measure a response time, not a number', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string) => {
-        if (url === '/api/nodes') return jsonResponse({ nodes: [mockNodes[0]] });
-        if (url.endsWith('/api/nodes/svrn-node-rome/action')) {
-          return jsonResponse({
-            success: true,
-            result: { rtt_ms: null, jitter_ms: null, measured: false, status: 'active' }
-          });
-        }
-        if (url.endsWith('/api/nodes/svrn-node-rome')) return jsonResponse({ node: mockNodes[0] });
-        return jsonResponse({});
-      })
-    );
-
-    const user = userEvent.setup();
-    renderNodes(['/nodes/svrn-node-rome']);
-
-    const dialog = await screen.findByRole('dialog');
-    await user.click(await within(dialog).findByRole('button', { name: 'Test connection' }));
-
-    await waitFor(() => {
-      expect(within(dialog).getByText(/Not measured/)).toBeInTheDocument();
-    });
-    expect(within(dialog).queryByText(/Replied in/)).not.toBeInTheDocument();
-  });
-
-  it('ping failure shows the inline alert that says what to do', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string) => {
-        if (url === '/api/nodes') return jsonResponse({ nodes: [mockNodes[0]] });
-        if (url.endsWith('/api/nodes/svrn-node-rome/action')) {
-          return jsonResponse({ error: 'unreachable' }, 502);
-        }
-        if (url.endsWith('/api/nodes/svrn-node-rome')) return jsonResponse({ node: mockNodes[0] });
-        return jsonResponse({});
-      })
-    );
-
-    const user = userEvent.setup();
-    renderNodes(['/nodes/svrn-node-rome']);
-
-    const dialog = await screen.findByRole('dialog');
-    await user.click(await within(dialog).findByRole('button', { name: 'Test connection' }));
-
-    const alert = await within(dialog).findByRole('alert');
-    expect(alert).toHaveTextContent('Test failed: the device did not respond. Try again.');
-  });
-
   it('block asks for a reason, then sends the request', async () => {
     let blocked = false;
     const fetchSpy = vi.fn(async (url: string) => {

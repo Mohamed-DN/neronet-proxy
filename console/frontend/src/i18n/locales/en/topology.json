@@ -56,7 +56,8 @@
     "groupRole": "Type",
     "groupNone": "No grouping",
     "clusterOther": "Unassigned",
-    "relayout": "Rearrange the map"
+    "relayout": "Rearrange the map",
+    "clusterUnknownLocation": "Location unknown"
   },
   "nodeDrawer": {
     "title": "Device details",
@@ -70,7 +71,8 @@
     "ghostVaultNode": "Hidden device",
     "viewDetails": "Open device details",
     "close": "Close",
-    "unhealthy": "Has problems"
+    "unhealthy": "Has problems",
+    "consoleLink": "Link with the console"
   },
   "policyOpenNotice": "The rules allow links between all devices, except blocked ones. Communication also needs an available path.",
   "empty": {

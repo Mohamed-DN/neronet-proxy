@@ -37,6 +37,9 @@ const NodeCredentialService = require('../services/NodeCredentialService');
 const EnrollmentService = require('../services/EnrollmentService');
 const NativeTelemetry = require('../services/NativeTelemetry');
 const ProfileHandshake = require('../services/ProfileHandshake');
+const ProbeService = require('../services/ProbeService');
+const NodeLive = require('../services/NodeLive');
+const NodeLocation = require('../services/NodeLocation');
 const TransportPolicyService = require('../services/TransportPolicyService');
 const logger = require('../utils/logger');
 const { logAuditEvent } = require('../utils/audit');
@@ -238,9 +241,14 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
 
       const role = requestedRole;
       const capability = req.body.capability || {};
-      const countryCode = String(capability.country_code || 'US')
-        .slice(0, 2)
-        .toUpperCase();
+      // The country the operator set in the node's own configuration, or none. There is
+      // no default: a node that states nothing is in an unknown place (ADR 0040), and a
+      // value that is not a known ISO code is treated as not stated rather than stored.
+      const statedCountry = capability.country_code;
+      const countryCode = NodeLocation.parseCountry(statedCountry);
+      if (statedCountry && !countryCode) {
+        logger.warn(`[GO-BRIDGE] ${nodeId} declared a country code the console does not know; stored as unknown`);
+      }
       // UNKNOWN, not RESIDENTIAL. Nothing classifies a node's uplink, and a node that
       // does not declare one is not evidence of a domestic line.
       const ipClass = String(capability.ip_class || 'UNKNOWN');
@@ -321,8 +329,8 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       await client.query(
         `INSERT INTO nodes (
            id, user_id, name, role, ip_class, country_code, city, asn,
-           is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints, organization_id
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb, $13)
+           is_healthy, public_key, overlay_ipv4, overlay_ipv6, endpoints, organization_id, location_source
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, $12::jsonb, $13, $14)
          ON CONFLICT (id) DO UPDATE SET
            is_healthy = TRUE,
            updated_at = NOW()`,
@@ -339,9 +347,21 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
           overlayIpv4,
           overlayIpv6,
           endpointsJson,
-          organizationId
+          organizationId,
+          countryCode ? 'agent' : null
         ]
       );
+
+      // A node enrolled before it could state a country, or whose value was cleared as a
+      // default (migration 060), gets the operator's explicit one the first time it
+      // states it. A country already held, by an administrator or by an earlier
+      // registration, is never replaced here: that is the rule role and country follow.
+      if (existing.length > 0 && countryCode) {
+        await client.query(
+          `UPDATE nodes SET country_code = $1, location_source = 'agent' WHERE id = $2 AND country_code IS NULL`,
+          [countryCode, nodeId]
+        );
+      }
 
       // An enrolled node's stored endpoints are replaced only by a registration that
       // carries a usable one. A node registers again whenever its credential stops
@@ -376,7 +396,7 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
              latitude = $1,
              longitude = $2,
              city = CASE WHEN city IS NULL OR city = '' THEN $3 ELSE city END,
-             metadata = metadata || '{"location_source":"declared"}'::jsonb
+             location_source = COALESCE(location_source, 'agent')
            WHERE id = $4 AND latitude IS NULL AND longitude IS NULL`,
           [declared.latitude, declared.longitude, city, nodeId]
         );
@@ -506,9 +526,9 @@ router.post('/heartbeat', normalizeRegisterBody, validateRequest('HeartbeatReque
     // The node must exist before its heartbeat is buffered, otherwise an unknown id
     // accumulates state that no flush can ever apply.
     const known = await runQuery(
-      'SELECT is_quarantined, quarantine_reason FROM nodes WHERE id = $1',
+      'SELECT is_quarantined, quarantine_reason, last_heartbeat FROM nodes WHERE id = $1',
       [nodeId],
-      'SELECT is_quarantined, quarantine_reason FROM nodes WHERE id = ?',
+      'SELECT is_quarantined, quarantine_reason, last_heartbeat FROM nodes WHERE id = ?',
       [nodeId]
     );
 
@@ -529,7 +549,13 @@ router.post('/heartbeat', normalizeRegisterBody, validateRequest('HeartbeatReque
     // for profile devices of the gateway's own organisation.
     if (auth.node && auth.node.id === nodeId) {
       await ProfileHandshake.record(nodeId, req.body.peer_paths);
+      await ProfileHandshake.recordRtt(nodeId, req.body.peer_paths);
     }
+
+    // A node heard from again after silence has changed state for anyone watching: the
+    // open consoles read it again. A node beating on schedule announces nothing.
+    const previousBeat = known[0].last_heartbeat ? new Date(known[0].last_heartbeat).getTime() : 0;
+    if (Date.now() - previousBeat > 60_000) NodeLive.notifyNodeUpdated(nodeId);
 
     // The attestation the node sends with every beat. It was decoded off the wire and
     // then dropped on the floor, which is why posture_checks on every row still held
@@ -681,6 +707,12 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
     // origin has nothing to offer another node.
     const filters = ["role IN ('EXIT_BRIDGE', 'RELAY', 'HYBRID')", 'is_healthy = TRUE', 'is_quarantined = FALSE'];
     const params = [];
+    // Where a node is belongs to its own organisation (ADR 0040). The caller's
+    // organisation: its node's, or, for a fleet-token caller that names no node, the one
+    // the token enrols into. A peer of another organisation (compartment peering) is
+    // still offered where the data plane needs it, but without a country or city, and a
+    // country filter never matches it, so the filter cannot be used to probe it.
+    let callerOrganization = null;
 
     const add = (clause, value) => {
       params.push(value);
@@ -695,6 +727,7 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
       // ranking or LIMIT, including requests for an explicit foreign relay.
       const netmap = await NetmapService.buildNetmap(auth.node.id);
       if (!netmap) return res.status(401).json({ error: 'invalid node credential' });
+      callerOrganization = await organizationOfNode(auth.node.id);
       add(
         'id = ANY($$::text[])',
         netmap.peers.map((peer) => peer.node_id)
@@ -708,8 +741,20 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
       );
     }
 
+    if (!auth.node) {
+      // The fleet token is held by the deployment's operator and names no node. It sees
+      // the organisation it enrols nodes into, never the others.
+      callerOrganization = await fleetOrganization();
+      add("COALESCE(organization_id, 'org-default') = $$", callerOrganization);
+    }
+
     if (explicitHostId) add('id = $$', explicitHostId);
-    if (targetCountry) add('country_code = $$', targetCountry);
+    if (targetCountry) {
+      params.push(callerOrganization);
+      const org = `$${params.length}`;
+      params.push(targetCountry);
+      filters.push(`(COALESCE(organization_id, 'org-default') = ${org} AND country_code = $${params.length})`);
+    }
     if (targetAsn) add('asn = $$', targetAsn);
     if (ipClass) add('ip_class = $$', ipClass);
 
@@ -725,7 +770,8 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
       created_at ASC`;
 
     const pgSql = `SELECT id, public_key, overlay_ipv4, endpoints, country_code, city, asn,
-                          ip_class, latency_ms, risk_score, last_heartbeat
+                          ip_class, latency_ms, risk_score, last_heartbeat,
+                          COALESCE(organization_id, 'org-default') AS organization_id
                      FROM nodes WHERE ${where} ${order} LIMIT $${params.length + 1}`;
 
     const rows = await runQuery(pgSql, [...params, limit]);
@@ -744,8 +790,9 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
         endpoints: udpPeers.has(row.id) ? parseEndpoints(row.endpoints) : [],
         capability: {
           enabled: true,
-          country_code: row.country_code || 'US',
-          city: row.city || '',
+          // Unknown stays empty; another organisation's peers carry no location at all.
+          country_code: row.organization_id === callerOrganization ? row.country_code || '' : '',
+          city: row.organization_id === callerOrganization ? row.city || '' : '',
           asn: Number(row.asn) || 0,
           ip_class: row.ip_class || 'RESIDENTIAL',
           max_bandwidth_kbps: 0,
@@ -761,6 +808,49 @@ router.post('/discover', validateRequest('DiscoverRequest'), async (req, res) =>
     return res.json({ bridges });
   } catch (err) {
     logger.error(`[GO-BRIDGE] Discovery failed: ${err.message}`);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// POST /v4/control/probe/poll
+//
+// The connection test (ADR 0040). A profile gateway holds this request open; it answers
+// the moment a console user asks for a probe of one of the devices the gateway serves, or
+// with an empty list after ProbeService.POLL_HOLD_MS. Only a node credential is accepted,
+// and a request is handed only to the gateway that serves the device. The body carries
+// nothing, so there is nothing to validate beyond the credential.
+router.post('/probe/poll', async (req, res) => {
+  try {
+    const auth = await checkNodeAuth(req);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!auth.node) return res.status(401).json({ error: 'node credential required' });
+    let hangedUp = false;
+    res.on('close', () => {
+      hangedUp = true;
+    });
+    const requests = await ProbeService.claim(auth.node.id, { aborted: () => hangedUp });
+    if (hangedUp) return undefined;
+    return res.json({ requests });
+  } catch (err) {
+    logger.error(`[GO-BRIDGE] Probe poll failed: ${err.message}`);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// POST /v4/control/probe/result
+//
+// The gateway's answer to one request: replied (with rtt_ms) or not. Believed only from
+// the gateway the request names.
+router.post('/probe/result', async (req, res) => {
+  try {
+    const auth = await checkNodeAuth(req);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!auth.node) return res.status(401).json({ error: 'node credential required' });
+    const body = req.body || {};
+    const outcome = await ProbeService.answer(auth.node.id, body.request_id, body);
+    return res.status(outcome.http).json(outcome.body);
+  } catch (err) {
+    logger.error(`[GO-BRIDGE] Probe result failed: ${err.message}`);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
@@ -914,7 +1004,11 @@ function describeMismatch(stored, requested) {
     ['country_code', stored.country_code, requested.countryCode]
   ];
 
-  const changed = fields.filter(([, was, asked]) => was !== asked).map(([field]) => field);
+  // An unknown country on either side is not a disagreement: a stored NULL is filled by
+  // the registration, and a node that states none asks for nothing to change.
+  const changed = fields
+    .filter(([field, was, asked]) => was !== asked && (field !== 'country_code' || (was && asked)))
+    .map(([field]) => field);
 
   // A node that declares a position when the row already holds one. The columns are
   // single-precision on PostgreSQL, hence the tolerance.
@@ -969,6 +1063,26 @@ function parseDeclaredCoordinates(capability) {
     return { error: 'latitude must be within [-90, 90] and longitude within [-180, 180]' };
   }
   return { latitude: lat, longitude: lon };
+}
+
+/** The organisation of one node ('org-default' when none is recorded). */
+async function organizationOfNode(nodeId) {
+  const rows = await runQuery(
+    "SELECT COALESCE(organization_id, 'org-default') AS organization_id FROM nodes WHERE id = $1",
+    [nodeId]
+  );
+  return rows[0] ? rows[0].organization_id : 'org-default';
+}
+
+/** The organisation a fleet-token enrolment lands in: its owner's, as registration decides. */
+async function fleetOrganization() {
+  const rows = await runQuery(
+    `SELECT COALESCE(u.organization_id, 'org-default') AS organization_id
+       FROM users u
+      WHERE u.id = COALESCE((SELECT id FROM users WHERE id = $1), (SELECT id FROM users WHERE role = 'super-admin' ORDER BY created_at LIMIT 1))`,
+    [process.env.SOVEREIGN_GO_BRIDGE_OWNER_ID || '']
+  );
+  return rows[0] ? rows[0].organization_id : 'org-default';
 }
 
 /** Endpoints are JSONB on PostgreSQL and a TEXT column on SQLite. */

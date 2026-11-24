@@ -18,6 +18,9 @@ const NativeTelemetry = require('../services/NativeTelemetry');
 const ProfileHandshake = require('../services/ProfileHandshake');
 const { resolveMetricsScope, nodeVisibility } = require('../services/FleetVisibility');
 const { validateEndpoints } = require('../services/NetmapService');
+const NodeLocation = require('../services/NodeLocation');
+const NodeLive = require('../services/NodeLive');
+const ProbeService = require('../services/ProbeService');
 
 const VALID_ROLES = ['CLIENT_ORIGIN', 'EXIT_BRIDGE', 'HYBRID', 'RELAY'];
 // Organisation roles that decide what a node is for the rest of the mesh.
@@ -92,11 +95,13 @@ async function formatNode(row, telemetry) {
     overlay_ipv6: row.overlay_ipv6,
     role: row.role,
     ip_class: row.ip_class,
-    country_code: row.country_code,
+    // Unknown is null, never a default country (ADR 0040). The caller's route has already
+    // decided the reader may see the device; location_source says who stated the value.
+    country_code: row.country_code || null,
     city: row.city || '',
     latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
     longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
-    location_source: metadata.location_source === 'declared' ? 'declared' : null,
+    location_source: row.location_source && NodeLocation.SOURCES.includes(row.location_source) ? row.location_source : null,
     asn: Number(row.asn) || 0,
     endpoints: Array.isArray(endpoints) ? endpoints : [],
     onion_routing_enabled: onionEnabled,
@@ -111,7 +116,17 @@ async function formatNode(row, telemetry) {
     // The columns default to 0 and 100, and the heartbeat writes 0 for a round trip the node
     // did not measure (services/HeartbeatBuffer.js). Stats already treats 0 as "no value"
     // (routes/stats.js), so 0 is "not measured" here; a row with no heartbeat has measured nothing.
+    //
+    // This is the gateway's HTTP heartbeat round trip to the console (the link with the
+    // console), not how fast the device answers: that is rtt_ms below (ADR 0040).
     latency_ms: Number(row.latency_ms) > 0 ? Number(row.latency_ms) : null,
+    console_link_ms: Number(row.latency_ms) > 0 ? Number(row.latency_ms) : null,
+    // A ping the serving gateway sent through the tunnel: value, when, and how. rtt_ms is
+    // null with rtt_measured_at set when the device did not reply; both null when no ping
+    // was ever sent (or the device is not one a gateway pings).
+    rtt_ms: row.rtt_ms === null || row.rtt_ms === undefined ? null : Number(row.rtt_ms),
+    rtt_measured_at: row.rtt_measured_at ? new Date(row.rtt_measured_at).toISOString() : null,
+    rtt_method: row.rtt_method || null,
     jitter_ms: null,
     tx_bytes: fresh && observation.traffic_available ? observation.tx_bytes : null,
     rx_bytes: fresh && observation.traffic_available ? observation.rx_bytes : null,
@@ -254,7 +269,23 @@ router.post('/', async (req, res, next) => {
     }
     const wantsPrivileged =
       (role !== undefined && role !== null && role !== 'CLIENT_ORIGIN') ||
-      ['latency_ms', 'is_healthy', 'status', 'is_quarantined'].some((field) => req.body[field] !== undefined);
+      ['latency_ms', 'is_healthy', 'status', 'is_quarantined', 'country_code', 'latitude', 'longitude'].some(
+        (field) => req.body[field] !== undefined && req.body[field] !== null
+      );
+    // Where a device is can be stated only by the people who run the organisation, and
+    // only as a real country; there is no default (ADR 0040).
+    let statedCountry = null;
+    if (country_code !== undefined && country_code !== null && country_code !== '') {
+      statedCountry = NodeLocation.parseCountry(country_code);
+      if (!statedCountry) return res.status(400).json({ error: 'country_code must be a two-letter ISO 3166-1 code' });
+    }
+    let statedCoordinates = null;
+    if ((latitude !== undefined && latitude !== null) || (longitude !== undefined && longitude !== null)) {
+      statedCoordinates = NodeLocation.parseCoordinates(latitude, longitude);
+      if (!statedCoordinates) {
+        return res.status(400).json({ error: 'latitude and longitude must be stated together and be in range' });
+      }
+    }
 
     let finalPubKey = public_key;
     if (!finalPubKey) {
@@ -268,7 +299,6 @@ router.post('/', async (req, res, next) => {
 
     const nodeRole = role === undefined || role === null ? 'CLIENT_ORIGIN' : role;
     const nodeIpClass = ip_class && VALID_IP_CLASSES.includes(ip_class) ? ip_class : 'UNKNOWN';
-    const nodeCountry = country_code || 'US';
     const onionRouting = onion_routing_enabled !== undefined ? Boolean(onion_routing_enabled) : Number(onion_hops) > 0;
     const hops = onionRouting ? (Number(onion_hops) > 0 ? Number(onion_hops) : 3) : 0;
     const killSwitch = Boolean(kill_switch_enabled);
@@ -295,8 +325,9 @@ router.post('/', async (req, res, next) => {
 
       const { overlayIpv4, overlayIpv6 } = await allocateNextVip(client);
 
-      const lat = latitude !== undefined ? parseFloat(latitude) : nodeCountry === 'US' ? 38.9072 : 50.1109;
-      const lon = longitude !== undefined ? parseFloat(longitude) : nodeCountry === 'US' ? -77.0369 : 8.6821;
+      const lat = statedCoordinates ? statedCoordinates.latitude : null;
+      const lon = statedCoordinates ? statedCoordinates.longitude : null;
+      const source = statedCountry || statedCoordinates ? 'declared' : null;
 
       await client.query(
         `
@@ -304,12 +335,12 @@ router.post('/', async (req, res, next) => {
         id, user_id, organization_id, name, public_key, overlay_ipv4, overlay_ipv6,
         role, ip_class, country_code, city, asn, endpoints,
         onion_routing_enabled, onion_hops, kill_switch_enabled, is_healthy, is_quarantined, latency_ms,
-        longitude, latitude, metadata
+        longitude, latitude, metadata, location_source
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7,
         $8, $9, $10, $11, $12, $13::jsonb,
-        $14, $15, $16, TRUE, FALSE, 15.0,
-        $17, $18, $19::jsonb
+        $14, $15, $16, TRUE, FALSE, 0,
+        $17, $18, $19::jsonb, $20
       )
     `,
         [
@@ -322,7 +353,7 @@ router.post('/', async (req, res, next) => {
           overlayIpv6,
           nodeRole,
           nodeIpClass,
-          nodeCountry,
+          statedCountry,
           city || '',
           asn || 0,
           JSON.stringify(endpointsArray),
@@ -331,7 +362,8 @@ router.post('/', async (req, res, next) => {
           killSwitch,
           lon,
           lat,
-          JSON.stringify(metadata || {})
+          JSON.stringify(metadata || {}),
+          source
         ]
       );
 
@@ -380,6 +412,88 @@ router.get('/:id', async (req, res, next) => {
 
     if (!node) return res.status(404).json({ error: 'Node not found' });
     return res.status(200).json({ node: await formatNode(node) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 3b. State where a device is (ADR 0040). Owner/admin only, a real ISO country, audited.
+// `{ country_code: null }` clears it back to unknown. Nothing else writes a 'declared' value.
+router.put('/:id/location', async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const existing = (await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id])).rows[0] || null;
+    const access = verifyNodeAccess(existing, req.user, true);
+    if (!access.ok) return res.status(access.error).json({ error: access.message });
+    if (!NodeLocation.canDeclare(req.user)) return refusePrivileged(res);
+
+    const body = req.body || {};
+    if (!Object.prototype.hasOwnProperty.call(body, 'country_code')) {
+      return res.status(400).json({ error: 'country_code is required (null clears it)' });
+    }
+    let country = null;
+    if (body.country_code !== null) {
+      country = NodeLocation.parseCountry(body.country_code);
+      if (!country) return res.status(400).json({ error: 'country_code must be a two-letter ISO 3166-1 code' });
+    }
+    const city = typeof body.city === 'string' ? body.city.trim().slice(0, 128) : null;
+
+    await pool.query(
+      `UPDATE nodes SET country_code = $2::text,
+              location_source = $3::text,
+              city = COALESCE($4, city),
+              latitude = CASE WHEN $2::text IS NULL THEN NULL ELSE latitude END,
+              longitude = CASE WHEN $2::text IS NULL THEN NULL ELSE longitude END,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [existing.id, country, country ? 'declared' : null, country ? city : '']
+    );
+    await logAuditEvent({
+      eventType: 'NODE_LOCATION_SET',
+      organizationId: existing.organization_id || 'org-default',
+      severity: 'info',
+      actorUserId: req.user.id,
+      actorUsername: req.user.username,
+      targetId: existing.id,
+      targetType: 'node',
+      message: country
+        ? `Location of ${existing.id} declared as ${country} by ${req.user.username}`
+        : `Location of ${existing.id} cleared by ${req.user.username}`,
+      ipAddress: req.ip,
+      metadata: { previous: existing.country_code || null, current: country, source: country ? 'declared' : null }
+    });
+    NodeLive.notifyNodeUpdated(existing.id, { immediate: true });
+    const fresh = (await pool.query('SELECT * FROM nodes WHERE id = $1', [existing.id])).rows[0];
+    return res.status(200).json({ node: await formatNode(fresh) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 3c. The connection test (ADR 0040): ask the serving gateway to ping the device now, and
+// read the answer. The device's owner or an organisation administrator only.
+router.post('/:id/probe', async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const node = (await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id])).rows[0] || null;
+    const access = verifyNodeAccess(node, req.user, true);
+    if (!access.ok) return res.status(access.error).json({ error: access.message });
+    const outcome = await ProbeService.request(node, req.user);
+    return res.status(outcome.http).json(outcome.body);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/probe/:requestId', async (req, res, next) => {
+  try {
+    const pool = getPgPool();
+    const node = (await pool.query('SELECT * FROM nodes WHERE id = $1', [req.params.id])).rows[0] || null;
+    const access = verifyNodeAccess(node, req.user, true);
+    if (!access.ok) return res.status(access.error).json({ error: access.message });
+    const result = await ProbeService.read(req.params.requestId, node.id);
+    if (!result) return res.status(404).json({ error: 'Probe request not found' });
+    return res.status(200).json(result);
   } catch (err) {
     next(err);
   }
@@ -709,40 +823,18 @@ router.post('/:id/action', async (req, res, next) => {
       return res.status(400).json({ error: 'Missing action parameter' });
     }
 
-    // Ping is read-only, other actions are mutating
-    const isMutating = action !== 'ping';
+    // A connection test asks the gateway to send something, so it is not a read.
+    const isMutating = true;
     const access = verifyNodeAccess(node, req.user, isMutating);
     if (!access.ok) {
       return res.status(access.error).json({ error: access.message });
     }
 
     if (action === 'ping') {
-      // This sends nothing to the node: it reports the last latency the node measured.
-      // With none recorded (0 is the column default) there is no round trip to show.
-      const measured = Number(node.latency_ms) > 0;
-      const rtt_ms = measured ? Number(node.latency_ms) : null;
-      const jitter_ms = null;
-      logAuditEvent({
-        eventType: 'NODE_PING',
-        organizationId: node.organization_id || 'org-default',
-        severity: 'info',
-        actorUserId: req.user.id,
-        actorUsername: req.user.username,
-        targetId: node.id,
-        targetType: 'node',
-        message: `Node ${node.id} pinged`,
-        ipAddress: req.ip,
-        metadata: { rtt_ms, measured }
-      });
-      return res.status(200).json({
-        success: true,
-        result: {
-          rtt_ms,
-          jitter_ms,
-          measured,
-          status: node.is_quarantined ? 'quarantined' : 'active'
-        }
-      });
+      // Kept for older consoles: it now starts a real probe (ADR 0040) and answers with its
+      // request id, instead of reporting the last stored number as if it were a test.
+      const outcome = await ProbeService.request(node, req.user);
+      return res.status(outcome.http).json({ success: outcome.http < 300, result: outcome.body });
     }
 
     if ((action === 'set_exit' || action === 'lift_quarantine') && !canAdministerNodes(req.user)) {

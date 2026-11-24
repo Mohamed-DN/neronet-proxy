@@ -28,7 +28,7 @@ func TestGatewayReportsAProfileDevicesHandshakeAndCounters(t *testing.T) {
 		{PeerStatus: dataplane.PeerStatus{PublicKey: meshKeyHex}},
 	}
 
-	got := peerPathReport(profileDoc(), nil, false, statuses, noPaths{}, now)
+	got := peerPathReport(profileDoc(), nil, false, statuses, noPaths{}, nil, now)
 
 	byID := map[string]control.PeerPathObservation{}
 	for _, o := range got {
@@ -64,11 +64,11 @@ func TestGatewayReportsNothingForARevokedOrUnknownPeer(t *testing.T) {
 		{PeerStatus: dataplane.PeerStatus{PublicKey: profileKeyHex, LastHandshake: now}},
 		{PeerStatus: dataplane.PeerStatus{PublicKey: "3333333333333333333333333333333333333333333333333333333333333333", LastHandshake: now}},
 	}
-	got := peerPathReport(profileDoc(), map[string]uint64{profileKeyHex: 1}, false, statuses, noPaths{}, now)
+	got := peerPathReport(profileDoc(), map[string]uint64{profileKeyHex: 1}, false, statuses, noPaths{}, nil, now)
 	if len(got) != 0 {
 		t.Fatalf("reported %+v; a revoked or unknown key must not be named", got)
 	}
-	if got := peerPathReport(profileDoc(), nil, true, statuses, noPaths{}, now); len(got) != 0 {
+	if got := peerPathReport(profileDoc(), nil, true, statuses, noPaths{}, nil, now); len(got) != 0 {
 		t.Fatalf("a fail-closed node reported %+v", got)
 	}
 }

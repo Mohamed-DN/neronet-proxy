@@ -108,7 +108,16 @@ func (h *netmapHolder) transportReport(request *control.HeartbeatRequest) {
 	}
 	failClosed := m.failClosed
 	m.mu.Unlock()
-	request.PeerPaths = peerPathReport(peers, revoked, failClosed, m.dev.SampleAuthenticatedPaths(), m.mux, now)
+	var rtts rttView
+	if m.prober != nil {
+		rtts = m.prober
+	}
+	request.PeerPaths = peerPathReport(peers, revoked, failClosed, m.dev.SampleAuthenticatedPaths(), m.mux, rtts, now)
+}
+
+// rttView is what the report reads from the prober.
+type rttView interface {
+	Sample(peerID string) (rttSample, bool)
 }
 
 // pathView is what the report reads from the transport multiplexer.
@@ -122,7 +131,7 @@ type pathView interface {
 // The handshake time and counters come from wireguard-go itself; nothing else in the
 // node can say whether a peer is actually talking to it.
 func peerPathReport(peers []control.NetmapPeer, revoked map[string]uint64, failClosed bool,
-	statuses []dataplane.PathStatus, mux pathView, now time.Time) []control.PeerPathObservation {
+	statuses []dataplane.PathStatus, mux pathView, rtts rttView, now time.Time) []control.PeerPathObservation {
 	type entry struct {
 		id      string
 		profile bool
@@ -152,6 +161,15 @@ func peerPathReport(peers []control.NetmapPeer, revoked map[string]uint64, failC
 			// control plane reads to say whether the device is connected.
 			observation.State = "profile"
 			observation.Reason = ""
+			// The ping this gateway sent to the device, with when. A null value with a time
+			// is "no reply"; no time at all is "not pinged".
+			if rtts != nil {
+				if sample, ok := rtts.Sample(peer.id); ok && !sample.At.IsZero() {
+					at := sample.At.Unix()
+					observation.RTTObservedAtUnix = &at
+					observation.RTTMillis = sample.RTTMillis
+				}
+			}
 		} else if len(mux.PeerPaths(status.PublicKey)) == 0 {
 			observation.State = "no_path"
 			observation.Reason = "policy_has_no_candidate"

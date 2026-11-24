@@ -51,8 +51,9 @@ const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 
 export function groupValue(node: TopologyNode, groupBy: GroupBy): { key: string; label: string } {
   if (groupBy === 'compartment') return { key: node.compartment_id || '__none__', label: node.compartment_name || '' };
+  // Devices whose country nobody stated form one group; its label is worded by the page.
   if (groupBy === 'country')
-    return { key: node.country?.toUpperCase() || '__none__', label: node.country?.toUpperCase() || '' };
+    return { key: node.country?.toUpperCase() || '__unknown__', label: node.country?.toUpperCase() || '' };
   if (groupBy === 'role') return { key: node.role || '__none__', label: node.role || '' };
   return { key: '__all__', label: '' };
 }

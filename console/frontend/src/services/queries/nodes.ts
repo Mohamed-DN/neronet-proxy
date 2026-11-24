@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
-import { apiDelete, apiPost, apiRequest } from '../apiClient';
+import { apiDelete, apiPost, apiPut, apiRequest } from '../apiClient';
 import type { MeshNode } from '../types';
 import { queryKeys } from './keys';
+import { visibleInterval } from './polling';
 
 /**
  * A node counts as reachable when the control plane heard from it inside the
@@ -47,9 +48,10 @@ export function useNodes(options: { refetchIntervalMs?: number } = {}): UseQuery
   return useQuery({
     queryKey: queryKeys.nodes,
     queryFn: ({ signal }) => fetchNodes(signal),
-    staleTime: 15_000,
-    // A page that is waiting for one device to appear asks for a shorter interval.
-    refetchInterval: options.refetchIntervalMs ?? 30_000
+    staleTime: 5_000,
+    // A page that is waiting for one device to appear asks for a shorter interval. Otherwise
+    // the list reads again every 10 s while the tab is visible, as a fallback to node:updated.
+    refetchInterval: () => (options.refetchIntervalMs ? options.refetchIntervalMs : visibleInterval())
   });
 }
 
@@ -62,7 +64,8 @@ export function useNode(id: string | undefined): UseQueryResult<MeshNode, Error>
       if (!body?.node) throw new Error('The control plane returned no node for this identifier');
       return body.node;
     },
-    staleTime: 15_000
+    staleTime: 5_000,
+    refetchInterval: () => visibleInterval()
   });
 }
 
@@ -87,12 +90,6 @@ export function fleetCounts(nodes: MeshNode[] | undefined, now = Date.now()): Fl
     quarantined: list.filter((n) => Boolean(n.is_quarantined)).length,
     highRisk: list.filter((n) => typeof n.risk_score === 'number' && n.risk_score > 75).length
   };
-}
-
-export interface PingResult {
-  rtt_ms: number;
-  jitter_ms: number;
-  status: string;
 }
 
 /**
@@ -163,15 +160,18 @@ export function useDeleteOwnDevice() {
 }
 
 /**
- * Performs a live latency RTT & jitter probe to a node.
+ * States where a device is (ADR 0040). Administrators only; the control plane validates the
+ * code and records who stated it. `null` marks the location as unknown again.
  */
-export function useNodePing() {
+export function useDeclareLocation() {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiPost<{ success: boolean; result: PingResult }>(`/nodes/${encodeURIComponent(id)}/action`, {
-        action: 'ping'
-      });
-      return res.result;
+    mutationFn: async ({ id, countryCode }: { id: string; countryCode: string | null }) =>
+      apiPut<{ node: MeshNode }>(`/nodes/${encodeURIComponent(id)}/location`, { country_code: countryCode }),
+    onSuccess: (_, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.nodes });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.node(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.statsTopology });
     }
   });
 }

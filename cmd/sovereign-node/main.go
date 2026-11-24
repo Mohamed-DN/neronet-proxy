@@ -36,7 +36,7 @@ func main() {
 	controlURL := config.BindStringFlag(flag.CommandLine, "control-url", "SOVEREIGN_CONTROL_PLANE_URL", "http://127.0.0.1:8443", "SovereignMesh Control Plane URL")
 	controlCA := config.BindStringFlag(flag.CommandLine, "control-ca", "SOVEREIGN_CONTROL_PLANE_CA", "", "PEM file of the CA that signs the control plane's TLS certificate; only that CA is trusted. Empty uses the system roots")
 	enableExit := config.BindBoolFlag(flag.CommandLine, "enable-exit", "SOVEREIGN_ENABLE_EXIT_BRIDGE", false, "Enable sandboxed egress exit node bridge")
-	countryCode := config.BindStringFlag(flag.CommandLine, "country", "SOVEREIGN_COUNTRY_CODE", "US", "Self-declared ISO country code for bridge registration (not measured)")
+	countryCode := config.BindStringFlag(flag.CommandLine, "country", "SOVEREIGN_COUNTRY_CODE", "", "Self-declared ISO country code for bridge registration (not measured); empty means the location is unknown and nothing is reported")
 	declaredLocationOf := bindLocationFlags(flag.CommandLine)
 	identityPath := config.BindStringFlag(flag.CommandLine, "identity", "SOVEREIGN_NODE_KEY_PATH", "/var/lib/neronet/node_identity.key", "Path to this node's persistent identity key")
 	maxBandwidthKbps := config.BindIntFlag(flag.CommandLine, "max-bandwidth-kbps", "SOVEREIGN_MAX_BANDWIDTH_KBPS", 0, "Self-declared uplink capacity in kbps; 0 means not declared")
@@ -151,7 +151,16 @@ func main() {
 	netmaps := &netmapHolder{}
 	ctrlClient.SetTelemetrySource(newTelemetrySampler(netmaps).snapshot)
 
-	log.Printf("[SOVEREIGN-NODE] Country %s is self-declared by the operator, not measured", *countryCode)
+	declaredCountry, countryErr := normaliseCountry(*countryCode)
+	if countryErr != nil {
+		log.Fatalf("Invalid -country: %v", countryErr)
+	}
+	*countryCode = declaredCountry
+	if declaredCountry == "" {
+		log.Printf("[SOVEREIGN-NODE] No country set: this node's location is unknown and none is reported (set -country or SOVEREIGN_COUNTRY_CODE to state one)")
+	} else {
+		log.Printf("[SOVEREIGN-NODE] Country %s is self-declared by the operator, not measured", declaredCountry)
+	}
 
 	// The identifier the data plane starts with. Empty when registration failed, in
 	// which case the node runs on its stored netmap or at default deny.

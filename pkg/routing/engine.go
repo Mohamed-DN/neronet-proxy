@@ -63,11 +63,15 @@ func (e *RoutingEngine) SelectByCountry(countryCode string) (*NodeCandidate, err
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	targetCC := strings.ToUpper(countryCode)
+	targetCC := strings.ToUpper(strings.TrimSpace(countryCode))
 	var matches []*NodeCandidate
+	if targetCC == "" {
+		return nil, fmt.Errorf("%w: no country was asked for", ErrNoCandidateFound)
+	}
 
 	for _, c := range e.candidates {
-		if strings.ToUpper(c.CountryCode) == targetCC && (c.Role == "EXIT_BRIDGE" || c.Role == "HYBRID") {
+		// A candidate whose country is unknown (empty) never matches a country.
+		if strings.ToUpper(strings.TrimSpace(c.CountryCode)) == targetCC && (c.Role == "EXIT_BRIDGE" || c.Role == "HYBRID") {
 			if c.Score >= MinUsableScore {
 				matches = append(matches, c)
 			}

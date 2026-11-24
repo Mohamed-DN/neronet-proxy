@@ -17,6 +17,7 @@ const { broadcastNodeEvent } = require('../services/TopologySync');
 const EnrollmentService = require('../services/EnrollmentService');
 const { bumpNetmap } = require('../services/AclEngine');
 const TransportPolicyService = require('../services/TransportPolicyService');
+const NodeLocation = require('../services/NodeLocation');
 
 // The error handler drops `code` on 5xx, and clients map these two to a message.
 function sendHonestFailure(res, err) {
@@ -60,7 +61,12 @@ router.post('/generate', async (req, res, next) => {
     const kp = generateCurve25519Keypair();
     const VALID_ROLES = ['CLIENT_ORIGIN', 'EXIT_BRIDGE', 'HYBRID', 'RELAY'];
     const nodeRole = role && VALID_ROLES.includes(role) ? role : 'CLIENT_ORIGIN';
-    const nodeCountry = country_code || 'US';
+    // No default country (ADR 0040): a profile states one only when an administrator does.
+    let nodeCountry = null;
+    if (country_code !== undefined && country_code !== null && country_code !== '') {
+      nodeCountry = NodeLocation.parseCountry(country_code);
+      if (!nodeCountry) return res.status(400).json({ error: 'country_code must be a two-letter ISO 3166-1 code' });
+    }
     const onionEnabled = Boolean(onion_routing_enabled || (onion_hops !== undefined && Number(onion_hops) > 0));
     const hops = onionEnabled ? (onion_hops !== undefined && Number(onion_hops) > 0 ? Number(onion_hops) : 3) : 0;
     const killSwitch = Boolean(kill_switch_enabled);
@@ -74,23 +80,23 @@ router.post('/generate', async (req, res, next) => {
         req.sessionAuthority.organizationIdAtIssue
       );
       const organizationId = actor.organization_id;
+      if (nodeCountry && !NodeLocation.canDeclare(actor)) {
+        throw EnrollmentService.denied(403, 'Forbidden: only an organisation administrator can state a location');
+      }
       const vips = await allocateNextVip(client);
       overlayIpv4 = vips.overlayIpv4;
       overlayIpv6 = vips.overlayIpv6;
-
-      const lat = nodeCountry === 'US' ? 38.9072 : 50.1109;
-      const lon = nodeCountry === 'US' ? -77.0369 : 8.6821;
 
       await client.query(
         `
       INSERT INTO nodes (
         id, user_id, name, public_key, preshared_key, overlay_ipv4, overlay_ipv6,
         role, ip_class, country_code, onion_routing_enabled, onion_hops, kill_switch_enabled,
-        is_healthy, is_quarantined, latency_ms, longitude, latitude, organization_id
+        is_healthy, is_quarantined, latency_ms, organization_id, location_source
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7,
         $8, 'RESIDENTIAL', $9, $10, $11, $12,
-        TRUE, FALSE, 10.0, $13, $14, $15
+        TRUE, FALSE, 0, $13, $14
       )
     `,
         [
@@ -106,9 +112,8 @@ router.post('/generate', async (req, res, next) => {
           onionEnabled,
           hops,
           killSwitch,
-          lon,
-          lat,
-          organizationId
+          organizationId,
+          nodeCountry ? 'declared' : null
         ]
       );
       // Built before commit: if the QR cannot be rendered the node is rolled back

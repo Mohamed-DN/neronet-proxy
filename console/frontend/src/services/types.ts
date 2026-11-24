@@ -19,7 +19,10 @@ export interface MeshNode {
   hostname?: string;
   user_id?: string;
   role?: string;
-  country_code?: string;
+  /** null when nobody stated it: the location is unknown, never a default (ADR 0040). */
+  country_code?: string | null;
+  /** Who stated it: an administrator ('declared') or the device's operator ('agent'). */
+  location_source?: 'declared' | 'agent' | null;
   city?: string;
   overlay_ipv4?: string | null;
   overlay_ipv6?: string | null;
@@ -37,7 +40,13 @@ export interface MeshNode {
   compartment_id?: string | null;
   posture_status?: 'verified_compliant' | 'unverified' | 'non_compliant' | string | null;
   posture_checks?: PostureChecks | null;
+  /** The heartbeat's round trip to the console: the link with the console, not the device's response time. */
   latency_ms?: number | null;
+  console_link_ms?: number | null;
+  /** A ping from the serving gateway: null with a time means it got no reply; both null, never pinged. */
+  rtt_ms?: number | null;
+  rtt_measured_at?: string | null;
+  rtt_method?: 'icmp' | null;
   jitter_ms?: number | null;
   tx_bytes?: string | null;
   rx_bytes?: string | null;
@@ -398,8 +407,10 @@ export interface TimeseriesPoint {
 }
 
 export interface GeoMatrixEntry {
-  country: string;
-  code: string;
+  /** null for the one group of devices whose country is unknown. */
+  country: string | null;
+  code: string | null;
+  unknown?: boolean;
   nodes: number;
   live: number;
   relays: number;
@@ -412,11 +423,14 @@ export interface TopologyNode {
   id: string;
   name: string;
   role: string;
-  country: string;
+  /** null when unknown. */
+  country: string | null;
   overlay_ipv4: string | null;
   is_healthy: boolean;
   is_quarantined: boolean;
   latency_ms: number | null;
+  rtt_ms?: number | null;
+  rtt_measured_at?: string | null;
   compartment_id: string | null;
   compartment_name: string;
   is_ghost_vault: boolean;

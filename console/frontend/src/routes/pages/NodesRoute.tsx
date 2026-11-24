@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { Search, ShieldAlert, ShieldCheck, Zap } from 'lucide-react';
+
+import AuthContext from '../../context/AuthContext';
 
 import { formatRelativeTime } from '../../i18n/format';
 import { PageFrame } from '../PageFrame';
@@ -15,12 +17,14 @@ import {
   isProfileGateway,
   isReachable,
   useLiftQuarantineNode,
+  useDeclareLocation,
   useNode,
-  useNodePing,
   useNodes,
   useQuarantineNode,
   useRevokeNode
 } from '../../services/queries/nodes';
+import { useConnectionTest, type ProbeView } from '../../services/queries/probe';
+import { canDeclareLocation } from '../../services/roles';
 import type { MeshNode } from '../../services/types';
 import { Button } from '../../ui/Button';
 import { Card, CardHeader } from '../../ui/Card';
@@ -29,6 +33,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { Dialog } from '../../ui/Dialog';
 import { FormField } from '../../ui/FormField';
 import { Input } from '../../ui/Input';
+import { Select } from '../../ui/Select';
 import { PageHeader } from '../../ui/PageHeader';
 import { EmptyState, ErrorState, FilteredEmptyState, Skeleton } from '../../ui/States';
 import { Stat } from '../../ui/Stat';
@@ -39,6 +44,7 @@ import { ResponsiveDetail } from '../../ui/ResponsiveDetail';
 import { StationRow, StationRowList } from '../../ui/StationRow';
 import { Table, type TableColumn } from '../../ui/Table';
 import { useLayoutSize } from '../../ui/useLayoutSize';
+import { LocationValue, ResponseValue, countryOptions, useNow } from './liveValues';
 
 export type FilterKey = 'ALL' | 'ACTIVE' | 'QUARANTINED' | 'UNVERIFIED' | 'HIGH_RISK';
 
@@ -46,20 +52,73 @@ const FILTER_KEYS: FilterKey[] = ['ALL', 'ACTIVE', 'QUARANTINED', 'UNVERIFIED', 
 
 const KNOWN_ROLES = ['EXIT_BRIDGE', 'CLIENT_ORIGIN', 'RELAY', 'HYBRID'] as const;
 
-/** The ping answer. `measured: false` means no response time exists yet, not zero. */
-interface PingAnswer {
-  rtt_ms: number | null;
-  jitter_ms: number | null;
-  measured?: boolean;
-}
-
-type PingOutcome = { kind: 'replied'; rtt: string; jitter: string } | { kind: 'notMeasured' } | { kind: 'failed' };
-
 /** Maps a yes/no check to words. A check the server did not send is "not reported", never "no". */
 function formatCheck(value: boolean | null | undefined, yes: string, no: string, notReported: string) {
   if (value === true) return yes;
   if (value === false) return no;
   return notReported;
+}
+
+/** The words for one connection test. Every state says what happened and what it does not mean. */
+function ProbeOutcome({ view, now }: { view: ProbeView | null; now: number }) {
+  const { t, i18n } = useTranslation('nodes');
+  if (!view) return null;
+  const ago = (iso: string | null) => (iso ? formatRelativeTime(i18n.language, iso, new Date(now)) : null);
+  switch (view.state) {
+    case 'measuring':
+      return (
+        <span role="status" className="text-sm text-muted">
+          {t('detail.test.measuring')}
+        </span>
+      );
+    case 'replied':
+      return (
+        <span role="status" className="text-sm font-medium text-success">
+          {t('detail.test.replied', {
+            rtt: view.rttMs < 10 ? view.rttMs.toFixed(2) : view.rttMs.toFixed(1),
+            when: ago(view.answeredAt) ?? t('detail.test.justNow')
+          })}
+        </span>
+      );
+    case 'no_reply':
+      return (
+        <span role="status" className="text-sm">
+          {t('detail.test.noReply', { ago: ago(view.lastContactAt) ?? '—' })}
+        </span>
+      );
+    case 'not_connected': {
+      const when = ago(view.lastContactAt);
+      return (
+        <span role="status" className="text-sm">
+          {when ? t('detail.test.notConnected', { ago: when }) : t('detail.test.neverConnected')}
+        </span>
+      );
+    }
+    case 'gateway_unreachable':
+      return (
+        <span role="alert" className="text-sm font-medium text-danger">
+          {t('detail.test.gatewayUnreachable')}
+        </span>
+      );
+    case 'unsupported':
+      return (
+        <span role="status" className="text-sm text-muted">
+          {t('detail.test.unsupported')}
+        </span>
+      );
+    case 'rate_limited':
+      return (
+        <span role="status" className="text-sm text-muted">
+          {t('detail.test.rateLimited')}
+        </span>
+      );
+    default:
+      return (
+        <span role="alert" className="text-sm font-medium text-danger">
+          {t('detail.testFailed')}
+        </span>
+      );
+  }
 }
 
 export default function NodesRoute() {
@@ -75,7 +134,6 @@ export default function NodesRoute() {
   const [quarantineDialogOpen, setQuarantineDialogOpen] = useState(false);
   const [quarantineReason, setQuarantineReason] = useState('');
   const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
-  const [pingOutcome, setPingOutcome] = useState<PingOutcome | null>(null);
   const [actionFailed, setActionFailed] = useState(false);
 
   const nodesQuery = useNodes();
@@ -84,7 +142,14 @@ export default function NodesRoute() {
   const quarantineMutation = useQuarantineNode();
   const liftQuarantineMutation = useLiftQuarantineNode();
   const revokeMutation = useRevokeNode();
-  const pingMutation = useNodePing();
+  const probe = useConnectionTest(id);
+  const declareLocation = useDeclareLocation();
+  const auth = useContext(AuthContext);
+  const mayDeclare = canDeclareLocation(auth?.user ?? null);
+  const now = useNow();
+  const [pickedCountry, setPickedCountry] = useState('');
+  const [locationMessage, setLocationMessage] = useState<'saved' | 'failed' | null>(null);
+  const countries = useMemo(() => countryOptions(i18n.language), [i18n.language]);
 
   const nodes = nodesQuery.data ?? [];
   const selectedNode = selectedNodeQuery.data;
@@ -125,35 +190,28 @@ export default function NodesRoute() {
   };
 
   const handleOpenDetail = (nodeId: string) => {
-    setPingOutcome(null);
+    setLocationMessage(null);
     setActionFailed(false);
     navigate(nodePath(nodeId));
   };
 
   const handleCloseDetail = () => {
-    setPingOutcome(null);
+    setLocationMessage(null);
     setActionFailed(false);
     setQuarantineDialogOpen(false);
     setRevokeConfirmOpen(false);
     navigate(ROUTES.nodes);
   };
 
-  const handlePing = async () => {
+  const handleSaveLocation = async (countryCode: string | null) => {
     if (!id) return;
-    setActionFailed(false);
+    setLocationMessage(null);
     try {
-      const answer = (await pingMutation.mutateAsync(id)) as PingAnswer;
-      if (answer.measured === false || answer.rtt_ms == null) {
-        setPingOutcome({ kind: 'notMeasured' });
-      } else {
-        setPingOutcome({
-          kind: 'replied',
-          rtt: answer.rtt_ms.toFixed(1),
-          jitter: answer.jitter_ms == null ? '—' : answer.jitter_ms.toFixed(1)
-        });
-      }
+      await declareLocation.mutateAsync({ id, countryCode });
+      setPickedCountry('');
+      setLocationMessage('saved');
     } catch {
-      setPingOutcome({ kind: 'failed' });
+      setLocationMessage('failed');
     }
   };
 
@@ -250,6 +308,29 @@ export default function NodesRoute() {
       id: 'type',
       header: t('columns.type'),
       cell: (n) => <span className="text-ink-muted">{typeLabel(n)}</span>
+    },
+    {
+      id: 'location',
+      header: t('columns.location'),
+      cell: (n) => (
+        <span className="text-ink-muted">
+          <LocationValue countryCode={n.country_code} />
+        </span>
+      )
+    },
+    {
+      id: 'response',
+      header: t('columns.response'),
+      cell: (n) =>
+        n.device_kind === 'profile' ? (
+          <span className="text-ink-muted">
+            <ResponseValue rttMs={n.rtt_ms} measuredAt={n.rtt_measured_at} now={now} />
+          </span>
+        ) : (
+          <span data-state="not-measured" className="text-ink-muted">
+            —
+          </span>
+        )
     },
     {
       id: 'checks',
@@ -583,28 +664,108 @@ export default function NodesRoute() {
           {selectedNode.device_kind === 'profile' && <DeviceConnectionOrderCard device={selectedNode} />}
 
           <Card className="p-4">
+            <CardHeader as="h2" title={t('detail.location.title')} />
+            <div className="flex flex-col gap-3 mt-3 text-sm">
+              <p className="font-medium">
+                <LocationValue
+                  countryCode={selectedNode.country_code}
+                  source={selectedNode.location_source}
+                  withSource
+                />
+              </p>
+              <p className="text-muted">{t('detail.location.notice')}</p>
+              {mayDeclare && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="sm:min-w-[16rem]">
+                    <FormField label={t('detail.location.label')}>
+                      <Select
+                        value={pickedCountry}
+                        onValueChange={setPickedCountry}
+                        options={countries}
+                        placeholder={t('detail.location.choose')}
+                      />
+                    </FormField>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={!pickedCountry}
+                    loading={declareLocation.isPending}
+                    onClick={() => void handleSaveLocation(pickedCountry)}
+                  >
+                    {t('detail.location.save')}
+                  </Button>
+                  {selectedNode.country_code && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={declareLocation.isPending}
+                      onClick={() => void handleSaveLocation(null)}
+                    >
+                      {t('detail.location.clear')}
+                    </Button>
+                  )}
+                </div>
+              )}
+              {locationMessage === 'saved' && (
+                <p role="status" className="font-medium text-success">
+                  {t('detail.location.saved')}
+                </p>
+              )}
+              {locationMessage === 'failed' && (
+                <p role="alert" className="font-medium text-danger">
+                  {t('detail.location.failed')}
+                </p>
+              )}
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <CardHeader as="h2" title={t('detail.response.title')} />
+            <div className="flex flex-col gap-3 mt-3 text-sm">
+              {selectedNode.device_kind === 'profile' ? (
+                <div>
+                  <span className="text-muted block text-xs">{t('detail.response.deviceAnswer')}</span>
+                  <span className="font-medium">
+                    <ResponseValue rttMs={selectedNode.rtt_ms} measuredAt={selectedNode.rtt_measured_at} now={now} />
+                  </span>
+                  <p className="text-muted mt-1">{t('detail.response.deviceAnswerHelp')}</p>
+                </div>
+              ) : (
+                <div>
+                  <span className="text-muted block text-xs">{t('detail.response.deviceAnswer')}</span>
+                  <span data-state="not-measured" className="text-muted">
+                    {t('detail.response.meshNotMeasured')}
+                  </span>
+                </div>
+              )}
+              {selectedNode.device_kind !== 'profile' && (
+                <div>
+                  <span className="text-muted block text-xs">{t('detail.response.consoleLink')}</span>
+                  <span className="font-medium">
+                    {typeof selectedNode.console_link_ms === 'number' ? (
+                      t('detail.response.consoleLinkValue', {
+                        ms: selectedNode.console_link_ms,
+                        when: formatRelativeTime(i18n.language, selectedNode.last_heartbeat, new Date(now)) ?? '—'
+                      })
+                    ) : (
+                      <span className="text-muted">{t('detail.response.notMeasured')}</span>
+                    )}
+                  </span>
+                  <p className="text-muted mt-1">{t('detail.response.consoleLinkHelp')}</p>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card className="p-4">
             <CardHeader as="h2" title={t('detail.connectionTest')} />
             <div className="flex flex-wrap items-center justify-between gap-4 mt-3">
-              <Button variant="secondary" size="sm" onClick={handlePing} loading={pingMutation.isPending}>
+              <Button variant="secondary" size="sm" onClick={() => void probe.start()} loading={probe.running}>
                 <Zap className="w-4 h-4 mr-2 text-warning" aria-hidden="true" />
-                {pingMutation.isPending ? t('detail.testing') : t('detail.testButton')}
+                {probe.running ? t('detail.testing') : t('detail.testButton')}
               </Button>
-
-              {pingOutcome?.kind === 'replied' && (
-                <span role="status" className="text-sm font-medium text-success">
-                  {t('detail.replied', { rtt: pingOutcome.rtt, jitter: pingOutcome.jitter })}
-                </span>
-              )}
-              {pingOutcome?.kind === 'notMeasured' && (
-                <span role="status" className="text-sm text-muted">
-                  {t('detail.notMeasured')}
-                </span>
-              )}
-              {pingOutcome?.kind === 'failed' && (
-                <span role="alert" className="text-sm font-medium text-danger">
-                  {t('detail.testFailed')}
-                </span>
-              )}
+              <ProbeOutcome view={probe.view} now={now} />
             </div>
           </Card>
 

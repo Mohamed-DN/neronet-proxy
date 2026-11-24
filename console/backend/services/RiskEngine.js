@@ -63,7 +63,7 @@ function ensureTelemetrySchema(db) {
         ip_address TEXT NOT NULL,
         latitude REAL,
         longitude REAL,
-        country_code TEXT NOT NULL DEFAULT 'US',
+        country_code TEXT,
         latency_ms REAL NOT NULL DEFAULT 0.0,
         calculated_speed_kmh REAL DEFAULT 0.0,
         is_impossible_travel INTEGER NOT NULL DEFAULT 0,
@@ -146,7 +146,7 @@ async function ingestTelemetry(nodeId, telemetry) {
     rtt_ms = 15.0,
     jitter_ms = 1.0,
     ip_address = '127.0.0.1',
-    country_code = 'US',
+    country_code = null,
     timestamp_epoch
   } = telemetry;
 

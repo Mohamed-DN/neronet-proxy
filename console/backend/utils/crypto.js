@@ -122,7 +122,7 @@ function buildNoiseJsonProfile({
   overlayIpv6,
   presharedKeyHex,
   role = 'CLIENT_ORIGIN',
-  countryCode = 'US',
+  countryCode = null,
   authToken,
   onionHops,
   onionRoutingEnabled,
@@ -160,7 +160,9 @@ function buildNoiseJsonProfile({
     relays: (Array.isArray(relays) ? relays : []).map((r) => ({ relay_id: r.relay_id, url: r.url })),
     routing: {
       egress_mode: role || 'CLIENT_ORIGIN',
-      preferred_countries: countryCode ? [countryCode, 'US', 'DE'] : ['US', 'DE', 'CH'],
+      // Only a country someone stated. The list used to end in 'US' and 'DE' whatever the
+      // device was, which invented a preference (ADR 0040); empty means none.
+      preferred_countries: countryCode ? [countryCode] : [],
       onion_hops: hops,
       onion_routing_enabled: hops > 0
     }

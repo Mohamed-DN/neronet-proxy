@@ -286,6 +286,15 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 	go manager.WatchStaleness(loopCtx, stalenessCheckInterval)
 	go dev.WatchAuthenticatedPaths(loopCtx, 200*time.Millisecond)
 	go reportDrops(loopCtx, dev, dropReportInterval)
+	// Round trips to the profile devices this gateway serves, and the console's connection
+	// test (ADR 0040). Both ping through the netstack; neither runs for a node with no
+	// profile device.
+	prober := newPeerProber(dev)
+	manager.prober = prober
+	go prober.Run(loopCtx, manager.probeTargets, probeInterval)
+	if opts.Control != nil {
+		go probePollLoop(loopCtx, opts.Control, prober, manager.probeTargets, 15*time.Second)
+	}
 	if spike.ProbeTarget != "" {
 		go probeLoop(loopCtx, dev, spike)
 	}

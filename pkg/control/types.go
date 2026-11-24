@@ -204,7 +204,36 @@ type PeerPathObservation struct {
 	ObservedAtUnix    int64    `json:"observed_at_unix"`
 	State             string   `json:"state"`
 	Reason            string   `json:"reason,omitempty"`
+	// RTTMillis is a ping this gateway sent through its own tunnel to the peer, and
+	// RTTObservedAtUnix is when it was sent. A reply gives a number; a ping that got no
+	// answer in the timeout gives a null RTTMillis with its time (no reply, never a
+	// number and never "offline"); no time at all means the peer was not pinged. Only a
+	// profile device (ADR 0029) is pinged today: the console believes the sample only
+	// from the gateway that serves the device.
 	RTTMillis         *float64 `json:"rtt_ms" jsonschema:"nullable"`
+	RTTObservedAtUnix *int64   `json:"rtt_observed_at_unix,omitempty"`
+}
+
+// ProbeRequest is one connection test the console asked for (ADR 0040): ping this
+// device now. PeerID is a node id from the gateway's own netmap; the console cannot name
+// an address.
+type ProbeRequest struct {
+	RequestID string `json:"request_id"`
+	PeerID    string `json:"peer_id"`
+}
+
+// ProbePollResponse answers POST /v4/control/probe/poll, which the control plane holds
+// open until a request exists or its hold time ends (then Requests is empty).
+type ProbePollResponse struct {
+	Requests []ProbeRequest `json:"requests"`
+}
+
+// ProbeResult is the gateway's answer to one ProbeRequest. RTTMillis is set only when
+// the device replied.
+type ProbeResult struct {
+	RequestID string   `json:"request_id"`
+	Replied   bool     `json:"replied"`
+	RTTMillis *float64 `json:"rtt_ms,omitempty"`
 }
 
 // RelayAdmissionSnapshot is the service-only answer of POST /v4/control/relay/admission:

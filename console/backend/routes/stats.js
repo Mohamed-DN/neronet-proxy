@@ -133,7 +133,8 @@ async function countryDistribution(accessTier = 'standard', scope = {}) {
     `SELECT country_code, count(*) AS count FROM nodes n ${visible.join} WHERE ${visible.where} GROUP BY country_code`,
     visible.params
   );
-  for (const r of q.rows) dist[r.country_code] = parseInt(r.count, 10);
+  // Devices whose country nobody stated are one group, 'unknown', never an empty key.
+  for (const r of q.rows) dist[r.country_code || 'unknown'] = parseInt(r.count, 10);
   return dist;
 }
 
@@ -235,8 +236,10 @@ async function geoMatrixHandler(req, res, next) {
         r.avg_latency === null || r.avg_latency === undefined ? null : Number(Number(r.avg_latency).toFixed(1));
 
       return {
-        country: COUNTRY_NAMES[r.country_code] || r.country_code,
-        code: r.country_code,
+        // Unknown is one row with a null code and no name; the console words it.
+        country: r.country_code ? COUNTRY_NAMES[r.country_code] || r.country_code : null,
+        code: r.country_code || null,
+        unknown: !r.country_code,
         nodes,
         live,
         relays: Number(r.relays),
@@ -276,19 +279,19 @@ async function topologyHandler(req, res, next) {
 
     if (isSuperAdmin && !req.query.org_id) {
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, ${SERVING_GATEWAY} AS gateway_node_id, n.last_heartbeat AS last_heartbeat, n.last_handshake_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE 1=1 ${hiddenClause} ORDER BY n.created_at ASC`
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.rtt_ms, n.rtt_measured_at, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, ${SERVING_GATEWAY} AS gateway_node_id, n.last_heartbeat AS last_heartbeat, n.last_handshake_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE 1=1 ${hiddenClause} ORDER BY n.created_at ASC`
       );
       visibleNodes = qRes.rows;
     } else if (isOrgPrivileged || isSuperAdmin) {
       const orgId = isSuperAdmin ? req.query.org_id : req.user.organization_id || 'org-default';
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, ${SERVING_GATEWAY} AS gateway_node_id, n.last_heartbeat AS last_heartbeat, n.last_handshake_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.organization_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.rtt_ms, n.rtt_measured_at, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, ${SERVING_GATEWAY} AS gateway_node_id, n.last_heartbeat AS last_heartbeat, n.last_handshake_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.organization_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
         [orgId]
       );
       visibleNodes = qRes.rows;
     } else {
       const qRes = await pool.query(
-        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, ${SERVING_GATEWAY} AS gateway_node_id, n.last_heartbeat AS last_heartbeat, n.last_handshake_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.user_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
+        `SELECT n.id, n.name, n.role, n.country_code, n.overlay_ipv4, n.is_healthy, n.is_quarantined, n.latency_ms, n.rtt_ms, n.rtt_measured_at, n.device_kind, (n.profile_gateway_endpoint IS NOT NULL) AS is_profile_gateway, ${SERVING_GATEWAY} AS gateway_node_id, n.last_heartbeat AS last_heartbeat, n.last_handshake_at, ${EFFECTIVE_COMPARTMENT} AS compartment_id, c.name AS compartment_name, COALESCE(c.is_hidden, FALSE) AS is_ghost_vault FROM nodes n LEFT JOIN compartments c ON c.id = ${EFFECTIVE_COMPARTMENT} WHERE n.user_id = $1 ${hiddenClause} ORDER BY n.created_at ASC`,
         [req.user.id]
       );
       visibleNodes = qRes.rows;
@@ -298,11 +301,16 @@ async function topologyHandler(req, res, next) {
       id: n.id,
       name: n.name,
       role: n.role,
-      country: n.country_code || 'US',
+      country: n.country_code || null,
       overlay_ipv4: n.overlay_ipv4,
       is_healthy: Boolean(n.is_healthy),
       is_quarantined: Boolean(n.is_quarantined),
+      // The heartbeat's round trip to the console, not how fast the device answers.
       latency_ms: Number(n.latency_ms) > 0 ? Number(n.latency_ms) : null,
+      // A ping from the serving gateway: null when none was sent or the device did not reply,
+      // with the time of the sample so the console can show its age (ADR 0040).
+      rtt_ms: n.rtt_ms === null || n.rtt_ms === undefined ? null : Number(n.rtt_ms),
+      rtt_measured_at: n.rtt_measured_at ? new Date(n.rtt_measured_at).toISOString() : null,
       compartment_id: n.compartment_id || null,
       compartment_name: n.compartment_name || 'Default Mesh',
       is_ghost_vault: Boolean(n.is_ghost_vault),

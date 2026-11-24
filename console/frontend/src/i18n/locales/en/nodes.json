@@ -24,7 +24,9 @@
     "checks": "Security checks",
     "reachability": "Reachability",
     "risk": "Risk",
-    "actions": "Actions"
+    "actions": "Actions",
+    "location": "Location",
+    "response": "Response time"
   },
   "row": {
     "openDetails": "Open details"
@@ -87,8 +89,6 @@
     "connectionTest": "Connection test",
     "testButton": "Test connection",
     "testing": "Testing…",
-    "replied": "Replied in {{rtt}} ms. Variation: {{jitter}} ms.",
-    "notMeasured": "Not measured. No response time has been recorded for this device yet.",
     "testFailed": "Test failed: the device did not respond. Try again.",
     "actions": "Device actions",
     "block": "Block device",
@@ -104,7 +104,38 @@
     "revokeDefaultReason": "Key revoked by an administrator",
     "close": "Close",
     "loadFailed": "The device could not be loaded. Try again.",
-    "title": "Device details"
+    "title": "Device details",
+    "location": {
+      "title": "Location",
+      "label": "Country",
+      "choose": "Choose a country",
+      "save": "Save country",
+      "clear": "Mark as unknown",
+      "saved": "Location saved.",
+      "failed": "The location was not saved. Check the country and try again.",
+      "notice": "Nothing measures where a device is. The country appears only when an administrator or the device operator stated it."
+    },
+    "response": {
+      "title": "Response time",
+      "deviceAnswer": "Answer to the gateway ping",
+      "deviceAnswerHelp": "The gateway that serves this device pings it through the tunnel about every 30 seconds. No reply is not the same as disconnected: Windows blocks ping by default.",
+      "meshNotMeasured": "Not measured. Only devices that use the WireGuard app are pinged from their gateway.",
+      "consoleLink": "Link with the console",
+      "consoleLinkValue": "{{ms}} ms, {{when}}",
+      "consoleLinkHelp": "How long the last heartbeat from this device took to reach the console. It is not how fast the device answers.",
+      "notMeasured": "Not measured"
+    },
+    "test": {
+      "measuring": "Measuring…",
+      "replied": "Replied in {{rtt}} ms (ICMP), {{when}}.",
+      "justNow": "just now",
+      "noReply": "No reply within 3 seconds, but the device is connected: last contact {{ago}}. Windows blocks ping by default, so a connected device may not answer.",
+      "notConnected": "Not connected. Last contact {{ago}}.",
+      "neverConnected": "Not connected. This device has never been in contact.",
+      "gatewayUnreachable": "The gateway that serves this device did not answer. Try again shortly.",
+      "unsupported": "This device cannot be tested from here: only devices that use the WireGuard app are pinged from their gateway.",
+      "rateLimited": "Wait a moment before testing again."
+    }
   },
   "gateway": {
     "title": "Gateway",

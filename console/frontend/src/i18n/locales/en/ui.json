@@ -95,5 +95,13 @@
   },
   "compartment": {
     "default": "Main sub-network"
+  },
+  "live": {
+    "locationUnknown": "Location unknown",
+    "locationDeclared": "{{country}} · stated by an administrator",
+    "locationAgent": "{{country}} · set by the device's operator",
+    "responseValue": "{{rtt}} ms · {{when}}",
+    "responseNoReply": "No reply · {{when}}",
+    "responseNotMeasured": "Not measured"
   }
 }

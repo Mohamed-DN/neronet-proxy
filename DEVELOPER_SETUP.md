@@ -215,7 +215,7 @@ stack uses; only the variables below matter to the running stack.
 | `SOVEREIGN_REGISTRATION_TOKEN` | none | none | Fleet enrolment token. Authorises enrolling a new key; the node still proves it holds the key, and uses its own credential afterwards |
 | `SOVEREIGN_ENROLMENT_KEY` | none | none | Pre-auth key from the console (`nnk1:<key>:<fingerprint>`), instead of the fleet token. The fingerprint pins the control plane key. Not needed once the node is enrolled |
 | `SOVEREIGN_NODE_KEY_PATH` | `-identity` | `/var/lib/neronet/node_identity.key` | Persistent identity key, created on first start |
-| `SOVEREIGN_COUNTRY_CODE` | `-country` | `US` | Self-declared country. Not measured |
+| `SOVEREIGN_COUNTRY_CODE` | `-country` | empty | Self-declared country; empty means the location is unknown and none is reported. Not measured |
 | `SOVEREIGN_ENABLE_EXIT_BRIDGE` | `-enable-exit` | `false` | Register as an exit bridge |
 | `SOVEREIGN_MAX_BANDWIDTH_KBPS` | `-max-bandwidth-kbps` | `0` | Self-declared capacity; 0 means not declared |
 | `SOVEREIGN_SOCKS5_LISTEN_ADDR` | `-socks-addr` | `127.0.0.1:1080` | SOCKS5 proxy |

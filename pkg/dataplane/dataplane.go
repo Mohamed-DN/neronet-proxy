@@ -82,6 +82,11 @@ var (
 	ErrNoAddresses = errors.New("dataplane: no overlay addresses configured")
 	// ErrClosed is returned by operations on a closed Device.
 	ErrClosed = errors.New("dataplane: device is closed")
+
+	// ErrPingUnsupported is returned by Ping when the device cannot ping at all (kernel
+	// TUN mode). It says nothing about the peer, so a caller must not record it as "no
+	// reply".
+	ErrPingUnsupported = errors.New("dataplane: ping is not available in this mode")
 	// ErrUnknownPeer is returned when a pre-shared key is set for a peer the device
 	// does not have.
 	ErrUnknownPeer = errors.New("dataplane: no such peer")

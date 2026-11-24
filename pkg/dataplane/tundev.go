@@ -98,7 +98,7 @@ func (b *tunBackend) listen(network, address string) (net.Listener, error) {
 }
 
 func (b *tunBackend) ping(ctx context.Context, dst netip.Addr) (time.Duration, error) {
-	return 0, fmt.Errorf("dataplane: ping is not implemented in %s mode; the kernel interface answers the host's own ping", ModeTUN)
+	return 0, fmt.Errorf("%w: %s mode; the kernel interface answers the host's own ping", ErrPingUnsupported, ModeTUN)
 }
 
 func (b *tunBackend) wake(dst netip.AddrPort, payload []byte) error {

@@ -9,6 +9,7 @@ import { GlossaryHint } from '../../GlossaryHint';
 import { formatRelativeTime } from '../../../i18n/format';
 import { STATE_STATION, type LinkState, type NodeKind, type NodeState } from '../topologyGraph';
 import { KindSample, LinkSample } from './glyphs';
+import { LocationValue, ResponseValue } from '../liveValues';
 
 export interface PeerRow {
   node: TopologyNode;
@@ -103,10 +104,15 @@ export function DeviceDetails(props: DeviceDetailsProps) {
         <Row term={t('nodeDrawer.compartment')}>{node.compartment_name || '—'}</Row>
         <Row term={t('inspector.lastSeen')}>{seen ?? '—'}</Row>
         <Row term={t('nodeDrawer.latency')}>
+          <ResponseValue rttMs={node.rtt_ms} measuredAt={node.rtt_measured_at} now={props.now} />
+        </Row>
+        <Row term={t('nodeDrawer.consoleLink')}>
           {node.latency_ms !== null && node.latency_ms !== undefined ? `${node.latency_ms} ms` : t('state.notMeasured')}
         </Row>
         <Row term={t('inspector.path')}>{path}</Row>
-        <Row term={t('nodeDrawer.country')}>{node.country || '—'}</Row>
+        <Row term={t('nodeDrawer.country')}>
+          <LocationValue countryCode={node.country} />
+        </Row>
       </dl>
       <p className="mesh-inspector-meta">
         {t('radial.allowedPairs')}: {props.allowedCount}

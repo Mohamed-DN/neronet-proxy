@@ -385,6 +385,12 @@ func (pe *PostureEngine) EvaluateAttestation(att *PeerAttestation, peerGroups []
 
 		// 3. Geo-Fencing Check
 		targetCC := strings.ToUpper(strings.TrimSpace(att.CountryCode))
+		if targetCC == "" && (len(policy.GeoRule.ProhibitedCountries) > 0 || len(policy.GeoRule.AllowedCountries) > 0) {
+			// A rule that names countries cannot be met by a node whose country nobody
+			// stated: it used to be skipped, which passed the check. Unknown is unknown,
+			// and the node is unverified, not compliant.
+			unknown = append(unknown, "country was not reported")
+		}
 		if targetCC != "" {
 			// Blacklist check
 			if len(policy.GeoRule.ProhibitedCountries) > 0 {
