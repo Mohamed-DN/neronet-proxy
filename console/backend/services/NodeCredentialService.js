@@ -90,6 +90,12 @@ async function validateCredential(rawToken) {
       return { ok: false, status: 403, error: 'node is quarantined', quarantined: true };
     }
 
+    // A node that an app sign-in enrolled is served only while its app stands (ADR 0040): a suspended or
+    // revoked app, a moved authentication epoch or a passed lifetime cuts the node here, even though its
+    // credential has not run out and the app never asked for anything.
+    const admission = await require('./AppAuthService').nodeAdmission(row.node_id);
+    if (!admission.ok) return { ok: false, status: 401, error: admission.error };
+
     // Touch last_used_at asynchronously
     pool
       .query('UPDATE node_credentials SET last_used_at = NOW() WHERE id = $1', [row.credential_id])

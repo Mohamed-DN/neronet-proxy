@@ -139,7 +139,9 @@ async function wipeHiddenCompartments(user, { ipAddress, via = 'login' } = {}) {
   await RevocationEngine.revokeNodeKeys(nodeIds, { reason: 'duress_wipe', actorId: user.id });
 
   if (nodeIds.length > 0) {
-    await pool.query('DELETE FROM nodes WHERE id = ANY($1::varchar[])', [nodeIds]);
+    await require('./EnrollmentService').transaction((client) =>
+      client.query('DELETE FROM nodes WHERE id = ANY($1::varchar[])', [nodeIds])
+    );
   }
   const compRes = await pool.query('DELETE FROM compartments WHERE organization_id = $1 AND is_hidden = TRUE', [orgId]);
 

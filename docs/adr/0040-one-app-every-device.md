@@ -101,11 +101,27 @@ routes live under `/api/app-auth/app/*`. Choices worth knowing:
   the 24 hour list, so a registration without a grant is refused the day after too. Removing a node in the
   console ends its app, and an app's person must stay active, in the same role and organisation, with an
   unchanged authentication epoch and no blocked device, at approval, collection, refresh and every request.
+- An app is **active**, **suspended** or **revoked**. Suspended is anything that can be put right (a blocked
+  device, a changed password, role or second factor, "revoke all sessions", a brief account suspension, an
+  expired lifetime, a refresh that came after the day-long retry window): the node is cut off from the
+  network and from its peers, its row stays, its key is not banned, and the same installation signs in
+  again and is approved again. Revoked is final (a person or an administrator revoked it, a fresh valid
+  signature replayed a long-replaced token, an administrator deleted the node): the key is in
+  `app_key_bans`, which outlives the purge of old session rows. The app is told which, but only when its
+  request was validly signed: `app_suspended` keeps its keys and asks for a new sign-in, `app_revoked`
+  forgets everything and replaces them, anything else (a wrong clock) keeps everything and retries with
+  the console's time. The standing of the person is enforced on the node routes at every credential use,
+  by "revoke all sessions", and by a sweeper, so an app that never refreshes does not keep its node.
+- Lock order, for every writer of nodes, app sessions and organisations: the enrolment lifecycle lock first
+  (the one registration and the destruction of an organisation take), then organisations and nodes, then
+  device codes and sessions, then users and the revoked-key list. Writers that cannot take it first are
+  retried on a deadlock.
 
 Slice B, `pkg/clientcore`: device-code client, enrolment through `pkg/control`, connection order walk
 (each method once, bounded, forced means first only, a removed device never falls back), state stream,
 and the versioned local API (newline-delimited JSON, strict decoding) over a `Transport` interface with
-a Linux unix-socket implementation (0600 file, peer credentials checked). Each installation is owned
+a Linux unix-socket implementation (a private directory per owner inside a verified run directory, peer
+credentials checked, and the client checks who is listening before it speaks). Each installation is owned
 by one local user and only that user controls it (root only when a service tool asks for it explicitly). The Windows named pipe is
 phase 1. Starting the real tunnel from the core (reusing the netmap manager that still lives in
 `cmd/sovereign-node`'s `main` package) and the real-stack end-to-end proof are not done yet.

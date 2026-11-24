@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS app_sessions (
     -- The account's console_auth_epoch when the app was approved; a password, role or second-factor
     -- change, or "revoke all sessions", moves the account's epoch and ends this app with it.
     auth_epoch              BIGINT NOT NULL,
+    -- true: revoked for good (the key is in app_key_bans); false with revoked_at set: suspended, recoverable.
+    banned                  BOOLEAN NOT NULL DEFAULT FALSE,
     absolute_expires_at     TIMESTAMPTZ NOT NULL,
     request_ip              TEXT,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -64,14 +66,30 @@ CREATE INDEX IF NOT EXISTS idx_app_sessions_user ON app_sessions (user_id);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_org ON app_sessions (organization_id);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_previous_refresh ON app_sessions (previous_refresh_hash);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_retired_refresh ON app_sessions USING GIN (retired_refresh_hashes);
+CREATE INDEX IF NOT EXISTS idx_app_sessions_revoked ON app_sessions (revoked_at) WHERE revoked_at IS NOT NULL;
+
+-- A key revoked for good stays refused after the session rows that recorded it are purged.
+CREATE TABLE IF NOT EXISTS app_key_bans (
+    installation_public_key TEXT PRIMARY KEY CHECK (installation_public_key ~ '^[0-9a-f]{64}$'),
+    node_id                 TEXT NOT NULL,
+    reason                  TEXT NOT NULL,
+    banned_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- One live app per node, whatever the code does.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_app_sessions_active_node ON app_sessions (node_id) WHERE revoked_at IS NULL;
 
--- Removing a node, by any route (console, shred, cascade), ends the app that was signed in for it.
+-- Removing a node, by any route (console, shred, cascade), revokes the app that was signed in for it, for
+-- good: an administrator who deletes a node does not expect it to come back, suspended or not.
 CREATE OR REPLACE FUNCTION end_app_sessions_of_deleted_node() RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE app_sessions SET revoked_at = NOW(), revoked_reason = COALESCE(revoked_reason, 'node_removed')
-     WHERE node_id = OLD.id AND revoked_at IS NULL;
+    INSERT INTO app_key_bans (installation_public_key, node_id, reason)
+        SELECT DISTINCT installation_public_key, OLD.id, 'node_removed' FROM app_sessions
+         WHERE node_id = OLD.id AND COALESCE(revoked_reason, '') <> 'superseded'
+        ON CONFLICT (installation_public_key) DO NOTHING;
+    UPDATE app_sessions SET revoked_at = COALESCE(revoked_at, NOW()),
+           revoked_reason = CASE WHEN revoked_at IS NULL THEN 'node_removed' ELSE revoked_reason END, banned = TRUE
+     WHERE node_id = OLD.id AND COALESCE(revoked_reason, '') <> 'superseded';
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;

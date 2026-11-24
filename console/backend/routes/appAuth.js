@@ -22,7 +22,7 @@ const logger = require('../utils/logger');
  *   GET    /sessions          console session             own apps (?scope=organization: administrators)
  *   DELETE /sessions/:id      console session             revoke an app and cut its node
  *   GET    /app/me            app token, app:self
- *   DELETE /app/session       app token, app:self         the app signs itself out
+ *   DELETE /app/session       app token, app:self + signature   the app signs itself out
  *   GET    /app/devices       app token, devices:read
  *
  * The /app routes are the only ones that read an app token. Console routes verify a
@@ -131,14 +131,7 @@ router.get('/app/me', App.authenticateApp('app:self'), (req, res) => {
 
 router.delete('/app/session', App.authenticateApp('app:self'), async (req, res, next) => {
   try {
-    const s = req.appSession;
-    return res.json(
-      await App.revokeSession({ id: s.userId, username: s.username, role: 'user' }, s.id, {
-        reason: 'app_signout',
-        ip: req.ip,
-        bySelfApp: true
-      })
-    );
+    return res.json(await App.selfSignOut(req.appSession, req.appToken, req.body || {}, { ip: req.ip }));
   } catch (err) {
     return sendError(res, next, err);
   }

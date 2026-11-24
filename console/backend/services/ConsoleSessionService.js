@@ -235,6 +235,8 @@ async function changeRootGrantWithClient(
 
 async function revokeUserSessions(userId, { returnAuditContext = false } = {}) {
   return transaction(async (client) => {
+    // The lifecycle lock first, as every writer that touches nodes and app sessions takes it.
+    await client.query('SELECT pg_advisory_xact_lock($1)', [require('./EnrollmentService').LIFECYCLE_LOCK_ID]);
     // Exclusive account admission serializes the cut with creation of new families.
     const user = await client.query('SELECT id, organization_id FROM users WHERE id=$1 FOR UPDATE', [userId]);
     if (!user.rowCount) throw new SessionAuthorityError(404, 'User not found');
@@ -256,6 +258,9 @@ async function revokeUserSessions(userId, { returnAuditContext = false } = {}) {
       [userId]
     );
     const revokedCount = result.rowCount || 0;
+    // The apps this person approved lose their nodes with their sessions: an app that never asks for
+    // anything must not keep its place in the network.
+    await require('./AppAuthService').suspendUserApps(client, userId, 'sessions_revoked');
     return returnAuditContext ? { revokedCount, organizationId: user.rows[0].organization_id } : revokedCount;
   });
 }

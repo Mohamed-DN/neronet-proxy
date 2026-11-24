@@ -69,10 +69,17 @@ describe('app sign-in by device code', () => {
     }
     return request(app).post(`${base}/device/start`).send(body);
   };
-  const doRefresh = (token, signer, opts) =>
-    request(app)
+  // The console refuses to rotate a pair that is still more than half fresh. Tests that rotate over and
+  // over age the pair first, the way an hour passing would.
+  const doRefresh = async (token, signer, opts) => {
+    await pool.query(
+      "UPDATE app_sessions SET access_expires_at = NOW() + INTERVAL '5 minutes' WHERE refresh_hash = $1",
+      [crypto.createHash('sha256').update(token).digest('hex')]
+    );
+    return request(app)
       .post(`${base}/token/refresh`)
       .send(refreshBody(token, signer, opts));
+  };
   const poll = (device_code) => request(app).post(`${base}/device/poll`).send({ device_code });
   const approve = (token, user_code, extra = {}) =>
     request(app)
@@ -518,7 +525,7 @@ describe('app sign-in by device code', () => {
       const again = await register(app, { public_key_hex: r.key, role: 'CLIENT_ORIGIN' });
       assert.strictEqual(again.status, 403);
       await settleAuditWrites();
-      const ev = await pool.query("SELECT 1 FROM audit_events WHERE event_type = 'APP_TOKEN_REUSE_DETECTED'");
+      const ev = await pool.query("SELECT 1 FROM audit_events WHERE event_type = 'APP_SESSION_SUSPENDED'");
       assert.strictEqual(ev.rows.length >= 1, true);
     });
 
@@ -582,6 +589,10 @@ describe('app sign-in by device code', () => {
       assert.strictEqual(first.status, 200);
       // The very same signed request, sent again by whoever captured it.
       const body = refreshBody(first.body.refresh_token, r.signer, { nonce });
+      await pool.query(
+        "UPDATE app_sessions SET access_expires_at = NOW() + INTERVAL '5 minutes' WHERE refresh_hash = $1",
+        [crypto.createHash('sha256').update(first.body.refresh_token).digest('hex')]
+      );
       const again = await request(app).post(`${base}/token/refresh`).send(body);
       assert.strictEqual(again.status, 401, 'a nonce was accepted twice');
       assert.ok(await alive(first.body.access_token));
@@ -614,6 +625,10 @@ describe('app sign-in by device code', () => {
     it('answers a byte-identical replay of a captured request with a plain 401 and changes nothing', async () => {
       const r = await joined();
       const body = refreshBody(r.tokens.refresh_token, r.signer);
+      await pool.query(
+        "UPDATE app_sessions SET access_expires_at = NOW() + INTERVAL '5 minutes' WHERE refresh_hash = $1",
+        [crypto.createHash('sha256').update(r.tokens.refresh_token).digest('hex')]
+      );
       const first = await request(app).post(`${base}/token/refresh`).send(body);
       assert.strictEqual(first.status, 200);
       const before = (
@@ -1132,6 +1147,412 @@ describe('app sign-in by device code', () => {
       const spent = (await pool.query('SELECT totp_recovery_codes FROM users WHERE id = $1', [fx.ids.member2A]))
         .rows[0];
       assert.strictEqual(spent.totp_recovery_codes.length, 0);
+    });
+  });
+
+  // ---- Second review: standing outlives the app, three states, lock order, hygiene ------------------
+
+  const sha = (v) => crypto.createHash('sha256').update(v).digest('hex');
+  let freshUsers = 0;
+  // A person of their own, so that moving their epoch or revoking their sessions touches nobody else.
+  async function makePerson(orgId = fx.orgs.A, role = 'member') {
+    freshUsers += 1;
+    const id = `usr-rev2-${process.pid}-${freshUsers}`;
+    await pool.query(
+      `INSERT INTO users (id, username, email, password_hash, role, organization_id)
+       VALUES ($1, $2, $3, 'x', 'user', $4)`,
+      [id, `rev2_${process.pid}_${freshUsers}`, `${id}@sec.local`, orgId]
+    );
+    await pool.query('INSERT INTO memberships (id, user_id, organization_id, role) VALUES ($1, $2, $3, $4)', [
+      `mem-${id}`,
+      id,
+      orgId,
+      role
+    ]);
+    const token = await issueConsoleTestToken({
+      sub: id,
+      id,
+      username: `rev2_${process.pid}_${freshUsers}`,
+      role: 'user',
+      organization_id: orgId,
+      org_role: role
+    });
+    return { id, token, orgId };
+  }
+  async function joinAs(person, over = {}) {
+    const r = await signIn(person.token, over);
+    const reg = await register(app, {
+      public_key_hex: r.key,
+      role: 'CLIENT_ORIGIN',
+      preauth_key: r.grant.preauth_key
+    });
+    assert.strictEqual(reg.status, 200, JSON.stringify(reg.body));
+    r.credential = reg.body.credential;
+    r.sessionId = (
+      await pool.query('SELECT id FROM app_sessions WHERE node_id = $1 AND revoked_at IS NULL', [r.grant.node_id])
+    ).rows[0].id;
+    return r;
+  }
+  const beat = (r) =>
+    request(app)
+      .post('/v4/control/heartbeat')
+      .set('Authorization', `Bearer ${r.credential}`)
+      .send({ node_id: r.grant.node_id });
+  const netmap = (r) =>
+    request(app)
+      .post('/v4/control/netmap')
+      .set('Authorization', `Bearer ${r.credential}`)
+      .send({ node_id: r.grant.node_id, version: 0 });
+  const sessionRow = async (r) =>
+    (
+      await pool.query('SELECT * FROM app_sessions WHERE node_id = $1 ORDER BY created_at DESC LIMIT 1', [
+        r.grant.node_id
+      ])
+    ).rows[0];
+  const banned = async (key) =>
+    (await pool.query('SELECT 1 FROM app_key_bans WHERE installation_public_key = $1', [key])).rows.length > 0;
+  const suspensions = async (nodeId) =>
+    (await pool.query("SELECT 1 FROM revoked_keys WHERE node_id = $1 AND reason LIKE 'app_suspended:%'", [nodeId])).rows
+      .length;
+  const AppAuth = () => require('../services/AppAuthService');
+
+  describe('an app whose account no longer stands loses its node even if it never refreshes', () => {
+    it('an epoch move cuts the node on its next heartbeat or netmap, drops it from peers, and recovers by signing in again', async () => {
+      const person = await makePerson();
+      const r = await joinAs(person);
+      assert.strictEqual((await beat(r)).status, 200);
+      await pool.query('UPDATE users SET console_auth_epoch = console_auth_epoch + 1 WHERE id = $1', [person.id]);
+      // The app never refreshes. Its node is still refused.
+      assert.strictEqual((await netmap(r)).status, 401);
+      assert.strictEqual((await beat(r)).status, 401);
+      const row = await sessionRow(r);
+      assert.ok(row.revoked_at, 'the session was not ended');
+      assert.strictEqual(row.banned, false, 'a recoverable event banned the key');
+      assert.ok(await suspensions(r.grant.node_id), 'peers are still told this node is fine');
+      assert.ok(await node(r.grant.node_id), 'the row of a suspended node must stay');
+      assert.strictEqual(await banned(r.key), false);
+      // The same installation, after a fresh approval, is back with the same node.
+      const again = await signIn(person.token, { public_key_hex: r.key });
+      const reg = await register(app, {
+        public_key_hex: r.key,
+        role: 'CLIENT_ORIGIN',
+        preauth_key: again.grant.preauth_key
+      });
+      assert.strictEqual(reg.status, 200, JSON.stringify(reg.body));
+      assert.strictEqual(reg.body.assigned_node_id, r.grant.node_id);
+      assert.strictEqual(await suspensions(r.grant.node_id), 0, 'the suspension notice to peers was not lifted');
+      assert.strictEqual((await beat({ ...r, credential: reg.body.credential })).status, 200);
+    });
+
+    it("revoking all of a person's sessions cuts their app's node at once, with no request from the app", async () => {
+      const person = await makePerson();
+      const r = await joinAs(person);
+      await require('../services/ConsoleSessionService').revokeUserSessions(person.id);
+      const row = await sessionRow(r);
+      assert.ok(row.revoked_at, 'the app session survived revoke-all');
+      assert.ok(await suspensions(r.grant.node_id), 'the node was not cut');
+      assert.strictEqual((await beat(r)).status, 401);
+    });
+
+    it('a sweeper cuts apps past their lifetime or out of standing, and purges old rows but never the ban', async () => {
+      const person = await makePerson();
+      const r = await joinAs(person);
+      await pool.query("UPDATE app_sessions SET absolute_expires_at = NOW() - INTERVAL '1 second' WHERE node_id = $1", [
+        r.grant.node_id
+      ]);
+      await AppAuth().sweepStanding();
+      assert.ok((await sessionRow(r)).revoked_at);
+      assert.ok(await suspensions(r.grant.node_id));
+      assert.strictEqual((await beat(r)).status, 401);
+
+      const q = await joinAs(await makePerson());
+      assert.strictEqual((await revokeApp(fx.tokens.adminA, q)).status, 200);
+      assert.ok(await banned(q.key));
+      await pool.query("UPDATE app_sessions SET revoked_at = NOW() - INTERVAL '400 days' WHERE node_id = $1", [
+        q.grant.node_id
+      ]);
+      await AppAuth().purgeAppRows();
+      const left = await pool.query('SELECT 1 FROM app_sessions WHERE node_id = $1', [q.grant.node_id]);
+      assert.strictEqual(left.rows.length, 0, 'old revoked rows were not purged');
+      assert.ok(await banned(q.key), 'the ban went with the purged row');
+      const s = (await start({ public_key_hex: q.key })).body;
+      const a = await approve(fx.tokens.memberA, s.user_code);
+      assert.strictEqual(a.status, 409);
+      assert.strictEqual(a.body.code, 'installation_revoked');
+    });
+  });
+
+  describe('suspended is recoverable, revoked is not', () => {
+    it('an expired session is suspended, says so to a signed request, and the installation can sign in again', async () => {
+      const person = await makePerson();
+      const r = await joinAs(person);
+      await pool.query("UPDATE app_sessions SET absolute_expires_at = NOW() - INTERVAL '1 second' WHERE node_id = $1", [
+        r.grant.node_id
+      ]);
+      const res = await doRefresh(r.tokens.refresh_token, r.signer);
+      assert.strictEqual(res.status, 401);
+      assert.strictEqual(res.body.code, 'app_suspended');
+      assert.strictEqual(await banned(r.key), false);
+      // A signed request is told which; an unsigned one is told nothing.
+      const again = await doRefresh(r.tokens.refresh_token, r.signer);
+      assert.strictEqual(again.body.code, 'app_suspended');
+      const plain = await request(app).post(`${base}/token/refresh`).send({ refresh_token: r.tokens.refresh_token });
+      assert.strictEqual(plain.status, 401);
+      assert.strictEqual(plain.body.code, 'invalid_refresh');
+      const back = await signIn(person.token, { public_key_hex: r.key });
+      const reg = await register(app, {
+        public_key_hex: r.key,
+        role: 'CLIENT_ORIGIN',
+        preauth_key: back.grant.preauth_key
+      });
+      assert.strictEqual(reg.status, 200, JSON.stringify(reg.body));
+    });
+
+    it('an explicit revoke is a ban the app is told about, and nothing brings the key back', async () => {
+      const person = await makePerson();
+      const r = await joinAs(person);
+      assert.strictEqual(
+        (await request(app).delete(`${base}/sessions/${r.sessionId}`).set(bearer(person.token))).status,
+        200
+      );
+      assert.ok(await banned(r.key));
+      const res = await doRefresh(r.tokens.refresh_token, r.signer);
+      assert.strictEqual(res.body.code, 'app_revoked');
+      const s = (await start({ public_key_hex: r.key })).body;
+      assert.strictEqual((await approve(person.token, s.user_code)).body.code, 'installation_revoked');
+    });
+
+    it('a node deleted by an administrator bans its key, also while it was suspended', async () => {
+      const person = await makePerson();
+      const r = await joinAs(person);
+      await pool.query('UPDATE users SET console_auth_epoch = console_auth_epoch + 1 WHERE id = $1', [person.id]);
+      assert.strictEqual((await beat(r)).status, 401);
+      assert.strictEqual(await banned(r.key), false);
+      await pool.query('DELETE FROM nodes WHERE id = $1', [r.grant.node_id]);
+      assert.ok(await banned(r.key), 'deleting a suspended node did not ban it');
+    });
+
+    it('a late retry is suspended, a fresh signature over a retired token is revoked', async () => {
+      const late = await joinAs(await makePerson());
+      await doRefresh(late.tokens.refresh_token, late.signer);
+      await pool.query("UPDATE app_sessions SET rotated_at = NOW() - INTERVAL '25 hours' WHERE node_id = $1", [
+        late.grant.node_id
+      ]);
+      assert.strictEqual((await doRefresh(late.tokens.refresh_token, late.signer)).status, 401);
+      assert.strictEqual(await banned(late.key), false);
+      assert.ok(await suspensions(late.grant.node_id));
+
+      const old = await joinAs(await makePerson());
+      const one = await doRefresh(old.tokens.refresh_token, old.signer);
+      await doRefresh(one.body.refresh_token, old.signer);
+      assert.strictEqual((await doRefresh(old.tokens.refresh_token, old.signer)).status, 401);
+      assert.ok(await banned(old.key));
+    });
+
+    it('revoking a session that a newer sign-in superseded leaves the new one and the key alone', async () => {
+      const person = await makePerson();
+      const first = await joinAs(person);
+      const second = await signIn(person.token, { public_key_hex: first.key });
+      const reg = await register(app, {
+        public_key_hex: first.key,
+        role: 'CLIENT_ORIGIN',
+        preauth_key: second.grant.preauth_key
+      });
+      assert.strictEqual(reg.status, 200);
+      const res = await request(app).delete(`${base}/sessions/${first.sessionId}`).set(bearer(person.token));
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(await banned(first.key), false, 'a superseded session banned the live key');
+      assert.ok(await node(first.grant.node_id), 'the live node was removed');
+      assert.strictEqual(await meStatus(second.tokens.access_token), 200, 'the newer app was signed out');
+    });
+  });
+
+  describe('refresh and sign-out hygiene', () => {
+    it('refuses to rotate while the access token is more than half fresh, but not a retry', async () => {
+      const r = await joinAs(await makePerson());
+      // Not aged: the pair was just issued.
+      const early = await request(app)
+        .post(`${base}/token/refresh`)
+        .send(refreshBody(r.tokens.refresh_token, r.signer));
+      assert.strictEqual(early.status, 409);
+      assert.strictEqual(early.body.code, 'refresh_not_due');
+      assert.strictEqual(await meStatus(r.tokens.access_token), 200);
+      const due = await doRefresh(r.tokens.refresh_token, r.signer);
+      assert.strictEqual(due.status, 200);
+      // A retry of the previous token, with the new pair still fresh, is the lost-answer case: allowed.
+      const retry = await request(app)
+        .post(`${base}/token/refresh`)
+        .send(refreshBody(r.tokens.refresh_token, r.signer));
+      assert.strictEqual(retry.status, 200);
+    });
+
+    it('does not let an access token alone sign the app out and delete its node', async () => {
+      const r = await joinAs(await makePerson());
+      const bare = await request(app).delete(`${base}/app/session`).set(bearer(r.tokens.access_token));
+      assert.strictEqual(bare.status, 401);
+      assert.ok(await node(r.grant.node_id), 'a bare access token deleted the node');
+      assert.strictEqual(await meStatus(r.tokens.access_token), 200);
+      const signOutBody = (token, signer, nonce) => {
+        const ts = Math.floor(Date.now() / 1000);
+        const n = nonce || crypto.randomBytes(16).toString('hex');
+        const message = ['NERONET-APP-SIGNOUT-V1', 'DELETE', `${base}/app/session`, sha(token), String(ts), n].join(
+          String.fromCharCode(10)
+        );
+        return {
+          timestamp: ts,
+          nonce: n,
+          signature: crypto.sign(null, Buffer.from(message), signer.privateKey).toString('hex')
+        };
+      };
+      const wrong = await request(app)
+        .delete(`${base}/app/session`)
+        .set(bearer(r.tokens.access_token))
+        .send(signOutBody(r.tokens.access_token, newSigner()));
+      assert.strictEqual(wrong.status, 401);
+      const body = signOutBody(r.tokens.access_token, r.signer);
+      const ok = await request(app).delete(`${base}/app/session`).set(bearer(r.tokens.access_token)).send(body);
+      assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+      assert.strictEqual(await node(r.grant.node_id), undefined);
+      assert.ok(await banned(r.key));
+    });
+
+    it('never lets a kept blocked node come back, whatever an administrator does to the block', async () => {
+      const r = await joinAs(await makePerson());
+      await pool.query(
+        "UPDATE nodes SET is_quarantined = TRUE, quarantine_reason = 'Manual security quarantine' WHERE id = $1",
+        [r.grant.node_id]
+      );
+      assert.strictEqual((await revokeApp(fx.tokens.adminA, r)).status, 200);
+      const forever = (
+        await pool.query(
+          "SELECT expires_at = 'infinity'::timestamptz AS forever FROM revoked_keys WHERE node_id = $1 ORDER BY revoked_at DESC LIMIT 1",
+          [r.grant.node_id]
+        )
+      ).rows[0];
+      assert.ok(forever && forever.forever, 'the revoked-key entry of a kept node expires');
+      await pool.query('UPDATE nodes SET is_quarantined = FALSE, quarantine_reason = NULL WHERE id = $1', [
+        r.grant.node_id
+      ]);
+      await pool.query(
+        "UPDATE revoked_keys SET expires_at = NOW() - INTERVAL '1 day' WHERE node_id = $1 AND expires_at < 'infinity'",
+        [r.grant.node_id]
+      );
+      assert.strictEqual((await register(app, { public_key_hex: r.key, role: 'CLIENT_ORIGIN' })).status, 403);
+      assert.strictEqual((await beat(r)).status, 401);
+      await pool.query('DELETE FROM nodes WHERE id = $1', [r.grant.node_id]);
+    });
+  });
+
+  describe('lock order: the writers that meet do not deadlock', () => {
+    const ITER = 12;
+    const noServerError = (label, results) => {
+      for (const res of results) {
+        if (res.status === 'rejected') assert.fail(`${label}: ${res.reason && res.reason.message}`);
+        if (res.value && res.value.status >= 500)
+          assert.fail(`${label}: answered ${res.value.status} ${JSON.stringify(res.value.body)}`);
+      }
+    };
+
+    it('a refresh and an organisation shred, many times over', async () => {
+      const { CryptoShreddingService: Shred } = require('../services/CryptoShreddingService');
+      for (let i = 0; i < ITER; i++) {
+        const orgId = `org-lock-${process.pid}-${i}`;
+        await pool.query("INSERT INTO organizations (id, name, slug, default_policy) VALUES ($1, 'Lock', $2, 'open')", [
+          orgId,
+          `lock-${process.pid}-${i}`
+        ]);
+        const person = await makePerson(orgId);
+        const r = await joinAs(person);
+        await pool.query(
+          "UPDATE app_sessions SET access_expires_at = NOW() + INTERVAL '5 minutes' WHERE node_id = $1",
+          [r.grant.node_id]
+        );
+        const settled = await Promise.allSettled([
+          doRefresh(r.tokens.refresh_token, r.signer),
+          Shred.executeOrgShred(orgId, { initiatorId: fx.ids.adminA, approverId: fx.ids.adminA })
+        ]);
+        if (settled[1].status === 'rejected') assert.fail(`the shred was aborted: ${settled[1].reason.message}`);
+        if (settled[0].status === 'rejected') assert.fail(settled[0].reason.message);
+        assert.ok(settled[0].value.status < 500, `refresh answered ${settled[0].value.status}`);
+        const left = await pool.query('SELECT 1 FROM app_sessions WHERE organization_id = $1', [orgId]);
+        assert.strictEqual(left.rows.length, 0, 'the shred left app sessions behind');
+      }
+    });
+
+    it('an approval and the polls that wait for it', async () => {
+      for (let i = 0; i < ITER; i++) {
+        const s = (await start()).body;
+        await forcePollable(s.device_code);
+        const results = await Promise.allSettled([
+          approve(fx.tokens.memberA, s.user_code),
+          poll(s.device_code),
+          poll(s.device_code)
+        ]);
+        noServerError('approve+poll', results);
+        await forcePollable(s.device_code);
+        const last = await poll(s.device_code);
+        assert.ok(['approved', 'expired', 'pending', 'slow_down'].includes(last.body.status));
+        await pool.query(
+          "UPDATE app_sessions SET revoked_at = NOW(), revoked_reason = 'test_cleanup', banned = FALSE WHERE user_id = $1 AND revoked_at IS NULL",
+          [fx.ids.memberA]
+        );
+      }
+    });
+
+    it('a revoke and the registration that is racing it', async () => {
+      for (let i = 0; i < ITER; i++) {
+        const person = await makePerson();
+        const r = await signIn(person.token);
+        const id = (await pool.query('SELECT id FROM app_sessions WHERE node_id = $1', [r.grant.node_id])).rows[0].id;
+        const results = await Promise.allSettled([
+          register(app, { public_key_hex: r.key, role: 'CLIENT_ORIGIN', preauth_key: r.grant.preauth_key }),
+          request(app).delete(`${base}/sessions/${id}`).set(bearer(person.token))
+        ]);
+        noServerError('revoke+register', results);
+        assert.strictEqual(await node(r.grant.node_id), undefined, 'a node survived its revoked app');
+        const row = await sessionRow(r);
+        assert.ok(row.revoked_at);
+      }
+    });
+  });
+
+  describe('a login code cannot approve an app', () => {
+    it('records the step of a sign-in code, without locking out two parallel sign-ins', async () => {
+      const bcrypt = require('bcryptjs');
+      // Made for this run, never written down.
+      const loginSecret = crypto.randomBytes(18).toString('hex');
+      const secret = TotpService.generateSecret();
+      const sealed = await CryptoShreddingService.sealForOrg(fx.orgs.A, secret);
+      const id = `usr-login-${process.pid}`;
+      await pool.query(
+        `INSERT INTO users (id, username, email, password_hash, role, organization_id, totp_enabled, totp_secret)
+         VALUES ($1, $2, $3, $4, 'user', $5, TRUE, $6)`,
+        [id, `login_${process.pid}`, `${id}@sec.local`, bcrypt.hashSync(loginSecret, 4), fx.orgs.A, sealed]
+      );
+      await pool.query("INSERT INTO memberships (id, user_id, organization_id, role) VALUES ($1, $2, $3, 'member')", [
+        `mem-${id}`,
+        id,
+        fx.orgs.A
+      ]);
+      const code = TotpService.generateTotp(secret, { time: Date.now() });
+      const login = () =>
+        request(app)
+          .post('/api/auth/login')
+          .send({ username: `login_${process.pid}`, password: loginSecret, totp_code: code });
+      // Two sign-ins with the same code at the same moment are both fine.
+      const both = await Promise.all([login(), login()]);
+      assert.deepStrictEqual(
+        both.map((x) => x.status),
+        [200, 200],
+        JSON.stringify(both.map((x) => x.body))
+      );
+      const token = both[0].body.token;
+      assert.ok(token, `no token in ${JSON.stringify(Object.keys(both[0].body))}`);
+      // But that code, used to sign in, cannot approve an app.
+      const s = (await start()).body;
+      const res = await approve(token, s.user_code, { totp_code: code });
+      assert.strictEqual(res.status, 401, JSON.stringify(res.body));
+      assert.strictEqual(res.body.code, 'mfa_invalid');
     });
   });
 

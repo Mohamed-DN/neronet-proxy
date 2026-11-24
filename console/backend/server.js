@@ -151,6 +151,8 @@ async function initDatabase() {
     const TransportPolicyService = require('./services/TransportPolicyService');
     await TransportPolicyService.reconcileCeiling();
     TransportPolicyService.startSweeper();
+    // Apps whose account no longer stands lose their nodes even when they ask for nothing (ADR 0040).
+    require('./services/AppAuthService').startSweeper();
 
     // Organisation secrets stored before they were sealed with the organisation's
     // data key are sealed now, and data keys wrapped with a retiring KEK re-wrapped.

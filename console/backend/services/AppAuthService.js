@@ -322,7 +322,7 @@ async function approveSignIn(user, body, { ip, organizationIdAtIssue = null }) {
 
       const key = row.installation_public_key;
       const nodeId = deriveNodeId(key);
-      if ((await RevocationEngine.isRevoked(key, client)) || (await keyWasRevoked(key, client)))
+      if ((await revokedForGood(key, client)) || (await keyWasRevoked(key, client)))
         throw new AppAuthError(409, 'installation_revoked', 'This installation was removed; reinstall the app');
       const inUse = () => new AppAuthError(409, 'installation_in_use', 'This installation belongs to someone else');
       const existing = (
@@ -430,112 +430,119 @@ const tokenBody = (tokens, scopes) => ({
 async function pollSignIn(body, { ip }) {
   const deviceCode = parseDeviceCode(body?.device_code);
   const hash = sha256(deviceCode);
-  const minted = await withTransaction(async (client) => {
-    const found = await client.query(
-      'SELECT *, expires_at <= NOW() AS expired, last_polled_at > NOW() - make_interval(secs => interval_seconds) AS too_fast FROM app_device_codes WHERE device_code_hash = $1 FOR UPDATE',
-      [hash]
-    );
-    const row = found.rows[0];
-    if (!row || !sameHash(row.device_code_hash, hash) || row.expired || row.status === 'consumed')
-      return { status: 'expired' };
-    if (row.status === 'denied') return { status: 'denied' };
-    if (row.status === 'pending') {
-      if (row.too_fast) {
-        const interval = Math.min(row.interval_seconds + DEFAULT_INTERVAL, MAX_INTERVAL);
-        await client.query('UPDATE app_device_codes SET interval_seconds = $2, last_polled_at = NOW() WHERE id = $1', [
-          row.id,
-          interval
-        ]);
-        return { status: 'slow_down', interval };
+  // Only collecting an approval touches nodes and sessions, so only that takes the lifecycle lock first.
+  const peek = await getPgPool().query('SELECT status FROM app_device_codes WHERE device_code_hash = $1', [hash]);
+  const runTransaction = peek.rows[0]?.status === 'approved' ? EnrollmentService.transaction : withTransaction;
+  const minted = await retryDeadlock(() =>
+    runTransaction(async (client) => {
+      const found = await client.query(
+        'SELECT *, expires_at <= NOW() AS expired, last_polled_at > NOW() - make_interval(secs => interval_seconds) AS too_fast FROM app_device_codes WHERE device_code_hash = $1 FOR UPDATE',
+        [hash]
+      );
+      const row = found.rows[0];
+      if (!row || !sameHash(row.device_code_hash, hash) || row.expired || row.status === 'consumed')
+        return { status: 'expired' };
+      if (row.status === 'denied') return { status: 'denied' };
+      if (row.status === 'pending') {
+        if (row.too_fast) {
+          const interval = Math.min(row.interval_seconds + DEFAULT_INTERVAL, MAX_INTERVAL);
+          await client.query(
+            'UPDATE app_device_codes SET interval_seconds = $2, last_polled_at = NOW() WHERE id = $1',
+            [row.id, interval]
+          );
+          return { status: 'slow_down', interval };
+        }
+        await client.query('UPDATE app_device_codes SET last_polled_at = NOW() WHERE id = $1', [row.id]);
+        return { status: 'pending', interval: row.interval_seconds };
       }
-      await client.query('UPDATE app_device_codes SET last_polled_at = NOW() WHERE id = $1', [row.id]);
-      return { status: 'pending', interval: row.interval_seconds };
-    }
 
-    // Approved: the person must still be allowed in at the moment the app collects.
-    const organizationId = row.approved_organization_id;
-    const nodeId = deriveNodeId(row.installation_public_key);
-    const st = await standing(client, row.approved_user_id, organizationId, row.approved_auth_epoch);
-    const refused =
-      !st.ok ||
-      (await keyWasRevoked(row.installation_public_key, client)) ||
-      (
-        await client.query('SELECT 1 FROM app_sessions WHERE node_id = $1 AND revoked_at IS NULL AND user_id <> $2', [
-          nodeId,
-          row.approved_user_id
-        ])
-      ).rows.length > 0;
-    if (refused) {
-      await client.query("UPDATE app_device_codes SET status = 'denied' WHERE id = $1", [row.id]);
-      return { status: 'denied' };
-    }
-    const person = st.user;
+      // Approved: the person must still be allowed in at the moment the app collects.
+      const organizationId = row.approved_organization_id;
+      const nodeId = deriveNodeId(row.installation_public_key);
+      const st = await standing(client, row.approved_user_id, organizationId, row.approved_auth_epoch);
+      const refused =
+        !st.ok ||
+        (await keyWasRevoked(row.installation_public_key, client)) ||
+        (
+          await client.query('SELECT 1 FROM app_sessions WHERE node_id = $1 AND revoked_at IS NULL AND user_id <> $2', [
+            nodeId,
+            row.approved_user_id
+          ])
+        ).rows.length > 0;
+      if (refused) {
+        await client.query("UPDATE app_device_codes SET status = 'denied' WHERE id = $1", [row.id]);
+        return { status: 'denied' };
+      }
+      const person = st.user;
 
-    // A new sign-in of the same installation by the same person replaces the previous one.
-    const old = await client.query(
-      `UPDATE app_sessions SET revoked_at = NOW(), revoked_reason = 'superseded'
+      // A new sign-in of the same installation by the same person replaces the previous one.
+      const old = await client.query(
+        `UPDATE app_sessions SET revoked_at = NOW(), revoked_reason = 'superseded'
         WHERE node_id = $1 AND revoked_at IS NULL AND user_id = $2 RETURNING grant_key_id`,
-      [nodeId, person.id]
-    );
-    for (const o of old.rows) {
-      if (o.grant_key_id)
-        await client.query('UPDATE preauth_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL', [
-          o.grant_key_id
-        ]);
-    }
+        [nodeId, person.id]
+      );
+      for (const o of old.rows) {
+        if (o.grant_key_id)
+          await client.query('UPDATE preauth_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL', [
+            o.grant_key_id
+          ]);
+      }
 
-    const grant = await PreAuthKeyService.createPreAuthKey({
-      ownerId: person.id,
-      organizationId,
-      allowedRole: 'CLIENT_ORIGIN',
-      isReusable: false,
-      expiresInHours: GRANT_TTL_HOURS,
-      boundPublicKey: row.installation_public_key,
-      client
-    });
-    const tokens = mintTokens();
-    const sessionId = `aps_${randomHex(12)}`;
-    await client.query(
-      `INSERT INTO app_sessions
+      const grant = await PreAuthKeyService.createPreAuthKey({
+        ownerId: person.id,
+        organizationId,
+        allowedRole: 'CLIENT_ORIGIN',
+        isReusable: false,
+        expiresInHours: GRANT_TTL_HOURS,
+        boundPublicKey: row.installation_public_key,
+        client
+      });
+      const tokens = mintTokens();
+      const sessionId = `aps_${randomHex(12)}`;
+      await client.query(
+        `INSERT INTO app_sessions
          (id, user_id, organization_id, installation_public_key, signing_public_key, node_id, grant_key_id, platform,
           device_name, scopes, access_hash, access_expires_at, refresh_hash, refresh_expires_at, request_ip,
           auth_epoch, absolute_expires_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, NOW() + make_interval(secs => $12), $13,
                NOW() + make_interval(secs => $14), $15, $16, NOW() + make_interval(days => $17))`,
-      [
-        sessionId,
-        person.id,
-        organizationId,
-        row.installation_public_key,
-        row.signing_public_key,
-        nodeId,
-        grant.id,
-        row.platform,
-        row.device_name,
-        row.scopes,
-        sha256(tokens.access),
-        ACCESS_TTL_SECONDS,
-        sha256(tokens.refresh),
-        REFRESH_TTL_SECONDS,
-        row.request_ip,
-        person.console_auth_epoch,
-        ABSOLUTE_LIFETIME_DAYS
-      ]
-    );
-    await client.query("UPDATE app_device_codes SET status = 'consumed' WHERE id = $1", [row.id]);
-    return {
-      status: 'approved',
-      app_token: tokenBody(tokens, row.scopes),
-      enrolment: {
-        preauth_key: grant.secret,
-        node_id: nodeId,
-        role: 'CLIENT_ORIGIN',
-        expires_at: grant.expires_at
-      },
-      account: { username: person.username, organization_id: organizationId },
-      audit: { sessionId, person, organizationId, platform: row.platform, scopes: row.scopes }
-    };
-  });
+        [
+          sessionId,
+          person.id,
+          organizationId,
+          row.installation_public_key,
+          row.signing_public_key,
+          nodeId,
+          grant.id,
+          row.platform,
+          row.device_name,
+          row.scopes,
+          sha256(tokens.access),
+          ACCESS_TTL_SECONDS,
+          sha256(tokens.refresh),
+          REFRESH_TTL_SECONDS,
+          row.request_ip,
+          person.console_auth_epoch,
+          ABSOLUTE_LIFETIME_DAYS
+        ]
+      );
+      await client.query("UPDATE app_device_codes SET status = 'consumed' WHERE id = $1", [row.id]);
+      // The same installation coming back after a suspension: peers hear of its node again.
+      await liftSuspension(client, nodeId);
+      return {
+        status: 'approved',
+        app_token: tokenBody(tokens, row.scopes),
+        enrolment: {
+          preauth_key: grant.secret,
+          node_id: nodeId,
+          role: 'CLIENT_ORIGIN',
+          expires_at: grant.expires_at
+        },
+        account: { username: person.username, organization_id: organizationId },
+        audit: { sessionId, person, organizationId, platform: row.platform, scopes: row.scopes }
+      };
+    })
+  );
   if (minted.audit) {
     const a = minted.audit;
     logAuditEvent({
@@ -574,11 +581,18 @@ async function keyWasRevoked(publicKeyHex, client = null) {
   const key = normalisePublicKeyHex(publicKeyHex);
   if (!key) return false;
   const res = await (client || getPgPool()).query(
-    `SELECT 1 FROM app_sessions s
-      WHERE s.installation_public_key = $1 AND s.revoked_at IS NOT NULL
-        AND COALESCE(s.revoked_reason, '') <> 'superseded'
-        AND NOT EXISTS (SELECT 1 FROM app_sessions a WHERE a.installation_public_key = $1 AND a.revoked_at IS NULL)
-      LIMIT 1`,
+    'SELECT 1 FROM app_key_bans WHERE installation_public_key = $1 LIMIT 1',
+    [key]
+  );
+  return res.rows.length > 0;
+}
+
+/** On the revoked-key list for a reason that is not an app's recoverable suspension. */
+async function revokedForGood(publicKeyHex, client) {
+  const key = normalisePublicKeyHex(publicKeyHex);
+  if (!key) return false;
+  const res = await client.query(
+    "SELECT 1 FROM revoked_keys WHERE public_key_hex = $1 AND expires_at > NOW() AND reason NOT LIKE 'app_suspended:%' LIMIT 1",
     [key]
   );
   return res.rows.length > 0;
@@ -625,6 +639,7 @@ function authenticateApp(scope) {
       const session = token ? await resolveAppToken(token) : null;
       if (!session) return res.status(401).json({ error: 'Invalid or expired app token' });
       if (!session.scopes.includes(scope)) return res.status(403).json({ error: 'insufficient_scope', scope });
+      req.appToken = token;
       req.appSession = {
         id: session.id,
         userId: session.user_id,
@@ -644,7 +659,245 @@ function authenticateApp(scope) {
   };
 }
 
-// How far a signed refresh may be from the console's clock, and how long the previous refresh token
+// ---------------------------------------------------------------------------------------
+// Three states, and the order in which writers take their locks
+//
+// An app is in one of three states, and the difference is what can come back:
+//   active     revoked_at is null.
+//   suspended  revoked_at is set, banned is false. Something that can be put right ended it: a blocked
+//              device, a changed password, role or second factor, "revoke all sessions", a brief
+//              account suspension, an expired lifetime, a retry that came too late. The node is cut off
+//              (credentials dead, peers told, row kept) but its key is not banned: the same installation
+//              signs in again, is approved again, and is back with the same node.
+//   revoked    banned is true and the key is in app_key_bans. A person or an administrator revoked it,
+//              a fresh valid signature replayed a token that was long replaced, or an administrator
+//              deleted the node. Nothing brings that key back; the app must be installed again.
+//
+// Lock order. Every writer that touches nodes, app sessions or organisations takes the enrolment
+// lifecycle lock first (EnrollmentService.transaction, the lock registration and the destruction of an
+// organisation take too), so they queue up in one line instead of crossing each other:
+//   1. the lifecycle advisory lock
+//   2. organisations, then nodes (as destruction takes them)
+//   3. app_device_codes, app_sessions
+//   4. users, revoked_keys, mesh_epochs
+// Writers that cannot take the lock first (a console action that updates a user) can still be chosen
+// as the victim of a deadlock; retryDeadlock runs such a transaction again.
+const DEADLOCK_RETRIES = 3;
+async function retryDeadlock(work) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await work();
+    } catch (err) {
+      const retryable = err && (err.code === '40P01' || err.code === '40001');
+      if (!retryable || attempt >= DEADLOCK_RETRIES) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 15 * (attempt + 1) + Math.floor(Math.random() * 25)));
+    }
+  }
+}
+
+/** Puts the installation key in the ban list, for good. */
+async function banKey(client, session, reason) {
+  await client.query(
+    `INSERT INTO app_key_bans (installation_public_key, node_id, reason) VALUES ($1, $2, $3)
+     ON CONFLICT (installation_public_key) DO NOTHING`,
+    [session.installation_public_key, session.node_id, reason]
+  );
+  await client.query(
+    `UPDATE app_sessions SET banned = TRUE
+      WHERE installation_public_key = $1 AND revoked_at IS NOT NULL AND COALESCE(revoked_reason, '') <> 'superseded'`,
+    [session.installation_public_key]
+  );
+}
+
+/**
+ * Ends a session that can be put right: its node is cut off from the network and from its peers,
+ * its credentials die and its row stays, the key is not banned. Idempotent.
+ */
+async function suspendSession(client, session, reason, actorId = null) {
+  await client.query(
+    'UPDATE app_sessions SET revoked_at = NOW(), revoked_reason = $2 WHERE id = $1 AND revoked_at IS NULL',
+    [session.id, reason]
+  );
+  if (session.grant_key_id)
+    await client.query('UPDATE preauth_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL', [
+      session.grant_key_id
+    ]);
+  const node = (await client.query('SELECT * FROM nodes WHERE id = $1 FOR UPDATE', [session.node_id])).rows[0];
+  if (!node) return { cut: false, why: 'no node' };
+  if (node.user_id !== session.user_id || normalisePublicKeyHex(node.public_key) !== session.installation_public_key)
+    return { cut: false, why: "not this session's node" };
+  const newer = await client.query(
+    'SELECT 1 FROM app_sessions WHERE node_id = $1 AND revoked_at IS NULL AND id <> $2 LIMIT 1',
+    [session.node_id, session.id]
+  );
+  if (newer.rows.length > 0) return { cut: false, why: 'superseded' };
+  await RevocationEngine.revokeNodeKeys([node.id], { reason: `app_suspended:${reason}`, actorId, client });
+  return { cut: true, kept: true };
+}
+
+/** What happens when the app comes back after a suspension: peers hear of the node again. */
+async function liftSuspension(client, nodeId) {
+  const lifted = await client.query(
+    "DELETE FROM revoked_keys WHERE node_id = $1 AND reason LIKE 'app_suspended:%' RETURNING 1",
+    [nodeId]
+  );
+  if (lifted.rowCount > 0)
+    await client.query("UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = NOW() WHERE name IN ('acl', 'netmap')");
+}
+
+function suspensionAudit(s, reason, ip, extra = '') {
+  logAuditEvent({
+    eventType: 'APP_SESSION_SUSPENDED',
+    organizationId: s.organization_id,
+    actorUserId: s.user_id,
+    actorUsername: s.username || null,
+    targetId: s.id,
+    targetType: 'app_session',
+    severity: 'warn',
+    message: `App session ${s.id} was suspended (${reason})${extra}; its node ${s.node_id} is cut off until the app is approved again`,
+    ipAddress: ip,
+    metadata: { reason, node_id: s.node_id }
+  });
+}
+
+/**
+ * Whether a node that an app sign-in enrolled may be served at all: the node routes call this for
+ * every credential check. A node whose app is suspended or revoked is refused even though its
+ * credential has not run out, and an app whose account no longer stands (a moved authentication
+ * epoch, a suspended person, a passed lifetime) is suspended on the spot, so an app that never
+ * refreshes does not keep its node.
+ */
+async function nodeAdmission(nodeId) {
+  const s = (
+    await getPgPool().query(
+      `SELECT s.id, s.node_id, s.user_id, s.organization_id, s.revoked_at, s.banned, s.auth_epoch,
+              s.absolute_expires_at <= NOW() AS absolute_expired, s.refresh_expires_at <= NOW() AS refresh_expired,
+              u.status AS user_status, u.console_auth_epoch
+         FROM app_sessions s JOIN users u ON u.id = s.user_id
+        WHERE s.node_id = $1 ORDER BY s.created_at DESC LIMIT 1`,
+      [nodeId]
+    )
+  ).rows[0];
+  if (!s) return { ok: true };
+  if (s.revoked_at) return { ok: false, error: s.banned ? 'this app was removed' : 'this app must be approved again' };
+  const reason =
+    s.user_status !== 'active'
+      ? 'account_not_active'
+      : String(s.console_auth_epoch) !== String(s.auth_epoch)
+        ? 'account_changed'
+        : s.absolute_expired || s.refresh_expired
+          ? 'expired'
+          : null;
+  if (!reason) return { ok: true };
+  await suspendById(s.id, reason);
+  return { ok: false, error: 'this app must be approved again' };
+}
+
+/** Whether a node an app enrolled has no live session: it may not register again without a grant. */
+async function nodeNeedsSignIn(nodeId, client = null) {
+  const res = await (client || getPgPool()).query(
+    `SELECT EXISTS (SELECT 1 FROM app_sessions WHERE node_id = $1) AS had,
+            EXISTS (SELECT 1 FROM app_sessions WHERE node_id = $1 AND revoked_at IS NULL) AS live`,
+    [nodeId]
+  );
+  return res.rows[0].had && !res.rows[0].live;
+}
+
+async function suspendById(sessionId, reason, ip = null) {
+  const suspended = await retryDeadlock(() =>
+    EnrollmentService.transaction(async (client) => {
+      const s = (
+        await client.query(
+          'SELECT s.*, u.username FROM app_sessions s JOIN users u ON u.id = s.user_id WHERE s.id = $1 FOR UPDATE OF s',
+          [sessionId]
+        )
+      ).rows[0];
+      if (!s || s.revoked_at) return null;
+      await suspendSession(client, s, reason);
+      return s;
+    })
+  );
+  if (suspended) suspensionAudit(suspended, reason, ip);
+  return Boolean(suspended);
+}
+
+/** Inside the caller's transaction: every live app of a person is suspended, as "revoke all sessions" ends their sessions. */
+async function suspendUserApps(client, userId, reason = 'sessions_revoked') {
+  const rows = (
+    await client.query(
+      'SELECT s.*, u.username FROM app_sessions s JOIN users u ON u.id = s.user_id WHERE s.user_id = $1 AND s.revoked_at IS NULL FOR UPDATE OF s',
+      [userId]
+    )
+  ).rows;
+  for (const s of rows) {
+    await suspendSession(client, s, reason);
+    suspensionAudit(s, reason, null);
+  }
+  return rows.length;
+}
+
+/**
+ * Checks every live app against its person's standing and suspends the ones that no longer have it.
+ * Nodes are also checked at every credential use; this is for the app whose node is quiet.
+ */
+async function sweepStanding() {
+  const ids = (await getPgPool().query('SELECT id FROM app_sessions WHERE revoked_at IS NULL')).rows.map((r) => r.id);
+  let suspended = 0;
+  for (const id of ids) {
+    const reason = await retryDeadlock(() =>
+      EnrollmentService.transaction(async (client) => {
+        const s = (
+          await client.query(
+            `SELECT s.*, u.username, s.absolute_expires_at <= NOW() AS absolute_expired,
+                    s.refresh_expires_at <= NOW() AS refresh_expired
+               FROM app_sessions s JOIN users u ON u.id = s.user_id WHERE s.id = $1 FOR UPDATE OF s`,
+            [id]
+          )
+        ).rows[0];
+        if (!s || s.revoked_at) return null;
+        let why = s.absolute_expired || s.refresh_expired ? 'expired' : null;
+        if (!why) {
+          const st = await standing(client, s.user_id, s.organization_id, s.auth_epoch);
+          if (!st.ok) why = st.reason;
+        }
+        if (!why) return null;
+        await suspendSession(client, s, why);
+        suspensionAudit(s, why, null, ' by the sweeper');
+        return why;
+      })
+    );
+    if (reason) suspended += 1;
+  }
+  return suspended;
+}
+
+/** Old rows go; the ban list never does. */
+async function purgeAppRows() {
+  const pool = getPgPool();
+  await pool.query(
+    `DELETE FROM app_sessions WHERE revoked_at IS NOT NULL
+        AND ((banned AND revoked_at < NOW() - INTERVAL '90 days') OR (NOT banned AND revoked_at < NOW() - INTERVAL '365 days'))`
+  );
+  await pool.query('DELETE FROM app_refresh_nonces WHERE expires_at < NOW()');
+  await pool.query("DELETE FROM app_device_codes WHERE expires_at < NOW() - INTERVAL '1 day'");
+}
+
+let sweeperTimer = null;
+function startSweeper(intervalMs = 60_000) {
+  if (sweeperTimer) return;
+  sweeperTimer = setInterval(() => {
+    sweepStanding()
+      .then(() => purgeAppRows())
+      .catch((err) => logger.warn(`App standing sweep failed: ${err.message}`));
+  }, intervalMs);
+  sweeperTimer.unref();
+}
+function stopSweeper() {
+  if (sweeperTimer) clearInterval(sweeperTimer);
+  sweeperTimer = null;
+}
+
+// How far a signed request may be from the console's clock, and how long the previous refresh token
 // stays good for a retry after a rotation whose answer never arrived.
 //
 // The retry window is a day. What makes a retry safe is not the clock but the signature: only the
@@ -670,6 +923,18 @@ function refreshMessage(refreshToken, timestamp, nonce) {
   ].join('\n');
 }
 
+/** The exact bytes an installation signs to sign itself out: the access token is named by its hash. */
+function signOutMessage(accessToken, timestamp, nonce) {
+  return [
+    'NERONET-APP-SIGNOUT-V1',
+    'DELETE',
+    '/api/app-auth/app/session',
+    sha256(accessToken),
+    String(timestamp),
+    nonce
+  ].join('\n');
+}
+
 function verifyEd25519(publicHex, message, signatureHex) {
   try {
     const key = crypto.createPublicKey({
@@ -683,135 +948,191 @@ function verifyEd25519(publicHex, message, signatureHex) {
   }
 }
 
-/**
- * Rotates the app token. The request must be signed by the installation's Ed25519 key. Anything
- * that is not a fresh, valid, first-time signature (no signature, a wrong key, a skewed clock, a
- * spent nonce, a byte-identical replay) is a plain 401 that changes nothing: a thief holding an old
- * token, or anyone replaying captured bytes, must not be able to sign the real app out.
- *
- * Only a fresh valid signature over a token that was already replaced is evidence that the key
- * holder itself fell out of step. The immediately previous token is a legitimate retry for a
- * day (a lost answer); any older token, or the previous one after the window, revokes the app and
- * cuts its node.
- */
-async function refreshTokens(body, { ip }) {
-  const unauthorised = new AppAuthError(401, 'invalid_refresh', 'Sign in again');
-  const refresh = typeof body?.refresh_token === 'string' ? body.refresh_token : '';
-  if (!/^nnr_[0-9a-f]{64}$/.test(refresh)) throw unauthorised;
+const signedFields = (body) => {
   const timestamp = body?.timestamp;
   const nonce = typeof body?.nonce === 'string' ? body.nonce : '';
   const signature = typeof body?.signature === 'string' ? body.signature : '';
   const wellFormed =
     Number.isSafeInteger(timestamp) && /^[0-9a-f]{32}$/.test(nonce) && /^[0-9a-f]{128}$/.test(signature);
   const fresh = wellFormed && Math.abs(Math.floor(Date.now() / 1000) - timestamp) <= SIGNATURE_WINDOW_SECONDS;
+  return { timestamp, nonce, signature, fresh };
+};
+
+async function spendNonce(client, sessionId, nonce) {
+  await client.query('DELETE FROM app_refresh_nonces WHERE expires_at < NOW()');
+  const spent = await client.query(
+    `INSERT INTO app_refresh_nonces (nonce_hash, session_id, expires_at)
+     VALUES ($1, $2, NOW() + make_interval(secs => $3)) ON CONFLICT DO NOTHING RETURNING 1`,
+    [sha256(`${sessionId}:${nonce}`), sessionId, SIGNATURE_WINDOW_SECONDS * 2]
+  );
+  return spent.rowCount === 1;
+}
+
+/**
+ * Rotates the app token. The request must be signed by the installation's Ed25519 key. Anything
+ * that is not a fresh, valid, first-time signature (no signature, a wrong key, a skewed clock, a
+ * spent nonce, a byte-identical replay) is a plain 401 that changes nothing: a thief holding an old
+ * token, or anyone replaying captured bytes, must not be able to sign the real app out.
+ *
+ * To a request that is validly signed the console says more: the app is suspended (sign in again) or
+ * revoked (install again), or the pair is not due (409), so an honest app knows what to do.
+ *
+ * Only a fresh valid signature over a token that was already replaced is evidence that the key holder
+ * itself fell out of step. The immediately previous token is a legitimate retry for a day (a lost
+ * answer); one older than that suspends the app; any older token revokes it and removes its node.
+ * A pair that is still more than half fresh is not rotated, except by that retry: nobody can use
+ * rotation to hide a stolen chain in a stream of early refreshes.
+ */
+async function refreshTokens(body, { ip }) {
+  const unauthorised = new AppAuthError(401, 'invalid_refresh', 'Sign in again');
+  const refresh = typeof body?.refresh_token === 'string' ? body.refresh_token : '';
+  if (!/^nnr_[0-9a-f]{64}$/.test(refresh)) throw unauthorised;
+  const { timestamp, nonce, signature, fresh } = signedFields(body);
   if (!fresh) throw unauthorised;
   const hash = sha256(refresh);
 
-  let reuse = null;
-  const result = await withTransaction(async (client) => {
-    const found = await client.query(
-      `SELECT s.*, u.username, s.refresh_expires_at <= NOW() AS refresh_expired,
-              s.absolute_expires_at <= NOW() AS absolute_expired,
-              s.rotated_at > NOW() - make_interval(secs => $2) AS within_retry_window
-         FROM app_sessions s JOIN users u ON u.id = s.user_id
-        WHERE s.refresh_hash = $1 OR s.previous_refresh_hash = $1 OR $1 = ANY (s.retired_refresh_hashes)
-        FOR UPDATE OF s`,
-      [hash, RETRY_WINDOW_SECONDS]
-    );
-    const s = found.rows[0];
-    if (!s || s.revoked_at) return null;
-    // Nothing below happens for a request that was not signed, now, by this installation.
-    if (!verifyEd25519(s.signing_public_key, refreshMessage(refresh, timestamp, nonce), signature)) return null;
-    await client.query('DELETE FROM app_refresh_nonces WHERE expires_at < NOW()');
-    const spent = await client.query(
-      `INSERT INTO app_refresh_nonces (nonce_hash, session_id, expires_at)
-       VALUES ($1, $2, NOW() + make_interval(secs => $3)) ON CONFLICT DO NOTHING RETURNING 1`,
-      [sha256(`${s.id}:${nonce}`), s.id, SIGNATURE_WINDOW_SECONDS * 2]
-    );
-    if (spent.rowCount !== 1) return null;
+  const run = await retryDeadlock(() =>
+    EnrollmentService.transaction(async (client) => {
+      const out = { tokens: null, outcome: null, session: null, reason: null };
+      const found = await client.query(
+        `SELECT s.*, u.username, s.refresh_expires_at <= NOW() AS refresh_expired,
+                s.absolute_expires_at <= NOW() AS absolute_expired,
+                s.rotated_at > NOW() - make_interval(secs => $2) AS within_retry_window,
+                s.access_expires_at > NOW() + make_interval(secs => $3) AS access_fresh
+           FROM app_sessions s JOIN users u ON u.id = s.user_id
+          WHERE s.refresh_hash = $1 OR s.previous_refresh_hash = $1 OR $1 = ANY (s.retired_refresh_hashes)
+          FOR UPDATE OF s`,
+        [hash, RETRY_WINDOW_SECONDS, ACCESS_TTL_SECONDS / 2]
+      );
+      const s = found.rows[0];
+      if (!s) return out;
+      // Nothing below happens for a request that was not signed, now, by this installation.
+      if (!verifyEd25519(s.signing_public_key, refreshMessage(refresh, timestamp, nonce), signature)) return out;
+      out.session = s;
+      if (s.revoked_at) {
+        out.outcome = s.banned ? 'revoked' : 'suspended';
+        return out;
+      }
+      const isCurrent = sameHash(s.refresh_hash, hash);
+      const isPrevious = !isCurrent && s.previous_refresh_hash && sameHash(s.previous_refresh_hash, hash);
+      if (isCurrent && s.access_fresh) {
+        out.outcome = 'not_due';
+        return out;
+      }
+      if (!(await spendNonce(client, s.id, nonce))) return { ...out, session: null };
 
-    const revoke = async (reason) => {
-      reuse = s;
-      await client.query('UPDATE app_sessions SET revoked_at = NOW(), revoked_reason = $2 WHERE id = $1', [
-        s.id,
-        reason
-      ]);
-      if (s.grant_key_id)
-        await client.query('UPDATE preauth_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL', [
-          s.grant_key_id
-        ]);
-      await cutSessionNode(client, s, { reason: 'app_token_reuse', actorId: null });
-      return null;
-    };
+      const end = async (how, reason) => {
+        out.reason = reason;
+        if (how === 'ban') {
+          await client.query(
+            'UPDATE app_sessions SET revoked_at = NOW(), revoked_reason = $2, banned = TRUE WHERE id = $1',
+            [s.id, reason]
+          );
+          if (s.grant_key_id)
+            await client.query('UPDATE preauth_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL', [
+              s.grant_key_id
+            ]);
+          await banKey(client, { ...s, revoked_reason: reason }, reason);
+          await cutSessionNode(client, { ...s, revoked_reason: reason }, { reason: 'app_token_reuse', actorId: null });
+          out.outcome = 'revoked_now';
+        } else {
+          await suspendSession(client, s, reason);
+          out.outcome = 'suspended_now';
+        }
+        return out;
+      };
 
-    const isCurrent = sameHash(s.refresh_hash, hash);
-    const isPrevious = !isCurrent && s.previous_refresh_hash && sameHash(s.previous_refresh_hash, hash);
-    if (!isCurrent && !isPrevious) return revoke('refresh_reuse');
-    if (isPrevious && !s.within_retry_window) return revoke('refresh_reuse');
+      if (!isCurrent && !isPrevious) return end('ban', 'refresh_reuse');
+      if (isPrevious && !s.within_retry_window) return end('suspend', 'late_retry');
+      if (s.refresh_expired || s.absolute_expired) return end('suspend', 'expired');
+      const st = await standing(client, s.user_id, s.organization_id, s.auth_epoch);
+      if (!st.ok) return end('suspend', st.reason);
 
-    if (s.refresh_expired || s.absolute_expired) return null;
-    const st = await standing(client, s.user_id, s.organization_id, s.auth_epoch);
-    if (!st.ok) {
-      await client.query('UPDATE app_sessions SET revoked_at = NOW(), revoked_reason = $2 WHERE id = $1', [
-        s.id,
-        st.reason
-      ]);
-      await cutSessionNode(client, s, { reason: 'app_session_revoked', actorId: null });
-      return null;
-    }
+      const tokens = mintTokens();
+      // A normal rotation makes the current token the previous one and retires the one before it. A
+      // retry keeps the original previous token (so it can be retried again) and retires the unseen pair.
+      const retired = [...s.retired_refresh_hashes, isPrevious ? s.refresh_hash : s.previous_refresh_hash]
+        .filter(Boolean)
+        .slice(-RETIRED_KEPT);
+      await client.query(
+        `UPDATE app_sessions SET previous_refresh_hash = $2, retired_refresh_hashes = $3, refresh_hash = $4,
+                access_hash = $5, access_expires_at = NOW() + make_interval(secs => $6),
+                refresh_expires_at = LEAST(NOW() + make_interval(secs => $7), absolute_expires_at),
+                rotated_at = CASE WHEN $8 THEN rotated_at ELSE NOW() END, last_used_at = NOW()
+          WHERE id = $1`,
+        [
+          s.id,
+          isPrevious ? s.previous_refresh_hash : s.refresh_hash,
+          retired,
+          sha256(tokens.refresh),
+          sha256(tokens.access),
+          ACCESS_TTL_SECONDS,
+          REFRESH_TTL_SECONDS,
+          Boolean(isPrevious)
+        ]
+      );
+      out.tokens = tokenBody(tokens, s.scopes);
+      return out;
+    })
+  );
 
-    const tokens = mintTokens();
-    // A normal rotation makes the current token the previous one and retires the one before it. A
-    // retry keeps the original previous token (so it can be retried again) and retires the unseen pair.
-    const retired = [...s.retired_refresh_hashes, isPrevious ? s.refresh_hash : s.previous_refresh_hash]
-      .filter(Boolean)
-      .slice(-RETIRED_KEPT);
-    await client.query(
-      `UPDATE app_sessions SET previous_refresh_hash = $2, retired_refresh_hashes = $3, refresh_hash = $4,
-              access_hash = $5, access_expires_at = NOW() + make_interval(secs => $6),
-              refresh_expires_at = LEAST(NOW() + make_interval(secs => $7), absolute_expires_at),
-              rotated_at = CASE WHEN $8 THEN rotated_at ELSE NOW() END, last_used_at = NOW()
-        WHERE id = $1`,
-      [
-        s.id,
-        isPrevious ? s.previous_refresh_hash : s.refresh_hash,
-        retired,
-        sha256(tokens.refresh),
-        sha256(tokens.access),
-        ACCESS_TTL_SECONDS,
-        REFRESH_TTL_SECONDS,
-        Boolean(isPrevious)
-      ]
-    );
-    return tokenBody(tokens, s.scopes);
-  });
-
-  if (reuse) {
+  if (run.outcome === 'revoked_now' && run.session) {
     logAuditEvent({
       eventType: 'APP_TOKEN_REUSE_DETECTED',
-      organizationId: reuse.organization_id,
-      actorUserId: reuse.user_id,
-      actorUsername: reuse.username,
-      targetId: reuse.id,
+      organizationId: run.session.organization_id,
+      actorUserId: run.session.user_id,
+      actorUsername: run.session.username,
+      targetId: run.session.id,
       targetType: 'app_session',
       severity: 'warn',
-      message: `A replaced refresh token of app session ${reuse.id} was signed and used again; the app was signed out and its node cut`,
+      message: `A replaced refresh token of app session ${run.session.id} was signed and used again; the app was revoked and its node removed`,
       ipAddress: ip
     });
   }
-  if (!result) throw unauthorised;
-  return result;
+  if (run.outcome === 'suspended_now' && run.session) suspensionAudit(run.session, run.reason, ip);
+  if (run.tokens) return run.tokens;
+  if (run.outcome === 'not_due') throw new AppAuthError(409, 'refresh_not_due', 'The current pair is still fresh');
+  if (run.outcome === 'revoked' || run.outcome === 'revoked_now')
+    throw new AppAuthError(401, 'app_revoked', 'This app was removed; install it again');
+  if (run.outcome === 'suspended' || run.outcome === 'suspended_now')
+    throw new AppAuthError(401, 'app_suspended', 'Sign in again to continue');
+  throw unauthorised;
+}
+
+/**
+ * The app signs itself out. The access token alone is not enough: it travels in every request and a
+ * leaked one must not be able to delete the node, so the request carries a signature by the
+ * installation's key over the token's hash, a time and a nonce.
+ */
+async function selfSignOut(session, accessToken, body, { ip }) {
+  const { timestamp, nonce, signature, fresh } = signedFields(body);
+  const denied = new AppAuthError(401, 'signature_required', 'Signing out needs the installation to sign the request');
+  if (!fresh) throw denied;
+  const s = (await getPgPool().query('SELECT signing_public_key FROM app_sessions WHERE id = $1', [session.id]))
+    .rows[0];
+  if (!s || !verifyEd25519(s.signing_public_key, signOutMessage(accessToken, timestamp, nonce), signature))
+    throw denied;
+  const spent = await retryDeadlock(() =>
+    EnrollmentService.transaction((client) => spendNonce(client, session.id, nonce))
+  );
+  if (!spent) throw denied;
+  return revokeSession({ id: session.userId, username: session.username, role: 'user' }, session.id, {
+    reason: 'app_signout',
+    ip,
+    bySelfApp: true
+  });
 }
 
 // ---------------------------------------------------------------------------------------
 // Listing and revoking
 
 /**
- * Cuts the node an app session enrolled, inside the caller's transaction, so that revoking the
+ * Removes the node an app session enrolled, inside the caller's transaction, so that revoking the
  * session and cutting the node are one act. The key goes on the revoked list (to every peer, the
  * node's credentials die, the ACL epoch moves) and the node row is removed, except where removing it
  * would do harm that is not the app's to do:
- *   - a node an administrator blocked keeps its row, so signing out cannot erase the block;
+ *   - a node an administrator blocked keeps its row, so signing out cannot erase the block, and its
+ *     revoked-key entry never expires, so that unblocking it cannot put it back in a netmap;
  *   - a node that serves profile devices is left alone, as DELETE /api/nodes refuses to remove it;
  *   - a node that is not this session's own (another owner, or another full key behind the same
  *     eight-byte id) is never touched, nor one a newer session of the same installation has taken over.
@@ -828,7 +1149,10 @@ async function cutSessionNode(client, session, { reason, actorId }) {
   if (newer.rows.length > 0 || session.revoked_reason === 'superseded') return { cut: false, why: 'superseded' };
   if (node.profile_gateway_endpoint) return { cut: false, why: 'serves profile devices' };
   await RevocationEngine.revokeNodeKeys([node.id], { reason, actorId, client });
-  if (node.is_quarantined) return { cut: true, kept: true };
+  if (node.is_quarantined) {
+    await client.query("UPDATE revoked_keys SET expires_at = 'infinity' WHERE node_id = $1", [node.id]);
+    return { cut: true, kept: true };
+  }
   await client.query('DELETE FROM nodes WHERE id = $1', [node.id]);
   return { cut: true, kept: false };
 }
@@ -874,30 +1198,38 @@ async function listSessions(user, { organization = false } = {}) {
 async function revokeSession(actor, sessionId, { reason = 'revoked', ip = null, bySelfApp = false } = {}) {
   if (typeof sessionId !== 'string' || !/^aps_[0-9a-f]{24}$/.test(sessionId))
     throw new AppAuthError(404, 'not_found', 'No such app');
-  const done = await withTransaction(async (client) => {
-    const s = (await client.query('SELECT * FROM app_sessions WHERE id = $1 FOR UPDATE', [sessionId])).rows[0];
-    const allowed =
-      s &&
-      (bySelfApp ||
-        s.user_id === actor.id ||
-        actor.role === 'super-admin' ||
-        (isAdministrator(actor) && s.organization_id === orgOf(actor)));
-    if (!allowed) throw new AppAuthError(404, 'not_found', 'No such app');
-    const updated = await client.query(
-      `UPDATE app_sessions SET revoked_at = NOW(), revoked_by = $2, revoked_reason = $3
-        WHERE id = $1 AND revoked_at IS NULL RETURNING id`,
-      [s.id, actor.id, reason]
-    );
-    if (s.grant_key_id)
-      await client.query('UPDATE preauth_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL', [
-        s.grant_key_id
-      ]);
-    // Revoked and cut in one transaction. Revoking a session that is already revoked repairs a cut
-    // that an earlier version left undone.
-    const live = updated.rowCount === 1 ? { ...s, revoked_reason: reason } : s;
-    const cut = await cutSessionNode(client, live, { reason: 'app_session_revoked', actorId: actor.id });
-    return { s, first: updated.rowCount === 1, cut };
-  });
+  const done = await retryDeadlock(() =>
+    EnrollmentService.transaction(async (client) => {
+      const s = (await client.query('SELECT * FROM app_sessions WHERE id = $1 FOR UPDATE', [sessionId])).rows[0];
+      const allowed =
+        s &&
+        (bySelfApp ||
+          s.user_id === actor.id ||
+          actor.role === 'super-admin' ||
+          (isAdministrator(actor) && s.organization_id === orgOf(actor)));
+      if (!allowed) throw new AppAuthError(404, 'not_found', 'No such app');
+      // A session that a newer sign-in of the same installation replaced is history: revoking it must
+      // not ban the key or touch the node the live session stands on.
+      if (s.revoked_reason === 'superseded') return { s, first: false, cut: { cut: false, why: 'superseded' } };
+      const first = !s.banned;
+      const live = { ...s, revoked_reason: s.revoked_at ? s.revoked_reason : reason };
+      await client.query(
+        `UPDATE app_sessions SET revoked_at = COALESCE(revoked_at, NOW()), revoked_by = $2,
+                revoked_reason = CASE WHEN revoked_at IS NULL THEN $3 ELSE revoked_reason END, banned = TRUE
+          WHERE id = $1`,
+        [s.id, actor.id, reason]
+      );
+      if (s.grant_key_id)
+        await client.query('UPDATE preauth_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL', [
+          s.grant_key_id
+        ]);
+      await banKey(client, live, reason);
+      // Revoked, banned and cut in one transaction. Revoking a session that is already revoked repairs a
+      // cut that an earlier version left undone.
+      const cut = await cutSessionNode(client, live, { reason: 'app_session_revoked', actorId: actor.id });
+      return { s, first, cut };
+    })
+  );
   if (done.first) {
     const { s, cut } = done;
     logAuditEvent({
@@ -949,6 +1281,16 @@ module.exports = {
   pollSignIn,
   refreshTokens,
   keyWasRevoked,
+  nodeAdmission,
+  nodeNeedsSignIn,
+  suspendUserApps,
+  sweepStanding,
+  purgeAppRows,
+  startSweeper,
+  stopSweeper,
+  selfSignOut,
+  signOutMessage,
+  refreshMessage,
   authenticateApp,
   listSessions,
   revokeSession,

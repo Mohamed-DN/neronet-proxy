@@ -214,6 +214,11 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
       if (await AppAuthService.keyWasRevoked(publicKeyHex, client)) {
         throw EnrollmentService.denied(403, 'this key has been revoked');
       }
+      // A node an app enrolled does not come back without a live app session: after a suspension the
+      // person approves the app again, which gives it a new grant. The 24 hour list is not what decides.
+      if (existing.length > 0 && (await AppAuthService.nodeNeedsSignIn(nodeId, client))) {
+        throw EnrollmentService.denied(403, 'this app must be approved again');
+      }
 
       if (preauthKey) {
         const preauthResult = await PreAuthKeyService.validateAndConsumePreAuthKey(

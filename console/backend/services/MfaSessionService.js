@@ -101,6 +101,7 @@ async function signIn({ verifiedUser, passwordColumn, accessTier, providedOtp, i
       if (user.totp_enabled && providedOtp) {
         if (user.totp_secret !== verifiedUser.totp_secret || !TotpService.verifyTotp(String(providedOtp), secret))
           deny('Invalid TOTP code');
+        await recordLoginStep(client, user.id, secret, providedOtp);
       } else {
         const id = crypto.randomUUID();
         const token = jwt.sign({ sub: user.id, type: 'mfa_pending' }, config.JWT_SECRET, {
@@ -267,6 +268,7 @@ async function complete(caller, { code, recovery_code, ipAddress }, browser = nu
       ]);
     } else if (code) {
       if (sealed !== user.totp_secret || !TotpService.verifyTotp(String(code), secret)) deny('Invalid TOTP code');
+      await recordLoginStep(client, user.id, secret, code);
     } else throw new SessionAuthorityError(400, 'Missing code or recovery_code');
 
     let session;
@@ -314,6 +316,30 @@ async function prepareFreshProof(userId) {
 
 const TOTP_STEP_MS = 30000;
 
+/** The time step a code belongs to (the console accepts one step either side), or null. */
+function totpStepOf(secret, code) {
+  const counter = Math.floor(Date.now() / TOTP_STEP_MS);
+  const clean = String(code).trim();
+  for (let i = -1; i <= 1; i++) {
+    if (TotpService.generateTotp(secret, { time: (counter + i) * TOTP_STEP_MS }) === clean) return counter + i;
+  }
+  return null;
+}
+
+/**
+ * A code used to sign in is recorded too, so that it cannot then approve an app. Two sign-ins with the
+ * same code at the same moment both pass (the step only moves forward), and a later step is never
+ * held back by an earlier one.
+ */
+async function recordLoginStep(client, userId, secret, code) {
+  const step = totpStepOf(secret, code);
+  if (step === null) return;
+  await client.query(
+    'UPDATE users SET totp_last_used_step = GREATEST(COALESCE(totp_last_used_step, 0), $2) WHERE id = $1',
+    [userId, step]
+  );
+}
+
 async function applyFreshProof(client, userId, prepared, { code, recovery_code } = {}) {
   if (prepared.state === 'ok') return 'ok';
   if (prepared.state === 'setup') return 'setup';
@@ -333,13 +359,7 @@ async function applyFreshProof(client, userId, prepared, { code, recovery_code }
     ]);
     return 'ok';
   }
-  const counter = Math.floor(Date.now() / TOTP_STEP_MS);
-  let matched = null;
-  for (let i = -1; i <= 1; i++) {
-    const step = counter + i;
-    if (TotpService.generateTotp(prepared.secret, { time: step * TOTP_STEP_MS }) === String(code).trim())
-      matched = step;
-  }
+  const matched = totpStepOf(prepared.secret, code);
   if (matched === null) return 'invalid';
   // A code is good once: the step must be later than the last one accepted for this account.
   const spent = await client.query(

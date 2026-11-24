@@ -597,6 +597,16 @@ router.put('/:id', async (req, res, next) => {
  * removing it disconnects them all at once. Its devices move to another gateway and the
  * node stops being a gateway first (DELETE /api/devices/gateways/:id).
  */
+/**
+ * Removing a node ends and bans the app that was signed in for it (a trigger), so it takes the lifecycle
+ * lock first like every other writer of nodes and app sessions: see the lock order in AppAuthService.
+ */
+function deleteNodeRow(id) {
+  return require('../services/EnrollmentService').transaction((client) =>
+    client.query('DELETE FROM nodes WHERE id = $1', [id])
+  );
+}
+
 function refuseProfileGateway(node, res) {
   if (!node || !node.profile_gateway_endpoint) return false;
   res.status(409).json({
@@ -650,7 +660,7 @@ router.delete('/:id', async (req, res, next) => {
     });
 
     // 2. Remove the node record — the key is already blacklisted.
-    await pool.query('DELETE FROM nodes WHERE id = $1', [req.params.id]);
+    await deleteNodeRow(req.params.id);
     await NodeCredentialService.revokeNodeCredentials(req.params.id);
 
     await bumpNetmap();
@@ -693,7 +703,7 @@ router.post('/:id/revoke', async (req, res, next) => {
       actorId: req.user.id
     });
 
-    await pool.query('DELETE FROM nodes WHERE id = $1', [req.params.id]);
+    await deleteNodeRow(req.params.id);
     await NodeCredentialService.revokeNodeCredentials(req.params.id);
     await bumpNetmap();
 
