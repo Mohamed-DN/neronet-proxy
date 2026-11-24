@@ -107,7 +107,7 @@ describe('H3: node privileges by organisation role', () => {
         assert.strictEqual((await update('memberA', nodeId, body)).status, 403, JSON.stringify(body));
       }
       const row = (await pool.query('SELECT latency_ms, is_healthy FROM nodes WHERE id = $1', [nodeId])).rows[0];
-      assert.strictEqual(Number(row.latency_ms), 15);
+      assert.strictEqual(Number(row.latency_ms), 0); // no invented 15 ms any more (ADR 0042)
       assert.strictEqual(row.is_healthy, true);
     });
 

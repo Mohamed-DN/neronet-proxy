@@ -89,8 +89,8 @@ describe('WP-206: Onion Routing End-to-End & Per-Org Controls', () => {
       const pubKey = crypto.randomBytes(32).toString('hex');
       const role = i === 3 ? 'EXIT_BRIDGE' : 'RELAY';
       await pool.query(
-        `INSERT INTO nodes (id, user_id, organization_id, name, public_key, overlay_ipv4, overlay_ipv6, role, is_healthy, is_quarantined, endpoints)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, FALSE, '["127.0.0.1:51820"]')
+        `INSERT INTO nodes (id, user_id, organization_id, name, public_key, overlay_ipv4, overlay_ipv6, role, is_healthy, is_quarantined, endpoints, country_code)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, FALSE, '["127.0.0.1:51820"]', 'US')
          ON CONFLICT (id) DO NOTHING`,
         [relayId, adminUserId, standardOrgId, `Relay ${i}`, pubKey, `100.64.10.${i}`, `fd7a:115c:a1e0::10:${i}`, role]
       );
