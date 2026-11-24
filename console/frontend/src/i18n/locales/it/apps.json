@@ -25,7 +25,6 @@
     "totpHint": "Sei cifre. Serve perché il tuo account usa un secondo passaggio.",
     "approve": "Approva",
     "deny": "Rifiuta",
-    "code": "Codice",
     "selfDeclared": "Dichiarato dall'app, non verificato",
     "scopesTitle": "Se approvi, questa app può:",
     "confirmCode": "Scrivi il codice mostrato nell'app",

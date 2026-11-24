@@ -99,6 +99,8 @@ describe('AppConnectRoute', () => {
     expect(screen.getByText(/see which account it is signed in as/i)).toBeInTheDocument();
     expect(screen.getByText(/see your devices/i)).toBeInTheDocument();
     expect(calls('/device/lookup')).toEqual([{ user_code: 'abcd-efgh' }]);
+    // The page never prints the code to be typed: a code on the screen would only have to be copied.
+    expect(screen.queryByText(/ABCD-EFGH/i)).not.toBeInTheDocument();
 
     // Approving needs the code from the app's screen to be typed, even without a second factor.
     await user.click(screen.getByRole('button', { name: /^approve$/i }));

@@ -25,7 +25,6 @@
     "totpHint": "Six digits. Needed because your account uses a second step.",
     "approve": "Approve",
     "deny": "Deny",
-    "code": "Code",
     "selfDeclared": "Stated by the app, not checked",
     "scopesTitle": "If you approve, this app can:",
     "confirmCode": "Type the code shown in the app",

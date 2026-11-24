@@ -73,7 +73,8 @@ function errorKey(err: unknown): string {
  * server or proxy ever sees, and is taken out of the address at once; a code in the query string is
  * not read at all. The page names what is asking, and says that the device name and platform are what
  * the app says of itself, so a code someone else talked the person into opening is recognisable as not
- * theirs. Approving needs the code from the app's own screen to be typed, link or no link.
+ * theirs. Approving needs the code from the app's own screen to be typed, link or no link, and the page
+ * never prints that code: a code the page showed would only have to be copied.
  */
 export default function AppConnectRoute() {
   const { t } = useTranslation('apps');
@@ -212,8 +213,6 @@ export default function AppConnectRoute() {
           {t('review.title')}
         </h2>
         <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-2 rounded-card border border-border-subtle bg-surface p-4 text-body">
-          <dt className="text-muted">{t('review.code')}</dt>
-          <dd className="font-mono font-medium tracking-wider text-content">{r.user_code ?? step.code}</dd>
           <dt className="text-muted">{t('review.device')}</dt>
           <dd className="text-content">
             <span className="font-medium">{r.device_name}</span>
