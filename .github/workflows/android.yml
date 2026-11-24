@@ -29,7 +29,7 @@ jobs:
         with:
           persist-credentials: false
       - name: unit tests, debug and unsigned release builds
-        run: clients/android/build.sh testDebugUnitTest assembleDebug assembleRelease
+        run: bash clients/android/build.sh testDebugUnitTest assembleDebug assembleRelease
 
   signed-release:
     # Only by hand, only from main, only with the approval the environment asks for.
@@ -61,7 +61,7 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$NERONET_KEYSTORE_PATH"
           unset KEYSTORE_BASE64
           export NERONET_KEYSTORE_PATH
-          clients/android/build.sh assembleRelease
+          bash clients/android/build.sh assembleRelease
           APK=clients/android/app/build/outputs/apk/release/app-release.apk
           SIGNER=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name apksigner | sort -V | tail -1)
           "$SIGNER" verify --print-certs "$APK" > certs.txt
