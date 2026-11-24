@@ -13,14 +13,7 @@ import { ApiError, apiPost, apiRequest } from '../apiClient';
 /** What the control plane says about one request, or answers at once. */
 export interface ProbeAnswer {
   request_id?: string;
-  state:
-    | 'pending'
-    | 'measuring'
-    | 'replied'
-    | 'no_reply'
-    | 'not_connected'
-    | 'gateway_unreachable'
-    | 'unsupported';
+  state: 'pending' | 'measuring' | 'replied' | 'no_reply' | 'not_connected' | 'gateway_unreachable' | 'unsupported';
   rtt_ms?: number | null;
   method?: string;
   answered_at?: string;

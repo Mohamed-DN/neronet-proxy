@@ -230,7 +230,11 @@ export function TopologyRoute() {
   // --- Layout: computed once per inventory, remembered per grouping ---------
   const memory = useRef<Partial<Record<GroupBy, Map<string, Point>>>>({});
   const otherLabel = t(
-    groupBy === 'none' ? 'radial.allNodes' : groupBy === 'country' ? 'canvas.clusterUnknownLocation' : 'canvas.clusterOther'
+    groupBy === 'none'
+      ? 'radial.allNodes'
+      : groupBy === 'country'
+        ? 'canvas.clusterUnknownLocation'
+        : 'canvas.clusterOther'
   );
   const layout = useMemo(
     () => layoutMesh(nodes, links, groupBy, { otherLabel, previous: memory.current[groupBy] }),

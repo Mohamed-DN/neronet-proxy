@@ -89,7 +89,8 @@ function mount(role: string, plane: Plane) {
         return json({ node: plane.node });
       }
       if (method === 'POST' && url.endsWith('/probe')) return json(plane.probe.first);
-      if (url.includes('/probe/')) return json(plane.probe.reads.length > 1 ? plane.probe.reads.shift() : plane.probe.reads[0]);
+      if (url.includes('/probe/'))
+        return json(plane.probe.reads.length > 1 ? plane.probe.reads.shift() : plane.probe.reads[0]);
       if (url.endsWith('/api/nodes/dev-phone')) return json({ node: plane.node });
       return json({});
     }) as unknown as typeof fetch
@@ -206,7 +207,9 @@ describe('device page: location, response time and the connection test', () => {
       plane({
         probe: {
           first: { request_id: 'prb-1', state: 'pending' },
-          reads: [{ request_id: 'prb-1', state: 'no_reply', last_contact_at: new Date(Date.now() - 15_000).toISOString() }]
+          reads: [
+            { request_id: 'prb-1', state: 'no_reply', last_contact_at: new Date(Date.now() - 15_000).toISOString() }
+          ]
         }
       })
     );
@@ -217,7 +220,15 @@ describe('device page: location, response time and the connection test', () => {
   });
 
   it('not connected, with the last contact or without one', async () => {
-    mount('member', plane({ probe: { first: { state: 'not_connected', last_contact_at: new Date(Date.now() - 600_000).toISOString() }, reads: [] } }));
+    mount(
+      'member',
+      plane({
+        probe: {
+          first: { state: 'not_connected', last_contact_at: new Date(Date.now() - 600_000).toISOString() },
+          reads: []
+        }
+      })
+    );
     let dialog = await clickTest();
     expect(await within(dialog).findByText(/Not connected\. Last contact 10 minutes ago\./)).toBeInTheDocument();
     vi.unstubAllGlobals();
@@ -243,6 +254,8 @@ describe('device page: location, response time and the connection test', () => {
     const dialog = await screen.findByRole('dialog');
     expect((await within(dialog).findAllByText('Posizione sconosciuta')).length).toBeGreaterThan(0);
     await userEvent.setup().click(await within(dialog).findByRole('button', { name: /Prova|Verifica|Test/ }));
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Il gateway che serve questo dispositivo non ha risposto');
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Il gateway che serve questo dispositivo non ha risposto'
+    );
   });
 });

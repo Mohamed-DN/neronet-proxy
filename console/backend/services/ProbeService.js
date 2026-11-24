@@ -70,7 +70,11 @@ async function request(device, user) {
   if (live.rows[0]) {
     return {
       http: 200,
-      body: { request_id: live.rows[0].id, state: 'pending', expires_at: new Date(live.rows[0].expires_at).toISOString() }
+      body: {
+        request_id: live.rows[0].id,
+        state: 'pending',
+        expires_at: new Date(live.rows[0].expires_at).toISOString()
+      }
     };
   }
 
@@ -219,10 +223,10 @@ async function answer(gatewayId, requestId, { replied, rtt_ms: rttMs }) {
   );
   if (res.rows.length === 0) return { http: 409, body: { error: 'request not live for this gateway' } };
   const deviceId = res.rows[0].device_id;
-  await db.query(
-    `UPDATE nodes SET rtt_ms = $2, rtt_measured_at = now(), rtt_method = 'icmp' WHERE id = $1`,
-    [deviceId, rtt]
-  );
+  await db.query(`UPDATE nodes SET rtt_ms = $2, rtt_measured_at = now(), rtt_method = 'icmp' WHERE id = $1`, [
+    deviceId,
+    rtt
+  ]);
   NodeLive.notifyNodeUpdated(deviceId, { immediate: true });
   return { http: 200, body: { acknowledged: true } };
 }

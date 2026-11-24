@@ -158,7 +158,12 @@ describe('Live truth: location, round trip, connection test', () => {
 
     it('a re-registration fills an unknown country but never replaces a stated one, and says so in the audit', async () => {
       const k = nodeKey();
-      const first = await register(app, { public_key_hex: k, role: 'CLIENT_ORIGIN', endpoints: [], capability: { enabled: false } });
+      const first = await register(app, {
+        public_key_hex: k,
+        role: 'CLIENT_ORIGIN',
+        endpoints: [],
+        capability: { enabled: false }
+      });
       const id = first.body.assigned_node_id;
       assert.equal((await row(id)).country_code, null);
       const again = await register(app, {
@@ -190,8 +195,7 @@ describe('Live truth: location, round trip, connection test', () => {
 
     it('PUT /location: administrators declare, validate and audit; members and auditors cannot; another organisation sees 404', async () => {
       const id = await profileDevice(ORG_A, fx.ids.memberA);
-      const put = (token, body) =>
-        request(app).put(`/api/nodes/${id}/location`).set(bearer(token)).send(body);
+      const put = (token, body) => request(app).put(`/api/nodes/${id}/location`).set(bearer(token)).send(body);
       assert.equal((await put(fx.tokens.memberA, { country_code: 'IT' })).status, 403);
       assert.equal((await put(fx.tokens.auditorA, { country_code: 'IT' })).status, 403);
       assert.equal((await put(fx.tokens.adminB, { country_code: 'IT' })).status, 404);
@@ -232,7 +236,7 @@ describe('Live truth: location, round trip, connection test', () => {
     });
 
     it('the geography views put every unknown device in one "unknown" group and never an empty one', async () => {
-      await pool.query("UPDATE nodes SET country_code = NULL WHERE organization_id = $1", [ORG_A]);
+      await pool.query('UPDATE nodes SET country_code = NULL WHERE organization_id = $1', [ORG_A]);
       await pool.query("UPDATE nodes SET country_code = 'IT' WHERE id = $1", [gwA.id]);
       const geo = await request(app).get('/api/stats/geo').set(bearer(fx.tokens.ownerA));
       assert.equal(geo.status, 200);
@@ -255,7 +259,20 @@ describe('Live truth: location, round trip, connection test', () => {
           `INSERT INTO nodes (id, user_id, organization_id, name, public_key, overlay_ipv4, overlay_ipv6, device_kind,
                               country_code, latitude, longitude, location_source, metadata)
            VALUES ($1, $2, $3, $1, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)`,
-          [id, fx.ids.memberA, ORG_A, key(), `100.64.99.${++seq % 250}`, `fd00:99::${seq}`, kind, country, lat, lon, source, meta]
+          [
+            id,
+            fx.ids.memberA,
+            ORG_A,
+            key(),
+            `100.64.99.${++seq % 250}`,
+            `fd00:99::${seq}`,
+            kind,
+            country,
+            lat,
+            lon,
+            source,
+            meta
+          ]
         );
       await put('mig-profile-default', { kind: 'profile', country: 'US' });
       await put('mig-profile-declared', { kind: 'profile', country: 'US', source: 'declared' });
@@ -282,11 +299,16 @@ describe('Live truth: location, round trip, connection test', () => {
       const real = await get('mig-real-coords');
       assert.equal(real.country_code, 'IT');
       assert.ok(Math.abs(real.latitude - 41.9) < 0.001);
-      const before = (await pool.query('SELECT id, country_code, latitude, location_source FROM nodes ORDER BY id')).rows;
+      const before = (await pool.query('SELECT id, country_code, latitude, location_source FROM nodes ORDER BY id'))
+        .rows;
       await pool.query(sql);
-      const after = (await pool.query('SELECT id, country_code, latitude, location_source FROM nodes ORDER BY id')).rows;
+      const after = (await pool.query('SELECT id, country_code, latitude, location_source FROM nodes ORDER BY id'))
+        .rows;
       assert.deepEqual(after, before);
-      await assert.rejects(pool.query("UPDATE nodes SET country_code = 'it' WHERE id = 'mig-frank'"), /nodes_country_code_iso/);
+      await assert.rejects(
+        pool.query("UPDATE nodes SET country_code = 'it' WHERE id = 'mig-frank'"),
+        /nodes_country_code_iso/
+      );
     });
   });
 
@@ -326,10 +348,7 @@ describe('Live truth: location, round trip, connection test', () => {
       ]);
       const asker = await enrol(ORG_A);
       await pool.query("UPDATE organizations SET default_policy = 'open' WHERE id = $1", [ORG_A]);
-      const all = await request(app)
-        .post('/v4/control/discover')
-        .set(bearer(asker.credential))
-        .send({ limit: 100 });
+      const all = await request(app).post('/v4/control/discover').set(bearer(asker.credential)).send({ limit: 100 });
       const found = all.body.bridges.find((b) => b.node_id === rel.id);
       assert.ok(found, JSON.stringify(all.body));
       assert.equal(found.capability.country_code, '');
@@ -351,7 +370,10 @@ describe('Live truth: location, round trip, connection test', () => {
           [`circ-${i}`, fx.ids.ownerA, org, nodeKey(), `100.64.66.${i + 1}`, `fd00:66::${i + 1}`]
         );
       }
-      await assert.rejects(buildCircuit({ organizationId: org, targetCountry: 'US' }), /no healthy exit bridge available in US/);
+      await assert.rejects(
+        buildCircuit({ organizationId: org, targetCountry: 'US' }),
+        /no healthy exit bridge available in US/
+      );
       const free = await buildCircuit({ organizationId: org });
       assert.equal(free.hops.length, 3, 'with no country required, the circuit is still built');
     });
@@ -404,10 +426,7 @@ describe('Live truth: location, round trip, connection test', () => {
 
     it('the heartbeat value keeps its own name: console_link_ms equals latency_ms for a node that beats', async () => {
       const n = await enrol(ORG_A);
-      await request(app)
-        .post('/v4/control/heartbeat')
-        .set(bearer(n.credential))
-        .send({ node_id: n.id, rtt_ms: 31 });
+      await request(app).post('/v4/control/heartbeat').set(bearer(n.credential)).send({ node_id: n.id, rtt_ms: 31 });
       await sleep(50);
       await pool.query('UPDATE nodes SET latency_ms = 31 WHERE id = $1', [n.id]);
       const node = await apiNode(n.id);
@@ -420,8 +439,7 @@ describe('Live truth: location, round trip, connection test', () => {
     const ask = (token, id) => request(app).post(`/api/nodes/${id}/probe`).set(bearer(token));
     const read = (token, id, rid) => request(app).get(`/api/nodes/${id}/probe/${rid}`).set(bearer(token));
     const poll = (gw) => request(app).post('/v4/control/probe/poll').set(bearer(gw.credential)).send({});
-    const answer = (gw, body) =>
-      request(app).post('/v4/control/probe/result').set(bearer(gw.credential)).send(body);
+    const answer = (gw, body) => request(app).post('/v4/control/probe/result').set(bearer(gw.credential)).send(body);
     const settle = () => pool.query("UPDATE probe_requests SET created_at = created_at - interval '10 seconds'");
 
     it('request, delivery to the serving gateway, ping, answer: replied in X ms, within a poll step', async () => {
@@ -439,7 +457,10 @@ describe('Live truth: location, round trip, connection test', () => {
       assert.deepEqual(delivered.body.requests, [{ request_id: created.body.request_id, peer_id: dev }]);
       assert.ok(Date.now() - t0 < 1500, 'delivered in well under the five seconds the button promises');
       assert.equal((await read(fx.tokens.memberA, dev, created.body.request_id)).body.state, 'measuring');
-      assert.equal((await answer(gwA, { request_id: created.body.request_id, replied: true, rtt_ms: 4.25 })).status, 200);
+      assert.equal(
+        (await answer(gwA, { request_id: created.body.request_id, replied: true, rtt_ms: 4.25 })).status,
+        200
+      );
       const done = await read(fx.tokens.memberA, dev, created.body.request_id);
       assert.equal(done.body.state, 'replied');
       assert.equal(done.body.rtt_ms, 4.25);
@@ -502,7 +523,10 @@ describe('Live truth: location, round trip, connection test', () => {
       const forged = await answer(gwB, { request_id: created.body.request_id, replied: true, rtt_ms: 1 });
       assert.equal(forged.status, 409);
       assert.equal((await answer(gwA, { request_id: created.body.request_id, replied: true, rtt_ms: -4 })).status, 400);
-      assert.equal((await answer(gwA, { request_id: created.body.request_id, replied: true, rtt_ms: 99999 })).status, 400);
+      assert.equal(
+        (await answer(gwA, { request_id: created.body.request_id, replied: true, rtt_ms: 99999 })).status,
+        400
+      );
     });
 
     it('roles: the device owner or an administrator; not a colleague, an auditor, another organisation or nobody', async () => {
@@ -521,7 +545,7 @@ describe('Live truth: location, round trip, connection test', () => {
     it('the old ping action no longer answers with a stored number: it starts a real probe', async () => {
       await settle();
       const dev = await profileDevice(ORG_A, fx.ids.memberA);
-      await pool.query('UPDATE nodes SET rtt_ms = 7, rtt_measured_at = now() - interval \'1 hour\' WHERE id = $1', [dev]);
+      await pool.query("UPDATE nodes SET rtt_ms = 7, rtt_measured_at = now() - interval '1 hour' WHERE id = $1", [dev]);
       const res = await request(app)
         .post(`/api/nodes/${dev}/action`)
         .set(bearer(fx.tokens.ownerA))

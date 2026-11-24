@@ -20,7 +20,9 @@ import { renderUI } from './harness';
  * number, a country, a role, a range or a count fails here.
  */
 
-vi.mock('../context/AuthContext', () => ({
+vi.mock('../context/AuthContext', async () => ({
+  // The Devices page reads the session through the context itself (so it renders without a provider).
+  default: (await import('react')).createContext(null),
   useAuth: () => ({
     role: 'super-admin',
     user: { id: 'u1', role: 'super-admin', org_role: null, email: 'admin@example.test' }

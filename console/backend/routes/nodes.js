@@ -101,7 +101,8 @@ async function formatNode(row, telemetry) {
     city: row.city || '',
     latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
     longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
-    location_source: row.location_source && NodeLocation.SOURCES.includes(row.location_source) ? row.location_source : null,
+    location_source:
+      row.location_source && NodeLocation.SOURCES.includes(row.location_source) ? row.location_source : null,
     asn: Number(row.asn) || 0,
     endpoints: Array.isArray(endpoints) ? endpoints : [],
     onion_routing_enabled: onionEnabled,

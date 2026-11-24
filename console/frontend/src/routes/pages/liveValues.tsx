@@ -30,9 +30,13 @@ export function countryName(language: string, code: string): string {
   }
 }
 
+/** User-assigned and exceptionally reserved region codes that are not countries. */
+const RESERVED = /^(AA|Q[M-Z]|X[A-Z]|ZZ|AC|CP|DG|EA|EU|EZ|IC|TA|UN)$/;
+
 /** Every two-letter code the browser can name, with its name, sorted for a select. */
 export function countryOptions(language: string): { value: string; label: string }[] {
   const names = new Intl.DisplayNames([language], { type: 'region' });
+  const unknownRegion = names.of('ZZ');
   const out: { value: string; label: string }[] = [];
   for (let a = 65; a <= 90; a += 1) {
     for (let b = 65; b <= 90; b += 1) {
@@ -43,7 +47,9 @@ export function countryOptions(language: string): { value: string; label: string
       } catch {
         name = undefined;
       }
-      if (name && name !== code) out.push({ value: code, label: name });
+      // Intl names reserved and exceptional codes too (ZZ is 'Unknown Region'); only real countries are offered.
+      if (name && name !== code && name !== unknownRegion && !RESERVED.test(code))
+        out.push({ value: code, label: name });
     }
   }
   return out.sort((x, y) => x.label.localeCompare(y.label, language));
@@ -86,6 +92,7 @@ export function ResponseValue({ rttMs, measuredAt, now }: ResponseProps) {
     [i18n.language, measuredAt, clock]
   );
   if (!measuredAt || !when) return <span className="text-muted">{t('live.responseNotMeasured')}</span>;
-  if (rttMs === null || rttMs === undefined) return <span className="text-muted">{t('live.responseNoReply', { when })}</span>;
+  if (rttMs === null || rttMs === undefined)
+    return <span className="text-muted">{t('live.responseNoReply', { when })}</span>;
   return <>{t('live.responseValue', { rtt: rttMs < 10 ? rttMs.toFixed(2) : rttMs.toFixed(1), when })}</>;
 }

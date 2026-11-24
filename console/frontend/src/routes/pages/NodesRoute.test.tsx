@@ -159,7 +159,8 @@ describe('Devices page', () => {
     expect(screen.getByText('Not confirmed')).toBeInTheDocument();
     expect(screen.getByText('Checks failed')).toBeInTheDocument();
     const berlin = within(listTable()).getByText('Berlin Relay Bravo').closest('tr') as HTMLElement;
-    expect(within(berlin).getByText('—')).toBeInTheDocument();
+    // The risk and the response-time cells both read em dash for a device that has none.
+    expect(within(berlin).getAllByText('—').length).toBeGreaterThanOrEqual(1);
   });
 
   it('reads Unknown type when a device has no role', async () => {
@@ -228,7 +229,7 @@ describe('Devices page', () => {
       (await within(await screen.findByRole('table')).findByText(name)).closest('tr') as HTMLElement;
     expect(within(await row('Fresh Phone')).getByText('In service')).toBeInTheDocument();
     expect(within(await row('Stale Phone')).getByText('Last connected 10 minutes ago')).toBeInTheDocument();
-    expect(within(await row('Never Phone')).getByText('Not measured')).toBeInTheDocument();
+    expect(within(await row('Never Phone')).getAllByText('Not measured').length).toBeGreaterThanOrEqual(1);
     expect(within(listTable()).queryByText('Interrupted')).toBeNull();
   });
 
@@ -242,7 +243,8 @@ describe('Devices page', () => {
 
     const phoneRow = (await within(await screen.findByRole('table')).findByText('iPhone')).closest('tr') as HTMLElement;
     expect(within(phoneRow).getByText('Profilo WireGuard')).toBeInTheDocument();
-    expect(within(phoneRow).getByText('Non misurato')).toBeInTheDocument();
+    // Reachability and the new response-time column both say not measured for a device never pinged.
+    expect(within(phoneRow).getAllByText('Non misurato').length).toBeGreaterThanOrEqual(1);
     const gwRow = within(listTable()).getByText('Gateway Ufficio').closest('tr') as HTMLElement;
     expect(within(gwRow).getByText('Gateway')).toBeInTheDocument();
   });
