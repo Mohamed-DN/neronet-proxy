@@ -15,14 +15,18 @@ import (
 //
 // Two checks, so that a mistake in one is not the whole defence: the socket file is 0600
 // and owned by the installation's user, and every accepted connection's peer credentials
-// (SO_PEERCRED, set by the kernel and not forgeable by the peer) must be that user or root.
+// (SO_PEERCRED, set by the kernel and not forgeable by the peer) must be that user (root only with AdmitRoot).
 // A listener on a TCP port would be reachable by every user and every web page on the
 // machine, so there is none.
 type UnixTransport struct {
 	// Path of the socket. Its directory is created 0700 if missing.
 	Path string
-	// OwnerUID is the user of the installation. root (0) is always admitted too.
+	// OwnerUID is the user the installation belongs to. Each installation (profile) is owned by one
+	// local user and only that user may control it, as with NetBird 0.83's per-profile ownership.
 	OwnerUID uint32
+	// AdmitRoot also admits uid 0. Off by default: root can read the owner's files anyway, but the
+	// API does not hand it control implicitly, and a service tool that needs it says so.
+	AdmitRoot bool
 	// FileMode overrides the socket mode; tests set it open to prove the peer check alone refuses.
 	FileMode os.FileMode
 }
@@ -88,7 +92,7 @@ func (t UnixTransport) Authorize(conn net.Conn) (Peer, error) {
 		return Peer{}, cerr
 	}
 	p := Peer{UID: cred.Uid, GID: cred.Gid, PID: cred.Pid}
-	if p.UID != 0 && p.UID != t.OwnerUID {
+	if p.UID != t.OwnerUID && !(t.AdmitRoot && p.UID == 0) {
 		return p, errors.New("clientcore: peer is not the installation's user")
 	}
 	return p, nil

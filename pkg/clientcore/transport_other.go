@@ -16,9 +16,10 @@ var ErrNoTransport = errors.New("clientcore: no secure local transport on this p
 
 // UnixTransport is not available here.
 type UnixTransport struct {
-	Path     string
-	OwnerUID uint32
-	FileMode os.FileMode
+	Path      string
+	OwnerUID  uint32
+	AdmitRoot bool
+	FileMode  os.FileMode
 }
 
 // Listen always refuses.

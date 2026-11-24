@@ -145,6 +145,35 @@ func TestAnotherLocalUserCannotUseTheSocket(t *testing.T) {
 	})
 }
 
+// Ownership is per installation: root is not the owner and is not admitted unless asked.
+func TestRootIsNotAdmittedToAnotherUsersInstallation(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("needs root to be the connecting user")
+	}
+	p := socketPath(t)
+	serveUnix(t, UnixTransport{Path: p, OwnerUID: otherUID, FileMode: 0o666})
+	conn, err := net.Dial("unix", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl := NewClient(conn)
+	defer cl.Close()
+	if r, err := cl.Do("state.get", nil); err == nil {
+		t.Errorf("root controlled another user's installation: %+v", r)
+	}
+	p2 := socketPath(t)
+	serveUnix(t, UnixTransport{Path: p2, OwnerUID: otherUID, AdmitRoot: true})
+	conn2, err := net.Dial("unix", p2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl2 := NewClient(conn2)
+	defer cl2.Close()
+	if r, err := cl2.Do("state.get", nil); err != nil || !r.OK {
+		t.Errorf("root was refused although admitted explicitly: %+v %v", r, err)
+	}
+}
+
 // runAs re-executes this test binary as another uid to behave as a client of the socket.
 func runAs(t *testing.T, uid uint32, path string) string {
 	t.Helper()

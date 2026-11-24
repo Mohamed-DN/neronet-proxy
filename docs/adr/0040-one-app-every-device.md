@@ -94,6 +94,7 @@ routes live under `/api/app-auth/app/*`. Choices worth knowing:
 Slice B, `pkg/clientcore`: device-code client, enrolment through `pkg/control`, connection order walk
 (each method once, bounded, forced means first only, a removed device never falls back), state stream,
 and the versioned local API (newline-delimited JSON, strict decoding) over a `Transport` interface with
-a Linux unix-socket implementation (0600 file, peer credentials checked). The Windows named pipe is
+a Linux unix-socket implementation (0600 file, peer credentials checked). Each installation is owned
+by one local user and only that user controls it (root only when a service tool asks for it explicitly). The Windows named pipe is
 phase 1. Starting the real tunnel from the core (reusing the netmap manager that still lives in
 `cmd/sovereign-node`'s `main` package) and the real-stack end-to-end proof are not done yet.
