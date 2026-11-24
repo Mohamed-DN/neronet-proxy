@@ -51,7 +51,10 @@ jobs:
           CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          [ -n "$KEYSTORE_BASE64" ] && [ -n "$CERT_SHA256" ] || { echo "the android-release environment is not configured"; exit 1; }
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$CERT_SHA256" ]; then
+            echo "the android-release environment is not configured"
+            exit 1
+          fi
           umask 077
           NERONET_KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
           trap 'rm -f "$NERONET_KEYSTORE_PATH"' EXIT
@@ -60,7 +63,7 @@ jobs:
           export NERONET_KEYSTORE_PATH
           clients/android/build.sh assembleRelease
           APK=clients/android/app/build/outputs/apk/release/app-release.apk
-          SIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          SIGNER=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name apksigner | sort -V | tail -1)
           "$SIGNER" verify --print-certs "$APK" > certs.txt
           got=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' certs.txt)
           want=$(printf '%s' "$CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')
