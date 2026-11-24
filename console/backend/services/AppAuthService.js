@@ -106,6 +106,9 @@ function validateStart(body) {
   const key = typeof b.public_key_hex === 'string' ? b.public_key_hex.trim().toLowerCase() : '';
   if (!/^[0-9a-f]{64}$/.test(key))
     throw new AppAuthError(400, 'invalid_public_key', 'public_key_hex must be 64 hex characters');
+  const signing = typeof b.signing_key === 'string' ? b.signing_key.trim().toLowerCase() : '';
+  if (!/^[0-9a-f]{64}$/.test(signing))
+    throw new AppAuthError(400, 'invalid_signing_key', 'signing_key must be 64 hex characters');
   let scopes = DEFAULT_SCOPES;
   if (b.scopes !== undefined) {
     if (
@@ -116,7 +119,7 @@ function validateStart(body) {
       throw new AppAuthError(400, 'invalid_scopes', 'Unknown scope');
     scopes = [...new Set(['app:self', ...b.scopes])];
   }
-  return { platform: b.platform, deviceName: name, publicKey: key, scopes };
+  return { platform: b.platform, deviceName: name, publicKey: key, signingKey: signing, scopes };
 }
 
 function parseDeviceCode(value) {
@@ -137,9 +140,9 @@ async function startSignIn(body, { ip }) {
     try {
       await pool.query(
         `INSERT INTO app_device_codes
-           (id, device_code_hash, user_code_hash, platform, device_name, installation_public_key, scopes,
-            request_ip, interval_seconds, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW() + make_interval(secs => $10))`,
+           (id, device_code_hash, user_code_hash, platform, device_name, installation_public_key,
+            signing_public_key, scopes, request_ip, interval_seconds, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW() + make_interval(secs => $11))`,
         [
           `adc_${randomHex(12)}`,
           sha256(deviceCode),
@@ -147,6 +150,7 @@ async function startSignIn(body, { ip }) {
           input.platform,
           input.deviceName,
           input.publicKey,
+          input.signingKey,
           input.scopes,
           ip || null,
           DEFAULT_INTERVAL,
@@ -157,6 +161,8 @@ async function startSignIn(body, { ip }) {
       pool.query("DELETE FROM app_device_codes WHERE expires_at < NOW() - INTERVAL '1 day'").catch(() => {});
       logAuditEvent({
         eventType: 'APP_SIGNIN_STARTED',
+        // No organisation yet: nobody has signed in. Stated, not left out.
+        organizationId: null,
         severity: 'info',
         targetType: 'app_signin',
         message: `App sign-in started from a ${input.platform} device named "${input.deviceName}"`,
@@ -390,14 +396,15 @@ async function pollSignIn(body, { ip }) {
     const sessionId = `aps_${randomHex(12)}`;
     await client.query(
       `INSERT INTO app_sessions
-         (id, user_id, organization_id, installation_public_key, node_id, grant_key_id, platform, device_name, scopes,
-          access_hash, access_expires_at, refresh_hash, refresh_expires_at, request_ip)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW() + make_interval(secs => $11), $12, NOW() + make_interval(secs => $13), $14)`,
+         (id, user_id, organization_id, installation_public_key, signing_public_key, node_id, grant_key_id, platform,
+          device_name, scopes, access_hash, access_expires_at, refresh_hash, refresh_expires_at, request_ip)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, NOW() + make_interval(secs => $12), $13, NOW() + make_interval(secs => $14), $15)`,
       [
         sessionId,
         person.id,
         organizationId,
         row.installation_public_key,
+        row.signing_public_key,
         nodeId,
         grant.id,
         row.platform,
@@ -499,38 +506,108 @@ function authenticateApp(scope) {
   };
 }
 
+// How far a signed refresh may be from the console's clock, and how long the previous refresh
+// token stays good for one retry after a rotation whose answer never arrived.
+const SIGNATURE_WINDOW_SECONDS = 60;
+const RETRY_WINDOW_SECONDS = 60;
+const SPKI_ED25519_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+
+/** The exact bytes an installation signs to refresh: method, path, hash of the token, time, nonce. */
+function refreshMessage(refreshToken, timestamp, nonce) {
+  return [
+    'NERONET-APP-REFRESH-V1',
+    'POST',
+    '/api/app-auth/token/refresh',
+    sha256(refreshToken),
+    String(timestamp),
+    nonce
+  ].join('\n');
+}
+
+function verifyEd25519(publicHex, message, signatureHex) {
+  try {
+    const key = crypto.createPublicKey({
+      key: Buffer.concat([SPKI_ED25519_PREFIX, Buffer.from(publicHex, 'hex')]),
+      format: 'der',
+      type: 'spki'
+    });
+    return crypto.verify(null, Buffer.from(message), key, Buffer.from(signatureHex, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Rotates the app token. The request must be signed by the installation's Ed25519 key, so a
+ * stolen refresh token alone is worthless (and does not revoke anything: a thief must not be
+ * able to sign the real app out by presenting it).
+ *
+ * A lost response is survivable: the immediately previous refresh token, presented again within
+ * a minute with a fresh valid signature, returns a new pair once. Every other use of a replaced
+ * token is a replay and revokes the app and cuts its node.
+ */
 async function refreshTokens(body, { ip }) {
-  const refresh = typeof body?.refresh_token === 'string' ? body.refresh_token : '';
-  const key = typeof body?.public_key_hex === 'string' ? body.public_key_hex.toLowerCase() : '';
-  if (!/^nnr_[0-9a-f]{64}$/.test(refresh) || !/^[0-9a-f]{64}$/.test(key))
-    throw new AppAuthError(401, 'invalid_refresh', 'Sign in again');
-  const hash = sha256(refresh);
   const unauthorised = new AppAuthError(401, 'invalid_refresh', 'Sign in again');
+  const refresh = typeof body?.refresh_token === 'string' ? body.refresh_token : '';
+  if (!/^nnr_[0-9a-f]{64}$/.test(refresh)) throw unauthorised;
+  const timestamp = body?.timestamp;
+  const nonce = typeof body?.nonce === 'string' ? body.nonce : '';
+  const signature = typeof body?.signature === 'string' ? body.signature : '';
+  const wellFormed =
+    Number.isSafeInteger(timestamp) && /^[0-9a-f]{32}$/.test(nonce) && /^[0-9a-f]{128}$/.test(signature);
+  const fresh = wellFormed && Math.abs(Math.floor(Date.now() / 1000) - timestamp) <= SIGNATURE_WINDOW_SECONDS;
+  const hash = sha256(refresh);
 
   let reuse = null;
   const result = await withTransaction(async (client) => {
     const found = await client.query(
-      `SELECT s.*, u.status AS user_status, u.username, s.refresh_expires_at <= NOW() AS refresh_expired
+      `SELECT s.*, u.status AS user_status, u.username, s.refresh_expires_at <= NOW() AS refresh_expired,
+              s.rotated_at > NOW() - make_interval(secs => $2) AS within_retry_window
          FROM app_sessions s JOIN users u ON u.id = s.user_id
         WHERE s.refresh_hash = $1 OR s.previous_refresh_hash = $1 FOR UPDATE OF s`,
-      [hash]
+      [hash, RETRY_WINDOW_SECONDS]
     );
     const s = found.rows[0];
-    if (!s) return null;
-    if (s.revoked_at) return null;
-    if (s.previous_refresh_hash && sameHash(s.previous_refresh_hash, hash) && !sameHash(s.refresh_hash, hash)) {
-      // An old refresh token again: two parties hold it. Cut everything.
+    if (!s || s.revoked_at) return null;
+    const signedByInstallation =
+      fresh && verifyEd25519(s.signing_public_key, refreshMessage(refresh, timestamp, nonce), signature);
+    const isCurrent = sameHash(s.refresh_hash, hash);
+    const isPrevious = !isCurrent && s.previous_refresh_hash && sameHash(s.previous_refresh_hash, hash);
+
+    const revoke = async (reason) => {
       reuse = s;
-      await client.query("UPDATE app_sessions SET revoked_at = NOW(), revoked_reason = 'refresh_reuse' WHERE id = $1", [
-        s.id
+      await client.query('UPDATE app_sessions SET revoked_at = NOW(), revoked_reason = $2 WHERE id = $1', [
+        s.id,
+        reason
       ]);
       if (s.grant_key_id)
         await client.query('UPDATE preauth_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL', [
           s.grant_key_id
         ]);
       return null;
+    };
+
+    // A signed request is accepted once: its nonce is spent here, before anything is issued.
+    const spendNonce = async () => {
+      await client.query('DELETE FROM app_refresh_nonces WHERE expires_at < NOW()');
+      const spent = await client.query(
+        `INSERT INTO app_refresh_nonces (nonce_hash, session_id, expires_at)
+         VALUES ($1, $2, NOW() + make_interval(secs => $3)) ON CONFLICT DO NOTHING RETURNING 1`,
+        [sha256(`${s.id}:${nonce}`), s.id, SIGNATURE_WINDOW_SECONDS * 2]
+      );
+      return spent.rowCount === 1;
+    };
+
+    if (isPrevious) {
+      const retry = signedByInstallation && !s.previous_retry_used && s.within_retry_window && (await spendNonce());
+      if (!retry) return revoke('refresh_reuse');
+    } else if (isCurrent) {
+      if (!signedByInstallation || !(await spendNonce())) return null;
+    } else {
+      return null;
     }
-    if (s.refresh_expired || s.installation_public_key !== key) return null;
+
+    if (s.refresh_expired) return null;
     if (s.user_status !== 'active') {
       await client.query(
         "UPDATE app_sessions SET revoked_at = NOW(), revoked_reason = 'account_not_active' WHERE id = $1",
@@ -539,11 +616,22 @@ async function refreshTokens(body, { ip }) {
       return null;
     }
     const tokens = mintTokens();
+    // A retry keeps the original old token as "previous" and marks its retry spent; a normal
+    // rotation makes the current token previous with its retry still unspent.
     await client.query(
-      `UPDATE app_sessions SET previous_refresh_hash = refresh_hash, refresh_hash = $2, access_hash = $3,
-              access_expires_at = NOW() + make_interval(secs => $4),
-              refresh_expires_at = NOW() + make_interval(secs => $5), last_used_at = NOW() WHERE id = $1`,
-      [s.id, sha256(tokens.refresh), sha256(tokens.access), ACCESS_TTL_SECONDS, REFRESH_TTL_SECONDS]
+      `UPDATE app_sessions SET previous_refresh_hash = $6, previous_retry_used = $7, refresh_hash = $2,
+              access_hash = $3, access_expires_at = NOW() + make_interval(secs => $4),
+              refresh_expires_at = NOW() + make_interval(secs => $5), rotated_at = NOW(), last_used_at = NOW()
+        WHERE id = $1`,
+      [
+        s.id,
+        sha256(tokens.refresh),
+        sha256(tokens.access),
+        ACCESS_TTL_SECONDS,
+        REFRESH_TTL_SECONDS,
+        isPrevious ? s.previous_refresh_hash : s.refresh_hash,
+        Boolean(isPrevious)
+      ]
     );
     return tokenBody(tokens, s.scopes);
   });

@@ -2,6 +2,8 @@ package clientcore
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -83,7 +85,7 @@ func (f *fakeConsole) Poll(context.Context, string) (*PollResult, error) {
 	f.polls = f.polls[1:]
 	return &p, nil
 }
-func (f *fakeConsole) Refresh(context.Context, string, string) (*AppToken, error) {
+func (f *fakeConsole) Refresh(context.Context, string, ed25519.PrivateKey) (*AppToken, error) {
 	return nil, errors.New("not used")
 }
 
@@ -169,7 +171,7 @@ func waitPhase(t *testing.T, c *Core, want Phase) State {
 // ---- sign-in client -----------------------------------------------------------------------
 
 func TestStartRequestValidation(t *testing.T) {
-	ok := StartRequest{Platform: "linux", DeviceName: "Office laptop", PublicKeyHex: goodDevice}
+	ok := StartRequest{Platform: "linux", DeviceName: "Office laptop", PublicKeyHex: goodDevice, SigningKeyHex: goodDevice}
 	if err := ok.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -179,6 +181,7 @@ func TestStartRequestValidation(t *testing.T) {
 		"empty":    func(r *StartRequest) { r.DeviceName = "  " },
 		"long":     func(r *StartRequest) { r.DeviceName = strings.Repeat("a", 65) },
 		"key":      func(r *StartRequest) { r.PublicKeyHex = "zz" },
+		"signing":  func(r *StartRequest) { r.SigningKeyHex = "" },
 	} {
 		r := ok
 		mut(&r)
@@ -226,7 +229,7 @@ func TestHTTPConsoleStartAndPollAgainstTheWireShape(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	})
-	dc, err := c.Start(context.Background(), StartRequest{Platform: "windows", DeviceName: "Desk PC", PublicKeyHex: goodDevice})
+	dc, err := c.Start(context.Background(), StartRequest{Platform: "windows", DeviceName: "Desk PC", PublicKeyHex: goodDevice, SigningKeyHex: goodDevice})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +254,7 @@ func TestHTTPConsoleRejectsAHostileAnswer(t *testing.T) {
 	for name, body := range cases {
 		body := body
 		c := consoleServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) })
-		if _, err := c.Start(context.Background(), StartRequest{Platform: "linux", DeviceName: "x", PublicKeyHex: goodDevice}); err == nil {
+		if _, err := c.Start(context.Background(), StartRequest{Platform: "linux", DeviceName: "x", PublicKeyHex: goodDevice, SigningKeyHex: goodDevice}); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
@@ -261,6 +264,61 @@ func TestHTTPConsoleRejectsAHostileAnswer(t *testing.T) {
 	})
 	if _, err := c.Poll(context.Background(), goodDevice); err == nil {
 		t.Error("malformed approval accepted")
+	}
+}
+
+func TestRefreshIsSignedWithTheInstallationKeyAndNeverSendsAReusableProof(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	_ = pub
+	var seen []map[string]any
+	c := consoleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		seen = append(seen, body)
+		ts := int64(body["timestamp"].(float64))
+		sig, _ := hex.DecodeString(body["signature"].(string))
+		if !ed25519.Verify(pub, RefreshMessage(body["refresh_token"].(string), ts, body["nonce"].(string)), sig) {
+			http.Error(w, "bad signature", http.StatusUnauthorized)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"token_type":"Bearer","access_token":%q,"expires_in":3600,"refresh_token":%q,"refresh_expires_in":86400,"scopes":["app:self"]}`, goodAccess, goodRefresh)
+	})
+	for i := 0; i < 2; i++ {
+		if _, err := c.Refresh(context.Background(), goodRefresh, priv); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if seen[0]["nonce"] == seen[1]["nonce"] {
+		t.Error("the nonce was reused across two refreshes")
+	}
+	if _, ok := seen[0]["public_key_hex"]; ok {
+		t.Error("the refresh still names a key instead of proving it")
+	}
+	if strings.Contains(string(RefreshMessage(goodRefresh, 1, "n")), goodRefresh) {
+		t.Error("the signed message carries the refresh token itself instead of its hash")
+	}
+	_, other, _ := ed25519.GenerateKey(nil)
+	if _, err := c.Refresh(context.Background(), goodRefresh, other); err == nil {
+		t.Error("a refresh signed by another key was accepted by the verifier")
+	}
+	if _, err := c.Refresh(context.Background(), "nnr_x", priv); err == nil {
+		t.Error("a malformed refresh token was sent")
+	}
+}
+
+func TestSigningKeyIsStableAcrossARestartAndNeverInTheState(t *testing.T) {
+	core, store := signedInCore(t, &fakeTunnel{})
+	again, err := New(Config{Platform: "linux", DeviceName: "Test box", Console: &fakeConsole{}, Enroller: &fakeEnroller{}, Tunnel: &fakeTunnel{}, Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.SigningKeyHex() != core.SigningKeyHex() {
+		t.Error("the signing key changed across a restart")
+	}
+	raw, _ := store.LoadKey(aliasSigning)
+	blob, _ := json.Marshal(core.State())
+	if strings.Contains(string(blob), hex.EncodeToString(raw)) {
+		t.Error("the signing seed is in the state")
 	}
 }
 

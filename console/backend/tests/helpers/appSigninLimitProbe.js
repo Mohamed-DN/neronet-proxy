@@ -20,7 +20,12 @@ async function main() {
       request(app)
         .post('/api/app-auth/device/start')
         .set('X-Forwarded-For', ip)
-        .send({ platform: 'linux', device_name: 'probe', public_key_hex: crypto.randomBytes(32).toString('hex') });
+        .send({
+          platform: 'linux',
+          device_name: 'probe',
+          public_key_hex: crypto.randomBytes(32).toString('hex'),
+          signing_key: crypto.randomBytes(32).toString('hex')
+        });
 
     const startCodes = [];
     for (let i = 0; i < 31; i++) startCodes.push((await start('203.0.113.5')).status);

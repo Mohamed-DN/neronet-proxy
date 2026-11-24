@@ -2,6 +2,8 @@ package clientcore
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +21,7 @@ const APIVersion = 1
 
 const (
 	aliasInstallation = "app-installation-key"
+	aliasSigning      = "app-signing-key"
 	aliasToken        = "app-token"
 	aliasEnrolment    = "app-enrolment"
 )
@@ -73,6 +76,7 @@ type Core struct {
 	ops  sync.Mutex // one command at a time
 	mu   sync.Mutex
 	key  *crypto.Keypair
+	sign ed25519.PrivateKey
 	flow context.CancelFunc // the running sign-in, if any
 }
 
@@ -86,7 +90,7 @@ func New(cfg Config) (*Core, error) {
 	if cfg.PerAttempt <= 0 {
 		cfg.PerAttempt = 12 * time.Second
 	}
-	req := StartRequest{Platform: cfg.Platform, DeviceName: cfg.DeviceName, PublicKeyHex: hex64Zero}
+	req := StartRequest{Platform: cfg.Platform, DeviceName: cfg.DeviceName, PublicKeyHex: hex64Zero, SigningKeyHex: hex64Zero}
 	if err := req.Validate(); err != nil {
 		return nil, fmt.Errorf("clientcore: %w", err)
 	}
@@ -96,6 +100,11 @@ func New(cfg Config) (*Core, error) {
 		return nil, err
 	}
 	c.key = key
+	sign, err := loadOrCreateSigningKey(cfg.Store)
+	if err != nil {
+		return nil, err
+	}
+	c.sign = sign
 	initial := State{Phase: PhaseSignedOut, KillSwitch: cfg.Tunnel.KillSwitch(), Order: Order{Methods: append([]Method(nil), DefaultOrder...)}}
 	if raw, err := cfg.Store.LoadKey(aliasEnrolment); err == nil {
 		var e Enrolment
@@ -138,6 +147,32 @@ func loadOrCreateKey(ks keystore.KeyStore) (*crypto.Keypair, error) {
 	return kp, nil
 }
 
+func loadOrCreateSigningKey(ks keystore.KeyStore) (ed25519.PrivateKey, error) {
+	raw, err := ks.LoadKey(aliasSigning)
+	if err == nil {
+		if len(raw) != ed25519.SeedSize {
+			return nil, errors.New("clientcore: stored signing key has the wrong size")
+		}
+		return ed25519.NewKeyFromSeed(raw), nil
+	}
+	if !errors.Is(err, keystore.ErrKeyNotFound) {
+		return nil, fmt.Errorf("clientcore: reading the signing key: %w", err)
+	}
+	seed := make([]byte, ed25519.SeedSize)
+	if _, err := rand.Read(seed); err != nil {
+		return nil, err
+	}
+	if err := ks.StoreKey(aliasSigning, seed); err != nil {
+		return nil, fmt.Errorf("clientcore: storing the signing key: %w", err)
+	}
+	return ed25519.NewKeyFromSeed(seed), nil
+}
+
+// SigningKeyHex is the public half of the key that signs token refreshes.
+func (c *Core) SigningKeyHex() string {
+	return fmt.Sprintf("%x", c.sign.Public().(ed25519.PublicKey))
+}
+
 // PublicKeyHex is the installation's public key, which the console binds the app to.
 func (c *Core) PublicKeyHex() string { return fmt.Sprintf("%x", c.key.PublicKey[:]) }
 
@@ -156,7 +191,7 @@ func (c *Core) SignIn(ctx context.Context) error {
 	if ph := c.hub.Get().Phase; ph != PhaseSignedOut && ph != PhaseFailed {
 		return fmt.Errorf("cannot sign in while %s", ph)
 	}
-	dc, err := c.cfg.Console.Start(ctx, StartRequest{Platform: c.cfg.Platform, DeviceName: c.cfg.DeviceName, PublicKeyHex: c.PublicKeyHex()})
+	dc, err := c.cfg.Console.Start(ctx, StartRequest{Platform: c.cfg.Platform, DeviceName: c.cfg.DeviceName, PublicKeyHex: c.PublicKeyHex(), SigningKeyHex: c.SigningKeyHex()})
 	if err != nil {
 		c.fail("could not reach the console to sign in")
 		return err

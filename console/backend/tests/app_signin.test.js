@@ -18,6 +18,26 @@ const { CryptoShreddingService } = require('../services/CryptoShreddingService')
 const base = '/api/app-auth';
 const bearer = (t) => ({ Authorization: `Bearer ${t}` });
 
+// The installation's Ed25519 signing key. The console binds the app to its public half at
+// start and wants a fresh signature with every refresh.
+const newSigner = () => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  return { pub: publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('hex'), privateKey };
+};
+const refreshBody = (refreshToken, signer, { ts = Math.floor(Date.now() / 1000), nonce } = {}) => {
+  const n = nonce || crypto.randomBytes(16).toString('hex');
+  const message = [
+    'NERONET-APP-REFRESH-V1',
+    'POST',
+    `${base}/token/refresh`,
+    crypto.createHash('sha256').update(refreshToken).digest('hex'),
+    String(ts),
+    n
+  ].join(String.fromCharCode(10));
+  const signature = crypto.sign(null, Buffer.from(message), signer.privateKey).toString('hex');
+  return { refresh_token: refreshToken, timestamp: ts, nonce: n, signature };
+};
+
 describe('app sign-in by device code', () => {
   let dbHelper;
   let pool;
@@ -29,7 +49,17 @@ describe('app sign-in by device code', () => {
   const start = (over = {}) =>
     request(app)
       .post(`${base}/device/start`)
-      .send({ platform: 'linux', device_name: 'Office laptop', public_key_hex: nodeKey(), ...over });
+      .send({
+        platform: 'linux',
+        device_name: 'Office laptop',
+        public_key_hex: nodeKey(),
+        signing_key: newSigner().pub,
+        ...over
+      });
+  const doRefresh = (token, signer, opts) =>
+    request(app)
+      .post(`${base}/token/refresh`)
+      .send(refreshBody(token, signer, opts));
   const poll = (device_code) => request(app).post(`${base}/device/poll`).send({ device_code });
   const approve = (token, user_code, extra = {}) =>
     request(app)
@@ -42,14 +72,15 @@ describe('app sign-in by device code', () => {
     ]);
   // Full happy path up to the tokens, for tests that need a signed-in app.
   async function signIn(token = fx.tokens.memberA, over = {}) {
-    const s = await start(over);
+    const signer = newSigner();
+    const s = await start({ signing_key: signer.pub, ...over });
     assert.strictEqual(s.status, 200, JSON.stringify(s.body));
     const a = await approve(token, s.body.user_code);
     assert.strictEqual(a.status, 200, JSON.stringify(a.body));
     await forcePollable(s.body.device_code);
     const p = await poll(s.body.device_code);
     assert.strictEqual(p.body.status, 'approved', JSON.stringify(p.body));
-    return { start: s.body, tokens: p.body.app_token, grant: p.body.enrolment, key: s.body.public_key_hex };
+    return { start: s.body, tokens: p.body.app_token, grant: p.body.enrolment, key: s.body.public_key_hex, signer };
   }
 
   before(async () => {
@@ -102,6 +133,9 @@ describe('app sign-in by device code', () => {
         { device_name: 'a\nb' },
         { public_key_hex: 'zz' },
         { public_key_hex: 'a'.repeat(63) },
+        { signing_key: 'zz' },
+        { signing_key: undefined },
+        { signing_key: 'a'.repeat(63) },
         { scopes: ['admin:all'] },
         { scopes: 'devices:read' }
       ];
@@ -371,7 +405,7 @@ describe('app sign-in by device code', () => {
       assert.deepStrictEqual(leaks, []);
     });
 
-    it('rotates the refresh token and revokes the whole app when an old one is replayed', async () => {
+    it('rotates the refresh token, and a signed replay of an old one outside the retry window revokes the whole app', async () => {
       const r = await signIn(fx.tokens.memberA);
       const reg = await register(app, {
         public_key_hex: r.key,
@@ -379,32 +413,20 @@ describe('app sign-in by device code', () => {
         preauth_key: r.grant.preauth_key
       });
       assert.strictEqual(reg.status, 200);
-      const wrongKey = await request(app)
-        .post(`${base}/token/refresh`)
-        .send({ refresh_token: r.tokens.refresh_token, public_key_hex: nodeKey() });
-      assert.strictEqual(wrongKey.status, 401);
-      const one = await request(app)
-        .post(`${base}/token/refresh`)
-        .send({ refresh_token: r.tokens.refresh_token, public_key_hex: r.key });
+      const one = await doRefresh(r.tokens.refresh_token, r.signer);
       assert.strictEqual(one.status, 200, JSON.stringify(one.body));
       assert.notStrictEqual(one.body.refresh_token, r.tokens.refresh_token);
       assert.strictEqual((await request(app).get(`${base}/app/me`).set(bearer(one.body.access_token))).status, 200);
       // The first access token stops working once rotated.
       assert.strictEqual((await request(app).get(`${base}/app/me`).set(bearer(r.tokens.access_token))).status, 401);
-      // Replaying the first refresh token is theft: everything is cut, the node included.
-      const replay = await request(app)
-        .post(`${base}/token/refresh`)
-        .send({ refresh_token: r.tokens.refresh_token, public_key_hex: r.key });
+      // The window for a lost response is over: the old token again, even signed, is a replay.
+      await pool.query("UPDATE app_sessions SET rotated_at = NOW() - INTERVAL '2 minutes' WHERE node_id = $1", [
+        r.grant.node_id
+      ]);
+      const replay = await doRefresh(r.tokens.refresh_token, r.signer);
       assert.strictEqual(replay.status, 401);
       assert.strictEqual((await request(app).get(`${base}/app/me`).set(bearer(one.body.access_token))).status, 401);
-      assert.strictEqual(
-        (
-          await request(app)
-            .post(`${base}/token/refresh`)
-            .send({ refresh_token: one.body.refresh_token, public_key_hex: r.key })
-        ).status,
-        401
-      );
+      assert.strictEqual((await doRefresh(one.body.refresh_token, r.signer)).status, 401);
       const again = await register(app, { public_key_hex: r.key, role: 'CLIENT_ORIGIN' });
       assert.strictEqual(again.status, 403);
       await settleAuditWrites();
@@ -417,12 +439,138 @@ describe('app sign-in by device code', () => {
       await pool.query("UPDATE users SET status = 'suspended' WHERE id = $1", [fx.ids.memberB]);
       try {
         assert.strictEqual((await request(app).get(`${base}/app/me`).set(bearer(r.tokens.access_token))).status, 401);
-        const ref = await request(app)
-          .post(`${base}/token/refresh`)
-          .send({ refresh_token: r.tokens.refresh_token, public_key_hex: r.key });
-        assert.strictEqual(ref.status, 401);
+        assert.strictEqual((await doRefresh(r.tokens.refresh_token, r.signer)).status, 401);
       } finally {
         await pool.query("UPDATE users SET status = 'active' WHERE id = $1", [fx.ids.memberB]);
+      }
+    });
+  });
+
+  describe('refresh proves possession of the installation key', () => {
+    async function joined() {
+      const r = await signIn(fx.tokens.memberA);
+      const reg = await register(app, {
+        public_key_hex: r.key,
+        role: 'CLIENT_ORIGIN',
+        preauth_key: r.grant.preauth_key
+      });
+      assert.strictEqual(reg.status, 200);
+      return r;
+    }
+    const alive = async (access) => (await request(app).get(`${base}/app/me`).set(bearer(access))).status === 200;
+
+    it('refuses a signature from another key, and the app carries on', async () => {
+      const r = await joined();
+      const res = await doRefresh(r.tokens.refresh_token, newSigner());
+      assert.strictEqual(res.status, 401);
+      assert.ok(await alive(r.tokens.access_token), 'a refusal must not harm the real app');
+      assert.strictEqual((await doRefresh(r.tokens.refresh_token, r.signer)).status, 200);
+    });
+
+    it('refuses a stolen refresh token that comes without the key, and does not revoke', async () => {
+      const r = await joined();
+      const bare = await request(app).post(`${base}/token/refresh`).send({ refresh_token: r.tokens.refresh_token });
+      assert.strictEqual(bare.status, 401);
+      const junk = await request(app)
+        .post(`${base}/token/refresh`)
+        .send({
+          refresh_token: r.tokens.refresh_token,
+          timestamp: Math.floor(Date.now() / 1000),
+          nonce: 'a'.repeat(32),
+          signature: 'b'.repeat(128)
+        });
+      assert.strictEqual(junk.status, 401);
+      assert.ok(await alive(r.tokens.access_token));
+    });
+
+    it('refuses a stale signature and a replayed one', async () => {
+      const r = await joined();
+      const stale = await doRefresh(r.tokens.refresh_token, r.signer, { ts: Math.floor(Date.now() / 1000) - 120 });
+      assert.strictEqual(stale.status, 401);
+      const future = await doRefresh(r.tokens.refresh_token, r.signer, { ts: Math.floor(Date.now() / 1000) + 120 });
+      assert.strictEqual(future.status, 401);
+      const nonce = crypto.randomBytes(16).toString('hex');
+      const first = await doRefresh(r.tokens.refresh_token, r.signer, { nonce });
+      assert.strictEqual(first.status, 200);
+      // The very same signed request, sent again by whoever captured it.
+      const body = refreshBody(first.body.refresh_token, r.signer, { nonce });
+      const again = await request(app).post(`${base}/token/refresh`).send(body);
+      assert.strictEqual(again.status, 401, 'a nonce was accepted twice');
+      assert.ok(await alive(first.body.access_token));
+    });
+
+    it('lets the key holder retry the previous token once within a minute, after a lost response', async () => {
+      const r = await joined();
+      const lost = await doRefresh(r.tokens.refresh_token, r.signer);
+      assert.strictEqual(lost.status, 200);
+      // The app never saw that answer and asks again with the token it still holds.
+      const retry = await doRefresh(r.tokens.refresh_token, r.signer);
+      assert.strictEqual(retry.status, 200, JSON.stringify(retry.body));
+      assert.notStrictEqual(retry.body.refresh_token, lost.body.refresh_token);
+      assert.ok(await alive(retry.body.access_token));
+      assert.strictEqual(await alive(lost.body.access_token), false, 'the unseen pair must be dead');
+      assert.ok((await doRefresh(retry.body.refresh_token, r.signer)).status === 200, 'the new pair works');
+    });
+
+    it('treats a second retry of the same old token as a replay and revokes the app', async () => {
+      const r = await joined();
+      await doRefresh(r.tokens.refresh_token, r.signer);
+      assert.strictEqual((await doRefresh(r.tokens.refresh_token, r.signer)).status, 200);
+      const third = await doRefresh(r.tokens.refresh_token, r.signer);
+      assert.strictEqual(third.status, 401);
+      const dead = await request(app).get(`${base}/app/devices`).set(bearer(r.tokens.access_token));
+      assert.strictEqual(dead.status, 401);
+      assert.strictEqual((await register(app, { public_key_hex: r.key, role: 'CLIENT_ORIGIN' })).status, 403);
+    });
+
+    it('treats a retry outside the window, and an unsigned use of the old token, as theft', async () => {
+      const r = await joined();
+      await doRefresh(r.tokens.refresh_token, r.signer);
+      await pool.query("UPDATE app_sessions SET rotated_at = NOW() - INTERVAL '90 seconds' WHERE node_id = $1", [
+        r.grant.node_id
+      ]);
+      assert.strictEqual((await doRefresh(r.tokens.refresh_token, r.signer)).status, 401);
+      assert.strictEqual((await register(app, { public_key_hex: r.key, role: 'CLIENT_ORIGIN' })).status, 403);
+
+      const q = await joined();
+      await doRefresh(q.tokens.refresh_token, q.signer);
+      const unsigned = await request(app).post(`${base}/token/refresh`).send({ refresh_token: q.tokens.refresh_token });
+      assert.strictEqual(unsigned.status, 401);
+      assert.strictEqual((await register(app, { public_key_hex: q.key, role: 'CLIENT_ORIGIN' })).status, 403);
+    });
+  });
+
+  describe('the live topology socket', () => {
+    it('refuses an app token, as it refuses anything that is not a console session', async () => {
+      const http = require('http');
+      const WebSocket = require('ws');
+      const { initTopologyWebSocket, closeTopologyWebSocket } = require('../ws/topologyServer');
+      const r = await signIn(fx.tokens.memberA);
+      const server = http.createServer(app);
+      initTopologyWebSocket(server);
+      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const port = server.address().port;
+      const attempt = (url, options) =>
+        new Promise((resolve) => {
+          const ws = new WebSocket(url, options);
+          ws.on('open', () => {
+            ws.close();
+            resolve('open');
+          });
+          ws.on('unexpected-response', (_req, res) => resolve(`http-${res.statusCode}`));
+          ws.on('error', () => resolve('error'));
+          ws.on('close', () => resolve('closed'));
+        });
+      try {
+        const viaQuery = await attempt(`ws://127.0.0.1:${port}/ws/topology?token=${r.tokens.access_token}`);
+        const viaHeader = await attempt(`ws://127.0.0.1:${port}/ws/topology`, {
+          headers: { Authorization: `Bearer ${r.tokens.access_token}` }
+        });
+        assert.strictEqual(viaQuery, 'http-401');
+        assert.strictEqual(viaHeader, 'http-401');
+      } finally {
+        await closeTopologyWebSocket();
+        await new Promise((resolve) => server.close(resolve));
       }
     });
   });

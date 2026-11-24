@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS app_device_codes (
     platform                TEXT NOT NULL CHECK (platform IN ('windows', 'macos', 'linux', 'android', 'ios')),
     device_name             TEXT NOT NULL CHECK (char_length(device_name) BETWEEN 1 AND 64),
     installation_public_key TEXT NOT NULL CHECK (installation_public_key ~ '^[0-9a-f]{64}$'),
+    -- Ed25519 key the installation keeps in its key store; every refresh is signed with it.
+    signing_public_key      TEXT NOT NULL CHECK (signing_public_key ~ '^[0-9a-f]{64}$'),
     scopes                  TEXT[] NOT NULL,
     request_ip              TEXT,
     interval_seconds        INTEGER NOT NULL DEFAULT 5,
@@ -30,6 +32,7 @@ CREATE TABLE IF NOT EXISTS app_sessions (
     user_id                 TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     organization_id         TEXT NOT NULL,
     installation_public_key TEXT NOT NULL CHECK (installation_public_key ~ '^[0-9a-f]{64}$'),
+    signing_public_key      TEXT NOT NULL CHECK (signing_public_key ~ '^[0-9a-f]{64}$'),
     node_id                 TEXT NOT NULL,
     grant_key_id            TEXT,
     platform                TEXT NOT NULL,
@@ -39,6 +42,9 @@ CREATE TABLE IF NOT EXISTS app_sessions (
     access_expires_at       TIMESTAMPTZ NOT NULL,
     refresh_hash            TEXT NOT NULL UNIQUE,
     previous_refresh_hash   TEXT,
+    -- When the pair was last rotated, and whether the previous token already had its one retry.
+    rotated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    previous_retry_used     BOOLEAN NOT NULL DEFAULT FALSE,
     refresh_expires_at      TIMESTAMPTZ NOT NULL,
     request_ip              TEXT,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -50,6 +56,14 @@ CREATE TABLE IF NOT EXISTS app_sessions (
 CREATE INDEX IF NOT EXISTS idx_app_sessions_user ON app_sessions (user_id);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_org ON app_sessions (organization_id);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_previous_refresh ON app_sessions (previous_refresh_hash);
+
+-- Signed refresh requests carry a random nonce, accepted once.
+CREATE TABLE IF NOT EXISTS app_refresh_nonces (
+    nonce_hash  TEXT PRIMARY KEY,
+    session_id  TEXT NOT NULL REFERENCES app_sessions(id) ON DELETE CASCADE,
+    expires_at  TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_app_refresh_nonces_expires ON app_refresh_nonces (expires_at);
 
 -- A grant issued to an app is good for one node, the one holding this key.
 ALTER TABLE preauth_keys

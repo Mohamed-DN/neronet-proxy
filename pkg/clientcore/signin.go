@@ -10,8 +10,12 @@ package clientcore
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,10 +47,13 @@ var (
 
 // StartRequest is what the app tells the console about itself.
 type StartRequest struct {
-	Platform     string   `json:"platform"`
-	DeviceName   string   `json:"device_name"`
-	PublicKeyHex string   `json:"public_key_hex"`
-	Scopes       []string `json:"scopes,omitempty"`
+	Platform     string `json:"platform"`
+	DeviceName   string `json:"device_name"`
+	PublicKeyHex string `json:"public_key_hex"`
+	// SigningKeyHex is the installation's Ed25519 public key. Every token refresh is signed with
+	// its private half, so a stolen refresh token cannot be used without the device.
+	SigningKeyHex string   `json:"signing_key"`
+	Scopes        []string `json:"scopes,omitempty"`
 }
 
 // Validate refuses anything the console would refuse, before it leaves the machine.
@@ -59,6 +66,9 @@ func (r StartRequest) Validate() error {
 	}
 	if !hex64.MatchString(r.PublicKeyHex) {
 		return errors.New("installation key must be 64 hex characters")
+	}
+	if !hex64.MatchString(r.SigningKeyHex) {
+		return errors.New("signing key must be 64 hex characters")
 	}
 	return nil
 }
@@ -144,7 +154,7 @@ func (p PollResult) validate() error {
 type Console interface {
 	Start(ctx context.Context, req StartRequest) (*DeviceCode, error)
 	Poll(ctx context.Context, deviceCode string) (*PollResult, error)
-	Refresh(ctx context.Context, refreshToken, publicKeyHex string) (*AppToken, error)
+	Refresh(ctx context.Context, refreshToken string, key ed25519.PrivateKey) (*AppToken, error)
 }
 
 // HTTPConsole talks to a console over HTTPS (or HTTP for a loopback or test address).
@@ -268,17 +278,36 @@ func (c *HTTPConsole) Poll(ctx context.Context, deviceCode string) (*PollResult,
 	return &p, nil
 }
 
-// Refresh rotates the app token. The refresh token sent is spent whatever the outcome:
-// a failed call must be followed by a new sign-in, not a retry with the same token.
-func (c *HTTPConsole) Refresh(ctx context.Context, refreshToken, publicKeyHex string) (*AppToken, error) {
-	if !refreshRe.MatchString(refreshToken) || !hex64.MatchString(publicKeyHex) {
+// RefreshMessage is exactly what an installation signs to refresh: the method, the path, the
+// hash of the refresh token (never the token), the time and a random nonce.
+func RefreshMessage(refreshToken string, timestamp int64, nonce string) []byte {
+	sum := sha256.Sum256([]byte(refreshToken))
+	return []byte(strings.Join([]string{
+		"NERONET-APP-REFRESH-V1", "POST", "/api/app-auth/token/refresh",
+		hex.EncodeToString(sum[:]), fmt.Sprint(timestamp), nonce,
+	}, "\n"))
+}
+
+// Refresh rotates the app token with a request signed by the installation's key. The refresh
+// token sent is spent whatever the outcome unless the answer never arrives, in which case the
+// console accepts one signed retry within a minute; any other reuse signs the app out.
+func (c *HTTPConsole) Refresh(ctx context.Context, refreshToken string, key ed25519.PrivateKey) (*AppToken, error) {
+	if !refreshRe.MatchString(refreshToken) || len(key) != ed25519.PrivateKeySize {
 		return nil, errors.New("malformed refresh request")
 	}
+	nb := make([]byte, 16)
+	if _, err := rand.Read(nb); err != nil {
+		return nil, err
+	}
+	nonce := hex.EncodeToString(nb)
+	ts := time.Now().Unix()
+	sig := ed25519.Sign(key, RefreshMessage(refreshToken, ts, nonce))
 	var t struct {
 		AppToken
 		TokenType string `json:"token_type"`
 	}
-	if err := c.post(ctx, "/api/app-auth/token/refresh", map[string]string{"refresh_token": refreshToken, "public_key_hex": publicKeyHex}, &t); err != nil {
+	req := map[string]any{"refresh_token": refreshToken, "timestamp": ts, "nonce": nonce, "signature": hex.EncodeToString(sig)}
+	if err := c.post(ctx, "/api/app-auth/token/refresh", req, &t); err != nil {
 		return nil, err
 	}
 	if !accessRe.MatchString(t.AccessToken) || !refreshRe.MatchString(t.RefreshToken) {
