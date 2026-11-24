@@ -182,15 +182,19 @@ async function executeInstantUserDestruction(userId, token = null, actorUsername
     try {
       await client.query('BEGIN');
 
-      // Overwrite node WireGuard / Noise keys & metadata
+      // Overwrite node WireGuard / Noise keys & metadata. public_key is UNIQUE, so each node gets a dead
+      // key of its own: one value for all of a person's nodes failed on the second, rolled the whole erase
+      // back and left a person with two devices impossible to erase.
       const randomNoiseKey = crypto.randomBytes(32).toString('base64');
       await client.query(
         `
         UPDATE nodes
-        SET preshared_key = $1, public_key = $2, endpoints = '[]'::jsonb, metadata = '{}'::jsonb
-        WHERE user_id = $3
+        SET preshared_key = $1,
+            public_key = 'dead-' || md5(random()::text || clock_timestamp()::text || id),
+            endpoints = '[]'::jsonb, metadata = '{}'::jsonb
+        WHERE user_id = $2
       `,
-        [randomNoiseKey, `dead-${crypto.randomBytes(16).toString('hex')}`, userId]
+        [randomNoiseKey, userId]
       );
 
       // Overwrite user password & bypass_apps
