@@ -1,0 +1,73 @@
+name: Android app
+
+on:
+  push:
+    branches: [main]
+    paths: ['clients/android/**', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['clients/android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+    inputs:
+      signed_release:
+        description: Build the signed release (needs the android-release environment)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: unit tests, debug and unsigned release builds
+        run: clients/android/build.sh testDebugUnitTest assembleDebug assembleRelease
+
+  signed-release:
+    # Only by hand, only from main, only with the approval the environment asks for.
+    if: github.event_name == 'workflow_dispatch' && inputs.signed_release && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: android-release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: build and check the signature
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          NERONET_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          NERONET_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          NERONET_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          [ -n "$KEYSTORE_BASE64" ] && [ -n "$CERT_SHA256" ] || { echo "the android-release environment is not configured"; exit 1; }
+          umask 077
+          NERONET_KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
+          trap 'rm -f "$NERONET_KEYSTORE_PATH"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$NERONET_KEYSTORE_PATH"
+          unset KEYSTORE_BASE64
+          export NERONET_KEYSTORE_PATH
+          clients/android/build.sh assembleRelease
+          APK=clients/android/app/build/outputs/apk/release/app-release.apk
+          SIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          "$SIGNER" verify --print-certs "$APK" > certs.txt
+          got=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' certs.txt)
+          want=$(printf '%s' "$CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')
+          [ "$got" = "$want" ] || { echo "signed by $got, expected $want"; exit 1; }
+          mkdir -p out && cp "$APK" out/neronet-android.apk && (cd out && sha256sum neronet-android.apk > SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: neronet-android-release
+          path: out/
+          if-no-files-found: error

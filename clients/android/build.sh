@@ -29,9 +29,18 @@ while [ -n "$DERP_FLAG" ] && [ -e "$DERP_FLAG" ]; do
   sleep 60
 done
 
+# Release signing, only when the caller provides it: the keystore is mounted read-only and the secrets
+# reach the container by name, so no value appears in an argument list.
+SIGN=()
+if [ -n "${NERONET_KEYSTORE_PATH:-}" ]; then
+  SIGN=(-v "$NERONET_KEYSTORE_PATH:/run/neronet-release.keystore:ro"
+        -e NERONET_KEYSTORE_PATH=/run/neronet-release.keystore
+        -e NERONET_KEYSTORE_PASSWORD -e NERONET_KEY_ALIAS -e NERONET_KEY_PASSWORD)
+fi
+
 echo "Image: $IMAGE"
 echo "Worktree mounted at /w from: $REPO"
-podman run --rm \
+podman run --rm ${SIGN[@]+"${SIGN[@]}"} \
   -v "$REPO:/w" \
   -v "$GRADLE_CACHE_VOLUME:/root/.gradle" \
   -v "nn-android-m2-cache:/root/.m2" \
@@ -62,6 +71,7 @@ fi
 DEBUG_BUDGET_BYTES=25165824
 RELEASE_BUDGET_BYTES=14680064
 RELEASE_APK="$APP_DIR/build/outputs/apk/release/app-release-unsigned.apk"
+[ -f "$APP_DIR/build/outputs/apk/release/app-release.apk" ] && RELEASE_APK="$APP_DIR/build/outputs/apk/release/app-release.apk"
 budget_failed=0
 check_budget() {
   local file="$1" budget="$2" label="$3" size
