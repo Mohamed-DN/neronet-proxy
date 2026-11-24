@@ -98,3 +98,31 @@ a Linux unix-socket implementation (0600 file, peer credentials checked). Each i
 by one local user and only that user controls it (root only when a service tool asks for it explicitly). The Windows named pipe is
 phase 1. Starting the real tunnel from the core (reusing the netmap manager that still lives in
 `cmd/sovereign-node`'s `main` package) and the real-stack end-to-end proof are not done yet.
+
+### Proposal: extracting the netmap manager (not started)
+
+The tunnel cannot start from `pkg/clientcore` until the code that applies a netmap and starts the data
+plane lives in a package. Today it is `package main` in `cmd/sovereign-node`. Proposal, with no
+behaviour change:
+
+- **Files that move** to a new `pkg/meshnode` (history kept with `git mv`): `netmap.go`
+  (`netmapManager`, `netmapHolder`, persistence, staleness, revocations), `transports.go`, `exit.go`,
+  `meshdns.go`, `awg.go`, `telemetry.go` and the data plane start in `dataplane.go`
+  (`startDataplane`, `dataplaneOptions` and its helpers). `drop.go` follows in a second step. Stay in
+  `main`: flag parsing, `location.go`, `metrics.go`, identity file loading, `main()` itself.
+- **The seam**: a `meshnode.Options` struct and `meshnode.Start(ctx, Options) (Handle, error)`.
+  Everything the moved files read from the process today (`os.Getenv` in `exitDNSUpstream`,
+  `meshDNSEnabled`, `awgParamsFromEnv`, and the flag values) becomes a field filled by `main`, so a
+  library caller never depends on the environment. `Handle` exposes `Up/Down`, the held netmap
+  version, and an event callback, which is what `clientcore.Tunnel` wraps. The unexported
+  `netmapManager` stays unexported; only `Start`, `Options` and `Handle` are public.
+- **Order of work**: (1) mechanical move, package clause and the exports above only, run the full
+  suite; (2) move env reads to `main` behind the options; (3) only then write `clientcore`'s
+  tunnel on top. Each step is its own commit and must leave the suite green.
+- **Tests that pin current behaviour** (all 54 in `cmd/sovereign-node` move with their code and are
+  not edited in step 1): `netmap_test.go` and `netmap_failure_test.go` (apply, failed-closed, stale
+  fail-closed, persistence), `psk_applied_test.go`, `transports_test.go`, `exit_test.go`,
+  `meshdns_test.go`, `awg_test.go`, `awg_e2e_test.go` (tag `awg`), the `profile_*_test.go` set,
+  `reregister_test.go`, `identity_test.go`, `telemetry_test.go`, `drop_test.go`; plus the container
+  overlay scenarios of `scripts/dev/e2e.sh` (matrix, rule-deny, quarantine, fail-static, revoke)
+  as the black-box pin that a real node still behaves the same.
