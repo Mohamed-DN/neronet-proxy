@@ -53,7 +53,7 @@ async function createNode(token, name) {
   const res = await request(app)
     .post('/api/nodes')
     .set('Authorization', `Bearer ${token}`)
-    .send({ name, role: 'CLIENT_ORIGIN', country_code: 'IT' });
+    .send({ name, role: 'CLIENT_ORIGIN' }); // no country: only administrators state a location (ADR 0042)
 
   assert.ok([200, 201].includes(res.status), `could not create node: ${JSON.stringify(res.body)}`);
   return res.body.node.id;

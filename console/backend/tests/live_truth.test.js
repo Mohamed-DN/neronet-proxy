@@ -203,7 +203,7 @@ describe('Live truth: location, round trip, connection test', () => {
       assert.equal(ok.body.node.country_code, 'IT');
       assert.equal(ok.body.node.location_source, 'declared');
       const audit = await pool.query(
-        "SELECT metadata FROM audit_events WHERE event_type = 'NODE_LOCATION_SET' AND target_id = $1",
+        "SELECT metadata_json FROM audit_events WHERE event_type = 'NODE_LOCATION_SET' AND target_id = $1",
         [id]
       );
       assert.equal(audit.rowCount, 1);
@@ -293,9 +293,9 @@ describe('Live truth: location, round trip, connection test', () => {
   describe('A. scope: discover and circuit', () => {
     it('the fleet token does not enumerate other organisations: country, city and endpoints stay home', async () => {
       const previous = process.env.SOVEREIGN_REGISTRATION_TOKEN;
+      const rel = await enrol(ORG_B); // enrolled before a fleet token is required
       process.env.SOVEREIGN_REGISTRATION_TOKEN = 'live-truth-fleet-token';
       try {
-        const rel = await enrol(ORG_B);
         await pool.query(
           `UPDATE nodes SET role = 'RELAY', country_code = 'SE', city = 'Malmo', last_heartbeat = now(),
                   endpoints = '["198.51.100.9:51820"]'::jsonb WHERE id = $1`,

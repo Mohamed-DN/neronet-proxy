@@ -103,7 +103,8 @@ describe('Declared node location', () => {
     const node = await apiNode(KEY_NONE);
     assert.strictEqual(node.latitude, null, 'a coordinate was invented for a node that declared none');
     assert.strictEqual(node.longitude, null);
-    assert.strictEqual(node.location_source, null);
+    // The helper states country AU, so the country comes from the operator ('agent'); no position was stated.
+    assert.strictEqual(node.location_source, 'agent');
   });
 
   it('accepts the declaration of 0,0 as a position', async () => {
@@ -168,7 +169,7 @@ describe('Declared node location', () => {
   it('gives a position to a node that enrolled without one and declares it later', async () => {
     const first = await register(app, KEY_LATE, {});
     assert.strictEqual(first.status, 200);
-    assert.strictEqual((await apiNode(KEY_LATE)).location_source, null);
+    assert.strictEqual((await apiNode(KEY_LATE)).latitude, null); // country AU is stated by the helper, no position
 
     const second = await register(app, KEY_LATE, { city: 'Reykjavik', latitude: 64.1466, longitude: -21.9426 });
     assert.strictEqual(second.status, 200);

@@ -61,8 +61,8 @@ describe('Milestone 2: Advanced Engines & Policy Integration Suite', () => {
     // 4. Create a test node for Tenant A
     const nodeRes = await request(app).post('/api/nodes').set('Authorization', `Bearer ${tenantAToken}`).send({
       name: 'M2-Test-Node',
-      role: 'CLIENT_ORIGIN',
-      country_code: 'US'
+      role: 'CLIENT_ORIGIN'
+      // no country: only administrators state a location (ADR 0042)
     });
     assert.strictEqual(nodeRes.status, 201);
     testNodeId = nodeRes.body.node.id;

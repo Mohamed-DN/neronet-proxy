@@ -241,14 +241,16 @@ describe('NeroNet Console Backend API Test Suite', { concurrency: 1 }, () => {
     assert(res.body.nodes.every((n) => n.user_id === regularUserId));
   });
 
-  test('POST /api/nodes/:id/action with ping should return RTT latency', async () => {
+  test('POST /api/nodes/:id/action with ping starts a real probe, not a stored number (ADR 0042)', async () => {
     const res = await request(app)
       .post(`/api/nodes/${createdNodeId}/action`)
       .set('Authorization', `Bearer ${regularUserToken}`)
       .send({ action: 'ping' });
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.success, true);
-    assert(res.body.result.rtt_ms > 0);
+    // A mesh node heartbeats for itself; only a profile device is pinged from its gateway.
+    assert.strictEqual(res.body.result.state, 'unsupported');
+    assert.strictEqual(res.body.result.rtt_ms, undefined);
   });
 
   test('POST /api/nodes/:id/action with set_exit should designate node as exit bridge', async () => {

@@ -22,6 +22,10 @@
 ALTER TABLE nodes ALTER COLUMN country_code DROP DEFAULT;
 ALTER TABLE nodes ALTER COLUMN country_code DROP NOT NULL;
 
+-- The telemetry history had the same default; a telemetry sample that names no country says so.
+ALTER TABLE node_telemetry_history ALTER COLUMN country_code DROP DEFAULT;
+ALTER TABLE node_telemetry_history ALTER COLUMN country_code DROP NOT NULL;
+
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS location_source VARCHAR(16)
     CHECK (location_source IS NULL OR location_source IN ('declared', 'agent'));
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS rtt_ms REAL
