@@ -180,6 +180,9 @@
               "type": "null"
             }
           ]
+        },
+        "rtt_observed_at_unix": {
+          "type": "integer"
         }
       },
       "additionalProperties": false,
