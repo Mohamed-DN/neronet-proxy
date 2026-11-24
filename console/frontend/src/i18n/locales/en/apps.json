@@ -1,0 +1,69 @@
+{
+  "title": "Connect an app",
+  "description": "Approve the NeroNet app you just installed. It signs in with your account without ever seeing your password.",
+  "working": "One moment",
+  "platform": {
+    "windows": "Windows",
+    "macos": "Mac",
+    "linux": "Linux",
+    "android": "Android",
+    "ios": "iPhone or iPad"
+  },
+  "enter": {
+    "code": "Code from the app",
+    "codeHint": "Eight characters, like ABCD-EFGH. The app shows it on its sign-in screen.",
+    "submit": "Continue"
+  },
+  "review": {
+    "title": "This app is asking to sign in as you",
+    "device": "Device name",
+    "platform": "Runs on",
+    "address": "Asked from",
+    "unknownAddress": "Unknown address",
+    "warning": "Approve only if you started this on your own device just now. If you do not recognise it, deny it.",
+    "totp": "Code from your authenticator",
+    "totpHint": "Six digits. Needed because your account uses a second step.",
+    "approve": "Approve",
+    "deny": "Deny"
+  },
+  "done": {
+    "approved": {
+      "title": "The app is connected",
+      "body": "Go back to the app. It finishes by itself in a few seconds."
+    },
+    "denied": {
+      "title": "You denied it",
+      "body": "Nothing was connected. The code no longer works."
+    },
+    "back": "Back to my devices"
+  },
+  "errors": {
+    "format": "A code has eight letters and numbers, like ABCD-EFGH.",
+    "notFound": "No app is waiting for that code. Check it against the app's screen.",
+    "expired": "That code has expired. Start again in the app to get a new one.",
+    "used": "That code was already used. Start again in the app to get a new one.",
+    "mfaRequired": "Enter the code from your authenticator to approve.",
+    "mfaInvalid": "That code is not right. Try the current one.",
+    "mfaSetup": "Your account needs a second step before you can approve an app. Set up your authenticator first.",
+    "blocked": "One of your devices is blocked. An administrator must unblock it before you add an app.",
+    "installation": "This installation cannot be connected. Reinstall the app and try again.",
+    "tooMany": "Too many attempts. Wait a few minutes and try again.",
+    "unreachable": "The server cannot be reached. Check your connection and try again.",
+    "generic": "That did not work. Try again in a moment."
+  },
+  "list": {
+    "title": "Apps you signed in",
+    "connect": "Connect an app",
+    "empty": "No NeroNet app is signed in with your account.",
+    "lastUsed": "Last used {{when}}",
+    "neverUsed": "Not used yet",
+    "signOut": "Sign out",
+    "confirm": {
+      "title": "Sign out {{name}}?",
+      "body": "The app is signed out and its connection to your network is cut right away. To use it again, sign in again with a new code.",
+      "confirm": "Sign out and cut it",
+      "done": "{{name}} was signed out.",
+      "failed": "That did not work. Try again in a moment."
+    }
+  }
+}

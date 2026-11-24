@@ -1,0 +1,69 @@
+{
+  "title": "Collega un'app",
+  "description": "Approva l'app NeroNet che hai appena installato. Entra con il tuo account senza vedere mai la tua password.",
+  "working": "Un attimo",
+  "platform": {
+    "windows": "Windows",
+    "macos": "Mac",
+    "linux": "Linux",
+    "android": "Android",
+    "ios": "iPhone o iPad"
+  },
+  "enter": {
+    "code": "Codice mostrato dall'app",
+    "codeHint": "Otto caratteri, come ABCD-EFGH. L'app lo mostra nella schermata di accesso.",
+    "submit": "Continua"
+  },
+  "review": {
+    "title": "Questa app chiede di entrare come te",
+    "device": "Nome del dispositivo",
+    "platform": "Funziona su",
+    "address": "Richiesta da",
+    "unknownAddress": "Indirizzo sconosciuto",
+    "warning": "Approva solo se l'hai avviata tu, ora, sul tuo dispositivo. Se non la riconosci, rifiuta.",
+    "totp": "Codice del tuo autenticatore",
+    "totpHint": "Sei cifre. Serve perché il tuo account usa un secondo passaggio.",
+    "approve": "Approva",
+    "deny": "Rifiuta"
+  },
+  "done": {
+    "approved": {
+      "title": "L'app è collegata",
+      "body": "Torna all'app. Finisce da sola in pochi secondi."
+    },
+    "denied": {
+      "title": "Hai rifiutato",
+      "body": "Non è stato collegato nulla. Il codice non vale più."
+    },
+    "back": "Torna ai miei dispositivi"
+  },
+  "errors": {
+    "format": "Un codice ha otto lettere e numeri, come ABCD-EFGH.",
+    "notFound": "Nessuna app aspetta quel codice. Controllalo con lo schermo dell'app.",
+    "expired": "Quel codice è scaduto. Riparti dall'app per averne uno nuovo.",
+    "used": "Quel codice è già stato usato. Riparti dall'app per averne uno nuovo.",
+    "mfaRequired": "Inserisci il codice del tuo autenticatore per approvare.",
+    "mfaInvalid": "Quel codice non è giusto. Prova quello attuale.",
+    "mfaSetup": "Il tuo account ha bisogno di un secondo passaggio prima di approvare un'app. Configura prima l'autenticatore.",
+    "blocked": "Uno dei tuoi dispositivi è bloccato. Un amministratore deve sbloccarlo prima che tu aggiunga un'app.",
+    "installation": "Questa installazione non può essere collegata. Reinstalla l'app e riprova.",
+    "tooMany": "Troppi tentativi. Aspetta qualche minuto e riprova.",
+    "unreachable": "Il server non risponde. Controlla la connessione e riprova.",
+    "generic": "Non ha funzionato. Riprova tra un momento."
+  },
+  "list": {
+    "title": "App a cui hai dato accesso",
+    "connect": "Collega un'app",
+    "empty": "Nessuna app NeroNet è collegata al tuo account.",
+    "lastUsed": "Ultimo uso {{when}}",
+    "neverUsed": "Non ancora usata",
+    "signOut": "Disconnetti",
+    "confirm": {
+      "title": "Disconnettere {{name}}?",
+      "body": "L'app esce e la sua connessione alla tua rete viene interrotta subito. Per usarla di nuovo devi accedere con un nuovo codice.",
+      "confirm": "Disconnetti e interrompi",
+      "done": "{{name}} è stata disconnessa.",
+      "failed": "Non ha funzionato. Riprova tra un momento."
+    }
+  }
+}

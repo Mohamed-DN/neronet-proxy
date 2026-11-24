@@ -10,7 +10,7 @@ import { RequireAuth } from './RequireAuth';
 import { RequireRole, RoleLanding } from './RequireRole';
 import { RootLayout } from './RootLayout';
 import { RouteError } from './RouteError';
-import { INVITE_PATH, LOGIN_PATH, ROUTES } from './paths';
+import { APP_CONNECT_PATH, INVITE_PATH, LOGIN_PATH, ROUTES } from './paths';
 import { ShellProvider } from './shell';
 
 /*
@@ -26,6 +26,7 @@ const MeRoute = lazy(() => import('../portal/MeRoute'));
 const AddDeviceRoute = lazy(() => import('../portal/AddDeviceRoute'));
 const InviteAcceptRoute = lazy(() => import('../portal/InviteAcceptRoute'));
 const DropRoute = lazy(() => import('../portal/DropRoute'));
+const AppConnectRoute = lazy(() => import('../portal/AppConnectRoute'));
 const OverviewRoute = lazy(() => import('./pages/OverviewRoute'));
 const TopologyRoute = lazy(() => import('./pages/TopologyRoute'));
 const SubnetsRoute = lazy(() => import('./pages/SubnetsRoute'));
@@ -121,7 +122,8 @@ export const routes: RouteObject[] = [
         children: [
           portalPage(ROUTES.me, <MeRoute />, 'nav.items.me'),
           portalPage(ROUTES.meAdd, <AddDeviceRoute />, 'nav.items.me'),
-          portalPage(ROUTES.drop, <DropRoute />, 'nav.items.drop')
+          portalPage(ROUTES.drop, <DropRoute />, 'nav.items.drop'),
+          portalPage(APP_CONNECT_PATH, <AppConnectRoute />, 'nav.items.me')
         ]
       },
       {

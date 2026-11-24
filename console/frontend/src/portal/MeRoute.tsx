@@ -15,6 +15,7 @@ import { useToast } from '../ui/Toast';
 import { deviceStatus } from './deviceStatus';
 import { DeviceList } from './DeviceList';
 import DownloadApps from './DownloadApps';
+import SignedInApps from './SignedInApps';
 
 const PRIMARY_LARGE =
   'inline-flex h-11 items-center justify-center gap-2 rounded-control border border-transparent bg-accent px-4 text-body font-medium text-accent-contrast hover:bg-accent-strong focus-visible:outline-focus';
@@ -150,6 +151,8 @@ export default function MeRoute() {
           </p>
         )}
       </ConfirmDialog>
+
+      <SignedInApps />
 
       <DownloadApps />
 

@@ -35,6 +35,11 @@ export const LOGIN_PATH = '/login';
  * token travels in the fragment, which the browser never sends to a server.
  */
 export const INVITE_PATH = '/invito';
+/**
+ * Where a person approves the NeroNet app they installed (ADR 0040): `/collega`, optionally
+ * with `?code=ABCD-EFGH`. Behind the sign-in, because approving is done as the signed-in person.
+ */
+export const APP_CONNECT_PATH = '/collega';
 export const DEFAULT_PATH = ROUTES.overview;
 
 export function nodePath(id: string): string {
