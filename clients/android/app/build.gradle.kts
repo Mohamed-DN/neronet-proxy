@@ -12,17 +12,38 @@ android {
         applicationId = "com.darknero.neronet"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.1.0"
     }
 
-    // The release APK is unsigned until our own release key exists (see clients/android/README.md).
+    // The release key is never in the repository: CI supplies it at build time (see clients/android/README.md).
+    // All four values sign the release; none leaves it unsigned, as on a developer's machine. Some but not all
+    // is a mistake and stops the build, so a half-configured job cannot publish an unsigned release.
+    val signing = listOf("PATH", "PASSWORD", "KEY_ALIAS", "KEY_PASSWORD").associateWith { name ->
+        System.getenv(if (name.startsWith("KEY_")) "NERONET_$name" else "NERONET_KEYSTORE_$name").orEmpty()
+    }
+    val signingSet = signing.values.count { it.isNotEmpty() }
+    require(signingSet == 0 || signingSet == signing.size) {
+        "Release signing is half configured: set all of " + signing.keys + " or none"
+    }
+    if (signingSet == signing.size) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(signing.getValue("PATH"))
+                storePassword = signing.getValue("PASSWORD")
+                keyAlias = signing.getValue("KEY_ALIAS")
+                keyPassword = signing.getValue("KEY_PASSWORD")
+            }
+        }
+    }
+
     // Debug stays unminified with every ABI so emulators work.
     buildTypes {
         getByName("debug") {
             applicationIdSuffix = ""
         }
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))

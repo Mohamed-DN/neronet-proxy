@@ -151,7 +151,23 @@ No keystore, key alias or password is ever committed; `.gitignore` also excludes
 base64 secret decoded to a temporary file, and `NERONET_KEYSTORE_PATH`, `NERONET_KEYSTORE_PASSWORD`,
 `NERONET_KEY_ALIAS` and `NERONET_KEY_PASSWORD` as masked environment variables. The release build type will read
 those four variables and sign only when all are set; without them the build stays unsigned, as it is today.
-This wiring is not in `app/build.gradle.kts` yet.
+Some but not all of the four stops the build.
+
+The workflow `.github/workflows/android.yml` runs the tests and the debug build on every change here, and, started by
+hand with "signed release", builds the signed release in the GitHub environment `android-release`. That environment
+holds the secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
+`ANDROID_KEY_PASSWORD`; give it a required reviewer, and restrict it to `main`. The job checks that the signing
+certificate is the one in `ANDROID_CERT_SHA256` (a public value, an environment variable) before it keeps the APK, so
+a wrong key cannot become a release.
+
+To create the key (once, on your own machine, never in a container of ours and never in the repository):
+
+```bash
+keytool -genkeypair -v -keystore neronet-release.jks -storetype PKCS12 -keyalg RSA -keysize 4096 -validity 10000 -alias neronet
+```
+
+Keep the file and its password in two separate safe places. Losing them means the installed apps can never be
+updated again; leaking them means someone else can sign an update.
 
 ## Manual checks on the owner's tablet
 
