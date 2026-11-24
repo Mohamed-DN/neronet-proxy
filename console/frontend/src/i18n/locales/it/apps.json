@@ -24,7 +24,16 @@
     "totp": "Codice del tuo autenticatore",
     "totpHint": "Sei cifre. Serve perché il tuo account usa un secondo passaggio.",
     "approve": "Approva",
-    "deny": "Rifiuta"
+    "deny": "Rifiuta",
+    "code": "Codice",
+    "selfDeclared": "Dichiarato dall'app, non verificato",
+    "scopesTitle": "Se approvi, questa app può:",
+    "confirmCode": "Scrivi il codice mostrato nell'app",
+    "confirmCodeHint": "Leggilo dallo schermo dell'app. Se l'app non mostra un codice, o ne mostra un altro, rifiuta.",
+    "recovery": "Codice di recupero",
+    "recoveryHint": "Uno dei codici monouso che hai salvato quando hai configurato l'autenticatore.",
+    "useRecovery": "Usa invece un codice di recupero",
+    "useAuthenticator": "Usa invece il codice dell'autenticatore"
   },
   "done": {
     "approved": {
@@ -49,7 +58,11 @@
     "installation": "Questa installazione non può essere collegata. Reinstalla l'app e riprova.",
     "tooMany": "Troppi tentativi. Aspetta qualche minuto e riprova.",
     "unreachable": "Il server non risponde. Controlla la connessione e riprova.",
-    "generic": "Non ha funzionato. Riprova tra un momento."
+    "generic": "Non ha funzionato. Riprova tra un momento.",
+    "codeRequired": "Scrivi il codice mostrato nell'app per confermare.",
+    "codeMismatch": "Quel codice non corrisponde a quello dell'app. Se non l'hai avviata tu, rifiuta.",
+    "recoveryRequired": "Inserisci un codice di recupero per approvare.",
+    "forbiddenRole": "Il tuo ruolo non può aggiungere dispositivi, quindi non può approvare un'app. Chiedi a un amministratore."
   },
   "list": {
     "title": "App a cui hai dato accesso",
@@ -65,5 +78,12 @@
       "done": "{{name}} è stata disconnessa.",
       "failed": "Non ha funzionato. Riprova tra un momento."
     }
+  },
+  "scopes": {
+    "appSelf": "Vedere con quale account ha effettuato l'accesso",
+    "devicesRead": "Vedere i tuoi dispositivi",
+    "exitSelect": "Scegliere quale uscita usa il tuo traffico",
+    "dropUse": "Inviare e ricevere file con NeroDrop",
+    "unknown": "Qualcosa che questa pagina non riconosce: rifiuta"
   }
 }

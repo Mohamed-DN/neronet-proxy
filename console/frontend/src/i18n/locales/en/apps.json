@@ -24,7 +24,16 @@
     "totp": "Code from your authenticator",
     "totpHint": "Six digits. Needed because your account uses a second step.",
     "approve": "Approve",
-    "deny": "Deny"
+    "deny": "Deny",
+    "code": "Code",
+    "selfDeclared": "Stated by the app, not checked",
+    "scopesTitle": "If you approve, this app can:",
+    "confirmCode": "Type the code shown in the app",
+    "confirmCodeHint": "Read it off the app's own screen. If the app shows no code, or a different one, deny this.",
+    "recovery": "Recovery code",
+    "recoveryHint": "One of the single-use codes you saved when you set up your authenticator.",
+    "useRecovery": "Use a recovery code instead",
+    "useAuthenticator": "Use the authenticator code instead"
   },
   "done": {
     "approved": {
@@ -49,7 +58,11 @@
     "installation": "This installation cannot be connected. Reinstall the app and try again.",
     "tooMany": "Too many attempts. Wait a few minutes and try again.",
     "unreachable": "The server cannot be reached. Check your connection and try again.",
-    "generic": "That did not work. Try again in a moment."
+    "generic": "That did not work. Try again in a moment.",
+    "codeRequired": "Type the code shown in the app to confirm.",
+    "codeMismatch": "That code does not match the one on the app. If you did not start this, deny it.",
+    "recoveryRequired": "Enter a recovery code to approve.",
+    "forbiddenRole": "Your role cannot add devices, so it cannot approve an app. Ask an administrator."
   },
   "list": {
     "title": "Apps you signed in",
@@ -65,5 +78,12 @@
       "done": "{{name}} was signed out.",
       "failed": "That did not work. Try again in a moment."
     }
+  },
+  "scopes": {
+    "appSelf": "See which account it is signed in as",
+    "devicesRead": "See your devices",
+    "exitSelect": "Choose which exit your traffic uses",
+    "dropUse": "Send and receive files with NeroDrop",
+    "unknown": "Something this page does not recognise: deny it"
   }
 }

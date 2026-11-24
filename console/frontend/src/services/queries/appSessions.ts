@@ -22,6 +22,10 @@ export interface AppSession {
 
 /** What is asking to sign in, shown before the person decides. */
 export interface AppSignInRequest {
+  /** The code as the console reads it, to be compared with the app's screen. */
+  user_code?: string;
+  /** What the app asks to be allowed to do: scope names the page puts into words. */
+  scopes?: string[];
   platform: AppSession['platform'];
   device_name: string;
   request_ip: string | null;
