@@ -181,6 +181,11 @@ async function executeInstantUserDestruction(userId, token = null, actorUsername
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      // The lifecycle lock first, as every other writer of nodes and of the app sessions behind them
+      // (registration, revoking an app, destroying an organisation) takes it.
+      await client.query('SELECT pg_advisory_xact_lock($1)', [
+        require('../../services/EnrollmentService').LIFECYCLE_LOCK_ID
+      ]);
 
       // Overwrite node WireGuard / Noise keys & metadata. public_key is UNIQUE, so each node gets a dead
       // key of its own: one value for all of a person's nodes failed on the second, rolled the whole erase
@@ -956,7 +961,12 @@ async function executeOwnerGlobalCascadingWipe() {
     'node_telemetry_history',
     'dead_man_switch',
     'refresh_tokens',
+    // The apps of every person, then their nodes (removing a node bans its key), then the bans: nothing is left
+    // for a key to be refused by.
+    'app_sessions',
+    'app_device_codes',
     'nodes',
+    'app_key_bans',
     'audit_events',
     'warrant_canaries',
     'system_metrics',

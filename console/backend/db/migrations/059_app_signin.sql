@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS app_sessions (
     previous_refresh_hash   TEXT,
     -- Every older refresh token of this session, so one two rotations old is still recognised.
     retired_refresh_hashes  TEXT[] NOT NULL DEFAULT '{}',
+    -- The pairs a retry replaced and the app never saw. Kept apart so a flood of retries cannot push the
+    -- tokens of real rotations out of the list above.
+    retried_refresh_hashes  TEXT[] NOT NULL DEFAULT '{}',
     -- When the pair last rotated: the retry window for a lost answer runs from here.
     rotated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     refresh_expires_at      TIMESTAMPTZ NOT NULL,
@@ -66,12 +69,17 @@ CREATE INDEX IF NOT EXISTS idx_app_sessions_user ON app_sessions (user_id);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_org ON app_sessions (organization_id);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_previous_refresh ON app_sessions (previous_refresh_hash);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_retired_refresh ON app_sessions USING GIN (retired_refresh_hashes);
+CREATE INDEX IF NOT EXISTS idx_app_sessions_retried_refresh ON app_sessions USING GIN (retried_refresh_hashes);
+-- The latest session of a node is read on every credential check of a node an app enrolled.
+CREATE INDEX IF NOT EXISTS idx_app_sessions_node_created ON app_sessions (node_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_revoked ON app_sessions (revoked_at) WHERE revoked_at IS NOT NULL;
 
 -- A key revoked for good stays refused after the session rows that recorded it are purged.
 CREATE TABLE IF NOT EXISTS app_key_bans (
     installation_public_key TEXT PRIMARY KEY CHECK (installation_public_key ~ '^[0-9a-f]{64}$'),
     node_id                 TEXT NOT NULL,
+    -- Where the key could rejoin: destroying the organisation ends the ban with it.
+    organization_id         TEXT,
     reason                  TEXT NOT NULL,
     banned_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -83,8 +91,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_app_sessions_active_node ON app_sessions (n
 -- good: an administrator who deletes a node does not expect it to come back, suspended or not.
 CREATE OR REPLACE FUNCTION end_app_sessions_of_deleted_node() RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO app_key_bans (installation_public_key, node_id, reason)
-        SELECT DISTINCT installation_public_key, OLD.id, 'node_removed' FROM app_sessions
+    INSERT INTO app_key_bans (installation_public_key, node_id, organization_id, reason)
+        SELECT DISTINCT installation_public_key, OLD.id, organization_id, 'node_removed' FROM app_sessions
          WHERE node_id = OLD.id AND COALESCE(revoked_reason, '') <> 'superseded'
         ON CONFLICT (installation_public_key) DO NOTHING;
     UPDATE app_sessions SET revoked_at = COALESCE(revoked_at, NOW()),

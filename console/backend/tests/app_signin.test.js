@@ -1556,6 +1556,233 @@ describe('app sign-in by device code', () => {
     });
   });
 
+  // ---- Third review ------------------------------------------------------------------------------
+
+  const epochBump = (person) =>
+    pool.query('UPDATE users SET console_auth_epoch = console_auth_epoch + 1 WHERE id = $1', [person.id]);
+  const entryFor = async (nodeId) =>
+    (
+      await pool.query(
+        "SELECT reason, expires_at = 'infinity'::timestamptz AS forever FROM revoked_keys WHERE node_id = $1",
+        [nodeId]
+      )
+    ).rows[0];
+
+  describe('a suspension has no end date', () => {
+    it('aged revoked-key entries, peer netmaps and relay admission still exclude it, and a later quarantine cannot shorten it', async () => {
+      const TP = require('../services/TransportPolicyService');
+      const NetmapService = require('../services/NetmapService');
+      const RevocationEngine = require('../services/RevocationEngine');
+      const a = await joinAs(await makePerson());
+      const b = await joinAs(await makePerson());
+      await pool.query(
+        "UPDATE nodes SET node_capabilities = ARRAY['derp-v2'], transports_built = ARRAY['derp'] WHERE id = $1",
+        [a.grant.node_id]
+      );
+      await pool.query("UPDATE organizations SET allowed_transports = ARRAY['udp', 'derp'] WHERE id = $1", [fx.orgs.A]);
+      const savedCeiling = process.env.SOVEREIGN_TRANSPORT_CEILING;
+      process.env.SOVEREIGN_TRANSPORT_CEILING = 'udp,derp';
+      try {
+        assert.ok(
+          (await TP.admissionSnapshot()).keys.includes(a.key),
+          'the relay would not admit a healthy node: the test proves nothing'
+        );
+        const who = (await pool.query('SELECT user_id FROM app_sessions WHERE node_id = $1', [a.grant.node_id])).rows[0]
+          .user_id;
+        await epochBump({ id: who });
+        assert.strictEqual((await beat(a)).status, 401);
+        const entry = await entryFor(a.grant.node_id);
+        assert.ok(entry && entry.forever, 'a suspension notice that expires puts the node back in the netmaps');
+        // Everything that can age has aged.
+        await pool.query(
+          "UPDATE revoked_keys SET expires_at = NOW() - INTERVAL '2 days' WHERE expires_at < 'infinity'"
+        );
+        const doc = await NetmapService.buildNetmap(b.grant.node_id);
+        assert.ok(doc.revoked_keys.includes(a.key), 'peers are no longer told to drop the node');
+        assert.ok(!JSON.stringify(doc.peers).includes(a.key), 'a suspended node is in a peer netmap');
+        assert.ok(!(await TP.admissionSnapshot()).keys.includes(a.key), 'a relay admits a suspended node');
+        // A later quarantine writes to the same entry and must not make it shorter.
+        await RevocationEngine.revokeNodeKeys([a.grant.node_id], { reason: 'quarantine:manual' });
+        assert.ok((await entryFor(a.grant.node_id)).forever, 'a quarantine shortened the suspension');
+      } finally {
+        if (savedCeiling === undefined) delete process.env.SOVEREIGN_TRANSPORT_CEILING;
+        else process.env.SOVEREIGN_TRANSPORT_CEILING = savedCeiling;
+        await pool.query('UPDATE organizations SET allowed_transports = NULL WHERE id = $1', [fx.orgs.A]);
+      }
+    });
+
+    it('the purge of a suspended app a year on removes its node and bans its key instead of leaving a nodeless suspension', async () => {
+      const person = await makePerson();
+      const r = await joinAs(person);
+      await epochBump(person);
+      assert.strictEqual((await beat(r)).status, 401);
+      await pool.query("UPDATE app_sessions SET revoked_at = NOW() - INTERVAL '400 days' WHERE node_id = $1", [
+        r.grant.node_id
+      ]);
+      await AppAuth().purgeAppRows();
+      assert.strictEqual(await node(r.grant.node_id), undefined, 'the node of a purged suspension is still there');
+      assert.ok(await banned(r.key), 'a purged suspension left its key free');
+      assert.strictEqual(
+        (await pool.query('SELECT 1 FROM app_sessions WHERE node_id = $1', [r.grant.node_id])).rows.length,
+        0
+      );
+    });
+
+    it('a suspended app that is also a profile gateway keeps its node, as removing it would cut every device behind it', async () => {
+      const person = await makePerson();
+      const r = await joinAs(person);
+      await pool.query("UPDATE nodes SET profile_gateway_endpoint = 'gw.example.com:51820' WHERE id = $1", [
+        r.grant.node_id
+      ]);
+      await epochBump(person);
+      await AppAuth().sweepStanding();
+      assert.ok((await sessionRow(r)).revoked_at, 'the app was not suspended');
+      assert.strictEqual(await suspensions(r.grant.node_id), 0, 'a gateway was told to be dropped by its peers');
+      assert.strictEqual((await beat(r)).status, 200, 'a gateway lost its credential');
+      await pool.query('DELETE FROM nodes WHERE id = $1', [r.grant.node_id]);
+    });
+  });
+
+  describe('the sweeper and the refresh path under load', () => {
+    it('one failing app does not stop the rest, and a sweep only runs on the leader', async () => {
+      const Enrollment = require('../services/EnrollmentService');
+      const one = await joinAs(await makePerson());
+      const two = await joinAs(await makePerson());
+      await pool.query(
+        "UPDATE app_sessions SET absolute_expires_at = NOW() - INTERVAL '1 second' WHERE node_id = ANY($1)",
+        [[one.grant.node_id, two.grant.node_id]]
+      );
+      const real = Enrollment.transaction;
+      let calls = 0;
+      Enrollment.transaction = (...args) => {
+        calls += 1;
+        if (calls === 1) return Promise.reject(new Error('this one app fails'));
+        return real(...args);
+      };
+      try {
+        await AppAuth().sweepStanding();
+      } finally {
+        Enrollment.transaction = real;
+      }
+      const ended = (
+        await pool.query(
+          'SELECT count(*)::int AS n FROM app_sessions WHERE node_id = ANY($1) AND revoked_at IS NOT NULL',
+          [[one.grant.node_id, two.grant.node_id]]
+        )
+      ).rows[0].n;
+      assert.ok(ended >= 1, 'a failing app aborted the sweep');
+      await AppAuth().sweepStanding();
+      assert.strictEqual(
+        (
+          await pool.query(
+            'SELECT count(*)::int AS n FROM app_sessions WHERE node_id = ANY($1) AND revoked_at IS NULL',
+            [[one.grant.node_id, two.grant.node_id]]
+          )
+        ).rows[0].n,
+        0
+      );
+      const run = await AppAuth().runSweep();
+      assert.strictEqual(run.executed, false, 'a sweep ran on an instance that is not the leader');
+    });
+
+    it('a refresh that is not validly signed is turned away without waiting for the lifecycle lock', async () => {
+      const r = await joinAs(await makePerson());
+      const holder = await pool.connect();
+      try {
+        await holder.query('SELECT pg_advisory_lock($1)', [require('../services/EnrollmentService').LIFECYCLE_LOCK_ID]);
+        const quick = async (promise) =>
+          Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve('blocked'), 1500))]);
+        const wrongKey = await quick(
+          request(app).post(`${base}/token/refresh`).send(refreshBody(r.tokens.refresh_token, newSigner()))
+        );
+        assert.notStrictEqual(wrongKey, 'blocked', 'an unsigned request took the lifecycle lock');
+        assert.strictEqual(wrongKey.status, 401);
+        const unknown = await quick(
+          request(app)
+            .post(`${base}/token/refresh`)
+            .send(refreshBody(`nnr_${'e'.repeat(64)}`, r.signer))
+        );
+        assert.notStrictEqual(unknown, 'blocked');
+        assert.strictEqual(unknown.status, 401);
+      } finally {
+        await holder.query('SELECT pg_advisory_unlock($1)', [
+          require('../services/EnrollmentService').LIFECYCLE_LOCK_ID
+        ]);
+        holder.release();
+      }
+    });
+
+    it('retries of the previous token do not push old retired tokens out of memory', async () => {
+      const r = await joinAs(await makePerson());
+      const t2 = (await doRefresh(r.tokens.refresh_token, r.signer)).body;
+      await doRefresh(t2.refresh_token, r.signer);
+      // The previous token (t2) is retried again and again, as lost answers would make it.
+      for (let i = 0; i < 60; i++) {
+        const retry = await doRefresh(t2.refresh_token, r.signer);
+        assert.strictEqual(retry.status, 200, `retry ${i}: ${JSON.stringify(retry.body)}`);
+      }
+      // The first token is two rotations old, however many retries came since.
+      assert.strictEqual((await doRefresh(r.tokens.refresh_token, r.signer)).status, 401);
+      assert.ok(await banned(r.key), 'a flood of retries made the console forget a replaced token');
+    });
+  });
+
+  describe('what a person sees and what survives an erase', () => {
+    it('lists a suspended app as suspended, and can revoke it for good', async () => {
+      const person = await makePerson();
+      const r = await joinAs(person);
+      await epochBump(person);
+      assert.strictEqual((await beat(r)).status, 401);
+      const list = await request(app).get(`${base}/sessions`).set(bearer(person.token));
+      const mine = list.body.sessions.find((s) => s.id === r.sessionId);
+      assert.strictEqual(mine.status, 'suspended');
+      assert.strictEqual(
+        (await request(app).delete(`${base}/sessions/${r.sessionId}`).set(bearer(person.token))).status,
+        200
+      );
+      assert.ok(await banned(r.key));
+      const after = await request(app).get(`${base}/sessions`).set(bearer(person.token));
+      assert.strictEqual(after.body.sessions.find((s) => s.id === r.sessionId).status, 'revoked');
+    });
+
+    it('has an index for the latest session of a node', async () => {
+      const idx = await pool.query("SELECT indexdef FROM pg_indexes WHERE tablename = 'app_sessions'");
+      assert.ok(
+        idx.rows.some((i) => /\(node_id, created_at\)/.test(i.indexdef)),
+        'no (node_id, created_at) index'
+      );
+    });
+
+    it("an organisation shred removes the bans of that organisation, a person's erase keeps theirs", async () => {
+      const { CryptoShreddingService: Shred } = require('../services/CryptoShreddingService');
+      const NukeEngine = require('../modules/nuke/NukeEngine');
+      const orgId = `org-bans-${process.pid}`;
+      await pool.query("INSERT INTO organizations (id, name, slug, default_policy) VALUES ($1, 'Bans', $2, 'open')", [
+        orgId,
+        `bans-${process.pid}`
+      ]);
+      const inOrg = await makePerson(orgId);
+      const a = await joinAs(inOrg);
+      assert.strictEqual(
+        (await request(app).delete(`${base}/sessions/${a.sessionId}`).set(bearer(inOrg.token))).status,
+        200
+      );
+      assert.ok(await banned(a.key));
+      await Shred.executeOrgShred(orgId, { initiatorId: fx.ids.adminA, approverId: fx.ids.adminA });
+      assert.strictEqual(await banned(a.key), false, 'the bans of a destroyed organisation outlive it');
+
+      // The organisation lives on after a person is erased: the key could join it again, so the ban stays.
+      const erased = await makePerson();
+      const b = await joinAs(erased);
+      assert.strictEqual(
+        (await request(app).delete(`${base}/sessions/${b.sessionId}`).set(bearer(erased.token))).status,
+        200
+      );
+      await NukeEngine.executeInstantUserDestruction(erased.id);
+      assert.ok(await banned(b.key), 'erasing a person freed the key they were banned for');
+    });
+  });
+
   describe('rate limits', () => {
     it('meters start by address, poll by device code and refresh by address', () => {
       const dir = path.resolve(__dirname, '..');

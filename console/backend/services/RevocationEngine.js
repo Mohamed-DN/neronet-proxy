@@ -82,7 +82,7 @@ async function revokeNodeKeys(nodeIds, { reason = 'manual', actorId = null, clie
          END,
          revoked_by = EXCLUDED.revoked_by,
          revoked_at = NOW(),
-         expires_at = EXCLUDED.expires_at`,
+         expires_at = GREATEST(revoked_keys.expires_at, EXCLUDED.expires_at)`,
       [keyHex, row.id, reason, actorId, expiresAt],
       `INSERT INTO revoked_keys (public_key_hex, node_id, reason, revoked_by, expires_at)
        VALUES (?, ?, ?, ?, ?)

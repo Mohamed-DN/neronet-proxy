@@ -698,9 +698,9 @@ async function retryDeadlock(work) {
 /** Puts the installation key in the ban list, for good. */
 async function banKey(client, session, reason) {
   await client.query(
-    `INSERT INTO app_key_bans (installation_public_key, node_id, reason) VALUES ($1, $2, $3)
+    `INSERT INTO app_key_bans (installation_public_key, node_id, organization_id, reason) VALUES ($1, $2, $3, $4)
      ON CONFLICT (installation_public_key) DO NOTHING`,
-    [session.installation_public_key, session.node_id, reason]
+    [session.installation_public_key, session.node_id, session.organization_id, reason]
   );
   await client.query(
     `UPDATE app_sessions SET banned = TRUE
@@ -731,7 +731,14 @@ async function suspendSession(client, session, reason, actorId = null) {
     [session.node_id, session.id]
   );
   if (newer.rows.length > 0) return { cut: false, why: 'superseded' };
+  // A node that serves profile devices carries all their tunnels: the app is suspended, the node is not
+  // touched, as DELETE /api/nodes refuses to remove it and the app routes refuse to cut it.
+  if (node.profile_gateway_endpoint) return { cut: false, why: 'serves profile devices' };
   await RevocationEngine.revokeNodeKeys([node.id], { reason: `app_suspended:${reason}`, actorId, client });
+  // A suspension has no end date of its own: the entry stays until a new approval lifts it (liftSuspension).
+  // The 24 hour list is for keys that are gone; this node is still in the table, so peers, relays and
+  // netmaps must keep excluding it however long it is suspended.
+  await client.query("UPDATE revoked_keys SET expires_at = 'infinity' WHERE node_id = $1", [node.id]);
   return { cut: true, kept: true };
 }
 
@@ -772,13 +779,25 @@ async function nodeAdmission(nodeId) {
     await getPgPool().query(
       `SELECT s.id, s.node_id, s.user_id, s.organization_id, s.revoked_at, s.banned, s.auth_epoch,
               s.absolute_expires_at <= NOW() AS absolute_expired, s.refresh_expires_at <= NOW() AS refresh_expired,
-              u.status AS user_status, u.console_auth_epoch
-         FROM app_sessions s JOIN users u ON u.id = s.user_id
+              u.status AS user_status, u.console_auth_epoch, n.profile_gateway_endpoint
+         FROM app_sessions s JOIN users u ON u.id = s.user_id LEFT JOIN nodes n ON n.id = s.node_id
         WHERE s.node_id = $1 ORDER BY s.created_at DESC LIMIT 1`,
       [nodeId]
     )
   ).rows[0];
   if (!s) return { ok: true };
+  // A gateway for profile devices is not cut off because its app is: see suspendSession.
+  if (s.profile_gateway_endpoint && !s.banned) {
+    if (!s.revoked_at) {
+      const gone =
+        s.user_status !== 'active' ||
+        String(s.console_auth_epoch) !== String(s.auth_epoch) ||
+        s.absolute_expired ||
+        s.refresh_expired;
+      if (gone) await suspendById(s.id, 'account_changed');
+    }
+    return { ok: true };
+  }
   if (s.revoked_at) return { ok: false, error: s.banned ? 'this app was removed' : 'this app must be approved again' };
   const reason =
     s.user_status !== 'active'
@@ -844,51 +863,88 @@ async function sweepStanding() {
   const ids = (await getPgPool().query('SELECT id FROM app_sessions WHERE revoked_at IS NULL')).rows.map((r) => r.id);
   let suspended = 0;
   for (const id of ids) {
-    const reason = await retryDeadlock(() =>
-      EnrollmentService.transaction(async (client) => {
-        const s = (
-          await client.query(
-            `SELECT s.*, u.username, s.absolute_expires_at <= NOW() AS absolute_expired,
+    let reason = null;
+    try {
+      reason = await retryDeadlock(() =>
+        EnrollmentService.transaction(async (client) => {
+          const s = (
+            await client.query(
+              `SELECT s.*, u.username, s.absolute_expires_at <= NOW() AS absolute_expired,
                     s.refresh_expires_at <= NOW() AS refresh_expired
                FROM app_sessions s JOIN users u ON u.id = s.user_id WHERE s.id = $1 FOR UPDATE OF s`,
-            [id]
-          )
-        ).rows[0];
-        if (!s || s.revoked_at) return null;
-        let why = s.absolute_expired || s.refresh_expired ? 'expired' : null;
-        if (!why) {
-          const st = await standing(client, s.user_id, s.organization_id, s.auth_epoch);
-          if (!st.ok) why = st.reason;
-        }
-        if (!why) return null;
-        await suspendSession(client, s, why);
-        suspensionAudit(s, why, null, ' by the sweeper');
-        return why;
-      })
-    );
+              [id]
+            )
+          ).rows[0];
+          if (!s || s.revoked_at) return null;
+          let why = s.absolute_expired || s.refresh_expired ? 'expired' : null;
+          if (!why) {
+            const st = await standing(client, s.user_id, s.organization_id, s.auth_epoch);
+            if (!st.ok) why = st.reason;
+          }
+          if (!why) return null;
+          await suspendSession(client, s, why);
+          suspensionAudit(s, why, null, ' by the sweeper');
+          return why;
+        })
+      );
+    } catch (err) {
+      logger.warn(`App standing check of ${id} failed, the others go on: ${err.message}`);
+    }
     if (reason) suspended += 1;
   }
   return suspended;
 }
 
-/** Old rows go; the ban list never does. */
+/**
+ * Old rows go; the ban list never does. A suspension a year old is not left as a node with no session:
+ * it becomes a revocation (key banned, node removed), because nobody is coming back for it.
+ */
 async function purgeAppRows() {
   const pool = getPgPool();
+  const stale = (
+    await pool.query(
+      `SELECT id FROM app_sessions WHERE revoked_at IS NOT NULL AND NOT banned AND revoked_at < NOW() - INTERVAL '365 days'`
+    )
+  ).rows;
+  for (const row of stale) {
+    try {
+      await retryDeadlock(() =>
+        EnrollmentService.transaction(async (client) => {
+          const s = (await client.query('SELECT * FROM app_sessions WHERE id = $1 FOR UPDATE', [row.id])).rows[0];
+          if (!s || s.banned || !s.revoked_at) return;
+          await client.query('UPDATE app_sessions SET banned = TRUE WHERE id = $1', [s.id]);
+          await banKey(client, s, 'suspension_expired');
+          await cutSessionNode(client, s, { reason: 'app_session_revoked', actorId: null });
+        })
+      );
+    } catch (err) {
+      logger.warn(`Purging the suspended app ${row.id} failed, the others go on: ${err.message}`);
+    }
+  }
   await pool.query(
-    `DELETE FROM app_sessions WHERE revoked_at IS NOT NULL
-        AND ((banned AND revoked_at < NOW() - INTERVAL '90 days') OR (NOT banned AND revoked_at < NOW() - INTERVAL '365 days'))`
+    `DELETE FROM app_sessions WHERE revoked_at IS NOT NULL AND banned AND revoked_at < NOW() - INTERVAL '90 days'`
   );
   await pool.query('DELETE FROM app_refresh_nonces WHERE expires_at < NOW()');
   await pool.query("DELETE FROM app_device_codes WHERE expires_at < NOW() - INTERVAL '1 day'");
+}
+
+/**
+ * One sweep, on the one instance that leads (DistributedLeaderService), never overlapping its own
+ * previous run: several control plane instances must not all do it, nor pile up when it is slow.
+ */
+async function runSweep() {
+  const { getDistributedLeaderService } = require('./DistributedLeaderService');
+  return getDistributedLeaderService().executeAsLeader('app-standing-sweep', async () => {
+    await sweepStanding();
+    await purgeAppRows();
+  });
 }
 
 let sweeperTimer = null;
 function startSweeper(intervalMs = 60_000) {
   if (sweeperTimer) return;
   sweeperTimer = setInterval(() => {
-    sweepStanding()
-      .then(() => purgeAppRows())
-      .catch((err) => logger.warn(`App standing sweep failed: ${err.message}`));
+    runSweep().catch((err) => logger.warn(`App standing sweep failed: ${err.message}`));
   }, intervalMs);
   sweeperTimer.unref();
 }
@@ -909,6 +965,7 @@ function stopSweeper() {
 const SIGNATURE_WINDOW_SECONDS = 60;
 const RETRY_WINDOW_SECONDS = 24 * 3600;
 const RETIRED_KEPT = 50;
+const RETRIED_KEPT = 20;
 const SPKI_ED25519_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
 /** The exact bytes an installation signs to refresh: method, path, hash of the token, time, nonce. */
@@ -991,6 +1048,20 @@ async function refreshTokens(body, { ip }) {
   if (!fresh) throw unauthorised;
   const hash = sha256(refresh);
 
+  // Before the lifecycle lock (one line for every writer of nodes) is asked for, the request is checked
+  // against the key it claims: whoever cannot sign must not be able to queue for the lock, let alone
+  // hold the others up. The same check is made again under the lock, on the row as it is by then.
+  const claimed = (
+    await getPgPool().query(
+      `SELECT signing_public_key FROM app_sessions
+        WHERE refresh_hash = $1 OR previous_refresh_hash = $1
+           OR $1 = ANY (retired_refresh_hashes) OR $1 = ANY (retried_refresh_hashes)`,
+      [hash]
+    )
+  ).rows[0];
+  if (!claimed || !verifyEd25519(claimed.signing_public_key, refreshMessage(refresh, timestamp, nonce), signature))
+    throw unauthorised;
+
   const run = await retryDeadlock(() =>
     EnrollmentService.transaction(async (client) => {
       const out = { tokens: null, outcome: null, session: null, reason: null };
@@ -1001,6 +1072,7 @@ async function refreshTokens(body, { ip }) {
                 s.access_expires_at > NOW() + make_interval(secs => $3) AS access_fresh
            FROM app_sessions s JOIN users u ON u.id = s.user_id
           WHERE s.refresh_hash = $1 OR s.previous_refresh_hash = $1 OR $1 = ANY (s.retired_refresh_hashes)
+             OR $1 = ANY (s.retried_refresh_hashes)
           FOR UPDATE OF s`,
         [hash, RETRY_WINDOW_SECONDS, ACCESS_TTL_SECONDS / 2]
       );
@@ -1049,16 +1121,21 @@ async function refreshTokens(body, { ip }) {
       if (!st.ok) return end('suspend', st.reason);
 
       const tokens = mintTokens();
-      // A normal rotation makes the current token the previous one and retires the one before it. A
-      // retry keeps the original previous token (so it can be retried again) and retires the unseen pair.
-      const retired = [...s.retired_refresh_hashes, isPrevious ? s.refresh_hash : s.previous_refresh_hash]
-        .filter(Boolean)
-        .slice(-RETIRED_KEPT);
+      // A normal rotation makes the current token the previous one and retires the one before it. A retry
+      // keeps the original previous token (so it can be retried again) and files the pair the app never
+      // saw in a list of its own, so that retries, however many, never push a real rotation's token out.
+      const retired = isPrevious
+        ? s.retired_refresh_hashes
+        : [...s.retired_refresh_hashes, s.previous_refresh_hash].filter(Boolean).slice(-RETIRED_KEPT);
+      const retried = isPrevious
+        ? [...s.retried_refresh_hashes, s.refresh_hash].slice(-RETRIED_KEPT)
+        : s.retried_refresh_hashes;
       await client.query(
         `UPDATE app_sessions SET previous_refresh_hash = $2, retired_refresh_hashes = $3, refresh_hash = $4,
                 access_hash = $5, access_expires_at = NOW() + make_interval(secs => $6),
                 refresh_expires_at = LEAST(NOW() + make_interval(secs => $7), absolute_expires_at),
-                rotated_at = CASE WHEN $8 THEN rotated_at ELSE NOW() END, last_used_at = NOW()
+                rotated_at = CASE WHEN $8 THEN rotated_at ELSE NOW() END, last_used_at = NOW(),
+                retried_refresh_hashes = $9
           WHERE id = $1`,
         [
           s.id,
@@ -1068,7 +1145,8 @@ async function refreshTokens(body, { ip }) {
           sha256(tokens.access),
           ACCESS_TTL_SECONDS,
           REFRESH_TTL_SECONDS,
-          Boolean(isPrevious)
+          Boolean(isPrevious),
+          retried
         ]
       );
       out.tokens = tokenBody(tokens, s.scopes);
@@ -1154,6 +1232,12 @@ async function cutSessionNode(client, session, { reason, actorId }) {
     return { cut: true, kept: true };
   }
   await client.query('DELETE FROM nodes WHERE id = $1', [node.id]);
+  // The row is gone and the key is banned for good: an open-ended suspension entry left from before ends
+  // after the usual 24 hours, enough for every peer to hear of it.
+  await client.query(
+    "UPDATE revoked_keys SET expires_at = NOW() + INTERVAL '24 hours' WHERE node_id = $1 AND expires_at = 'infinity'",
+    [node.id]
+  );
   return { cut: true, kept: false };
 }
 
@@ -1170,7 +1254,17 @@ const publicSession = (r) => ({
   last_used_at: r.last_used_at,
   revoked_at: r.revoked_at,
   revoked_reason: r.revoked_reason,
-  status: r.revoked_at ? 'revoked' : new Date(r.refresh_expires_at) <= new Date() ? 'expired' : 'active'
+  // revoked: final. suspended: can be put right by approving the app again. superseded: replaced by a
+  // newer sign-in of the same installation, history only.
+  status: r.revoked_at
+    ? r.banned
+      ? 'revoked'
+      : r.revoked_reason === 'superseded'
+        ? 'superseded'
+        : 'suspended'
+    : new Date(r.refresh_expires_at) <= new Date()
+      ? 'expired'
+      : 'active'
 });
 
 async function listSessions(user, { organization = false } = {}) {
@@ -1287,6 +1381,7 @@ module.exports = {
   sweepStanding,
   purgeAppRows,
   startSweeper,
+  runSweep,
   stopSweeper,
   selfSignOut,
   signOutMessage,

@@ -651,6 +651,8 @@ class CryptoShreddingService {
     await client.query('DELETE FROM acl_rules WHERE organization_id = $1', [orgId]);
     await client.query('DELETE FROM app_sessions WHERE organization_id = $1', [orgId]);
     await client.query('DELETE FROM app_device_codes WHERE approved_organization_id = $1', [orgId]);
+    // The organisation is gone, so no key can rejoin it: its bans end with it.
+    await client.query('DELETE FROM app_key_bans WHERE organization_id = $1', [orgId]);
     await client.query('DELETE FROM preauth_keys WHERE organization_id = $1', [orgId]);
     await client.query('DELETE FROM compartments WHERE organization_id = $1', [orgId]);
     await client.query('DELETE FROM organization_oidc_configs WHERE organization_id = $1', [orgId]);
@@ -723,6 +725,7 @@ class CryptoShreddingService {
     await client.query('DELETE FROM nodes');
     await client.query('DELETE FROM app_sessions');
     await client.query('DELETE FROM app_device_codes');
+    await client.query('DELETE FROM app_key_bans');
     await client.query('DELETE FROM preauth_keys');
     await client.query("UPDATE mesh_epochs SET epoch = epoch + 1, updated_at = NOW() WHERE name = 'netmap'");
     afterCommit.push(() => AclEngine.bumpNetmap());

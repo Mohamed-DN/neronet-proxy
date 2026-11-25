@@ -6,6 +6,7 @@ const assert = require('node:assert');
 const crypto = require('crypto');
 const { setupTestDatabase } = require('./helpers/db');
 const NukeEngine = require('../modules/nuke/NukeEngine');
+const { LIFECYCLE_LOCK_ID } = require('../services/EnrollmentService');
 const { settleAuditWrites } = require('../utils/audit');
 
 describe('erasing a person who owns two nodes', () => {
@@ -60,5 +61,25 @@ describe('erasing a person who owns two nodes', () => {
       0,
       'a node is still there'
     );
+  });
+
+  it('takes the enrolment lifecycle lock before it deletes nodes, as every other writer of nodes does', async () => {
+    const id = await person();
+    const holder = await pool.connect();
+    try {
+      await holder.query('SELECT pg_advisory_lock($1)', [LIFECYCLE_LOCK_ID]);
+      let finished = false;
+      const erase = NukeEngine.executeInstantUserDestruction(id).then(() => {
+        finished = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      assert.strictEqual(finished, false, 'the erase did not wait for the lifecycle lock');
+      await holder.query('SELECT pg_advisory_unlock($1)', [LIFECYCLE_LOCK_ID]);
+      await erase;
+      assert.strictEqual(finished, true);
+    } finally {
+      holder.release();
+    }
+    assert.strictEqual((await pool.query('SELECT 1 FROM users WHERE id = $1', [id])).rows.length, 0);
   });
 });
