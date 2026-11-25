@@ -24,7 +24,9 @@ export default function SignedInApps() {
 
   if (sessions.isPending || sessions.isError) return null;
 
-  const active = (sessions.data ?? []).filter((s) => s.status === 'active');
+  // Apps that work, and apps whose approval ended and can be put right or removed for good.
+  const active = (sessions.data ?? []).filter((s) => s.status === 'active' || s.status === 'suspended');
+  const forGood = asking?.status === 'suspended';
   const format = (iso: string) =>
     new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
 
@@ -51,10 +53,12 @@ export default function SignedInApps() {
                 <p className="truncate text-body font-medium text-content">{s.device_name}</p>
                 <p className="flex flex-wrap items-center gap-2 text-caption text-muted">
                   <Badge>{t(`platform.${s.platform}`)}</Badge>
+                  {s.status === 'suspended' && <Badge tone="warning">{t('list.suspended')}</Badge>}
                   <span>
                     {s.last_used_at ? t('list.lastUsed', { when: format(s.last_used_at) }) : t('list.neverUsed')}
                   </span>
                 </p>
+                {s.status === 'suspended' && <p className="text-caption text-muted">{t('list.suspendedNote')}</p>}
               </div>
               <Button
                 variant="secondary"
@@ -63,7 +67,7 @@ export default function SignedInApps() {
                   setAsking(s);
                 }}
               >
-                {t('list.signOut')}
+                {s.status === 'suspended' ? t('list.removeForGood') : t('list.signOut')}
               </Button>
             </li>
           ))}
@@ -75,9 +79,9 @@ export default function SignedInApps() {
         onOpenChange={(open) => {
           if (!open && !revoke.isPending) setAsking(null);
         }}
-        title={t('list.confirm.title', { name: asking?.device_name ?? '' })}
-        description={t('list.confirm.body', { name: asking?.device_name ?? '' })}
-        confirmLabel={t('list.confirm.confirm')}
+        title={t(forGood ? 'list.forGood.title' : 'list.confirm.title', { name: asking?.device_name ?? '' })}
+        description={t(forGood ? 'list.forGood.body' : 'list.confirm.body', { name: asking?.device_name ?? '' })}
+        confirmLabel={t(forGood ? 'list.forGood.confirm' : 'list.confirm.confirm')}
         tone="danger"
         busy={revoke.isPending}
         onConfirm={() => {
@@ -87,7 +91,7 @@ export default function SignedInApps() {
           revoke.mutate(asking.id, {
             onSuccess: () => {
               setAsking(null);
-              notify(t('list.confirm.done', { name }), { tone: 'success' });
+              notify(t(forGood ? 'list.forGood.done' : 'list.confirm.done', { name }), { tone: 'success' });
             },
             onError: () => setFailed(true)
           });

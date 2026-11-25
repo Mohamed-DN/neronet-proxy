@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 
 import { apiRequest } from '../apiClient';
 
-export type AppSessionStatus = 'active' | 'revoked' | 'expired';
+/** suspended: approval ended, can be put right by signing in again; revoked: final; superseded: replaced by a newer sign-in. */
+export type AppSessionStatus = 'active' | 'suspended' | 'revoked' | 'superseded' | 'expired';
 
 /** An app a person signed in, as the list shows it. The server never sends a token here. */
 export interface AppSession {

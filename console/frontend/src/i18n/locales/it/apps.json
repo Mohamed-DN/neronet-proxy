@@ -76,6 +76,15 @@
       "confirm": "Disconnetti e interrompi",
       "done": "{{name}} è stata disconnessa.",
       "failed": "Non ha funzionato. Riprova tra un momento."
+    },
+    "suspended": "Sospesa",
+    "suspendedNote": "L'approvazione è finita. Apri l'app e accedi di nuovo, oppure rimuovila per sempre.",
+    "removeForGood": "Rimuovi per sempre",
+    "forGood": {
+      "title": "Rimuovere {{name}} per sempre?",
+      "body": "L'app viene rimossa dal tuo account e il suo dispositivo dalla rete, e questa installazione non potrà più accedere. Per usare NeroNet su di essa devi installare di nuovo l'app.",
+      "confirm": "Sì, rimuovila",
+      "done": "{{name}} è stata rimossa."
     }
   },
   "scopes": {

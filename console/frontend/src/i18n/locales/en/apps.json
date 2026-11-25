@@ -76,6 +76,15 @@
       "confirm": "Sign out and cut it",
       "done": "{{name}} was signed out.",
       "failed": "That did not work. Try again in a moment."
+    },
+    "suspended": "Suspended",
+    "suspendedNote": "Its approval ended. Open the app and sign in again, or remove it for good.",
+    "removeForGood": "Remove for good",
+    "forGood": {
+      "title": "Remove {{name}} for good?",
+      "body": "The app is removed from your account and its device from the network, and this installation cannot sign in again. To use NeroNet on it you install the app again.",
+      "confirm": "Yes, remove it",
+      "done": "{{name}} was removed."
     }
   },
   "scopes": {

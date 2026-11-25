@@ -260,6 +260,26 @@ describe('SignedInApps', () => {
     );
   }
 
+  it('shows a suspended app as suspended and lets the person remove it for good', async () => {
+    const user = userEvent.setup();
+    renderList([session({ status: 'suspended', revoked_at: '2026-11-23T10:00:00Z' })]);
+    expect(await screen.findByText('Office laptop')).toBeInTheDocument();
+    expect(screen.getByText(/^suspended$/i)).toBeInTheDocument();
+    expect(screen.getByText(/open the app and sign in again/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /remove for good/i }));
+    expect(await screen.findByText(/cannot sign in again/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /yes, remove it/i }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            String(url).endsWith('/app-auth/sessions/aps_000000000000000000000001') &&
+            (init as RequestInit).method === 'DELETE'
+        )
+      ).toBe(true)
+    );
+  });
+
   it('lists only active apps and signs one out after a confirmation that says the connection is cut', async () => {
     const user = userEvent.setup();
     renderList([
