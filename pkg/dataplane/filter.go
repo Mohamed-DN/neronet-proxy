@@ -157,6 +157,13 @@ type filteredTUN struct {
 	wakeDst   netip.AddrPort
 	wakeToken [16]byte
 	lastWake  atomic.Int64
+
+	// wakeMu orders wakes against Close: once wakesEnded is set no wake starts, so wakes can only
+	// count down and Close can wait for it.
+	wakeMu     sync.Mutex
+	wakesEnded bool
+	inFlight   int
+	wakes      sync.WaitGroup
 }
 
 type pumpBatch struct {
@@ -178,6 +185,7 @@ func (f *filteredTUN) Close() error {
 		if es := f.egressStack.Load(); es != nil {
 			es.close()
 		}
+		f.endWakes()
 		f.closeErr = f.Device.Close()
 	})
 	return f.closeErr
@@ -463,20 +471,79 @@ func (f *filteredTUN) wakeIfDirect() {
 	}
 	// Not inline: the netstack hands a sent packet to the reader over an unbuffered
 	// channel, and this may run on wireguard-go's receive path.
-	go f.runWake()
+	if f.beginWake() {
+		go f.runWake()
+	}
 }
 
-// runWake sends one wake datagram. The device can be closed while it is in flight; the
-// netstack then panics on a send to its closed packet channel, and a panic here would end
-// the whole process. A wake is only a nudge to a blocked read, so losing one while the
-// device goes away is harmless: the panic is contained and the wake dropped.
+// beginWake counts a wake as in flight, unless the device is closing.
+func (f *filteredTUN) beginWake() bool {
+	f.wakeMu.Lock()
+	defer f.wakeMu.Unlock()
+	if f.wakesEnded {
+		return false
+	}
+	f.inFlight++
+	f.wakes.Add(1)
+	return true
+}
+
+// endWakes lets no further wake start and waits for the ones in flight, so the backend is never closed
+// under a wake that is handing its datagram over. That handover is an unbuffered channel and the reader
+// may already have left (wireguard-go closes the device first), so the backend is read and discarded
+// meanwhile; the discarding read ends when the backend closes. A wake that does not end in time is left
+// behind: runWake contains whatever it then runs into.
+func (f *filteredTUN) endWakes() {
+	f.wakeMu.Lock()
+	f.wakesEnded = true
+	waiting := f.inFlight > 0
+	f.wakeMu.Unlock()
+	if !waiting {
+		return
+	}
+	ended := make(chan struct{})
+	go func() {
+		f.wakes.Wait()
+		close(ended)
+	}()
+	go func() {
+		buf := [][]byte{make([]byte, 65535+128)}
+		sizes := []int{0}
+		for {
+			if _, err := f.Device.Read(buf, sizes, 64); err != nil {
+				return
+			}
+			select {
+			case <-ended:
+				return
+			default:
+			}
+		}
+	}()
+	select {
+	case <-ended:
+	case <-time.After(wakeDrainTimeout):
+	}
+}
+
+// runWake sends one wake datagram. Close waits for it (endWakes); the panic is contained all the same,
+// because one here would end the whole process for what is only a nudge to a blocked read.
 func (f *filteredTUN) runWake() {
-	defer func() { _ = recover() }()
+	defer func() {
+		_ = recover()
+		f.wakeMu.Lock()
+		f.inFlight--
+		f.wakeMu.Unlock()
+		f.wakes.Done()
+	}()
 	if f.isClosing() {
 		return
 	}
 	f.wake()
 }
+
+// wakeDrainTimeout bounds how long Close waits for wakes in flight.
+const wakeDrainTimeout = 2 * time.Second
 
 // isClosing reports whether Close has started.
 func (f *filteredTUN) isClosing() bool {
