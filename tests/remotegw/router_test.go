@@ -39,7 +39,7 @@ import (
 // scripts/dev/test-remote-gateway.sh.
 //
 // Needs root (it binds 443), XRAY_BIN, nginx with the stream module, openssl, and
-// SWAP_SCRIPT (packaging/gateway/bin/neronet-443-swap).
+// SWAP_SCRIPT (packaging/gateway/sbin/neronet-443-swap).
 
 const (
 	oldSNI     = "old.example.test"

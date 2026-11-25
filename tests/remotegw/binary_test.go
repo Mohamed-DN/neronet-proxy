@@ -5,8 +5,13 @@ package remotegw
 import (
 	"bytes"
 	"crypto/ecdh"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"math/big"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -39,7 +44,7 @@ type stubControl struct {
 	peer     control.NetmapPeer
 }
 
-func newStubControl(t *testing.T, tlsOn bool, vless *control.VlessConfig, peer control.NetmapPeer) *stubControl {
+func newStubControl(t *testing.T, tlsOn bool, cert *tls.Certificate, vless *control.VlessConfig, peer control.NetmapPeer) *stubControl {
 	t.Helper()
 	priv, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
@@ -86,6 +91,9 @@ func newStubControl(t *testing.T, tlsOn bool, vless *control.VlessConfig, peer c
 	if tlsOn {
 		s.srv = httptest.NewUnstartedServer(mux)
 		s.srv.TLS = &tls.Config{MinVersion: tls.VersionTLS12}
+		if cert != nil {
+			s.srv.TLS.Certificates = []tls.Certificate{*cert}
+		}
 		s.srv.StartTLS()
 	} else {
 		s.srv = httptest.NewServer(mux)
@@ -166,7 +174,7 @@ func TestGatewayBinaryReportsThePublicPortBindsLoopbackAndConsumesItsKey(t *test
 		NodeID: "dev-1", PublicKeyHex: strings.Repeat("ab", 32), Profile: true, AccessMethod: "vless-reality",
 		VlessUUID: deviceUUID, AllowedIPs: []string{"100.64.0.20/32"},
 	}
-	cp := newStubControl(t, true, vless, peer)
+	cp := newStubControl(t, true, nil, vless, peer)
 
 	caPath := filepath.Join(dir, "control-ca.pem")
 	if err := os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cp.srv.Certificate().Raw}), 0o644); err != nil {
@@ -257,7 +265,8 @@ func TestGatewayBinaryReportsThePublicPortBindsLoopbackAndConsumesItsKey(t *test
 	})
 
 	// A control plane the pinned CA did not sign is never talked to: no insecure fallback.
-	other := newStubControl(t, true, vless, peer)
+	stranger := strangerCert(t)
+	other := newStubControl(t, true, &stranger, vless, peer)
 	envBad := map[string]string{}
 	for k, v := range env {
 		envBad[k] = v
@@ -292,7 +301,7 @@ func contains(l []string, s string) bool {
 func TestGatewayBinaryRefusesPROXYProtocolOffLoopback(t *testing.T) {
 	dir := t.TempDir()
 	bin := buildNode(t, dir)
-	cp := newStubControl(t, false, nil, control.NetmapPeer{})
+	cp := newStubControl(t, false, nil, nil, control.NetmapPeer{})
 	for _, listen := range []string{"0.0.0.0:8445", ""} {
 		env := map[string]string{
 			"SOVEREIGN_CONTROL_PLANE_URL":  cp.srv.URL,
@@ -323,4 +332,24 @@ func TestGatewayBinaryRefusesPROXYProtocolOffLoopback(t *testing.T) {
 			t.Fatalf("listen %q: the node kept running with PROXY protocol off loopback", listen)
 		}
 	}
+}
+
+// strangerCert is a certificate the node's pinned CA did not sign (httptest servers all share one).
+func strangerCert(t *testing.T) tls.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(7), Subject: pkix.Name{CommonName: "stranger"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
+		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}, DNSNames: []string{"localhost"},
+		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
 }
