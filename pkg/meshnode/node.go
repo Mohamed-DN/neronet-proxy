@@ -465,25 +465,15 @@ func Start(parent context.Context, p Params) (*Handle, error) {
 	// The WireGuard data plane. Off unless -dataplane names a mode, in which case the
 	// SOCKS5 and HTTP proxies start routing overlay destinations through it and the
 	// node runs on the netmap the control plane serves.
-	stopDataplane, dpErr := startDataplane(ctx, dataplaneOptions{
-		Mode:         p.DataplaneMode,
-		SpikeConfig:  p.SpikePeers,
-		EchoPort:     uint16(p.OverlayEchoPort),
-		StunServer:   p.StunServer,
-		Keypair:      keypair,
-		IdentityPath: p.IdentityPath,
-		Control:      ctrlClient,
-		NodeID:       dataplaneNodeID,
-		Registration: regResp,
-		Netfilter:    netfilter,
-		Bridge:       netstackBridge,
-		Netmaps:      netmaps,
-		ExitEnabled:  p.EnableExit,
-		AWGListen:    p.AWGListen,
-		ExitDNS:      p.ExitDNS,
-		AWGParams:    p.AWGParams,
-		MeshDNS:      p.MeshDNS,
-	})
+	dpOpts := p.operatorOptions()
+	dpOpts.Keypair = keypair
+	dpOpts.Control = ctrlClient
+	dpOpts.NodeID = dataplaneNodeID
+	dpOpts.Registration = regResp
+	dpOpts.Netfilter = netfilter
+	dpOpts.Bridge = netstackBridge
+	dpOpts.Netmaps = netmaps
+	stopDataplane, dpErr := startDataplane(ctx, dpOpts)
 	if dpErr != nil {
 		return fail(fmt.Errorf("Failed to start data plane: %v", dpErr))
 	}
@@ -788,4 +778,26 @@ func isLoopbackListen(addr string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// operatorOptions is what the operator set, as the data plane takes it. A setting that is read and
+// advertised but not handed over here is a feature the console offers and the node never runs, which
+// is what happened to VLESS: options_test.go compares the two field by field.
+func (p Params) operatorOptions() dataplaneOptions {
+	return dataplaneOptions{
+		Mode:         p.DataplaneMode,
+		SpikeConfig:  p.SpikePeers,
+		EchoPort:     uint16(p.OverlayEchoPort),
+		StunServer:   p.StunServer,
+		IdentityPath: p.IdentityPath,
+		ExitEnabled:  p.EnableExit,
+		AWGListen:    p.AWGListen,
+		ExitDNS:      p.ExitDNS,
+		AWGParams:    p.AWGParams,
+		MeshDNS:      p.MeshDNS,
+
+		VLESSSocksListen: p.VLESSSocksListen,
+		VLESSSocksAddr:   p.VLESSSocksAddr,
+		XrayConfig:       p.XrayConfig,
+	}
 }

@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -238,20 +237,21 @@ func TestAnotherLocalUserCannotUseTheSocket(t *testing.T) {
 		})
 		return
 	}
-	t.Run("peer credentials refuse a user who is not the owner", func(t *testing.T) {
-		run := runDir(t)
-		tr := UnixTransport{RunDir: run, OwnerUID: me() + 1, testOpen: true}
-		serveUnix(t, tr)
-		conn, err := net.Dial("unix", tr.SocketPath())
-		if err != nil {
-			t.Fatal(err)
+	// Without root a service cannot hand the directory to somebody else, so it must refuse to start for
+	// them rather than serve from a directory they do not own. The peer-credential refusal itself needs
+	// two users and is the root case above.
+	t.Run("an unprivileged service refuses to start for another user", func(t *testing.T) {
+		tr := UnixTransport{RunDir: runDir(t), OwnerUID: me() + 1, testOpen: true}
+		ln, err := tr.Listen()
+		if err == nil {
+			_ = ln.Close()
+			t.Fatal("it listened for a user it cannot hand the directory to")
 		}
-		cl := NewClient(conn)
-		defer cl.Close()
-		if r, err := cl.Do("state.get", nil); err == nil {
-			t.Errorf("a user who is not the owner was served: %+v", r)
-		} else if !errors.Is(err, io.EOF) && !strings.Contains(err.Error(), "reset") {
+		if !errors.Is(err, os.ErrPermission) {
 			t.Errorf("unexpected error: %v", err)
+		}
+		if _, err := os.Lstat(tr.SocketPath()); err == nil {
+			t.Error("a socket was left behind")
 		}
 	})
 }

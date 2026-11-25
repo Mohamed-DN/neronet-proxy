@@ -21,6 +21,13 @@ exec $ENGINE run --rm \
     go vet ./... || rc=1
     echo "== go test -race (our packages)"
     go test $(go list ./... | grep -v /third_party/) -race -count=1 || rc=1
+    # CI runs as an ordinary user and this container as root: tests that branch on the uid pass here and
+    # fail there (clientcore did, on 25 November). Run those packages the CI way too.
+    echo "== clientcore as an ordinary user"
+    go test -race -c -o /usr/local/bin/clientcore.test ./pkg/clientcore/ || rc=1
+    mkdir -p /tmp/ordinary && chmod 1777 /tmp/ordinary
+    (cd pkg/clientcore && setpriv --reuid=1001 --regid=1001 --clear-groups       env HOME=/tmp/ordinary TMPDIR=/tmp/ordinary /usr/local/bin/clientcore.test -test.count=1) || rc=1
+
     echo "== awg build tag: vet and the AmneziaWG interop tests (-race)"
     go vet -tags awg ./pkg/dataplane/ ./pkg/meshnode/ ./cmd/sovereign-node/ || rc=1
     go test -tags awg ./pkg/dataplane/ ./pkg/meshnode/ ./cmd/sovereign-node/ -race -count=1 -run "AWG|Awg|SetPeers|Gateway" || rc=1
