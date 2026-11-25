@@ -1386,6 +1386,7 @@ module.exports = {
   pollSignIn,
   refreshTokens,
   keyWasRevoked,
+  revokedForGood,
   nodeAdmission,
   nodeNeedsSignIn,
   suspendUserApps,

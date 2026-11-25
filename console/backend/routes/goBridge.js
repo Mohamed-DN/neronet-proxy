@@ -194,8 +194,10 @@ router.post('/register', normalizeRegisterBody, validateRequest('RegisterRequest
         [nodeId]
       );
 
-      // A revoked key stays out. It used to register again and get a new credential.
-      if (await RevocationEngine.isRevoked(publicKeyHex, client)) {
+      // A revoked key stays out. It used to register again and get a new credential. An app that is only
+      // suspended is not on this list for good: it is told below to be approved again, which is a different
+      // answer (the app keeps its keys on one and throws them away on the other).
+      if (await AppAuthService.revokedForGood(publicKeyHex, client)) {
         const refusal = EnrollmentService.denied(403, 'this key has been revoked');
         refusal.auditEvent = {
           eventType: 'node.revoked_key_register_refused',

@@ -1230,6 +1230,11 @@ describe('app sign-in by device code', () => {
       assert.strictEqual(row.banned, false, 'a recoverable event banned the key');
       assert.ok(await suspensions(r.grant.node_id), 'peers are still told this node is fine');
       assert.ok(await node(r.grant.node_id), 'the row of a suspended node must stay');
+      // The registration of a suspended node says what to do: approve the app again. It must not claim the
+      // key was revoked, or the app throws its keys away and comes back as a different device.
+      const refusedBack = await register(app, { public_key_hex: r.key, role: 'CLIENT_ORIGIN' });
+      assert.strictEqual(refusedBack.status, 403);
+      assert.match(String(refusedBack.body.error), /approved again/, 'a suspension was reported as a revocation');
       assert.strictEqual(await banned(r.key), false);
       // The same installation, after a fresh approval, is back with the same node.
       const again = await signIn(person.token, { public_key_hex: r.key });
