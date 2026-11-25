@@ -1628,6 +1628,37 @@ describe('app sign-in by device code', () => {
       );
     });
 
+    it('the purge of an old session never bans a key that signed in again since', async () => {
+      const person = await makePerson();
+      const r = await joinAs(person);
+      // Suspended, approved again with the same key, then both old: only the first is over a year old.
+      await pool.query("UPDATE app_sessions SET absolute_expires_at = NOW() - INTERVAL '1 second' WHERE node_id = $1", [
+        r.grant.node_id
+      ]);
+      await AppAuth().sweepStanding();
+      assert.ok((await sessionRow(r)).revoked_at, 'the app was not suspended');
+      const back = await signIn(person.token, { public_key_hex: r.key });
+      const reg = await register(app, {
+        public_key_hex: r.key,
+        role: 'CLIENT_ORIGIN',
+        preauth_key: back.grant.preauth_key
+      });
+      assert.strictEqual(reg.status, 200, JSON.stringify(reg.body));
+      await pool.query(
+        "UPDATE app_sessions SET revoked_at = NOW() - INTERVAL '400 days', created_at = NOW() - INTERVAL '500 days' WHERE node_id = $1 AND revoked_at IS NOT NULL",
+        [r.grant.node_id]
+      );
+      await AppAuth().purgeAppRows();
+      assert.strictEqual(await banned(r.key), false, 'the key of a live app was banned by the purge');
+      const rows = await pool.query('SELECT revoked_at FROM app_sessions WHERE node_id = $1', [r.grant.node_id]);
+      assert.deepStrictEqual(
+        rows.rows.map((row) => row.revoked_at),
+        [null],
+        'the old row stayed, or the live one went'
+      );
+      assert.ok(await node(r.grant.node_id), 'the node of a live app was removed');
+    });
+
     it('a suspended app that is also a profile gateway keeps its node, as removing it would cut every device behind it', async () => {
       const person = await makePerson();
       const r = await joinAs(person);

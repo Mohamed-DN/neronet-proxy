@@ -912,6 +912,17 @@ async function purgeAppRows() {
         EnrollmentService.transaction(async (client) => {
           const s = (await client.query('SELECT * FROM app_sessions WHERE id = $1 FOR UPDATE', [row.id])).rows[0];
           if (!s || s.banned || !s.revoked_at) return;
+          // Only the newest session of a key speaks for it. An older one was superseded, or suspended and
+          // approved again since: its row goes, and the key of an app in use is not banned.
+          const later = await client.query(
+            `SELECT 1 FROM app_sessions
+              WHERE installation_public_key = $1 AND id <> $2 AND created_at >= $3 LIMIT 1`,
+            [s.installation_public_key, s.id, s.created_at]
+          );
+          if (later.rows.length > 0) {
+            await client.query('DELETE FROM app_sessions WHERE id = $1', [s.id]);
+            return;
+          }
           await client.query('UPDATE app_sessions SET banned = TRUE WHERE id = $1', [s.id]);
           await banKey(client, s, 'suspension_expired');
           await cutSessionNode(client, s, { reason: 'app_session_revoked', actorId: null });
