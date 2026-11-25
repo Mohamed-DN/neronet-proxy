@@ -60,6 +60,9 @@ type dataplaneOptions struct {
 	// VLESS + REALITY terminator (ADR 0036, vless.go). Empty keeps the method off.
 	VLESSSocksListen string
 	VLESSSocksAddr   string
+	// VLESSListen and VLESSAcceptProxy move the socket Xray binds (vless_listen.go).
+	VLESSListen      string
+	VLESSAcceptProxy bool
 	XrayConfig       string
 
 	// ExitDNS is the resolver that answers exit clients' DNS. The zero value means the host's own.
@@ -226,6 +229,9 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		return nil, err
 	}
 	manager.SetAWG(awgPort, opts.AWGParams)
+	if err := manager.SetVLESSListen(opts.VLESSListen, opts.VLESSAcceptProxy); err != nil {
+		return nil, err
+	}
 	stopVLESS, err := startVLESS(manager, opts.VLESSSocksListen, opts.VLESSSocksAddr, opts.XrayConfig)
 	if err != nil {
 		dev.Close()

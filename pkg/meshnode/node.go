@@ -45,6 +45,8 @@ type Params struct {
 	VLESSPort        int
 	VLESSSocksListen string
 	VLESSSocksAddr   string
+	VLESSListen      string // where Xray binds, when it is not the public port
+	VLESSAcceptProxy bool
 	XrayConfig       string
 	SpikePeers       string
 	OverlayEchoPort  int
@@ -65,6 +67,9 @@ type Params struct {
 	ProxyAllowUnauthenticated bool
 	RegistrationToken         string
 	EnrolmentKey              string
+	// OnEnrolled runs once the control plane has accepted the registration; the binary uses it to
+	// remove a single-use enrolment key file. May be nil.
+	OnEnrolled func()
 }
 
 // DeclaredLocation is the operator's stated city and position (not measured).
@@ -280,6 +285,9 @@ func Start(parent context.Context, p Params) (*Handle, error) {
 	if err != nil {
 		log.Printf("[SOVEREIGN-NODE] Warning: Initial control plane registration failed: %v (operating in local standalone mode)", err)
 	} else {
+		if p.OnEnrolled != nil {
+			p.OnEnrolled()
+		}
 		// Adopt the identifier the control plane assigned. Keeping the locally derived
 		// one meant heartbeats were addressed to a node id the control plane had never
 		// stored, so every update matched zero rows while still returning success.
@@ -798,6 +806,8 @@ func (p Params) operatorOptions() dataplaneOptions {
 
 		VLESSSocksListen: p.VLESSSocksListen,
 		VLESSSocksAddr:   p.VLESSSocksAddr,
+		VLESSListen:      p.VLESSListen,
+		VLESSAcceptProxy: p.VLESSAcceptProxy,
 		XrayConfig:       p.XrayConfig,
 	}
 }

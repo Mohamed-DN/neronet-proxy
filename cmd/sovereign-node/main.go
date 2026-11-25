@@ -26,6 +26,8 @@ func main() {
 	vlessPort := config.BindIntFlag(flag.CommandLine, "vless-port", "SOVEREIGN_VLESS_PORT", 0, "Public TCP port of the gateway's VLESS + REALITY terminator (Xray); 0 keeps the method off. The REALITY parameters come from the netmap")
 	vlessSocksListen := config.BindStringFlag(flag.CommandLine, "vless-socks-listen", "SOVEREIGN_VLESS_SOCKS_LISTEN", "", "Listen address of the per-device SOCKS5 the Xray terminator connects to (e.g. :1081); empty keeps VLESS off")
 	vlessSocksAddr := config.BindStringFlag(flag.CommandLine, "vless-socks-addr", "SOVEREIGN_VLESS_SOCKS_ADDR", "", "host:port at which the Xray container reaches the device SOCKS5 (e.g. gateway:1081)")
+	vlessListen := config.BindStringFlag(flag.CommandLine, "vless-listen", "SOVEREIGN_VLESS_LISTEN", "", "host:port Xray binds, e.g. 127.0.0.1:8445 behind an SNI router; empty binds the public port on every interface. -vless-port stays the port reported to the console")
+	vlessAcceptProxy := config.BindBoolFlag(flag.CommandLine, "vless-accept-proxy", "SOVEREIGN_VLESS_ACCEPT_PROXY", false, "Xray reads a PROXY protocol header from the router so per-address limits see the client; only with -vless-listen on loopback")
 	xrayConfig := config.BindStringFlag(flag.CommandLine, "xray-config", "SOVEREIGN_XRAY_CONFIG", "", "Path of the Xray configuration the node writes for the terminator; empty keeps VLESS off")
 	spikePeers := config.BindStringFlag(flag.CommandLine, "spike-peers", "SOVEREIGN_SPIKE_PEERS", "", "Path to the WP-201 spike peers document")
 	overlayEchoPort := config.BindIntFlag(flag.CommandLine, "overlay-echo-port", "SOVEREIGN_OVERLAY_ECHO_PORT", 0, "TCP port answering on this node's overlay address; 0 disables it")
@@ -49,6 +51,11 @@ func main() {
 		log.Fatalf("Failed to start data plane: %v", err)
 	}
 
+	enrolmentKey, onEnrolled, err := meshnode.EnrolmentKeyFromEnv()
+	if err != nil {
+		log.Fatalf("Cannot use the enrolment key: %v", err)
+	}
+
 	meshnode.Run(meshnode.Params{
 		SocksAddr:        *socksAddr,
 		HTTPAddr:         *httpAddr,
@@ -63,6 +70,8 @@ func main() {
 		VLESSPort:        *vlessPort,
 		VLESSSocksListen: *vlessSocksListen,
 		VLESSSocksAddr:   *vlessSocksAddr,
+		VLESSListen:      *vlessListen,
+		VLESSAcceptProxy: *vlessAcceptProxy,
 		XrayConfig:       *xrayConfig,
 		SpikePeers:       *spikePeers,
 		OverlayEchoPort:  *overlayEchoPort,
@@ -82,6 +91,7 @@ func main() {
 		ProxyPassword:             os.Getenv("SOVEREIGN_PROXY_PASSWORD"),
 		ProxyAllowUnauthenticated: os.Getenv("SOVEREIGN_PROXY_ALLOW_UNAUTHENTICATED") == "true",
 		RegistrationToken:         os.Getenv("SOVEREIGN_REGISTRATION_TOKEN"),
-		EnrolmentKey:              os.Getenv("SOVEREIGN_ENROLMENT_KEY"),
+		EnrolmentKey:              enrolmentKey,
+		OnEnrolled:                onEnrolled,
 	})
 }

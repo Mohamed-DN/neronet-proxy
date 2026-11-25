@@ -65,3 +65,10 @@ func AWGParamsFromEnv() (*dataplane.AWGParams, error) { return awgParamsFromEnv(
 
 // MeshDNSFromEnv is whether the node answers mesh names (SOVEREIGN_MESH_DNS): anything but off is on.
 func MeshDNSFromEnv() bool { return meshDNSEnabled() }
+
+// EnrolmentKeyFromEnv is the node's pre-auth key from SOVEREIGN_ENROLMENT_KEY or, when that is
+// unset, from the single-use file named by SOVEREIGN_ENROLMENT_KEY_FILE. The function returned
+// removes that file; the binary hands it to Params.OnEnrolled.
+func EnrolmentKeyFromEnv() (string, func(), error) {
+	return enrolmentKeySource(os.Getenv("SOVEREIGN_ENROLMENT_KEY"), os.Getenv("SOVEREIGN_ENROLMENT_KEY_FILE"))
+}

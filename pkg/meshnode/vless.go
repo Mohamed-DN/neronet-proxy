@@ -47,6 +47,7 @@ type vlessState struct {
 	enabled    bool
 	socksAddr  string // host:port the Xray container reaches the device SOCKS at
 	configPath string
+	listen     vlessListen // where Xray binds, when it is not the public port (vless_listen.go)
 	reg        *bridge.DeviceSOCKS
 	setVirtual func([]dataplane.VirtualSpec) error
 	dialerOf   func(id string) (bridge.OverlayDialer, bool)
@@ -193,11 +194,13 @@ func (m *netmapManager) reconcileVLESS(doc *control.NetmapResponse, revoked map[
 		v.say("VLESS: the SOCKS address for Xray is not host:port")
 		return
 	}
-	cfg, err := xrayconf.Render(xrayconf.Spec{
+	spec := xrayconf.Spec{
 		ListenPort: params.ListenPort, Dest: params.Dest, ServerNames: params.ServerNames,
 		PrivateKey: params.PrivateKey, ShortIDs: params.ShortIDs,
 		SocksHost: host, SocksPort: uint16(port), Clients: clients,
-	})
+	}
+	v.listen.apply(&spec)
+	cfg, err := xrayconf.Render(spec)
 	if err != nil {
 		// The error names fields, never values. Nothing is served without a config.
 		v.removeConfig()
