@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -76,7 +77,85 @@ func BindLocationFlags(fs *flag.FlagSet) func() (DeclaredLocation, error) {
 
 // Run is the node: it starts everything the binary starts, from the values in p, and blocks until the
 // process is asked to stop.
+// Options is what Start needs: the same values the binary hands to Run. It reads no flag and no
+// environment variable.
+type Options = Params
+
+// Handle is a running node.
+type Handle struct {
+	nodeID  *currentNodeID
+	regResp *control.RegisterResponse
+	netmaps *netmapHolder
+	proxies []interface{ Close() error }
+	closers []func()
+	once    sync.Once
+}
+
+// NodeID is the identifier the control plane assigned (it follows a re-enrolment); empty when the node
+// runs standalone because registration failed.
+func (h *Handle) NodeID() string { return h.nodeID.Get() }
+
+// Overlay is the node's overlay addresses, empty when registration failed.
+func (h *Handle) Overlay() (v4, v6 string) {
+	if h.regResp == nil {
+		return "", ""
+	}
+	return h.regResp.OverlayIPv4, h.regResp.OverlayIPv6
+}
+
+// NetmapVersion is the version of the netmap the node runs on, 0 before it has one.
+func (h *Handle) NetmapVersion() uint64 {
+	if m := h.netmaps.get(); m != nil {
+		return m.Version()
+	}
+	return 0
+}
+
+// Stop ends everything Start began: the local proxies first, then the rest in the reverse order.
+func (h *Handle) Stop() {
+	h.once.Do(func() {
+		for _, c := range h.proxies {
+			_ = c.Close()
+		}
+		for i := len(h.closers) - 1; i >= 0; i-- {
+			h.closers[i]()
+		}
+	})
+}
+
+// Run is the node binary: it starts the node from the values in p and blocks until the process is
+// asked to stop.
 func Run(p Params) {
+	h, err := Start(context.Background(), p)
+	if err != nil {
+		log.Fatal(err)
+	}
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	<-sigChan
+
+	log.Println("[SOVEREIGN-NODE] Shutting down mesh node...")
+	h.Stop()
+	fmt.Println("Sovereign node stopped cleanly.")
+}
+
+// Start brings the node up and returns once it is running: the local proxies (when their addresses are
+// set), registration with the control plane, the heartbeat loop, the WireGuard data plane and, when
+// asked, the NeroDrop mailbox. It never ends the process and never waits for a signal; a failure is
+// returned after whatever was already started has been stopped. The node runs until Stop, or until
+// parent ends.
+func Start(parent context.Context, p Params) (*Handle, error) {
+	var proxies []interface{ Close() error }
+	var closers []func()
+	fail := func(err error) (*Handle, error) {
+		for _, c := range proxies {
+			_ = c.Close()
+		}
+		for i := len(closers) - 1; i >= 0; i-- {
+			closers[i]()
+		}
+		return nil, err
+	}
 	log.Printf("[SOVEREIGN-NODE] Initializing SovereignMesh client daemon (%s)...", ClientVersion)
 
 	location := p.Location
@@ -84,7 +163,7 @@ func Run(p Params) {
 	// Load, or create once, this node's identity keypair.
 	keypair, err := loadOrCreateIdentity(p.IdentityPath)
 	if err != nil {
-		log.Fatalf("Failed to establish node identity: %v", err)
+		return fail(fmt.Errorf("Failed to establish node identity: %v", err))
 	}
 
 	nodeID := control.GenerateNodeID(keypair.PublicKey)
@@ -109,31 +188,37 @@ func Run(p Params) {
 	proxyUser, proxyPass := p.ProxyUsername, p.ProxyPassword
 	if proxyUser == "" && proxyPass == "" && !p.ProxyAllowUnauthenticated {
 		for _, addr := range []string{p.SocksAddr, p.HTTPAddr} {
-			if !isLoopbackListen(addr) {
-				log.Fatalf("Refusing to start: proxy listen address %s is not loopback and SOVEREIGN_PROXY_USERNAME/PASSWORD are unset (set SOVEREIGN_PROXY_ALLOW_UNAUTHENTICATED=true to accept an open proxy)", addr)
+			if addr != "" && !isLoopbackListen(addr) {
+				return fail(fmt.Errorf("Refusing to start: proxy listen address %s is not loopback and SOVEREIGN_PROXY_USERNAME/PASSWORD are unset (set SOVEREIGN_PROXY_ALLOW_UNAUTHENTICATED=true to accept an open proxy)", addr))
 			}
 		}
 	}
 
 	// Start Inbound SOCKS5 Proxy
-	socksSrv := bridge.NewSOCKS5Server(p.SocksAddr, netstackBridge)
-	if proxyUser != "" || proxyPass != "" {
-		socksSrv.SetCredentials(proxyUser, proxyPass)
+	if p.SocksAddr != "" {
+		socksSrv := bridge.NewSOCKS5Server(p.SocksAddr, netstackBridge)
+		if proxyUser != "" || proxyPass != "" {
+			socksSrv.SetCredentials(proxyUser, proxyPass)
+		}
+		if err := socksSrv.Start(); err != nil {
+			return fail(fmt.Errorf("Failed to start SOCKS5 proxy on %s: %v", p.SocksAddr, err))
+		}
+		proxies = append(proxies, socksSrv)
+		log.Printf("[SOVEREIGN-NODE] SOCKS5 Inbound ready on %s", p.SocksAddr)
 	}
-	if err := socksSrv.Start(); err != nil {
-		log.Fatalf("Failed to start SOCKS5 proxy on %s: %v", p.SocksAddr, err)
-	}
-	log.Printf("[SOVEREIGN-NODE] SOCKS5 Inbound ready on %s", p.SocksAddr)
 
 	// Start Inbound HTTP CONNECT Proxy
-	httpSrv := bridge.NewHTTPProxyServer(p.HTTPAddr, netstackBridge)
-	if proxyUser != "" || proxyPass != "" {
-		httpSrv.SetCredentials(proxyUser, proxyPass)
+	if p.HTTPAddr != "" {
+		httpSrv := bridge.NewHTTPProxyServer(p.HTTPAddr, netstackBridge)
+		if proxyUser != "" || proxyPass != "" {
+			httpSrv.SetCredentials(proxyUser, proxyPass)
+		}
+		if err := httpSrv.Start(); err != nil {
+			return fail(fmt.Errorf("Failed to start HTTP proxy on %s: %v", p.HTTPAddr, err))
+		}
+		proxies = append(proxies, httpSrv)
+		log.Printf("[SOVEREIGN-NODE] HTTP CONNECT Inbound ready on %s", p.HTTPAddr)
 	}
-	if err := httpSrv.Start(); err != nil {
-		log.Fatalf("Failed to start HTTP proxy on %s: %v", p.HTTPAddr, err)
-	}
-	log.Printf("[SOVEREIGN-NODE] HTTP CONNECT Inbound ready on %s", p.HTTPAddr)
 
 	// Start Prometheus Metrics Exporter (if configured)
 	metricsSrv, err := startMetricsServer(p.MetricsAddr)
@@ -141,13 +226,13 @@ func Run(p Params) {
 		log.Printf("[SOVEREIGN-NODE] Warning: Failed to start metrics server on %s: %v", p.MetricsAddr, err)
 	}
 	if metricsSrv != nil {
-		defer metricsSrv.Close()
+		closers = append(closers, func() { _ = metricsSrv.Close() })
 	}
 
 	// Register with Control Plane
 	ctrlClient, err := newControlClient(p.ControlURL, p.ControlCA)
 	if err != nil {
-		log.Fatalf("Cannot set up the control plane connection: %v", err)
+		return fail(fmt.Errorf("Cannot set up the control plane connection: %v", err))
 	}
 	ctrlClient.SetAuthToken(p.RegistrationToken)
 	// A pre-auth key from the console, as issued ("nnk1:<key>:<fingerprint>"). Either
@@ -159,8 +244,8 @@ func Run(p Params) {
 		role = "EXIT_BRIDGE"
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancel(parent)
+	closers = append(closers, cancel)
 
 	// The heartbeat loop starts as soon as registration succeeds; the data plane comes
 	// up after it, because it needs the overlay addresses registration returned. This
@@ -170,7 +255,7 @@ func Run(p Params) {
 
 	declaredCountry, countryErr := normaliseCountry(p.CountryCode)
 	if countryErr != nil {
-		log.Fatalf("Invalid -country: %v", countryErr)
+		return fail(fmt.Errorf("Invalid -country: %v", countryErr))
 	}
 	p.CountryCode = declaredCountry
 	if declaredCountry == "" {
@@ -186,7 +271,7 @@ func Run(p Params) {
 	dropEnabled := p.DropListen != ""
 	awgAdvert, awgErr := awgListenPort(p.AWGListen)
 	if awgErr != nil {
-		log.Fatalf("Invalid -awg-listen: %v", awgErr)
+		return fail(fmt.Errorf("Invalid -awg-listen: %v", awgErr))
 	}
 	vlessAdvert := vlessAdvertisedPort(p.VLESSPort, p.VLESSSocksListen, p.VLESSSocksAddr, p.XrayConfig)
 	dropNode := &currentNodeID{}
@@ -400,14 +485,14 @@ func Run(p Params) {
 		MeshDNS:      p.MeshDNS,
 	})
 	if dpErr != nil {
-		log.Fatalf("Failed to start data plane: %v", dpErr)
+		return fail(fmt.Errorf("Failed to start data plane: %v", dpErr))
 	}
-	defer stopDataplane()
+	closers = append(closers, stopDataplane)
 
 	if dropEnabled {
 		maxAge, ageErr := time.ParseDuration(p.DropMaxAge)
 		if ageErr != nil || maxAge <= 0 {
-			log.Fatalf("Invalid -drop-max-age %q: want a positive duration such as 168h", p.DropMaxAge)
+			return fail(fmt.Errorf("Invalid -drop-max-age %q: want a positive duration such as 168h", p.DropMaxAge))
 		}
 		stopDrop, dropErr := startDrop(ctx, dropOptions{
 			Listen:     p.DropListen,
@@ -419,19 +504,12 @@ func Run(p Params) {
 			NodeID:     dropNode,
 		})
 		if dropErr != nil {
-			log.Fatalf("Failed to start the NeroDrop mailbox: %v", dropErr)
+			return fail(fmt.Errorf("Failed to start the NeroDrop mailbox: %v", dropErr))
 		}
-		defer stopDrop()
+		closers = append(closers, stopDrop)
 	}
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	<-sigChan
-
-	log.Println("[SOVEREIGN-NODE] Shutting down mesh node...")
-	_ = socksSrv.Close()
-	_ = httpSrv.Close()
-	fmt.Println("Sovereign node stopped cleanly.")
+	return &Handle{nodeID: dropNode, regResp: regResp, netmaps: netmaps, proxies: proxies, closers: closers}, nil
 }
 
 // osReleasePath is the file the OS version is read from on Linux. It is a variable
