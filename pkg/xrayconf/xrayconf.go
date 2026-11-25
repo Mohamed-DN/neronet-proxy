@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"regexp"
 	"sort"
 )
@@ -31,14 +32,22 @@ type Client struct {
 
 // Spec is everything the file depends on.
 type Spec struct {
-	ListenPort  uint16
-	Dest        string   // REALITY fallback target, host:port
-	ServerNames []string // SNI values REALITY accepts
-	PrivateKey  string   // REALITY private key, 43 base64url characters
-	ShortIDs    []string // even-length hex, at most 16 characters
-	SocksHost   string   // where the gateway's device SOCKS listens, as seen from Xray
-	SocksPort   uint16
-	Clients     []Client
+	// ListenPort is the port Xray binds. ListenHost is the address it binds; empty means
+	// every interface ("0.0.0.0"), which is what every gateway has always rendered. A host
+	// behind an SNI router binds loopback and the router owns the public port.
+	ListenHost string
+	ListenPort uint16
+	// AcceptProxyProtocol makes Xray read a PROXY protocol header from the peer, so that
+	// per-address limits see the client's address rather than the router's. Only valid
+	// while ListenHost is a loopback address: from anywhere else the header can be forged.
+	AcceptProxyProtocol bool
+	Dest                string   // REALITY fallback target, host:port
+	ServerNames         []string // SNI values REALITY accepts
+	PrivateKey          string   // REALITY private key, 43 base64url characters
+	ShortIDs            []string // even-length hex, at most 16 characters
+	SocksHost           string   // where the gateway's device SOCKS listens, as seen from Xray
+	SocksPort           uint16
+	Clients             []Client
 }
 
 var (
@@ -60,6 +69,17 @@ func (s Spec) validate() error {
 		return errors.New("xrayconf: no short id")
 	case s.SocksHost == "" || s.SocksPort == 0:
 		return errors.New("xrayconf: the gateway's SOCKS address is not set")
+	}
+	if s.ListenHost != "" {
+		addr, err := netip.ParseAddr(s.ListenHost)
+		if err != nil {
+			return errors.New("xrayconf: the listen host is not an IP address")
+		}
+		if s.AcceptProxyProtocol && !addr.IsLoopback() {
+			return errors.New("xrayconf: PROXY protocol is accepted only when listening on loopback")
+		}
+	} else if s.AcceptProxyProtocol {
+		return errors.New("xrayconf: PROXY protocol is accepted only when listening on loopback")
 	}
 	if _, port, err := net.SplitHostPort(s.Dest); err != nil || port == "" {
 		return errors.New("xrayconf: dest must be host:port")
@@ -126,27 +146,36 @@ func Render(s Spec) ([]byte, error) {
 	}
 	rules = append(rules, obj{"type": "field", "inboundTag": []string{"reality-in"}, "outboundTag": "block"})
 
+	listen := "0.0.0.0"
+	if s.ListenHost != "" {
+		listen = s.ListenHost
+	}
+	stream := obj{
+		"network":  "tcp",
+		"security": "reality",
+		"realitySettings": obj{
+			"show":        false,
+			"dest":        s.Dest,
+			"xver":        0,
+			"serverNames": s.ServerNames,
+			"privateKey":  s.PrivateKey,
+			"shortIds":    s.ShortIDs,
+		},
+	}
+	if s.AcceptProxyProtocol {
+		stream["sockopt"] = obj{"acceptProxyProtocol": true}
+	}
+
 	cfg := obj{
 		"log": obj{"loglevel": "warning"},
 		"inbounds": []any{obj{
-			"tag":      "reality-in",
-			"listen":   "0.0.0.0",
-			"port":     int(s.ListenPort),
-			"protocol": "vless",
-			"settings": obj{"clients": vclients, "decryption": "none"},
-			"streamSettings": obj{
-				"network":  "tcp",
-				"security": "reality",
-				"realitySettings": obj{
-					"show":        false,
-					"dest":        s.Dest,
-					"xver":        0,
-					"serverNames": s.ServerNames,
-					"privateKey":  s.PrivateKey,
-					"shortIds":    s.ShortIDs,
-				},
-			},
-			"sniffing": obj{"enabled": false},
+			"tag":            "reality-in",
+			"listen":         listen,
+			"port":           int(s.ListenPort),
+			"protocol":       "vless",
+			"settings":       obj{"clients": vclients, "decryption": "none"},
+			"streamSettings": stream,
+			"sniffing":       obj{"enabled": false},
 		}},
 		"outbounds": outbounds,
 		"routing":   obj{"domainStrategy": "AsIs", "rules": rules},

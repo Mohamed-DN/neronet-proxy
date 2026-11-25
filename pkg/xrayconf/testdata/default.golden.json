@@ -1,0 +1,115 @@
+{
+  "inbounds": [
+    {
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "email": "dev-a",
+            "flow": "xtls-rprx-vision",
+            "id": "6f0f2a6e-1c5b-4f43-9a52-0b3c1d2e4f60"
+          },
+          {
+            "email": "dev-b",
+            "flow": "xtls-rprx-vision",
+            "id": "0a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+          }
+        ],
+        "decryption": "none"
+      },
+      "sniffing": {
+        "enabled": false
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "realitySettings": {
+          "dest": "www.example.com:443",
+          "privateKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "serverNames": [
+            "www.example.com"
+          ],
+          "shortIds": [
+            "0123456789abcdef"
+          ],
+          "show": false,
+          "xver": 0
+        },
+        "security": "reality"
+      },
+      "tag": "reality-in"
+    }
+  ],
+  "log": {
+    "loglevel": "warning"
+  },
+  "outbounds": [
+    {
+      "protocol": "blackhole",
+      "tag": "block"
+    },
+    {
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "gateway",
+            "port": 1081,
+            "users": [
+              {
+                "pass": "pw-a",
+                "user": "dev-a"
+              }
+            ]
+          }
+        ]
+      },
+      "tag": "dev-dev-a"
+    },
+    {
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "gateway",
+            "port": 1081,
+            "users": [
+              {
+                "pass": "pw-b",
+                "user": "dev-b"
+              }
+            ]
+          }
+        ]
+      },
+      "tag": "dev-dev-b"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "outboundTag": "dev-dev-a",
+        "type": "field",
+        "user": [
+          "dev-a"
+        ]
+      },
+      {
+        "outboundTag": "dev-dev-b",
+        "type": "field",
+        "user": [
+          "dev-b"
+        ]
+      },
+      {
+        "inboundTag": [
+          "reality-in"
+        ],
+        "outboundTag": "block",
+        "type": "field"
+      }
+    ]
+  }
+}
