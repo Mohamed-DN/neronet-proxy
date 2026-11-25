@@ -838,6 +838,7 @@ func (p Params) operatorOptions() dataplaneOptions {
 		EchoPort:     uint16(p.OverlayEchoPort),
 		StunServer:   p.StunServer,
 		IdentityPath: p.IdentityPath,
+		Keypair:      p.Keypair,
 		ExitEnabled:  p.EnableExit,
 		AWGListen:    p.AWGListen,
 		ExitDNS:      p.ExitDNS,
