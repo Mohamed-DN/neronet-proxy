@@ -29,6 +29,8 @@ func TestEveryOperatorSettingReachesTheDataPlane(t *testing.T) {
 			v.SetString("set-" + f.Name)
 		case f.Type.Kind() == reflect.Bool:
 			v.SetBool(true)
+		case f.Type.Kind() == reflect.Func:
+			v.Set(reflect.MakeFunc(f.Type, func([]reflect.Value) []reflect.Value { return nil }))
 		case f.Type.Kind() == reflect.Pointer:
 			v.Set(reflect.New(f.Type.Elem()))
 		default:

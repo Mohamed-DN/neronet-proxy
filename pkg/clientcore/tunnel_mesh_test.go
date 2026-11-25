@@ -3,6 +3,7 @@ package clientcore
 import (
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -164,5 +165,80 @@ func TestSuspensionFromTheTunnelKeepsKeysAndAsksForANewSignIn(t *testing.T) {
 	}
 	if _, err := store.LoadKey(aliasToken); err == nil {
 		t.Error("token kept")
+	}
+}
+
+func tunTunnel(t *testing.T, r *recordedRunner, start func(context.Context, meshnode.Options) (nodeHandle, error)) *MeshTunnel {
+	t.Helper()
+	tun, err := NewMeshTunnel(MeshConfig{ControlURL: "https://console.example.com", StateDir: t.TempDir(), DataplaneMode: "tun"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ns := NewNameService(hostWith(r, "resolvectl"))
+	ns.listen = func(string) (net.PacketConn, error) { return net.ListenPacket("udp4", "127.0.0.1:0") }
+	tun.names = ns
+	tun.start = start
+	tun.poll = 5 * time.Millisecond
+	return tun
+}
+
+func TestMeshTunnelInTUNModeResolvesMeshNamesForTheWholeComputerAndTakesThemBackOnDown(t *testing.T) {
+	r := &recordedRunner{}
+	var got meshnode.Options
+	node := &fakeNode{}
+	node.ready.Store(true)
+	tun := tunTunnel(t, r, func(_ context.Context, o meshnode.Options) (nodeHandle, error) { got = o; return node, nil })
+	if err := tun.Up(context.Background(), UpRequest{Method: MethodWireGuard, Key: testKey()}); err != nil {
+		t.Fatal(err)
+	}
+	if got.OnNames == nil {
+		t.Fatal("the node was not asked for the names of its netmap")
+	}
+	if st := tun.Names(); st.Status != NamesOK || st.Method != "systemd-resolved" {
+		t.Errorf("%+v", st)
+	}
+	if err := tun.Down(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if last := r.calls[len(r.calls)-1]; last != "resolvectl revert nero0" {
+		t.Errorf("the system was not given its resolver back: %q", r.calls)
+	}
+	if st := tun.Names(); st.Status != NamesOff {
+		t.Errorf("after Down: %+v", st)
+	}
+}
+
+func TestMeshTunnelInNetstackModeDoesNotTouchTheSystemResolver(t *testing.T) {
+	var got meshnode.Options
+	node := &fakeNode{}
+	node.ready.Store(true)
+	tun := tunnelWith(t, func(_ context.Context, o meshnode.Options) (nodeHandle, error) { got = o; return node, nil })
+	if err := tun.Up(context.Background(), UpRequest{Method: MethodWireGuard, Key: testKey()}); err != nil {
+		t.Fatal(err)
+	}
+	if got.OnNames != nil {
+		t.Error("netstack mode has no interface to resolve for")
+	}
+	if st := tun.Names(); st.Status != NamesOff {
+		t.Errorf("%+v", st)
+	}
+}
+
+type namedTunnel struct {
+	fakeTunnel
+	names NamesState
+}
+
+func (n *namedTunnel) Names() NamesState { return n.names }
+
+func TestCoreReportsWhatTheTunnelSaysAboutNames(t *testing.T) {
+	tun := &namedTunnel{names: NamesState{Status: NamesNotSetUp, Reason: "no resolver tool"}}
+	core, _ := signedInCore(t, tun)
+	if err := core.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	st := core.State()
+	if st.Names == nil || st.Names.Status != NamesNotSetUp || st.Names.Reason != "no resolver tool" {
+		t.Errorf("%+v", st.Names)
 	}
 }

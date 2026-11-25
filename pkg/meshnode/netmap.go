@@ -71,6 +71,7 @@ type netmapManager struct {
 	// the mesh names of the last document; meshDNSEnabled is SOVEREIGN_MESH_DNS and
 	// meshDNSUpstream the resolver for every other name. Guarded by applyMu.
 	setMeshDNS      func(*dataplane.MeshDNS) error
+	namesSink       NamesSink
 	names           *dns.Server
 	meshDNSEnabled  bool
 	meshDNSUpstream netip.AddrPort

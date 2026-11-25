@@ -23,10 +23,25 @@ func (m *netmapManager) SetMeshDNS(enabled bool, upstream netip.AddrPort) {
 	m.applyMu.Unlock()
 }
 
+// NamesSink is told the mesh names of the netmap in force: the document and the peers that are kept
+// (a revoked or dropped peer is not among them). It is called with nil and no peers when the netmap
+// goes stale, so that whoever resolves names for a computer stops answering from a document that no
+// longer holds.
+type NamesSink func(doc *control.NetmapResponse, peers []control.NetmapPeer)
+
+// SetNamesSink hands the names of every applied netmap to sink. It is independent of SetMeshDNS: a node
+// that resolves names for its own computer serves no device and answers none for others.
+func (m *netmapManager) SetNamesSink(sink NamesSink) {
+	m.applyMu.Lock()
+	m.namesSink = sink
+	m.applyMu.Unlock()
+}
+
 // installMeshDNS gives the data plane the names of the document's peers. A node that
 // serves no profile device, or has the feature off, installs none, which removes the
 // resolver. Callers hold applyMu.
 func (m *netmapManager) installMeshDNS(doc *control.NetmapResponse, kept []dataplane.Peer) {
+	m.tellNamesSink(doc, kept)
 	if m.setMeshDNS == nil {
 		return
 	}
@@ -58,4 +73,25 @@ func (m *netmapManager) installMeshDNS(doc *control.NetmapResponse, kept []datap
 		// The names stop resolving; nothing that carries traffic depends on them.
 		log.Printf("[SOVEREIGN-NODE] Mesh names: could not install the resolver: %v", err)
 	}
+}
+
+func (m *netmapManager) tellNamesSink(doc *control.NetmapResponse, kept []dataplane.Peer) {
+	if m.namesSink == nil {
+		return
+	}
+	if doc == nil {
+		m.namesSink(nil, nil)
+		return
+	}
+	keptKeys := make(map[string]bool, len(kept))
+	for _, p := range kept {
+		keptKeys[normaliseKey(p.PublicKey)] = true
+	}
+	peers := make([]control.NetmapPeer, 0, len(doc.Peers))
+	for _, p := range doc.Peers {
+		if keptKeys[normaliseKey(p.PublicKeyHex)] {
+			peers = append(peers, p)
+		}
+	}
+	m.namesSink(doc, peers)
 }

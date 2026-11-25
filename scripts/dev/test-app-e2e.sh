@@ -47,6 +47,7 @@ export NERONET_MAX_NETMAP_STALENESS_SECONDS=${NERONET_MAX_NETMAP_STALENESS_SECON
 PROJECT=$COMPOSE_PROJECT_NAME
 NET="${PROJECT}_neronet-isolated-mesh"
 APP="${PROJECT}-app"
+CANARY="${PROJECT}-canary"
 IMAGE="${PROJECT}-app:dev"
 STACK="sh scripts/dev/stack.sh"
 SOCKET=/run/neronet/10001/core.sock
@@ -78,7 +79,7 @@ cleanup() {
   rc=$?
   if [ "$KEEP" -eq 0 ]; then
     echo "== removing $PROJECT"
-    $ENGINE rm -f "$APP" > /dev/null 2>&1 || true
+    $ENGINE rm -f "$APP" "$CANARY" > /dev/null 2>&1 || true
     $STACK down -v > /dev/null 2>&1 || true
     $ENGINE rmi -f "$IMAGE" > /dev/null 2>&1 || true
   else
@@ -110,7 +111,7 @@ SVC_UID=10001
 [ "$TUN" -eq 0 ] || SVC_UID=0
 ctl() { $ENGINE exec --user 10001 "$APP" /bin/neronet-appctl -socket "$SOCKET" -service-uid "$SVC_UID" "$@"; }
 
-field() { sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p" | head -1; }
+field() { grep -o "\"$1\":\"[^\"]*\"" | head -1 | cut -d'"' -f4; }
 
 phase() { ctl state 2> /dev/null | field phase; }
 
@@ -184,6 +185,18 @@ until ctl state > /dev/null 2>&1; do
   }
   sleep 1
 done
+if [ "$TUN" -eq 1 ]; then
+  # The rest of the internet, as far as names go: a resolver that logs what it is asked. The container's
+  # own resolver is registered with resolvconf the way a distribution's network manager would, so that
+  # resolvconf owns /etc/resolv.conf and the service can add its entry beside it.
+  $ENGINE run -d --name "$CANARY" --network "$NET" -v "$(HOST_PATH scripts/dev/scenarios)":/scenarios:ro     docker.io/library/node:22 node /scenarios/dns-canary.mjs > /dev/null
+  CANARY_IP=$($ENGINE inspect -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}" "$CANARY")
+  [ -n "$CANARY_IP" ] || die "the canary resolver has no address"
+  # The stack's own names (the console, the nodes) keep resolving from /etc/hosts: the canary answers
+  # everything with one address, and the container's resolver is replaced by it below.
+  sh_in 'for h in frontend backend gateway relay-de client-it client-es; do a=$(getent ahostsv4 $h | head -1 | cut -d" " -f1); [ -z "$a" ] || echo "$a $h" >> /etc/hosts; done'
+  sh_in "echo 'nameserver $CANARY_IP' | resolvconf -a eth0.inet"
+fi
 [ "$(phase)" = signed_out ] && pass "the app starts signed out" || fail "the app did not start signed out: $(phase)"
 
 echo "== a person with an authenticator"
@@ -243,20 +256,57 @@ if [ "$TUN" -eq 1 ]; then
   diff "$WORK/routes.before" "$WORK/routes.during" > /dev/null && pass "every other route is as it was, the decoy route included" || fail "routes changed: $(diff "$WORK/routes.before" "$WORK/routes.during" | tr '
 ' ';')"
 
+
+  echo "== names for the whole computer"
+  NAME=$(head -1 "$WORK/peers.txt" | cut -d' ' -f3)
+  ctl state > "$WORK/state.json"
+  grep -q '"names":{"status":"ok","method":"resolvconf"}' "$WORK/state.json" \
+    && pass "the app reports mesh names as set up (resolvconf)" || fail "names state: $(cat "$WORK/state.json")"
+  sh_in 'cat /etc/resolv.conf' > "$WORK/resolv.during"
+  [ "$(grep '^nameserver' "$WORK/resolv.during" | head -1)" = "nameserver 100.100.100.100" ] \
+    && grep -q "nameserver $CANARY_IP" "$WORK/resolv.during" \
+    && pass "the mesh resolver is first, and the system's own resolver is still listed" || fail "resolv.conf: $(tr '\n' ';' < "$WORK/resolv.during")"
+  $ENGINE logs "$CANARY" > "$WORK/canary.before" 2>&1
+  if sh_in "getent ahostsv4 $NAME.mesh" > "$WORK/name.out" 2>&1 && grep -q "^$PEER " "$WORK/name.out"; then
+    pass "$NAME.mesh resolves to $PEER with the system's own resolver"
+  else
+    fail "$NAME.mesh did not resolve to $PEER: $(cat "$WORK/name.out")"
+  fi
+  if reach "$NAME.mesh" byname; then pass "real TCP to $NAME.mesh, by name: $(cat "$WORK/echo.out")"; else fail "by name: $(cat "$WORK/echo.out")"; fi
+  if sh_in 'getent hosts ghost.mesh' > /dev/null 2>&1; then fail "an unknown mesh name resolved"; else pass "an unknown mesh name does not resolve"; fi
+  sh_in 'getent hosts ghost-single-label' > /dev/null 2>&1 && fail "an unknown short name resolved" || pass "an unknown short name does not resolve"
+  if sh_in 'getent hosts example.org' > "$WORK/ext.out" 2>&1 && grep -q '^203.0.113.80' "$WORK/ext.out"; then
+    pass "a name outside the mesh still resolves through the system's own resolver"
+  else
+    fail "an outside name did not resolve: $(cat "$WORK/ext.out")"
+  fi
+  $ENGINE logs "$CANARY" > "$WORK/canary.after" 2>&1
+  if grep -q 'ghost\|[.]mesh' "$WORK/canary.after"; then
+    fail "a mesh name leaked to the other resolver: $(grep 'ghost\|[.]mesh' "$WORK/canary.after" | head -3 | tr '\n' ';')"
+  else
+    pass "no mesh name reached the other resolver"
+  fi
+  grep -q 'example.org' "$WORK/canary.after" && pass "(and the other resolver did see the outside name)" || fail "the canary never saw example.org: the test would prove nothing"
+
   ctl disconnect > /dev/null 2>&1
   iface_gone && pass "disconnect removes the interface" || fail "nero0 is still there after disconnect"
   routes > "$WORK/routes.after"
   diff "$WORK/routes.before" "$WORK/routes.after" > /dev/null && pass "the routing table is as before the tunnel" || fail "after disconnect: $(diff "$WORK/routes.before" "$WORK/routes.after" | tr '
 ' ';')"
 
+  sh_in 'grep -c 100.100.100.100 /etc/resolv.conf' > /dev/null 2>&1 && fail "disconnect left the mesh resolver in resolv.conf" || pass "disconnect takes the mesh resolver out of resolv.conf"
+  sh_in 'getent hosts example.org' > /dev/null 2>&1 && pass "and the system's own resolver goes on answering" || fail "outside names stopped resolving after disconnect"
   ctl connect > /dev/null 2>&1 && wait_phase connected 60 || fail "connect again failed"
   sh_in 'killall -9 neronet-appd'
   iface_gone && pass "kill -9 of the service leaves no interface" || fail "nero0 survived kill -9"
   routes > "$WORK/routes.after"
   diff "$WORK/routes.before" "$WORK/routes.after" > /dev/null && pass "kill -9 leaves the routing table as it was" || fail "after kill -9: $(diff "$WORK/routes.before" "$WORK/routes.after" | tr '
 ' ';')"
+  # What a kill cannot clean up: the entry in resolv.conf outlives the interface it points at.
+  sh_in 'grep -q 100.100.100.100 /etc/resolv.conf' && echo "NOTE: after kill -9 the resolver entry is still in resolv.conf (expected: it is removed at the next start)"
   start_service
   wait_phase disconnected 60 || wait_phase connected 60 || fail "the service did not come back after kill -9: $(phase)"
+  sh_in 'grep -q 100.100.100.100 /etc/resolv.conf' && fail "the restarted service left the stale resolver entry" || pass "a restarted service removes the resolver entry a killed one left"
   [ "$(ctl state | field node_id)" = "$NODE" ] && pass "the restarted service is still the same node" || fail "restart lost the node: $(ctl state)"
   ctl connect > /dev/null 2>&1; wait_phase connected 60 || true
 
@@ -272,12 +322,9 @@ if [ "$TUN" -eq 1 ]; then
   ctl connect > /dev/null 2>&1; wait_phase connected 60 || fail "connect after the clean-up failed: $(ctl state)"
 fi
 
-echo "== by name"
-NAME=$(head -1 "$WORK/peers.txt" | cut -d' ' -f3)
-if [ -n "$NAME" ] && reach "$NAME.mesh" name; then
-  pass "reached $NAME.mesh by name"
-else
-  echo "NOT DONE: mesh names are answered by a gateway for stock WireGuard devices; an app node has no resolver for them yet"
+if [ "$TUN" -eq 0 ]; then
+  echo "== by name"
+  echo "NOT DONE: in proxy mode (no interface) mesh names are not resolved; run with --tun"
 fi
 
 echo "== suspend: an administrator revokes all of the person's sessions"

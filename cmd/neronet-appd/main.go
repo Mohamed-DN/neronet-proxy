@@ -86,6 +86,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("neronet-appd: %v", err)
 	}
+	tunnel.ClearStale()
 	core, err := clientcore.New(clientcore.Config{
 		Platform: platform(), DeviceName: name, Console: console, Enroller: clientcore.ControlEnroller{Client: ctl},
 		Tunnel: tunnel, Store: store,

@@ -65,6 +65,18 @@ type Tunnel interface {
 	KillSwitch() KillSwitchState
 }
 
+// NamesReporter is what a Tunnel that resolves mesh names for the whole computer also offers.
+type NamesReporter interface{ Names() NamesState }
+
+func (c *Core) tunnelNames() *NamesState {
+	r, ok := c.cfg.Tunnel.(NamesReporter)
+	if !ok {
+		return nil
+	}
+	st := r.Names()
+	return &st
+}
+
 // Config wires a Core. Every field is required except Sleep and PerAttempt.
 type Config struct {
 	Platform   string
@@ -447,6 +459,7 @@ func (c *Core) Connect(ctx context.Context) error {
 			s.Message = "no connection method worked"
 			s.Skipped, s.Failed = res.Skipped, res.Failed
 			s.KillSwitch = c.cfg.Tunnel.KillSwitch()
+			s.Names = c.tunnelNames()
 		})
 		return err
 	}
@@ -455,6 +468,7 @@ func (c *Core) Connect(ctx context.Context) error {
 		s.Method = res.Used
 		s.Skipped, s.Failed = res.Skipped, res.Failed
 		s.KillSwitch = c.cfg.Tunnel.KillSwitch()
+		s.Names = c.tunnelNames()
 	})
 	return nil
 }
@@ -470,6 +484,7 @@ func (c *Core) Disconnect(ctx context.Context) error {
 	c.hub.Update(func(s *State) {
 		s.Method = ""
 		s.KillSwitch = c.cfg.Tunnel.KillSwitch()
+		s.Names = c.tunnelNames()
 		if s.NodeID != "" && (s.Phase == PhaseConnected || s.Phase == PhaseConnecting || s.Phase == PhaseFailed) {
 			s.Phase = PhaseDisconnected
 		}
@@ -558,6 +573,7 @@ func (c *Core) forget(msg string) error {
 		s.Message = msg
 		s.NodeID, s.Overlay, s.Method, s.UserCode, s.VerifyPath, s.Account = "", "", "", "", "", ""
 		s.KillSwitch = c.cfg.Tunnel.KillSwitch()
+		s.Names = c.tunnelNames()
 	})
 	return failed
 }

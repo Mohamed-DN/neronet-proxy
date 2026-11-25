@@ -179,7 +179,7 @@ func controlPlanePub() string { return hex.EncodeToString(testKey().PublicKey[:]
 
 func instantSleep(ctx context.Context, _ time.Duration) error { return ctx.Err() }
 
-func newCore(t *testing.T, c *fakeConsole, e Enroller, tun *fakeTunnel) (*Core, *memStore) {
+func newCore(t *testing.T, c *fakeConsole, e Enroller, tun Tunnel) (*Core, *memStore) {
 	t.Helper()
 	st := newMemStore()
 	core, err := New(Config{Platform: "linux", DeviceName: "Test box", Console: c, Enroller: e, Tunnel: tun, Store: st, Sleep: instantSleep, PerAttempt: time.Second})
@@ -567,7 +567,7 @@ func TestSecondSignInWhileOneRunsIsRefused(t *testing.T) {
 	waitPhase(t, core, PhaseSignedOut)
 }
 
-func signedInCore(t *testing.T, tun *fakeTunnel) (*Core, *memStore) {
+func signedInCore(t *testing.T, tun Tunnel) (*Core, *memStore) {
 	core, store := newCore(t, &fakeConsole{polls: []PollResult{approved()}}, &fakeEnroller{}, tun)
 	if err := core.SignIn(context.Background()); err != nil {
 		t.Fatal(err)

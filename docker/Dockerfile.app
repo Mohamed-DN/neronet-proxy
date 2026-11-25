@@ -15,9 +15,15 @@ COPY cmd ./cmd
 RUN CGO_ENABLED=0 GOOS=linux go build -tags awg -ldflags="-s -w" -o /build/bin/neronet-appd ./cmd/neronet-appd \
  && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/neronet-appctl ./cmd/neronet-appctl
 
-FROM alpine:3.20
+# Debian, not Alpine: the service sets mesh names up through the host's own tools (systemd-resolved or
+# resolvconf), and those, with a glibc resolver that tries the next server on REFUSED, are what the
+# end-to-end scenario has to run against. openresolv provides resolvconf; psmisc provides killall.
+FROM debian:bookworm-slim
 
-RUN apk add --no-cache iproute2 && adduser -D -u 10001 neronet
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends iproute2 openresolv psmisc \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin neronet
 
 # The run directory holds one private directory per owner; the service refuses one that other users can
 # write. The state directory holds the app's keys and its stored netmap.

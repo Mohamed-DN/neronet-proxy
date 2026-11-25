@@ -52,6 +52,9 @@ type dataplaneOptions struct {
 	// Netmaps is where the heartbeat loop finds the manager once it exists.
 	Netmaps *netmapHolder
 
+	// OnNames, when set, is given the names of every netmap the node applies (see NamesSink).
+	OnNames NamesSink
+
 	// AWGListen is SOVEREIGN_AWG_LISTEN: the UDP port of the gateway's AmneziaWG device
 	// (ADR 0036). Empty keeps the method off.
 	AWGListen string
@@ -234,6 +237,7 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 
 	meshUp, _ := opts.exitResolver()
 	manager.SetMeshDNS(opts.MeshDNS, meshUp)
+	manager.SetNamesSink(opts.OnNames)
 	if !opts.MeshDNS {
 		log.Printf("[SOVEREIGN-NODE] Mesh names for profile devices are off (SOVEREIGN_MESH_DNS)")
 	}

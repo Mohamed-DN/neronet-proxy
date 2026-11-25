@@ -57,9 +57,11 @@ type Params struct {
 	DropMaxAge       string
 
 	// What the binary reads from its environment (see env.go), so that the node reads none.
-	ExitDNS                   netip.AddrPort
-	AWGParams                 *dataplane.AWGParams
-	MeshDNS                   bool
+	ExitDNS   netip.AddrPort
+	AWGParams *dataplane.AWGParams
+	MeshDNS   bool
+	// OnNames, when set, is given the names of every netmap the node applies (see NamesSink).
+	OnNames                   NamesSink
 	ProxyUsername             string
 	ProxyPassword             string
 	ProxyAllowUnauthenticated bool
@@ -844,6 +846,7 @@ func (p Params) operatorOptions() dataplaneOptions {
 		ExitDNS:      p.ExitDNS,
 		AWGParams:    p.AWGParams,
 		MeshDNS:      p.MeshDNS,
+		OnNames:      p.OnNames,
 
 		VLESSSocksListen: p.VLESSSocksListen,
 		VLESSSocksAddr:   p.VLESSSocksAddr,

@@ -39,6 +39,7 @@ type State struct {
 	Account    string            `json:"account,omitempty"`
 	Overlay    string            `json:"overlay_address,omitempty"`
 	KillSwitch KillSwitchState   `json:"kill_switch"`
+	Names      *NamesState       `json:"names,omitempty"`
 	Order      Order             `json:"order"`
 	Skipped    map[Method]string `json:"skipped,omitempty"`
 	Failed     map[Method]string `json:"failed,omitempty"`

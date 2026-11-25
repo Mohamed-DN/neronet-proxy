@@ -52,6 +52,9 @@ type MeshTunnel struct {
 	start func(ctx context.Context, o meshnode.Options) (nodeHandle, error)
 	poll  time.Duration
 
+	// names resolves mesh names for the whole computer; only a tunnel with an interface (tun mode) has one.
+	names *NameService
+
 	mu sync.Mutex
 	h  nodeHandle
 }
@@ -61,7 +64,7 @@ func NewMeshTunnel(cfg MeshConfig) (*MeshTunnel, error) {
 	if cfg.ControlURL == "" || cfg.StateDir == "" {
 		return nil, errors.New("clientcore: a control URL and a state directory are required")
 	}
-	return &MeshTunnel{
+	t := &MeshTunnel{
 		cfg:  cfg,
 		poll: 100 * time.Millisecond,
 		start: func(ctx context.Context, o meshnode.Options) (nodeHandle, error) {
@@ -71,7 +74,30 @@ func NewMeshTunnel(cfg MeshConfig) (*MeshTunnel, error) {
 			}
 			return h, nil
 		},
-	}, nil
+	}
+	if cfg.DataplaneMode == "tun" {
+		t.names = NewHostNameService()
+	}
+	return t, nil
+}
+
+// tunInterface is the name the data plane gives its kernel interface.
+const tunInterface = "nero0"
+
+// ClearStale removes the settings an earlier run of this service left in the system when it was killed.
+// The service calls it once at start.
+func (t *MeshTunnel) ClearStale() {
+	if t.names != nil {
+		t.names.ClearStale(tunInterface)
+	}
+}
+
+// Names says whether mesh names resolve for the whole computer, and how.
+func (t *MeshTunnel) Names() NamesState {
+	if t.names == nil {
+		return NamesState{Status: NamesOff}
+	}
+	return t.names.State()
 }
 
 // Available is true for plain WireGuard only.
@@ -92,6 +118,9 @@ func (t *MeshTunnel) Up(ctx context.Context, req UpRequest) error {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.names != nil {
+		t.names.Stop()
+	}
 	if t.h != nil {
 		t.h.Stop()
 		t.h = nil
@@ -100,7 +129,12 @@ func (t *MeshTunnel) Up(ctx context.Context, req UpRequest) error {
 	if mode == "" {
 		mode = "netstack"
 	}
+	var onNames meshnode.NamesSink
+	if t.names != nil {
+		onNames = t.names.Sink()
+	}
 	h, err := t.start(context.Background(), meshnode.Options{
+		OnNames:             onNames,
 		SocksAddr:           t.cfg.SocksAddr,
 		ControlURL:          t.cfg.ControlURL,
 		ControlCA:           t.cfg.ControlCAPath,
@@ -133,6 +167,10 @@ func (t *MeshTunnel) Up(ctx context.Context, req UpRequest) error {
 		}
 	}
 	t.h = h
+	if t.names != nil {
+		// Not fatal: the tunnel does not depend on names, and the state says what did not work.
+		_ = t.names.Start(tunInterface)
+	}
 	return nil
 }
 
@@ -140,6 +178,9 @@ func (t *MeshTunnel) Up(ctx context.Context, req UpRequest) error {
 func (t *MeshTunnel) Down(context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.names != nil {
+		t.names.Stop()
+	}
 	if t.h != nil {
 		t.h.Stop()
 		t.h = nil
