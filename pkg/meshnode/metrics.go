@@ -22,9 +22,12 @@ type NodeMetricsCollector struct {
 	isQuarantined   uint32
 }
 
-var globalNodeMetrics = &NodeMetricsCollector{
-	startTime: time.Now(),
-}
+// newNodeMetrics is a collector of its own. A program that runs more than one node (the app starts and
+// stops its node, a test starts several) must not count them into one.
+func newNodeMetrics() *NodeMetricsCollector { return &NodeMetricsCollector{startTime: time.Now()} }
+
+// globalNodeMetrics is the binary's collector: one process, one node.
+var globalNodeMetrics = newNodeMetrics()
 
 // RecordHeartbeat tracks heartbeat roundtrip latency and delivery status.
 func (m *NodeMetricsCollector) RecordHeartbeat(duration time.Duration, success bool, isQuarantined bool) {
@@ -100,13 +103,18 @@ func (m *NodeMetricsCollector) RenderPrometheus() string {
 
 // startMetricsServer begins serving Prometheus telemetry on the designated address.
 func startMetricsServer(addr string) (*http.Server, error) {
+	return startMetricsServerFor(addr, globalNodeMetrics)
+}
+
+// startMetricsServerFor serves one node's collector.
+func startMetricsServerFor(addr string, metrics *NodeMetricsCollector) (*http.Server, error) {
 	if addr == "" {
 		return nil, nil
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		_, _ = w.Write([]byte(globalNodeMetrics.RenderPrometheus()))
+		_, _ = w.Write([]byte(metrics.RenderPrometheus()))
 	})
 	srv := &http.Server{
 		Addr:              addr,

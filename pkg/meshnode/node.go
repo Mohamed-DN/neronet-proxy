@@ -65,6 +65,20 @@ type Params struct {
 	ProxyAllowUnauthenticated bool
 	RegistrationToken         string
 	EnrolmentKey              string
+
+	// Keypair, when set, is the node's identity: it is used instead of the key file at IdentityPath, which
+	// then only says where the node keeps its state (the stored netmap). The app holds its key in the system
+	// key store and hands it over here.
+	Keypair *crypto.Keypair
+
+	// RequireRegistration makes a registration the control plane refuses (a removed or suspended app, an
+	// unknown key) an error from Start. The binary leaves it off and runs standalone on its stored netmap,
+	// as it always did; an app that is refused must say so and not pretend to be connected.
+	RequireRegistration bool
+
+	// Metrics is the collector this node counts into. Nil gives it one of its own, so that two nodes in
+	// one process do not share counters; the binary passes the process-wide one.
+	Metrics *NodeMetricsCollector
 }
 
 // DeclaredLocation is the operator's stated city and position (not measured).
@@ -75,8 +89,6 @@ func BindLocationFlags(fs *flag.FlagSet) func() (DeclaredLocation, error) {
 	return bindLocationFlags(fs)
 }
 
-// Run is the node: it starts everything the binary starts, from the values in p, and blocks until the
-// process is asked to stop.
 // Options is what Start needs: the same values the binary hands to Run. It reads no flag and no
 // environment variable.
 type Options = Params
@@ -103,6 +115,9 @@ func (h *Handle) Overlay() (v4, v6 string) {
 	return h.regResp.OverlayIPv4, h.regResp.OverlayIPv6
 }
 
+// Ready is whether the node is registered and runs on a netmap: nothing before that is a connection.
+func (h *Handle) Ready() bool { return h.NodeID() != "" && h.NetmapVersion() > 0 }
+
 // NetmapVersion is the version of the netmap the node runs on, 0 before it has one.
 func (h *Handle) NetmapVersion() uint64 {
 	if m := h.netmaps.get(); m != nil {
@@ -126,6 +141,9 @@ func (h *Handle) Stop() {
 // Run is the node binary: it starts the node from the values in p and blocks until the process is
 // asked to stop.
 func Run(p Params) {
+	if p.Metrics == nil {
+		p.Metrics = globalNodeMetrics
+	}
 	h, err := Start(context.Background(), p)
 	if err != nil {
 		log.Fatal(err)
@@ -160,10 +178,19 @@ func Start(parent context.Context, p Params) (*Handle, error) {
 
 	location := p.Location
 
+	metrics := p.Metrics
+	if metrics == nil {
+		metrics = newNodeMetrics()
+	}
+
 	// Load, or create once, this node's identity keypair.
-	keypair, err := loadOrCreateIdentity(p.IdentityPath)
-	if err != nil {
-		return fail(fmt.Errorf("Failed to establish node identity: %v", err))
+	keypair := p.Keypair
+	var err error
+	if keypair == nil {
+		keypair, err = loadOrCreateIdentity(p.IdentityPath)
+		if err != nil {
+			return fail(fmt.Errorf("Failed to establish node identity: %v", err))
+		}
 	}
 
 	nodeID := control.GenerateNodeID(keypair.PublicKey)
@@ -221,7 +248,7 @@ func Start(parent context.Context, p Params) (*Handle, error) {
 	}
 
 	// Start Prometheus Metrics Exporter (if configured)
-	metricsSrv, err := startMetricsServer(p.MetricsAddr)
+	metricsSrv, err := startMetricsServerFor(p.MetricsAddr, metrics)
 	if err != nil {
 		log.Printf("[SOVEREIGN-NODE] Warning: Failed to start metrics server on %s: %v", p.MetricsAddr, err)
 	}
@@ -275,7 +302,15 @@ func Start(parent context.Context, p Params) (*Handle, error) {
 	}
 	vlessAdvert := vlessAdvertisedPort(p.VLESSPort, p.VLESSSocksListen, p.VLESSSocksAddr, p.XrayConfig)
 	dropNode := &currentNodeID{}
-	regResp, err := registerWithRetry(ctx, ctrlClient, enrolment, role, withVless(withAWG(withDrop(withLocation(capability(p.EnableExit, p.CountryCode, p.MaxBandwidthKbps), location), dropEnabled), awgAdvert, dataplane.AWGBuilt()), vlessAdvert))
+	attempts, stopOnRefusal := 6, false
+	if p.RequireRegistration {
+		// A refusal is an answer, not an outage: waiting half a minute for it to change helps nobody.
+		attempts, stopOnRefusal = 3, true
+	}
+	regResp, err := registerWithRetryN(ctx, ctrlClient, enrolment, role, withVless(withAWG(withDrop(withLocation(capability(p.EnableExit, p.CountryCode, p.MaxBandwidthKbps), location), dropEnabled), awgAdvert, dataplane.AWGBuilt()), vlessAdvert), attempts, stopOnRefusal)
+	if err != nil && p.RequireRegistration {
+		return fail(&RegistrationError{Err: err})
+	}
 
 	if err != nil {
 		log.Printf("[SOVEREIGN-NODE] Warning: Initial control plane registration failed: %v (operating in local standalone mode)", err)
@@ -353,7 +388,7 @@ func Start(parent context.Context, p Params) (*Handle, error) {
 						hbCtx, nodeID, netmaps.endpoints(), 0, cpuPctUnmeasured, memoryMB, batteryPctUnmeasured, false, att, netmaps.transportReport,
 					)
 					hbCancel()
-					globalNodeMetrics.RecordHeartbeat(time.Since(hbStart), hbErr == nil, hbResp != nil && hbResp.IsQuarantined)
+					metrics.RecordHeartbeat(time.Since(hbStart), hbErr == nil, hbResp != nil && hbResp.IsQuarantined)
 
 					if hbErr != nil {
 						// The control plane has no row for this node: its database was
@@ -432,7 +467,7 @@ func Start(parent context.Context, p Params) (*Handle, error) {
 						if syncErr == nil && newPol != nil {
 							netfilter.UpdatePolicy(newPol)
 							policyEpoch = newEp
-							globalNodeMetrics.UpdateEpochs(policyEpoch, routeEpoch)
+							metrics.UpdateEpochs(policyEpoch, routeEpoch)
 							log.Printf("[SOVEREIGN-NODE] Updated ACL policy to epoch %d", policyEpoch)
 						}
 					}
@@ -450,7 +485,7 @@ func Start(parent context.Context, p Params) (*Handle, error) {
 						rCancel()
 						if rErr == nil {
 							routeEpoch = newEp
-							globalNodeMetrics.UpdateEpochs(policyEpoch, routeEpoch)
+							metrics.UpdateEpochs(policyEpoch, routeEpoch)
 							log.Printf("[SOVEREIGN-NODE] Updated subnet routes to epoch %d (count: %d)", routeEpoch, len(newRoutes))
 						}
 					}
@@ -695,7 +730,20 @@ func registerWithRetry(
 	role string,
 	cap control.CapabilityDesc,
 ) (*control.RegisterResponse, error) {
-	const attempts = 6
+	return registerWithRetryN(ctx, client, enrolment, role, cap, 6, false)
+}
+
+// registerWithRetryN is registerWithRetry with the number of attempts, and with the choice to stop at
+// the first refusal (a 401, 403 or 409 from the control plane) instead of trying again.
+func registerWithRetryN(
+	ctx context.Context,
+	client *control.Client,
+	enrolment nodeEnrolment,
+	role string,
+	cap control.CapabilityDesc,
+	attempts int,
+	stopOnRefusal bool,
+) (*control.RegisterResponse, error) {
 
 	delay := time.Second
 	var lastErr error
@@ -712,7 +760,7 @@ func registerWithRetry(
 		}
 
 		lastErr = err
-		if attempt == attempts {
+		if attempt == attempts || (stopOnRefusal && (&RegistrationError{Err: err}).Refused()) {
 			break
 		}
 		log.Printf("[SOVEREIGN-NODE] Registration attempt %d/%d failed: %v (retrying in %s)", attempt, attempts, err, delay)

@@ -94,7 +94,7 @@ func Walk(ctx context.Context, order Order, available func(Method) bool, attempt
 		res.Failed[m] = err.Error()
 		// A device the console removed does not try another path: every path leads to the same
 		// refusal, and trying them all would only look like an attack.
-		if errors.Is(err, ErrRevoked) {
+		if errors.Is(err, ErrRevoked) || errors.Is(err, ErrSuspended) {
 			return res, err
 		}
 	}

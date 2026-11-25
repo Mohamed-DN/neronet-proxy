@@ -436,6 +436,11 @@ func (c *Core) Connect(ctx context.Context) error {
 		_ = c.rotateKeys()
 		return ErrRevoked
 	}
+	if errors.Is(err, ErrSuspended) {
+		// Recoverable: the keys stay, the person is asked to approve this installation again.
+		_ = c.forget("Your approval ended. Sign in again to continue.")
+		return ErrSuspended
+	}
 	if err != nil {
 		c.hub.Update(func(s *State) {
 			s.Phase = PhaseFailed
