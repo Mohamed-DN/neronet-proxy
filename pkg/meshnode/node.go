@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -53,6 +54,16 @@ type Params struct {
 	DropMaxMiB       int
 	DropQuotaMiB     int
 	DropMaxAge       string
+
+	// What the binary reads from its environment (see env.go), so that the node reads none.
+	ExitDNS                   netip.AddrPort
+	AWGParams                 *dataplane.AWGParams
+	MeshDNS                   bool
+	ProxyUsername             string
+	ProxyPassword             string
+	ProxyAllowUnauthenticated bool
+	RegistrationToken         string
+	EnrolmentKey              string
 }
 
 // DeclaredLocation is the operator's stated city and position (not measured).
@@ -95,8 +106,8 @@ func Run(p Params) {
 	// listens beyond the loopback interface without them is an open relay into the
 	// mesh and out of this host, so the node refuses to start that way unless told
 	// to.
-	proxyUser, proxyPass := os.Getenv("SOVEREIGN_PROXY_USERNAME"), os.Getenv("SOVEREIGN_PROXY_PASSWORD")
-	if proxyUser == "" && proxyPass == "" && os.Getenv("SOVEREIGN_PROXY_ALLOW_UNAUTHENTICATED") != "true" {
+	proxyUser, proxyPass := p.ProxyUsername, p.ProxyPassword
+	if proxyUser == "" && proxyPass == "" && !p.ProxyAllowUnauthenticated {
 		for _, addr := range []string{p.SocksAddr, p.HTTPAddr} {
 			if !isLoopbackListen(addr) {
 				log.Fatalf("Refusing to start: proxy listen address %s is not loopback and SOVEREIGN_PROXY_USERNAME/PASSWORD are unset (set SOVEREIGN_PROXY_ALLOW_UNAUTHENTICATED=true to accept an open proxy)", addr)
@@ -138,11 +149,11 @@ func Run(p Params) {
 	if err != nil {
 		log.Fatalf("Cannot set up the control plane connection: %v", err)
 	}
-	ctrlClient.SetAuthToken(os.Getenv("SOVEREIGN_REGISTRATION_TOKEN"))
+	ctrlClient.SetAuthToken(p.RegistrationToken)
 	// A pre-auth key from the console, as issued ("nnk1:<key>:<fingerprint>"). Either
 	// this or the fleet token above enrols a new key; an enrolled node re-registers
 	// with neither, by proving it holds its key.
-	enrolment := enrolmentFor(keypair, os.Getenv("SOVEREIGN_ENROLMENT_KEY"))
+	enrolment := enrolmentFor(keypair, p.EnrolmentKey)
 	role := "CLIENT_ORIGIN"
 	if p.EnableExit {
 		role = "EXIT_BRIDGE"
@@ -384,6 +395,9 @@ func Run(p Params) {
 		Netmaps:      netmaps,
 		ExitEnabled:  p.EnableExit,
 		AWGListen:    p.AWGListen,
+		ExitDNS:      p.ExitDNS,
+		AWGParams:    p.AWGParams,
+		MeshDNS:      p.MeshDNS,
 	})
 	if dpErr != nil {
 		log.Fatalf("Failed to start data plane: %v", dpErr)

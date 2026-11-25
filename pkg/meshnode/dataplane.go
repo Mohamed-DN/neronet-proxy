@@ -62,9 +62,27 @@ type dataplaneOptions struct {
 	VLESSSocksAddr   string
 	XrayConfig       string
 
+	// ExitDNS is the resolver that answers exit clients' DNS. The zero value means the host's own.
+	ExitDNS netip.AddrPort
+
+	// AWGParams is the fallback AmneziaWG parameter set, used when the netmap carries none. Nil: none.
+	AWGParams *dataplane.AWGParams
+
+	// MeshDNS is whether the node answers mesh names for profile devices.
+	MeshDNS bool
+
 	// ExitEnabled is the operator's consent to be an exit (-enable-exit): without it the
 	// node never dials the internet for a client, whatever the netmap says (ADR 0032).
 	ExitEnabled bool
+}
+
+// exitResolver is the resolver exit clients' DNS goes to: the one the operator named, otherwise the
+// host's own.
+func (o dataplaneOptions) exitResolver() (netip.AddrPort, bool) {
+	if o.ExitDNS.IsValid() {
+		return o.ExitDNS, true
+	}
+	return dataplane.SystemResolver()
 }
 
 // overlayPrefixBits is the prefix length of the mesh IPv4 range. The address is
@@ -193,7 +211,7 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		opts.Keypair.PublicKey, nil,
 	)
 	if opts.ExitEnabled {
-		dns, ok := exitDNSUpstream()
+		dns, ok := opts.exitResolver()
 		manager.SetExit(true, dns)
 		if ok {
 			log.Printf("[SOVEREIGN-NODE] Exit enabled: clients the netmap names leave from this host; their DNS goes to %s", dns)
@@ -207,21 +225,16 @@ func startDataplane(ctx context.Context, opts dataplaneOptions) (func(), error) 
 		dev.Close()
 		return nil, err
 	}
-	awgEnv, err := awgParamsFromEnv()
-	if err != nil {
-		dev.Close()
-		return nil, err
-	}
-	manager.SetAWG(awgPort, awgEnv)
+	manager.SetAWG(awgPort, opts.AWGParams)
 	stopVLESS, err := startVLESS(manager, opts.VLESSSocksListen, opts.VLESSSocksAddr, opts.XrayConfig)
 	if err != nil {
 		dev.Close()
 		return nil, fmt.Errorf("starting the VLESS device SOCKS5: %w", err)
 	}
 
-	meshUp, _ := exitDNSUpstream()
-	manager.SetMeshDNS(meshDNSEnabled(), meshUp)
-	if !meshDNSEnabled() {
+	meshUp, _ := opts.exitResolver()
+	manager.SetMeshDNS(opts.MeshDNS, meshUp)
+	if !opts.MeshDNS {
 		log.Printf("[SOVEREIGN-NODE] Mesh names for profile devices are off (SOVEREIGN_MESH_DNS)")
 	}
 

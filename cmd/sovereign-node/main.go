@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 
 	"github.com/sovereign/proxy/v4/pkg/config"
 	"github.com/sovereign/proxy/v4/pkg/meshnode"
@@ -42,6 +43,12 @@ func main() {
 		log.Fatalf("Invalid declared location: %v", err)
 	}
 
+	// The environment is read here and only here: the node takes what it needs in Params.
+	awgParams, err := meshnode.AWGParamsFromEnv()
+	if err != nil {
+		log.Fatalf("Failed to start data plane: %v", err)
+	}
+
 	meshnode.Run(meshnode.Params{
 		SocksAddr:        *socksAddr,
 		HTTPAddr:         *httpAddr,
@@ -67,5 +74,14 @@ func main() {
 		DropQuotaMiB:     *dropQuotaMiB,
 		DropMaxAge:       *dropMaxAge,
 		Location:         location,
+
+		ExitDNS:                   meshnode.ExitDNSFromEnv(),
+		AWGParams:                 awgParams,
+		MeshDNS:                   meshnode.MeshDNSFromEnv(),
+		ProxyUsername:             os.Getenv("SOVEREIGN_PROXY_USERNAME"),
+		ProxyPassword:             os.Getenv("SOVEREIGN_PROXY_PASSWORD"),
+		ProxyAllowUnauthenticated: os.Getenv("SOVEREIGN_PROXY_ALLOW_UNAUTHENTICATED") == "true",
+		RegistrationToken:         os.Getenv("SOVEREIGN_REGISTRATION_TOKEN"),
+		EnrolmentKey:              os.Getenv("SOVEREIGN_ENROLMENT_KEY"),
 	})
 }

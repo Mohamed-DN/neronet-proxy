@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
-	"os"
 	"strings"
 
 	"github.com/sovereign/proxy/v4/pkg/control"
@@ -33,21 +32,6 @@ func (m *netmapManager) SetExit(enabled bool, dns netip.AddrPort) {
 	m.exitEnabled = enabled
 	m.exitDNS = dns
 	m.applyMu.Unlock()
-}
-
-// exitDNSUpstream is SOVEREIGN_EXIT_DNS (host:port or an address) when set, otherwise
-// the host's own resolver.
-func exitDNSUpstream() (netip.AddrPort, bool) {
-	if v := strings.TrimSpace(os.Getenv("SOVEREIGN_EXIT_DNS")); v != "" {
-		if ap, err := netip.ParseAddrPort(v); err == nil {
-			return ap, true
-		}
-		if a, err := netip.ParseAddr(v); err == nil {
-			return netip.AddrPortFrom(a, 53), true
-		}
-		log.Printf("[SOVEREIGN-NODE] SOVEREIGN_EXIT_DNS=%q is not an address; using the host's resolver", v)
-	}
-	return dataplane.SystemResolver()
 }
 
 var (

@@ -3,8 +3,6 @@ package meshnode
 import (
 	"log"
 	"net/netip"
-	"os"
-	"strings"
 
 	"github.com/sovereign/proxy/v4/pkg/control"
 	"github.com/sovereign/proxy/v4/pkg/dataplane"
@@ -15,15 +13,6 @@ import (
 // device answers mesh names at 100.100.100.100:53 in its userspace stack, from the
 // names the console puts in the netmap. It is on by default; SOVEREIGN_MESH_DNS=off
 // restores the exit-only behaviour exactly.
-
-// meshDNSEnabled reads SOVEREIGN_MESH_DNS: anything but off, false, 0 or no is on.
-func meshDNSEnabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("SOVEREIGN_MESH_DNS"))) {
-	case "off", "false", "0", "no":
-		return false
-	}
-	return true
-}
 
 // SetMeshDNS records whether this node answers mesh names and the resolver that
 // answers everything else. Called once, before the first document is applied.

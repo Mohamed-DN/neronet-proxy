@@ -1,11 +1,9 @@
 package meshnode
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -172,24 +170,6 @@ func awgListenPort(spec string) (uint16, error) {
 		return 0, fmt.Errorf("AmneziaWG listen port %q is not a UDP port", spec)
 	}
 	return uint16(n), nil
-}
-
-// awgParamsFromEnv reads the fallback parameter set. The error never carries the value.
-func awgParamsFromEnv() (*dataplane.AWGParams, error) {
-	raw := strings.TrimSpace(os.Getenv("SOVEREIGN_AWG_PARAMS"))
-	if raw == "" {
-		return nil, nil
-	}
-	var p dataplane.AWGParams
-	dec := json.NewDecoder(strings.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&p); err != nil {
-		return nil, fmt.Errorf("SOVEREIGN_AWG_PARAMS is not a parameter object (jc, jmin, jmax, s1-s4, h1-h4)")
-	}
-	if err := p.Validate(); err != nil {
-		return nil, fmt.Errorf("SOVEREIGN_AWG_PARAMS: %w", err)
-	}
-	return &p, nil
 }
 
 // AWGCapability is what a gateway tells the console when it can serve AmneziaWG.
