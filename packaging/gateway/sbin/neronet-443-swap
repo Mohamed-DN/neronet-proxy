@@ -1,0 +1,357 @@
+#!/usr/bin/env bash
+# neronet-443-swap: put an SNI router in front of TCP 443 so that the NeroNet gateway and the
+# service that already owns 443 share it (ADR 0043). Generic: it knows nothing about the other
+# service except what swap.conf says.
+#
+#   neronet-443-swap plan                 checks only; prints what apply would do
+#   neronet-443-swap apply [--yes]        without --yes this is a dry run and changes nothing
+#   neronet-443-swap rollback [--dry-run] give 443 back to the other service, at once
+#   neronet-443-swap status               who answers on 443, for both names
+#
+# Before apply, the operator has done ONE thing, which this tool never does: the other service
+# listens on a loopback address as well (OTHER_BACKEND), while it still owns public 443.
+# RELEASE_CMD then makes it stop listening on 443 (typically a reload with the public listener
+# removed) and RESTORE_CMD puts the public listener back. Both are commands the operator wrote
+# and tested; they are run exactly as written.
+#
+# apply: (1) preflight: nginx accepts the rendered router configuration, both backends answer
+# a TLS handshake on loopback, the other service answers on the public address now.
+# (2) RELEASE_CMD, then ROUTER_START_CMD, back to back; the time 443 had no listener is
+# measured and printed. (3) probe 443 on the public address with both names and with a name
+# nobody owns; every answer must come from the backend it should. If a probe still fails at
+# PROBE_DEADLINE seconds, the swap is rolled back by itself and the exit status is 2.
+#
+# Configuration: /etc/neronet-gateway/swap.conf (or --conf FILE), a shell file of KEY=value:
+#   NERONET_SNI           the name the gateway answers to (REALITY serverName)           required
+#   OTHER_SNI             a name the other service answers to, for the probe             required
+#   OTHER_BACKEND         host:port of the other service on loopback                     required
+#   PUBLIC_ADDR           this host's outside address, probed from here                  required
+#   RELEASE_CMD           command that frees public 443                                  required
+#   RESTORE_CMD           command that gives the other service 443 back                  required
+#   NERONET_BACKEND       gateway Xray on loopback            default 127.0.0.1:8445
+#   LISTEN_ADDRS          router listen addresses, space separated   default "0.0.0.0:443 [::]:443"
+#   PUBLIC_PORT           default 443
+#   NERONET_PROXY_PROTOCOL  yes: send a PROXY header to the gateway only   default no
+#   PROXY_LISTEN          loopback listener used for that   default 127.0.0.1:8446
+#   ROUTER_CONF           default /etc/neronet-gateway/router/nginx.conf
+#   ROUTER_PID            nginx pid file   default /run/neronet-443-router/nginx.pid
+#   ROUTER_START_CMD      default "systemctl start neronet-443-router.service"
+#   ROUTER_STOP_CMD       default "systemctl stop neronet-443-router.service"
+#   PROBE_DEADLINE        seconds, default 20
+#   STATE_FILE            default /run/neronet-443-swap.state
+#   NGINX                 nginx binary, default nginx
+set -u
+
+CONF=/etc/neronet-gateway/swap.conf
+CMD=""
+YES=no
+DRY=no
+
+die() {
+	printf 'neronet-443-swap: %s\n' "$*" >&2
+	exit 1
+}
+say() { printf '%s\n' "$*"; }
+
+while [ $# -gt 0 ]; do
+	case $1 in
+	plan | apply | rollback | status) CMD=$1 ;;
+	--yes) YES=yes ;;
+	--dry-run) DRY=yes ;;
+	--conf)
+		shift
+		[ $# -gt 0 ] || die "--conf needs a file"
+		CONF=$1
+		;;
+	-h | --help)
+		sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
+		exit 0
+		;;
+	*) die "unknown argument: $1" ;;
+	esac
+	shift
+done
+[ -n "$CMD" ] || die "usage: neronet-443-swap plan|apply|rollback|status [--yes] [--conf FILE]"
+
+[ -r "$CONF" ] || die "cannot read $CONF"
+# shellcheck disable=SC1090
+. "$CONF"
+
+: "${NERONET_BACKEND:=127.0.0.1:8445}"
+: "${LISTEN_ADDRS:=0.0.0.0:443 [::]:443}"
+: "${PUBLIC_PORT:=443}"
+: "${NERONET_PROXY_PROTOCOL:=no}"
+: "${PROXY_LISTEN:=127.0.0.1:8446}"
+: "${ROUTER_CONF:=/etc/neronet-gateway/router/nginx.conf}"
+: "${ROUTER_PID:=/run/neronet-443-router/nginx.pid}"
+: "${ROUTER_START_CMD:=systemctl start neronet-443-router.service}"
+: "${ROUTER_STOP_CMD:=systemctl stop neronet-443-router.service}"
+: "${PROBE_DEADLINE:=20}"
+: "${STATE_FILE:=/run/neronet-443-swap.state}"
+: "${NGINX:=nginx}"
+
+for v in NERONET_SNI OTHER_SNI OTHER_BACKEND PUBLIC_ADDR RELEASE_CMD RESTORE_CMD; do
+	[ -n "${!v:-}" ] || die "$v is not set in $CONF"
+done
+case $PROBE_DEADLINE in
+'' | *[!0-9]*) die "PROBE_DEADLINE must be a number of seconds" ;;
+esac
+UNKNOWN_SNI="no-one.invalid"
+
+now_ms() { date +%s%3N; }
+
+# --- probes -------------------------------------------------------------------------------
+
+# handshake host port sni: prints the sha256 fingerprint of the certificate presented, or
+# nothing when the TLS handshake did not complete within 5 s.
+handshake() {
+	local out
+	out=$(timeout 5 openssl s_client -connect "$1:$2" -servername "$3" </dev/null 2>/dev/null) || true
+	printf '%s' "$out" | grep -q 'Cipher is [A-Z]' || return 0
+	printf '%s' "$out" | openssl x509 -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2
+}
+
+# split_hp host:port sets H and P (handles [v6]:port).
+split_hp() {
+	P=${1##*:}
+	H=${1%:*}
+	H=${H#[}
+	H=${H%]}
+}
+
+# tcp_open host port: a TCP connection can be made.
+tcp_open() { timeout 3 bash -c ": </dev/tcp/$1/$2" 2>/dev/null; }
+
+# --- router configuration ------------------------------------------------------------------
+
+stream_module_line() {
+	local v prefix
+	v=$("$NGINX" -V 2>&1) || return 0
+	case $v in
+	*--with-stream=dynamic*)
+		prefix=$(printf '%s' "$v" | tr ' ' '\n' | sed -n 's/^--modules-path=//p' | head -1)
+		[ -n "$prefix" ] || prefix=/usr/lib/nginx/modules
+		printf 'load_module %s/ngx_stream_module.so;\n' "$prefix"
+		;;
+	esac
+}
+
+render_conf() {
+	local target=$NERONET_BACKEND l
+	[ "$NERONET_PROXY_PROTOCOL" = yes ] && target=$PROXY_LISTEN
+	stream_module_line
+	cat <<CONF
+# Written by neronet-443-swap. Edit swap.conf and run the tool again, not this file.
+worker_processes auto;
+pid ${ROUTER_PID};
+error_log stderr warn;
+events { worker_connections 4096; }
+stream {
+    map \$ssl_preread_server_name \$neronet_backend {
+        ${NERONET_SNI} ${target};
+        default ${OTHER_BACKEND};
+    }
+    server {
+CONF
+	for l in $LISTEN_ADDRS; do printf '        listen %s;\n' "$l"; done
+	cat <<CONF
+        ssl_preread on;
+        proxy_pass \$neronet_backend;
+        proxy_connect_timeout 5s;
+        proxy_timeout 1h;
+        access_log off;
+    }
+CONF
+	if [ "$NERONET_PROXY_PROTOCOL" = yes ]; then
+		cat <<CONF
+    # The header goes to the gateway only: the other service would not parse it.
+    server {
+        listen ${PROXY_LISTEN};
+        proxy_protocol on;
+        proxy_pass ${NERONET_BACKEND};
+    }
+CONF
+	fi
+	printf '}\n'
+}
+
+# --- checks (plan) ---------------------------------------------------------------------------
+
+FAILED=0
+FP_OTHER=""
+FP_NERO=""
+ok() { say "  ok    $*"; }
+bad() {
+	say "  FAIL  $*"
+	FAILED=1
+}
+
+preflight() {
+	local tmp fp_other fp_nero=""
+	say "preflight:"
+	if command -v "$NGINX" >/dev/null 2>&1; then ok "nginx found"; else bad "nginx is not installed"; fi
+	if command -v openssl >/dev/null 2>&1; then ok "openssl found"; else bad "openssl is not installed"; fi
+	[ "$FAILED" = 0 ] || return 0
+
+	tmp=$(mktemp)
+	render_conf >"$tmp"
+	if "$NGINX" -t -c "$tmp" >/dev/null 2>"$tmp.err"; then
+		ok "nginx -t accepts the router configuration"
+	else
+		bad "nginx -t refuses the router configuration (needs the stream module with ssl_preread):"
+		sed 's/^/          /' "$tmp.err"
+	fi
+	rm -f "$tmp" "$tmp.err"
+
+	split_hp "$OTHER_BACKEND"
+	fp_other=$(handshake "$H" "$P" "$OTHER_SNI")
+	if [ -n "$fp_other" ]; then
+		ok "the other service answers on loopback ($OTHER_BACKEND)"
+	else
+		bad "the other service does not answer a TLS handshake on $OTHER_BACKEND: give it a loopback listener first"
+	fi
+
+	split_hp "$NERONET_BACKEND"
+	if [ "$NERONET_PROXY_PROTOCOL" = yes ]; then
+		if tcp_open "$H" "$P"; then
+			ok "the gateway's Xray accepts connections on $NERONET_BACKEND (PROXY protocol: no handshake without the router)"
+		else
+			bad "nothing listens on $NERONET_BACKEND: is neronet-gateway-xray running?"
+		fi
+	else
+		fp_nero=$(handshake "$H" "$P" "$NERONET_SNI")
+		if [ -n "$fp_nero" ]; then
+			ok "the gateway answers on loopback ($NERONET_BACKEND)"
+		else
+			bad "the gateway does not answer a TLS handshake on $NERONET_BACKEND: is neronet-gateway-xray running with its configuration written?"
+		fi
+	fi
+
+	if [ -n "$fp_other" ] && [ "$(handshake "$PUBLIC_ADDR" "$PUBLIC_PORT" "$OTHER_SNI")" = "$fp_other" ]; then
+		ok "the other service answers on $PUBLIC_ADDR:$PUBLIC_PORT now, with the certificate it shows on loopback"
+	else
+		bad "the other service does not answer on $PUBLIC_ADDR:$PUBLIC_PORT like it does on loopback (already swapped, or not the service you named?)"
+	fi
+	FP_OTHER=$fp_other
+	FP_NERO=$fp_nero
+}
+
+describe() {
+	local via=$NERONET_BACKEND
+	[ "$NERONET_PROXY_PROTOCOL" = yes ] && via="$NERONET_BACKEND with PROXY protocol"
+	say "apply would:"
+	say "  1. write $ROUTER_CONF (SNI $NERONET_SNI -> $via; everything else -> $OTHER_BACKEND)"
+	say "  2. run RELEASE_CMD, then ROUTER_START_CMD, back to back (443 has no listener in between; the gap is measured)"
+	say "  3. probe $PUBLIC_ADDR:$PUBLIC_PORT with $NERONET_SNI, $OTHER_SNI and an unowned name, up to ${PROBE_DEADLINE}s"
+	say "  4. roll back by itself (ROUTER_STOP_CMD, RESTORE_CMD) if a probe fails by then"
+}
+
+# probes_pass: both names and an unowned name reach the right backend through the router.
+probes_pass() {
+	local a b c
+	a=$(handshake "$PUBLIC_ADDR" "$PUBLIC_PORT" "$OTHER_SNI")
+	[ -n "$a" ] && [ "$a" = "$FP_OTHER" ] || return 1
+	b=$(handshake "$PUBLIC_ADDR" "$PUBLIC_PORT" "$NERONET_SNI")
+	[ -n "$b" ] && [ "$b" != "$FP_OTHER" ] || return 1
+	[ -z "$FP_NERO" ] || [ "$b" = "$FP_NERO" ] || return 1
+	c=$(handshake "$PUBLIC_ADDR" "$PUBLIC_PORT" "$UNKNOWN_SNI")
+	[ -n "$c" ] && [ "$c" = "$FP_OTHER" ] || return 1
+}
+
+run_cmd() {
+	say "  running $1"
+	bash -c "$2"
+}
+
+do_rollback() {
+	local rc=0 t0 deadline
+	t0=$(now_ms)
+	say "rolling back:"
+	run_cmd ROUTER_STOP_CMD "$ROUTER_STOP_CMD" || say "  ROUTER_STOP_CMD failed (continuing)"
+	run_cmd RESTORE_CMD "$RESTORE_CMD" || {
+		say "  RESTORE_CMD failed: the other service may be down, fix it by hand"
+		rc=1
+	}
+	deadline=$(($(date +%s) + PROBE_DEADLINE))
+	until [ -n "$(handshake "$PUBLIC_ADDR" "$PUBLIC_PORT" "$OTHER_SNI")" ]; do
+		if [ "$(date +%s)" -ge "$deadline" ]; then
+			say "  the other service does not answer on $PUBLIC_ADDR:$PUBLIC_PORT after ${PROBE_DEADLINE}s"
+			rc=1
+			break
+		fi
+		sleep 0.2
+	done
+	if [ "$rc" = 0 ]; then
+		say "  the other service answers on $PUBLIC_ADDR:$PUBLIC_PORT again ($(($(now_ms) - t0)) ms)"
+	fi
+	printf 'rolled-back %s\n' "$(date -u +%FT%TZ)" >"$STATE_FILE" 2>/dev/null || true
+	return $rc
+}
+
+case $CMD in
+plan)
+	preflight
+	describe
+	if [ "$FAILED" = 0 ]; then say "plan: ready"; else say "plan: NOT ready"; fi
+	exit "$FAILED"
+	;;
+apply)
+	preflight
+	describe
+	if [ "$FAILED" != 0 ]; then
+		say "apply: preflight failed, nothing changed"
+		exit 1
+	fi
+	if [ "$YES" != yes ]; then
+		say "dry run: nothing changed. Run again with --yes to do it."
+		exit 0
+	fi
+	mkdir -p "$(dirname "$ROUTER_CONF")" || die "cannot create the router directory"
+	render_conf >"$ROUTER_CONF.new" && mv "$ROUTER_CONF.new" "$ROUTER_CONF" || die "cannot write $ROUTER_CONF"
+	say "swapping:"
+	t_release=$(now_ms)
+	if ! run_cmd RELEASE_CMD "$RELEASE_CMD"; then
+		say "  RELEASE_CMD failed"
+		do_rollback
+		exit 2
+	fi
+	if ! run_cmd ROUTER_START_CMD "$ROUTER_START_CMD"; then
+		say "  ROUTER_START_CMD failed"
+		do_rollback
+		exit 2
+	fi
+	# The gap is measured from the outside address: the first moment it accepts a TCP
+	# connection again, counted from the moment RELEASE_CMD started.
+	until tcp_open "$PUBLIC_ADDR" "$PUBLIC_PORT"; do
+		[ $(($(now_ms) - t_release)) -lt $((PROBE_DEADLINE * 1000)) ] || break
+		sleep 0.05
+	done
+	say "  $PUBLIC_PORT accepted connections again $(($(now_ms) - t_release)) ms after the release command started"
+	deadline=$(($(date +%s) + PROBE_DEADLINE))
+	until probes_pass; do
+		if [ "$(date +%s)" -ge "$deadline" ]; then
+			say "  a probe still fails after ${PROBE_DEADLINE}s: rolling back"
+			do_rollback
+			exit 2
+		fi
+		sleep 0.3
+	done
+	printf 'swapped %s\n' "$(date -u +%FT%TZ)" >"$STATE_FILE" 2>/dev/null || true
+	say "swapped: $NERONET_SNI and $OTHER_SNI both answer on $PUBLIC_ADDR:$PUBLIC_PORT"
+	;;
+rollback)
+	if [ "$DRY" = yes ]; then
+		say "rollback would run ROUTER_STOP_CMD then RESTORE_CMD and probe $OTHER_SNI on $PUBLIC_ADDR:$PUBLIC_PORT"
+		exit 0
+	fi
+	do_rollback
+	exit $?
+	;;
+status)
+	say "state: $(cat "$STATE_FILE" 2>/dev/null || echo 'no swap recorded')"
+	for sni in "$NERONET_SNI" "$OTHER_SNI" "$UNKNOWN_SNI"; do
+		fp=$(handshake "$PUBLIC_ADDR" "$PUBLIC_PORT" "$sni")
+		say "  $PUBLIC_ADDR:$PUBLIC_PORT sni=$sni -> ${fp:-no TLS answer}"
+	done
+	;;
+esac

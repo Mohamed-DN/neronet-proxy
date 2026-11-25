@@ -1,0 +1,23 @@
+# /etc/neronet-gateway/swap.conf: read by neronet-443-swap. Placeholders only; every value is
+# the operator's. See `neronet-443-swap --help` and the package README.
+
+# The REALITY serverName of the organisation: the one name the gateway answers to on 443.
+NERONET_SNI=www.example.org
+
+# A name the service that already owns 443 answers to (used to prove it still answers).
+OTHER_SNI=app.example.net
+
+# That service on loopback. YOU add this listener to it, keeping its public 443 for now.
+OTHER_BACKEND=127.0.0.1:8444
+
+# This host's outside address: the probes after the swap go here, not to loopback.
+PUBLIC_ADDR=192.0.2.10
+
+# The two commands only you can write. RELEASE_CMD makes the other service stop listening on public
+# 443 (for example a reload with the public listener removed); RESTORE_CMD gives it back.
+# Test both by hand first.
+RELEASE_CMD="systemctl reload other-service-loopback-only"
+RESTORE_CMD="systemctl reload other-service"
+
+# Send a PROXY protocol header to the gateway (set SOVEREIGN_VLESS_ACCEPT_PROXY=true in node.env).
+#NERONET_PROXY_PROTOCOL=yes

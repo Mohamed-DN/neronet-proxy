@@ -1,0 +1,54 @@
+# SNI router for TCP 443 (ADR 0043): one public port, two services.
+#
+# nginx reads the server name from the TLS ClientHello (ssl_preread) without terminating TLS
+# and hands the whole connection to a loopback backend. The NeroNet name goes to the gateway's
+# Xray; every other name, and every client that sends no name, goes to the service that was on
+# 443 before. Nothing is decrypted here and no certificate or key is needed.
+#
+# This is an example. `neronet-443-swap` renders the real file from /etc/neronet-gateway/swap.conf
+# with the same shape; the values below are placeholders (reserved example names).
+#
+# The other service sees 127.0.0.1 as the client address unless it understands the PROXY
+# protocol: see the commented block at the end.
+
+# Debian packages the stream module as libnginx-mod-stream; builds from nginx.org have it
+# compiled in and need no load_module line.
+#load_module /usr/lib/nginx/modules/ngx_stream_module.so;
+
+worker_processes auto;
+pid /run/neronet-443-router/nginx.pid;
+error_log stderr warn;
+
+events {
+    worker_connections 4096;
+}
+
+stream {
+    # The name the NeroNet gateway answers to: the REALITY serverName of the organisation.
+    map $ssl_preread_server_name $neronet_backend {
+        nero.example.test   127.0.0.1:8445;
+        default             127.0.0.1:8444;   # the service that owned 443 before
+    }
+
+    server {
+        listen 0.0.0.0:443;
+        listen [::]:443;
+        ssl_preread on;
+        proxy_pass $neronet_backend;
+        proxy_connect_timeout 5s;
+        proxy_timeout 1h;
+        access_log off;
+    }
+
+    # With PROXY protocol towards Xray (SOVEREIGN_VLESS_ACCEPT_PROXY=true on the node):
+    # point the map at 127.0.0.1:8446 and add
+    #
+    #   server {
+    #       listen 127.0.0.1:8446;
+    #       proxy_protocol on;
+    #       proxy_pass 127.0.0.1:8445;
+    #   }
+    #
+    # A listener of its own is needed because proxy_protocol is per server, and the other
+    # service must not receive a header it does not parse.
+}
