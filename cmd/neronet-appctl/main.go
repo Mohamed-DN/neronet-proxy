@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -88,8 +89,9 @@ func main() {
 	}
 }
 
-// echo dials host:port through a SOCKS5 proxy and speaks the overlay echo protocol: a mode byte 'E', then
-// whatever is sent comes back.
+// echo dials host:port and speaks the overlay echo protocol: a mode byte 'E', then whatever is sent comes
+// back. The first argument is a SOCKS5 proxy, or "direct" for the machine's own network (a tunnel that
+// carries the whole computer, no proxy).
 func echo(args []string) {
 	if len(args) < 2 {
 		usage()
@@ -98,24 +100,35 @@ func echo(args []string) {
 	if len(args) > 2 {
 		text = args[2]
 	}
-	d, err := proxy.SOCKS5("tcp", args[0], nil, &net.Dialer{Timeout: 5 * time.Second})
+	got, err := echoOnce(args[0], args[1], text)
 	if err != nil {
 		fail("echo: %v", err)
 	}
-	cd, ok := d.(proxy.ContextDialer)
-	if !ok {
-		fail("echo: the proxy dialer cannot take a deadline")
+	fmt.Println(got)
+}
+
+func echoOnce(socks, target, text string) (string, error) {
+	var cd proxy.ContextDialer = &net.Dialer{Timeout: 5 * time.Second}
+	if socks != "direct" {
+		d, err := proxy.SOCKS5("tcp", socks, nil, &net.Dialer{Timeout: 5 * time.Second})
+		if err != nil {
+			return "", err
+		}
+		var ok bool
+		if cd, ok = d.(proxy.ContextDialer); !ok {
+			return "", errors.New("the proxy dialer cannot take a deadline")
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	conn, err := cd.DialContext(ctx, "tcp", args[1])
+	conn, err := cd.DialContext(ctx, "tcp", target)
 	if err != nil {
-		fail("echo: %v", err)
+		return "", err
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(8 * time.Second))
 	if _, err := conn.Write(append([]byte{'E'}, text...)); err != nil {
-		fail("echo: %v", err)
+		return "", err
 	}
 	buf := make([]byte, len(text))
 	n := 0
@@ -127,7 +140,7 @@ func echo(args []string) {
 		}
 	}
 	if string(buf[:n]) != text {
-		fail("echo: got %q, want %q", buf[:n], text)
+		return "", fmt.Errorf("got %q, want %q", buf[:n], text)
 	}
-	fmt.Println(string(buf[:n]))
+	return string(buf[:n]), nil
 }

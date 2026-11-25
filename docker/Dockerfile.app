@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -tags awg -ldflags="-s -w" -o /build/bin/n
 
 FROM alpine:3.20
 
-RUN adduser -D -u 10001 neronet
+RUN apk add --no-cache iproute2 && adduser -D -u 10001 neronet
 
 # The run directory holds one private directory per owner; the service refuses one that other users can
 # write. The state directory holds the app's keys and its stored netmap.

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"time"
@@ -33,6 +35,14 @@ type tunBackend struct {
 func newTUNBackend(cfg Config) (*tunBackend, error) {
 	if runtime.GOOS != "linux" {
 		return nil, ErrTUNUnsupported
+	}
+
+	// A TUN device made by this process vanishes with it, addresses and routes included, so
+	// nothing is left behind by a crash or a kill. The one thing that can be there is a persistent
+	// device of the same name made by something else (an earlier tool, a failed script): it is
+	// removed if it is a TUN device and refused if it is anything else.
+	if err := clearStaleTUN("/sys", cfg.InterfaceName, func(n string) error { return run("ip", "link", "del", "dev", n) }); err != nil {
+		return nil, err
 	}
 
 	dev, err := tun.CreateTUN(cfg.InterfaceName, cfg.MTU)
@@ -118,3 +128,23 @@ func (b *tunBackend) close() error {
 // InterfaceName reports the name the kernel gave the interface, which is not always
 // the one requested.
 func (b *tunBackend) InterfaceName() string { return b.name }
+
+// clearStaleTUN removes an interface called name when it is a TUN device left over from before, and
+// does nothing when there is none. An interface of that name that is not a TUN device is somebody
+// else's: it is an error, never deleted. sysRoot is "/sys" (a directory of the same shape in tests).
+func clearStaleTUN(sysRoot, name string, del func(string) error) error {
+	dir := filepath.Join(sysRoot, "class", "net", name)
+	if _, err := os.Stat(dir); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("dataplane: looking at interface %s: %w", name, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "tun_flags")); err != nil {
+		return fmt.Errorf("dataplane: an interface named %s exists and is not a TUN device; it is not removed", name)
+	}
+	if err := del(name); err != nil {
+		return fmt.Errorf("dataplane: removing the leftover TUN device %s: %w", name, err)
+	}
+	return nil
+}
