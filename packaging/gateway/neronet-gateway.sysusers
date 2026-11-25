@@ -1,0 +1,4 @@
+# Dedicated, login-less users: the node, Xray and the SNI router never share an identity.
+u neronet-gw     - "NeroNet gateway node"   /var/lib/neronet-gateway /usr/sbin/nologin
+u neronet-xray   - "NeroNet gateway Xray"   -                        /usr/sbin/nologin
+u neronet-router - "NeroNet SNI router"     -                        /usr/sbin/nologin

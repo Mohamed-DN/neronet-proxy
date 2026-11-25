@@ -1,0 +1,23 @@
+#!/bin/sh
+# neronet-gateway postrm. remove keeps state and configuration; only purge deletes them.
+set -e
+case "$1" in
+remove)
+	if [ -d /run/systemd/system ]; then
+		systemctl daemon-reload || true
+	fi
+	;;
+purge)
+	rm -rf /var/lib/neronet-gateway /etc/neronet-gateway /run/neronet-443-router
+	rm -f /run/neronet-443-swap.state
+	for u in neronet-gw neronet-xray neronet-router; do
+		if getent passwd "$u" >/dev/null 2>&1; then
+			deluser --quiet --system "$u" >/dev/null 2>&1 || true
+		fi
+	done
+	if [ -d /run/systemd/system ]; then
+		systemctl daemon-reload || true
+	fi
+	;;
+esac
+exit 0

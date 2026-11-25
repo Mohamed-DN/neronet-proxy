@@ -1,0 +1,18 @@
+#!/bin/sh
+# neronet-gateway prerm. Stops only the units this package owns. It refuses to remove the
+# package while the SNI router is running: stopping the router would take TCP 443 away from the
+# other service as well. Run `neronet-443-swap rollback` first.
+set -e
+case "$1" in
+remove | deconfigure)
+	if [ -d /run/systemd/system ]; then
+		if systemctl is-active --quiet neronet-443-router.service 2>/dev/null; then
+			echo "neronet-gateway: the SNI router (neronet-443-router) is running and owns TCP 443." >&2
+			echo "neronet-gateway: run \"neronet-443-swap rollback\" first, then remove the package." >&2
+			exit 1
+		fi
+		systemctl stop neronet-gateway-xray.path neronet-gateway-xray.service neronet-gateway-node.service >/dev/null 2>&1 || true
+	fi
+	;;
+esac
+exit 0

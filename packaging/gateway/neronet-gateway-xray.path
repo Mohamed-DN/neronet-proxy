@@ -1,0 +1,11 @@
+[Unit]
+Description=Restart Xray when the gateway node rewrites or removes its configuration
+Documentation=file:///usr/share/doc/neronet-gateway/README.md
+
+[Path]
+# Fires when the file appears, changes (the node writes by rename) or disappears.
+PathChanged=/var/lib/neronet-gateway/xray/config.json
+Unit=neronet-gateway-xray-restart.service
+
+[Install]
+WantedBy=multi-user.target

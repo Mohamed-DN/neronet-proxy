@@ -1,0 +1,14 @@
+[Unit]
+Description=Apply the gateway's Xray configuration
+Documentation=file:///usr/share/doc/neronet-gateway/README.md
+
+[Service]
+Type=oneshot
+# Only a service the operator enabled is touched: enabling stays an explicit step.
+# `restart` with the configuration gone stops Xray: the start is skipped by its
+# ConditionPathExists.
+ExecStart=/bin/sh -c 'if systemctl is-enabled --quiet neronet-gateway-xray.service; then exec systemctl restart --no-block neronet-gateway-xray.service; fi'
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict

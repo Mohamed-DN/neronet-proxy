@@ -1,0 +1,26 @@
+#!/bin/sh
+# neronet-gateway postinst. Creates users and reloads unit files. It never starts or enables a
+# service, never edits another service's configuration, never touches a firewall and never
+# opens a port.
+set -e
+case "$1" in
+configure)
+	if command -v systemd-sysusers >/dev/null 2>&1; then
+		systemd-sysusers /usr/lib/sysusers.d/neronet-gateway.conf || true
+	fi
+	# Without systemd-sysusers (or if it failed) create the same three users by hand.
+	for spec in neronet-gw:/var/lib/neronet-gateway neronet-xray:/nonexistent neronet-router:/nonexistent; do
+		u=${spec%%:*}
+		home=${spec#*:}
+		if ! getent passwd "$u" >/dev/null 2>&1; then
+			adduser --system --group --no-create-home --home "$home" --shell /usr/sbin/nologin "$u" >/dev/null
+		fi
+	done
+	chmod 0755 /etc/neronet-gateway
+	chmod 0600 /etc/neronet-gateway/node.env
+	if [ -d /run/systemd/system ]; then
+		systemctl daemon-reload || true
+	fi
+	;;
+esac
+exit 0
