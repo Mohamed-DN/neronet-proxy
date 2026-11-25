@@ -60,7 +60,7 @@ fi
 cat >"$WORK/inner.sh" <<'EOF'
 set -eu
 step() { printf '\n== %s\n' "$*"; }
-die() { printf 'FAIL: %s\n' "$*" >&2; for u in neronet-gateway-node neronet-gateway-xray; do systemctl status --no-pager -n 15 "$u.service" 2>&1 | cut -c1-200 | head -30; done; journalctl -u neronet-gateway-xray.service --no-pager -n 12 -o cat 2>&1 | cut -c1-300; exit 1; }
+die() { printf 'FAIL: %s\n' "$*" >&2; for u in neronet-gateway-node neronet-gateway-xray; do systemctl status --no-pager -n 15 "$u.service" 2>&1 | cut -c1-200 | head -30; done; journalctl -u neronet-gateway-xray.service --no-pager -n 12 -o cat 2>&1 | cut -c1-700; exit 1; }
 active(){ systemctl is-active --quiet "$1"; }
 wait_until() { # seconds description command...
 	n=$1; d=$2; shift 2
