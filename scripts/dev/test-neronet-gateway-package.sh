@@ -53,7 +53,7 @@ set -eu
 export DEBIAN_FRONTEND=noninteractive
 step() { printf '\n== %s\n' "$*"; }
 die() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
-listeners() { cat /proc/net/tcp /proc/net/tcp6 /proc/net/udp /proc/net/udp6 2>/dev/null | awk '$1 != "sl" {print $2, $4}' | sort; }
+listeners() { cat /proc/net/tcp /proc/net/tcp6 /proc/net/udp /proc/net/udp6 2>/dev/null | awk '$4 == "0A" || $4 == "07" {print $2, $4}' | sort; }
 
 step "arch"
 uname -m
@@ -83,7 +83,7 @@ fi
 ls /etc/systemd/system/multi-user.target.wants 2>/dev/null | grep -i neronet && die "a unit was wanted by multi-user.target" || true
 [ "$(cat /etc/other-service/conf)" = keep ] || die "another service's file changed"
 command -v nft >/dev/null 2>&1 && [ -n "$(nft list ruleset 2>/dev/null)" ] && die "a firewall rule appeared" || true
-ps -eo comm | grep -E '^(sovereign-node|xray|nginx)$' && die "a process was started" || true
+cat /proc/[0-9]*/comm 2>/dev/null | grep -E '^(sovereign-node|xray|nginx)$' && die "a process was started" || true
 
 step "files, modes and users"
 for f in /usr/lib/neronet-gateway/sovereign-node /usr/lib/neronet-gateway/xray /usr/sbin/neronet-443-swap; do
@@ -148,11 +148,22 @@ EOF
 
 mkdir -p "$WORK/out"
 printf '\n== %s in %s (%s)\n' "$DEB" "$IMG" "$ARCH"
-if ! pm run --rm --platform "linux/$ARCH" "$IMG" uname -m >/dev/null 2>&1; then
-	printf 'cannot start a linux/%s container with this engine\n' "$ARCH" >&2
-	exit 3
+# Pulling the arm64 image would replace the local debian:13-slim tag that the amd64 builds use, so
+# arm64 is run only when asked for, and the amd64 image is pulled back afterwards.
+if [ "$ARCH" = arm64 ]; then
+	[ "${NERONET_ARM64_QEMU:-}" = 1 ] || {
+		printf 'arm64 needs qemu-user in the engine: set NERONET_ARM64_QEMU=1 to try; inspect the package instead
+' >&2
+		exit 3
+	}
+	trap 'pm pull -q --platform linux/amd64 "$IMG" >/dev/null 2>&1 || true; pm rm -f -t 0 "$NAME" >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
+	pm run --rm --platform linux/arm64 "$IMG" uname -m >/dev/null 2>&1 || {
+		printf 'cannot start a linux/arm64 container with this engine
+' >&2
+		exit 3
+	}
 fi
-timeout 900 "$ENGINE" run --rm --name "$NAME" --platform "linux/$ARCH" \
+timeout 900 env MSYS_NO_PATHCONV=1 "$ENGINE" run --rm --name "$NAME" --platform "linux/$ARCH" \
 	-e DEB="$DEB" \
 	-v "$(winpath "$DIST"):/pkg:ro" -v "$(winpath "$WORK"):/w" -v "$(winpath "$WORK/out"):/out" \
 	"$IMG" sh /w/inner.sh

@@ -2,12 +2,12 @@
 Description=NeroNet SNI router on TCP 443 (nginx stream)
 Documentation=file:///usr/share/doc/neronet-gateway/README.md
 After=network-online.target
+ConditionPathExists=/etc/neronet-gateway/router/nginx.conf
 
 [Service]
 Type=simple
 # Not enabled by the package and not started by it. `neronet-443-swap apply --yes` writes
 # /etc/neronet-gateway/router/nginx.conf and starts this unit after freeing 443.
-ConditionPathExists=/etc/neronet-gateway/router/nginx.conf
 User=neronet-router
 Group=neronet-router
 ExecStartPre=/usr/sbin/nginx -t -c /etc/neronet-gateway/router/nginx.conf

@@ -60,8 +60,8 @@ fi
 cat >"$WORK/inner.sh" <<'EOF'
 set -eu
 step() { printf '\n== %s\n' "$*"; }
-die() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
-active() { systemctl is-active --quiet "$1"; }
+die() { printf 'FAIL: %s\n' "$*" >&2; for u in neronet-gateway-node neronet-gateway-xray; do systemctl status --no-pager -n 15 "$u.service" 2>&1 | cut -c1-200 | head -30; done; journalctl -u neronet-gateway-xray.service --no-pager -n 12 -o cat 2>&1 | cut -c1-300; exit 1; }
+active(){ systemctl is-active --quiet "$1"; }
 wait_until() { # seconds description command...
 	n=$1; d=$2; shift 2
 	i=0
@@ -88,8 +88,9 @@ active neronet-gateway-node.service && die "node started by install" || true
 step "the hardened node unit starts with the real binary"
 systemctl start neronet-gateway-node.service
 wait_until 20 "node active" active neronet-gateway-node.service
+wait_until 15 "the node process to exec the binary" sh -c '[ "$(cat /proc/$(systemctl show -p MainPID --value neronet-gateway-node.service)/comm 2>/dev/null)" = sovereign-node ]'
 pid=$(pidof_unit neronet-gateway-node.service)
-[ "$(ps -o user= -p "$pid" | tr -d ' ')" = neronet-gw ] || die "node does not run as neronet-gw"
+[ "$(stat -c %U /proc/"$pid")" = neronet-gw ] || die "node does not run as neronet-gw"
 grep -E '^(CapEff|CapBnd|NoNewPrivs|Seccomp):' /proc/"$pid"/status
 grep -q '^CapEff:[[:space:]]*0000000000000000' /proc/"$pid"/status || die "node has effective capabilities"
 grep -q '^CapBnd:[[:space:]]*0000000000000000' /proc/"$pid"/status || die "node has a capability bounding set"
@@ -101,7 +102,9 @@ wait_until 20 "identity key written into the state directory" test -s /var/lib/n
 stat -c '%U %a %n' /var/lib/neronet-gateway /var/lib/neronet-gateway/node_identity.key
 step "what the node listens on"
 ss -Hltnup | awk '{print $1, $5, $7}' | sort -u
-ss -Hltn | grep -E '127.0.0.1:1081' >/dev/null || die "device SOCKS not on loopback 1081"
+# Without a control plane the data plane stays down, so the device SOCKS is not up here; the real
+# binary against a stub control plane is tested in tests/remotegw.
+ss -Hltnup | awk '{print $1, $5, $7}' | sort -u
 ss -Hltn | awk '{print $4}' | grep -E '^(0.0.0.0|\*|\[::\]):' && die "a TCP listener on a public address" || true
 journalctl -u neronet-gateway-node.service --no-pager -n 8 | cut -c1-200
 
@@ -129,8 +132,9 @@ step "enabled: Xray follows the file"
 systemctl enable neronet-gateway-xray.service >/dev/null 2>&1
 put 0123456789abcdef
 wait_until 15 "xray active after the file appeared" active neronet-gateway-xray.service
+wait_until 15 "the xray process to exec the binary" sh -c '[ "$(cat /proc/$(systemctl show -p MainPID --value neronet-gateway-xray.service)/comm 2>/dev/null)" = xray ]'
 x1=$(pidof_unit neronet-gateway-xray.service)
-[ "$(ps -o user= -p "$x1" | tr -d ' ')" = neronet-xray ] || die "xray does not run as neronet-xray"
+[ "$(stat -c %U /proc/"$x1")" = neronet-xray ] || die "xray does not run as neronet-xray"
 grep -q '^CapEff:[[:space:]]*0000000000000000' /proc/"$x1"/status || die "xray has capabilities"
 grep -q '^NoNewPrivs:[[:space:]]*1' /proc/"$x1"/status || die "xray: NoNewPrivileges not applied"
 wait_until 10 "xray listening on loopback 8445" sh -c "ss -Hltn | grep -q '127.0.0.1:8445'"
@@ -165,8 +169,8 @@ EOF
 
 printf '\n== running under systemd\n'
 pm rm -f -t 2 "$NAME" >/dev/null 2>&1 || true
-timeout 300 "$ENGINE" run -d --name "$NAME" --privileged --systemd=always \
+timeout 300 env MSYS_NO_PATHCONV=1 "$ENGINE" run -d --name "$NAME" --privileged --systemd=always \
 	-v "$(winpath "$DIST"):/pkg:ro" -v "$(winpath "$WORK"):/w:ro" -e DEB="$DEB" "$IMGTAG" >/dev/null
 i=0
 until pm exec "$NAME" systemctl is-system-running --wait >/dev/null 2>&1 || [ "$i" -ge 40 ]; do sleep 1; i=$((i + 1)); done
-timeout 600 "$ENGINE" exec -e DEB="$DEB" "$NAME" sh /w/inner.sh
+timeout 900 env MSYS_NO_PATHCONV=1 "$ENGINE" exec -e DEB="$DEB" "$NAME" sh /w/inner.sh

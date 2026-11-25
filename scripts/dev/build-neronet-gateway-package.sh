@@ -179,7 +179,7 @@ mkdir -p "$OUT"
 
 printf '\n== build static nodes and fetch + verify Xray %s in %s\n' "$XRAY_VERSION" "$GOIMG"
 # shellcheck disable=SC2016
-timeout 900 "${NERONET_ENGINE:-podman}" run --rm --name neronet-gw-pkg-go \
+timeout 900 env MSYS_NO_PATHCONV=1 "${NERONET_ENGINE:-podman}" run --rm --name neronet-gw-pkg-go \
 	-e XRAY_VERSION="$XRAY_VERSION" \
 	-e XRAY_SHA256_AMD64="$XRAY_SHA256_AMD64" -e XRAY_SHA256_ARM64="$XRAY_SHA256_ARM64" \
 	-v "$WT:/src" \
@@ -202,7 +202,7 @@ for pair in amd64:64:$XRAY_SHA256_AMD64 arm64:arm64-v8a:$XRAY_SHA256_ARM64; do
 done' || die "build or Xray verification failed"
 
 printf '\n== package in %s\n' "$DEBIMG"
-timeout 600 "${NERONET_ENGINE:-podman}" run --rm --name neronet-gw-pkg-deb \
+timeout 600 env MSYS_NO_PATHCONV=1 "${NERONET_ENGINE:-podman}" run --rm --name neronet-gw-pkg-deb \
 	-e NERONET_VERSION="$VERSION" \
 	-v "$WT:/src" \
 	-w /src "$DEBIMG" sh /src/scripts/dev/build-neronet-gateway-package.sh --package \

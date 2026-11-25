@@ -57,7 +57,7 @@ In one container with real Xray servers and clients and a real nginx (scripts/de
 the existing service lost no request during the swap (113 round trips, 0 failed, longest silence
 between two successes 227 ms; 443 had no listener for 26 ms); both services answer through 443
 afterwards; a wrong name or an unknown uuid is refused and the unauthenticated answer is the cover
-site's certificate; rollback restores the existing service in 58 ms; a swap whose probe fails undoes
+site's certificate; rollback restores the existing service in 58 to 270 ms over several runs; a swap whose probe fails undoes
 itself and exits 2. The existing service's own restart is part of that figure: a service that reloads
 without dropping connections does better, one that restarts slowly does worse.
 
