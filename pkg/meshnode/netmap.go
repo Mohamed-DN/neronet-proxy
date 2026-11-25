@@ -1,0 +1,970 @@
+package meshnode
+
+import (
+	"context"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"net/netip"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/sovereign/proxy/v4/pkg/acl"
+	"github.com/sovereign/proxy/v4/pkg/control"
+	"github.com/sovereign/proxy/v4/pkg/crypto/pskepoch"
+	"github.com/sovereign/proxy/v4/pkg/dataplane"
+	"github.com/sovereign/proxy/v4/pkg/derp"
+	"github.com/sovereign/proxy/v4/pkg/dns"
+	"github.com/sovereign/proxy/v4/pkg/nat"
+	"github.com/sovereign/proxy/v4/pkg/transport"
+)
+
+// The node's side of the netmap.
+//
+// Three rules decide everything here:
+//
+//  1. **Default deny before the first netmap.** The enforcement filter is installed
+//     when the device comes up, and pkg/acl with no policy loaded drops every packet.
+//     A node that cannot reach the control plane and has no usable stored document
+//     moves nothing.
+//  2. **The document is applied whole or not at all.** It is converted and validated
+//     before the device is touched, so a malformed peer leaves the previous peer set
+//     in place rather than tearing the overlay down halfway through.
+//  3. **Fail-static, then fail-closed.** With the control plane unreachable the node
+//     keeps what it has until the document's age passes max_staleness_seconds, and
+//     then removes every peer. Revocations are applied the moment they are seen,
+//     whatever else is happening.
+
+// netmapFileName is the persisted document, kept next to the identity key.
+const netmapFileName = "netmap.json"
+
+// persistedNetmap is what lands on disk. The fetch time is recorded because a
+// control plane that never sets generated_at_unix would otherwise leave the node
+// with no way to age the document at all.
+type persistedNetmap struct {
+	FetchedAtUnix int64                   `json:"fetched_at_unix"`
+	Netmap        *control.NetmapResponse `json:"netmap"`
+}
+
+// netmapManager owns the peer set and the policy the filter enforces.
+type netmapManager struct {
+	client *control.Client
+	dev    *dataplane.Device
+	// setPeers is dev.SetPeers. A field so a test can make the data plane refuse a
+	// change and check the manager neither believes it happened nor stops trying.
+	setPeers func([]dataplane.Peer) error
+	// setForwarding is dev.SetForwarding, a field for the same reason as setPeers.
+	setForwarding func(*dataplane.ForwardTable)
+	// setEgress is dev.SetEgress (ADR 0032), a field for the same reason.
+	setEgress func(*dataplane.EgressTable, netip.AddrPort) error
+	// exitEnabled is the operator's consent to dial the internet for clients; exitDNS the
+	// resolver that answers their DNS. Set once, before the first document.
+	exitEnabled bool
+	exitDNS     netip.AddrPort
+	// setMeshDNS is dev.SetMeshDNS (ADR 0034), a field for the same reason. names holds
+	// the mesh names of the last document; meshDNSEnabled is SOVEREIGN_MESH_DNS and
+	// meshDNSUpstream the resolver for every other name. Guarded by applyMu.
+	setMeshDNS      func(*dataplane.MeshDNS) error
+	names           *dns.Server
+	meshDNSEnabled  bool
+	meshDNSUpstream netip.AddrPort
+	// profileFilters holds one filter per profile device this gateway serves, keyed by
+	// node id, so a device's conntrack survives a new document. Guarded by applyMu.
+	profileFilters map[string]*acl.NetstackFilter
+	// awg is the AmneziaWG device's state (awg.go). Guarded by applyMu.
+	awg awgState
+	// vless is the VLESS + REALITY terminator's state (vless.go). Guarded by applyMu.
+	vless     vlessState
+	netfilter *acl.NetstackFilter
+	path      string
+
+	// prober pings the profile devices this gateway serves (peerprobe.go); nil when the
+	// data plane has no netstack to ping through. Set once, before the first heartbeat
+	// report reads it.
+	prober *peerProber
+
+	// listenPort is the local WireGuard port, reported as part of this node's
+	// candidate endpoints.
+	listenPort uint16
+
+	// stunServer, when set, is asked for this node's reflexive address.
+	stunServer string
+
+	// fallback, when non-nil, is the DERP relay fallback manager. It is updated
+	// with fresh relay URLs every time a netmap is applied.
+	fallback *derp.FallbackManager
+	mux      *transport.Mux
+
+	// psk, when non-nil, rotates each peer's pre-shared key (classical; see pkg/crypto/pskepoch).
+	psk *pskepoch.Manager
+
+	// applyMu serialises every change to the data plane's peer set (a document, a
+	// revocation, fail-closed), so a removal and a fresh document never interleave
+	// and each one's view of the state it acts on is the state it leaves.
+	applyMu sync.Mutex
+
+	mu sync.Mutex
+	// version is the version of the document currently applied. Zero means none has
+	// been applied and the node is at default deny.
+	version           uint64
+	peers             []control.NetmapPeer
+	transportDocument *control.NetmapResponse
+	// confirmedAt is the last moment the control plane was known to be reachable:
+	// the document's generated_at when it was applied, and then every heartbeat it
+	// answers.
+	//
+	// Staleness is measured against this rather than against the document's own age.
+	// The bound exists for a control plane that has gone away, and a fleet where
+	// nothing changes for a day is not one: a document that is old because nothing
+	// happened is still current.
+	confirmedAt time.Time
+	// maxStaleness is the bound the applied document carries, in seconds. Zero means
+	// the control plane set none and the node never fails closed on age.
+	maxStaleness int64
+	// failClosed records that staleness has already emptied the peer set, so the
+	// node says so once rather than on every tick. It is set only once the data
+	// plane has actually dropped the peers: a refused removal is retried next tick.
+	failClosed bool
+	// revocationPending records that a revocation reached the node but the data
+	// plane refused to drop the peer. Every heartbeat carries the revoked keys again,
+	// and while this is set they are re-applied even though none is new.
+	revocationPending bool
+	// revoked maps a revoked key to the netmap version the control plane held when
+	// the node learned of it. A document at that version or later that no longer
+	// lists the key has withdrawn the revocation, as lifting a quarantine does; an
+	// older document says nothing about it.
+	revoked map[string]uint64
+}
+
+// netmapHolder lets the heartbeat loop reach a manager that is constructed after it.
+//
+// The loop starts as soon as registration succeeds and the data plane comes up after,
+// because it needs the overlay addresses that registration returned. Both touch the
+// manager, so the handover is guarded rather than assumed.
+type netmapHolder struct {
+	mu sync.RWMutex
+	m  *netmapManager
+}
+
+func (h *netmapHolder) set(m *netmapManager) {
+	h.mu.Lock()
+	h.m = m
+	h.mu.Unlock()
+}
+
+func (h *netmapHolder) get() *netmapManager {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.m
+}
+
+// endpoints reports this node's candidate addresses, or nothing when there is no data
+// plane to report a port for.
+func (h *netmapHolder) endpoints() []control.EndpointDesc {
+	m := h.get()
+	if m == nil {
+		return nil
+	}
+	return m.Endpoints()
+}
+
+// onHeartbeat reacts to one heartbeat response: revocations first, then a fetch if
+// the control plane holds a newer version.
+func (h *netmapHolder) onHeartbeat(ctx context.Context, nodeID string, resp *control.HeartbeatResponse) {
+	m := h.get()
+	if m == nil || resp == nil {
+		return
+	}
+
+	if len(resp.RevokedKeys) > 0 {
+		m.ApplyRevocations(resp.RevokedKeys, resp.NetmapVersion)
+	}
+
+	// A heartbeat that came back is proof the control plane is reachable, whatever it
+	// had to say. Without this the staleness bound would fire on a healthy fleet that
+	// simply had no changes for a day.
+	m.Confirm(time.Now())
+
+	// A node that failed closed asks again even though the version has not moved: the
+	// control plane is serving the same document, and it is the one that brings the
+	// peers back.
+	recovering := m.FailedClosed()
+
+	if recovering || resp.NetmapVersion > m.Version() {
+		held := m.Version()
+		if recovering {
+			held = 0
+		}
+
+		fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		err := m.fetchAt(fetchCtx, nodeID, held)
+		cancel()
+		if err != nil {
+			log.Printf("[SOVEREIGN-NODE] Netmap fetch failed: %v (keeping version %d)", err, m.Version())
+		} else if recovering {
+			log.Printf("[SOVEREIGN-NODE] The control plane is answering again: peers restored")
+		}
+	}
+}
+
+// netmapPathFor puts the stored document next to the identity key, which is the one
+// directory a node is guaranteed to be able to write.
+func netmapPathFor(identityPath string) string {
+	if identityPath == "" {
+		return netmapFileName
+	}
+	return filepath.Join(filepath.Dir(identityPath), netmapFileName)
+}
+
+func newNetmapManager(
+	client *control.Client,
+	dev *dataplane.Device,
+	netfilter *acl.NetstackFilter,
+	identityPath string,
+	listenPort uint16,
+	stunServer string,
+	selfPubKey [derp.PubKeySize]byte,
+	onRelayPacket derp.PacketHandler,
+) *netmapManager {
+	var mux *transport.Mux
+	var setPeers func([]dataplane.Peer) error
+	var setForwarding func(*dataplane.ForwardTable)
+	var setEgress func(*dataplane.EgressTable, netip.AddrPort) error
+	var setMeshDNS func(*dataplane.MeshDNS) error
+	awg := awgState{built: dataplane.AWGBuilt()}
+	if dev != nil {
+		awg.start, awg.stop = dev.StartAWG, dev.StopAWG
+		mux = dev.TransportMux()
+		setPeers = dev.SetPeers
+		setForwarding = dev.SetForwarding
+		setEgress = dev.SetEgress
+		setMeshDNS = dev.SetMeshDNS
+	}
+	return &netmapManager{
+		client:        client,
+		dev:           dev,
+		setPeers:      setPeers,
+		setForwarding: setForwarding,
+		setEgress:     setEgress,
+		setMeshDNS:    setMeshDNS,
+		awg:           awg,
+		netfilter:     netfilter,
+		path:          netmapPathFor(identityPath),
+		listenPort:    listenPort,
+		stunServer:    stunServer,
+		mux:           mux,
+		revoked:       make(map[string]uint64),
+	}
+}
+
+// SetPSKManager attaches the pre-shared key rotation manager.
+func (m *netmapManager) SetPSKManager(psk *pskepoch.Manager) {
+	m.mu.Lock()
+	m.psk = psk
+	m.mu.Unlock()
+}
+
+// relayURLsFromNetmap extracts the WebSocket URL for every relay announced in
+// the netmap. The list is used by FallbackManager to pick a relay when the
+// direct UDP path to a peer is silent.
+func relayURLsFromNetmap(netmap *control.NetmapResponse) []string {
+	// Relays are carried in the peer list as the DERPRegion field. When the
+	// control plane also returns a SyncResponse we will get a direct list; for
+	// now we derive URLs from peer annotations.
+	seen := make(map[string]bool)
+	var urls []string
+	for _, p := range netmap.Peers {
+		if p.DERPRegion != nil && *p.DERPRegion != "" {
+			region := *p.DERPRegion
+			u := "wss://" + region + "/ws/v4/relay"
+			if !seen[u] {
+				seen[u] = true
+				urls = append(urls, u)
+			}
+		}
+	}
+	return urls
+}
+
+// Confirm records that the control plane answered.
+func (m *netmapManager) Confirm(now time.Time) {
+	m.mu.Lock()
+	if now.After(m.confirmedAt) {
+		m.confirmedAt = now
+	}
+	m.mu.Unlock()
+}
+
+func latest(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+// FailedClosed reports whether staleness has emptied the peer set.
+//
+// It matters on recovery: a node that failed closed still holds the version the
+// control plane is serving, so "fetch when the version advances" would never bring its
+// peers back. It has to ask for the document again even though the number has not
+// moved.
+func (m *netmapManager) FailedClosed() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.failClosed
+}
+
+// Version reports the version currently applied.
+func (m *netmapManager) Version() uint64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.version
+}
+
+// Fetch asks the control plane for a document and applies it.
+//
+// An unchanged answer is not an error and changes nothing. A fetch that fails leaves
+// the node on what it already holds: that is the fail-static behaviour, and it is why
+// the error is returned rather than acted on.
+func (m *netmapManager) Fetch(ctx context.Context, nodeID string) error {
+	return m.fetchAt(ctx, nodeID, m.Version())
+}
+
+// fetchAt asks for the document as if the node held `held`. Passing 0 forces a full
+// answer even when the control plane's version has not moved.
+func (m *netmapManager) fetchAt(ctx context.Context, nodeID string, held uint64) error {
+	netmap, err := m.client.Netmap(ctx, nodeID, held)
+	if err != nil {
+		return err
+	}
+	if netmap.Unchanged {
+		return nil
+	}
+	return m.Apply(netmap, time.Now())
+}
+
+// Apply installs a document. The conversion happens before the device is touched.
+func (m *netmapManager) Apply(netmap *control.NetmapResponse, fetchedAt time.Time) error {
+	if netmap == nil {
+		return errors.New("netmap: nil document")
+	}
+	m.applyMu.Lock()
+	defer m.applyMu.Unlock()
+
+	listed := make(map[string]bool, len(netmap.RevokedKeys))
+	for _, key := range netmap.RevokedKeys {
+		listed[normaliseKey(key)] = true
+	}
+
+	m.mu.Lock()
+	revoked := make(map[string]uint64, len(m.revoked)+len(listed))
+	for k, learnedAt := range m.revoked {
+		if netmap.Version >= learnedAt && !listed[k] {
+			continue
+		}
+		revoked[k] = learnedAt
+	}
+	m.mu.Unlock()
+
+	for k := range listed {
+		if k == "" {
+			continue
+		}
+		if learnedAt, ok := revoked[k]; !ok || learnedAt < netmap.Version {
+			revoked[k] = netmap.Version
+		}
+	}
+
+	peers, dropped, err := netmapPeers(netmap.Peers, revoked, netmap)
+	if err != nil {
+		return err
+	}
+	peers, dropped = m.enforceable(peers, dropped, netmap)
+	m.reconcileAWG(netmap)
+	m.reconcileVLESS(netmap, revoked)
+	peers, dropped = m.withoutUnservedAWG(peers, dropped, netmap.Peers)
+	if m.mux != nil {
+		allowed, relays, err := documentTransports(netmap)
+		if err != nil {
+			return err
+		}
+		if err := m.dev.ReconfigureTransports(allowed, relays); err != nil {
+			return err
+		}
+	}
+
+	if err := m.setPeers(peers); err != nil {
+		return err
+	}
+	m.installForwarding(netmap.Peers, peers)
+	m.installEgress(netmap, peers)
+	m.installMeshDNS(netmap, peers)
+
+	// The filter is what decides whether a packet passes; the peer set only decides
+	// whether it can be carried. A netmap that named a peer the policy denies would
+	// still move nothing, because this is the policy the filter enforces.
+	m.netfilter.UpdatePolicy(netmap.ACL)
+
+	m.mu.Lock()
+	m.version = netmap.Version
+	m.peers = netmap.Peers
+	m.transportDocument = netmap
+	m.confirmedAt = latest(documentTime(netmap, fetchedAt), m.confirmedAt)
+	m.maxStaleness = netmap.MaxStalenessSeconds
+	m.failClosed = false
+	// The peer set just installed was built without every revoked key.
+	m.revocationPending = false
+	m.revoked = revoked
+	fallback := m.fallback
+	m.mu.Unlock()
+
+	log.Printf("[SOVEREIGN-NODE] Netmap version %d applied: %d peer(s)%s, policy %s, routes %d, staleness bound %ds",
+		netmap.Version, len(peers), droppedNote(dropped), policyNote(netmap.ACL), len(netmap.Routes), netmap.MaxStalenessSeconds)
+
+	// Propagate fresh relay URLs to the DERP fallback manager so peers that
+	// lose their UDP direct path get the latest relay selection.
+	if fallback != nil {
+		urls := relayURLsFromNetmap(netmap)
+		fallback.UpdateRelayURLs(urls)
+		if len(urls) > 0 {
+			log.Printf("[SOVEREIGN-NODE] DERP fallback relay list updated: %d relay(s)", len(urls))
+		}
+	}
+
+	// Propagate the peers the device now has to the pre-shared key rotation manager
+	// so rotating pre-shared keys are continuously derived and installed.
+	m.syncPSKPeers(peers)
+
+	if err := m.persist(netmap, fetchedAt); err != nil {
+		// Persistence is what lets the node come back without a control plane. Losing
+		// it costs that and nothing else, so it is reported and not fatal.
+		log.Printf("[SOVEREIGN-NODE] Could not persist the netmap to %s: %v", m.path, err)
+	}
+
+	return nil
+}
+
+// ApplyRevocations removes revoked peers at once, without waiting for a new document.
+//
+// A revocation is the one update that cannot wait for a version to advance: the point
+// of revoking a key is that the tunnel it holds open stops now. atVersion is the netmap
+// version the control plane reported alongside the revocation.
+func (m *netmapManager) ApplyRevocations(keys []string, atVersion uint64) {
+	m.applyMu.Lock()
+	defer m.applyMu.Unlock()
+
+	m.mu.Lock()
+	newly := 0
+	for _, key := range keys {
+		k := normaliseKey(key)
+		if k == "" {
+			continue
+		}
+		learnedAt, known := m.revoked[k]
+		if !known {
+			newly++
+		}
+		if !known || learnedAt < atVersion {
+			m.revoked[k] = atVersion
+		}
+	}
+	if newly == 0 && !m.revocationPending {
+		m.mu.Unlock()
+		return
+	}
+	revoked := make(map[string]uint64, len(m.revoked))
+	for k, v := range m.revoked {
+		revoked[k] = v
+	}
+	current := m.peers
+	doc := m.transportDocument
+	m.mu.Unlock()
+
+	peers, dropped, err := netmapPeers(current, revoked, doc)
+	if err != nil {
+		m.markRevocationPending(true)
+		log.Printf("[SOVEREIGN-NODE] Could not rebuild the peer set after a revocation, retrying at the next heartbeat: %v", err)
+		return
+	}
+	peers, dropped = m.enforceable(peers, dropped, doc)
+	peers, dropped = m.withoutUnservedAWG(peers, dropped, current)
+	m.reconcileVLESS(doc, revoked)
+	if err := m.setPeers(peers); err != nil {
+		m.markRevocationPending(true)
+		log.Printf("[SOVEREIGN-NODE] Could not apply %d revocation(s) to the data plane, retrying at the next heartbeat: %v", newly, err)
+		return
+	}
+	m.markRevocationPending(false)
+	m.syncPSKPeers(peers)
+	m.installForwarding(current, peers)
+	m.installEgress(doc, peers)
+	m.installMeshDNS(doc, peers)
+
+	log.Printf("[SOVEREIGN-NODE] %d peer key(s) revoked: %d peer(s) remain%s", newly, len(peers), droppedNote(dropped))
+}
+
+func (m *netmapManager) markRevocationPending(pending bool) {
+	m.mu.Lock()
+	m.revocationPending = pending
+	m.mu.Unlock()
+}
+
+// enforceable drops every peer when the document carries a transport policy and the
+// data plane has no multiplexer to enforce it with. That device is the plain UDP
+// Bind of a spike lab start: it would carry each peer over UDP whatever the policy
+// says, while the node has told the control plane it enforces derp-v2.
+func (m *netmapManager) enforceable(peers []dataplane.Peer, dropped []string, doc *control.NetmapResponse) ([]dataplane.Peer, []string) {
+	if m.mux != nil || doc == nil || doc.TransportPolicyVersion == "" || len(peers) == 0 {
+		return peers, dropped
+	}
+	log.Printf("[SOVEREIGN-NODE] Transport policy %q cannot be enforced: the data plane started without the transport multiplexer; carrying no peer until the node restarts", doc.TransportPolicyVersion)
+	for _, p := range peers {
+		dropped = append(dropped, fmt.Sprintf("%.8s unenforceable transport policy", p.PublicKey))
+	}
+	return nil, dropped
+}
+
+// EnforceStaleness removes every peer once the applied document is older than the
+// bound the control plane set. It reports whether it changed anything.
+func (m *netmapManager) EnforceStaleness(now time.Time) bool {
+	m.applyMu.Lock()
+	defer m.applyMu.Unlock()
+
+	m.mu.Lock()
+	netmapMaxAge := m.stalenessLocked()
+	if m.version == 0 || m.failClosed || m.confirmedAt.IsZero() || netmapMaxAge <= 0 {
+		m.mu.Unlock()
+		return false
+	}
+	age := now.Sub(m.confirmedAt)
+	if age < netmapMaxAge {
+		m.mu.Unlock()
+		return false
+	}
+	m.mu.Unlock()
+
+	if err := m.setPeers(nil); err != nil {
+		log.Printf("[SOVEREIGN-NODE] Could not remove peers after the netmap went stale, retrying at the next check: %v", err)
+		return false
+	}
+	m.syncPSKPeers(nil)
+	m.installForwarding(nil, nil)
+	m.installEgress(nil, nil)
+	m.installMeshDNS(nil, nil)
+	if m.mux != nil {
+		if err := m.dev.ReconfigureTransports(nil, nil); err != nil {
+			// No peer is left for a transport to carry; reported, not retried.
+			log.Printf("[SOVEREIGN-NODE] Could not withdraw the transports after failing closed: %v", err)
+		}
+	}
+	m.mu.Lock()
+	m.failClosed = true
+	m.mu.Unlock()
+
+	log.Printf("[SOVEREIGN-NODE] The control plane has been unreachable for %s, past the %s staleness bound: every peer removed (fail-closed)",
+		age.Round(time.Second), netmapMaxAge)
+	return true
+}
+
+// StalenessBound is the bound the applied document carries, or zero when no document
+// has been applied.
+func (m *netmapManager) StalenessBound() time.Duration {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.stalenessLocked()
+}
+
+func (m *netmapManager) stalenessLocked() time.Duration {
+	if m.maxStaleness <= 0 {
+		return 0
+	}
+	return time.Duration(m.maxStaleness) * time.Second
+}
+
+// WatchStaleness checks the applied document's age until the context ends.
+//
+// A separate loop rather than a check on the heartbeat, because the case it exists for
+// is precisely the one where no heartbeat is coming back.
+func (m *netmapManager) WatchStaleness(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			m.EnforceStaleness(now)
+		}
+	}
+}
+
+// readPersistedNetmap reads the stored document without applying it.
+//
+// Separate from LoadPersisted because the device has to be built before a document can
+// be applied, and the device's MTU and listen port come out of the document: the
+// caller needs to look before it can act.
+func readPersistedNetmap(path string) (*persistedNetmap, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var stored persistedNetmap
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return nil, fmt.Errorf("stored netmap at %s is not readable: %w", path, err)
+	}
+	if stored.Netmap == nil {
+		return nil, fmt.Errorf("stored netmap at %s carries no document", path)
+	}
+	return &stored, nil
+}
+
+// LoadPersisted applies the stored document when it is still inside its staleness
+// bound.
+//
+// This is what a node restarted with the control plane down comes up on. A document
+// that is too old, unreadable or absent leaves the node at default deny, which is the
+// only safe answer: an expired peer set is a peer set the operator may have revoked.
+func (m *netmapManager) LoadPersisted(now time.Time) (bool, error) {
+	stored, err := readPersistedNetmap(m.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	fetchedAt := time.Unix(stored.FetchedAtUnix, 0)
+	at := documentTime(stored.Netmap, fetchedAt)
+	bound := time.Duration(stored.Netmap.MaxStalenessSeconds) * time.Second
+	age := now.Sub(at)
+
+	if bound > 0 && age >= bound {
+		log.Printf("[SOVEREIGN-NODE] Stored netmap is %s old, past its %s bound: staying at default deny",
+			age.Round(time.Second), bound)
+		return false, nil
+	}
+
+	if err := m.Apply(stored.Netmap, fetchedAt); err != nil {
+		return false, err
+	}
+
+	log.Printf("[SOVEREIGN-NODE] Loaded the stored netmap from %s (version %d, age %s)",
+		m.path, stored.Netmap.Version, age.Round(time.Second))
+	return true, nil
+}
+
+// persist writes the document with mode 0600, next to the identity key.
+//
+// Through a temporary file and a rename, so an interrupted write cannot leave a
+// half-written document that the next start would read as the fleet's peer set.
+func (m *netmapManager) persist(netmap *control.NetmapResponse, fetchedAt time.Time) error {
+	raw, err := json.Marshal(persistedNetmap{FetchedAtUnix: fetchedAt.Unix(), Netmap: netmap})
+	if err != nil {
+		return err
+	}
+
+	tmp := m.path + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, m.path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// Endpoints reports this node's candidate addresses for the heartbeat.
+func (m *netmapManager) Endpoints() []control.EndpointDesc {
+	return discoverEndpoints(m.listenPort, m.stunServer)
+}
+
+// installForwarding gives the data plane the gateway's forwarding table (ADR 0029):
+// every profile device the peer set just applied kept, with its own compiled policy.
+// A node that serves no profile device installs an empty table, which turns
+// forwarding off. Callers hold applyMu.
+func (m *netmapManager) installForwarding(doc []control.NetmapPeer, kept []dataplane.Peer) {
+	if m.setForwarding == nil {
+		return
+	}
+	served := make(map[string]bool, len(kept))
+	for _, p := range kept {
+		if p.Profile {
+			served[normaliseKey(p.PublicKey)] = true
+		}
+	}
+	table := dataplane.NewForwardTable()
+	filters := make(map[string]*acl.NetstackFilter, len(served))
+	for _, p := range doc {
+		// A VLESS device has no WireGuard peer: it is served when its virtual device is.
+		if !p.Profile || !(served[normaliseKey(p.PublicKeyHex)] || m.vless.served[p.NodeID] && accessMethodVLESS(p)) {
+			continue
+		}
+		// One filter per device for as long as it is served: its conntrack holds the
+		// flows the device opened, and a new document must not cut their replies.
+		nf := m.profileFilters[p.NodeID]
+		if nf == nil {
+			nf = acl.NewNetstackFilter()
+		}
+		// A nil policy leaves the filter at default deny.
+		nf.UpdatePolicy(p.ACL)
+		filters[p.NodeID] = nf
+		for _, raw := range p.AllowedIPs {
+			prefix, err := netip.ParsePrefix(strings.TrimSpace(raw))
+			if err != nil || !prefix.IsSingleIP() {
+				continue
+			}
+			table.AddDevice(prefix.Addr(), nf)
+		}
+	}
+	m.profileFilters = filters
+	m.setForwarding(table)
+	if table.Len() > 0 {
+		log.Printf("[SOVEREIGN-NODE] Profile gateway: forwarding for %d device(s), each under its own compiled policy", len(filters))
+	}
+}
+
+// --- Conversion --------------------------------------------------------------
+
+func normaliseKey(key string) string {
+	return strings.ToLower(strings.TrimSpace(key))
+}
+
+// rotatingPSKPeers are the peers whose PSK the epoch rotation derives. A profile
+// device (ADR 0029) runs a standard WireGuard app that cannot compute an epoch key:
+// it keeps the static PSK its netmap entry carries, and the rotation must not
+// overwrite it.
+func rotatingPSKPeers(applied []dataplane.Peer) []string {
+	keys := make([]string, 0, len(applied))
+	for _, p := range applied {
+		if p.Profile {
+			continue
+		}
+		keys = append(keys, p.PublicKey)
+	}
+	return keys
+}
+
+// syncPSKPeers tells the pre-shared key rotation which peers the device has, after
+// the device has taken them. The document is not that list: it still names a revoked
+// or malformed peer the device never got, and a key set for one of those is refused
+// by the device and logged on every rotation.
+func (m *netmapManager) syncPSKPeers(applied []dataplane.Peer) {
+	m.mu.Lock()
+	psk := m.psk
+	m.mu.Unlock()
+	if psk != nil {
+		psk.SetPeers(rotatingPSKPeers(applied))
+	}
+}
+
+// staticPSK is a profile device's PSK, or "" when the entry carries none usable.
+func staticPSK(p control.NetmapPeer) string {
+	k := strings.ToLower(strings.TrimSpace(p.PresharedKeyHex))
+	if raw, err := hex.DecodeString(k); err != nil || len(raw) != 32 {
+		return ""
+	}
+	return k
+}
+
+// netmapPeers converts the document's peers into device peers.
+//
+// It returns the peers it dropped rather than silently omitting them: a revoked peer
+// and a malformed one mean very different things, and a node that quietly carries
+// fewer peers than the control plane sent is a node nobody can debug.
+func netmapPeers(in []control.NetmapPeer, revoked map[string]uint64, documents ...*control.NetmapResponse) (peers []dataplane.Peer, dropped []string, err error) {
+	for i, p := range in {
+		key := normaliseKey(p.PublicKeyHex)
+		if _, isRevoked := revoked[key]; isRevoked {
+			dropped = append(dropped, fmt.Sprintf("%s revoked", p.NodeID))
+			continue
+		}
+		// A VLESS device is served by a virtual device, not by WireGuard (vless.go).
+		if accessMethodVLESS(p) {
+			continue
+		}
+
+		// A profile device without its PSK would handshake with no PSK at all, which
+		// its own configuration refuses: dropping it says so. A mesh peer's PSK is the
+		// epoch rotation's, never the document's.
+		presharedKey := ""
+		if p.Profile {
+			if presharedKey = staticPSK(p); presharedKey == "" {
+				dropped = append(dropped, fmt.Sprintf("%s profile device without a usable static PSK", p.NodeID))
+				continue
+			}
+		}
+
+		allowed := make([]netip.Prefix, 0, len(p.AllowedIPs))
+		for _, raw := range p.AllowedIPs {
+			prefix, parseErr := netip.ParsePrefix(strings.TrimSpace(raw))
+			if parseErr != nil {
+				return nil, nil, fmt.Errorf("netmap peer %d (%s): allowed ip %q: %w", i, p.NodeID, raw, parseErr)
+			}
+			allowed = append(allowed, prefix)
+		}
+
+		// WireGuard holds one endpoint per peer and learns a better one from the
+		// first packet it receives. The first candidate is the one to try; the rest
+		// exist for a coordinator that does not yet exist (WP-204).
+		endpoint := ""
+		for _, candidate := range p.Endpoints {
+			candidate = strings.TrimSpace(candidate)
+			if candidate == "" {
+				continue
+			}
+			if _, _, splitErr := net.SplitHostPort(candidate); splitErr != nil {
+				return nil, nil, fmt.Errorf("netmap peer %d (%s): endpoint %q: %w", i, p.NodeID, candidate, splitErr)
+			}
+			if endpoint == "" {
+				endpoint = candidate
+			}
+		}
+
+		paths, err := peerTransportPaths(p, documents...)
+		if err != nil {
+			return nil, nil, err
+		}
+		peers = append(peers, dataplane.Peer{
+			Paths:               paths,
+			PublicKey:           key,
+			Endpoint:            endpoint,
+			AllowedIPs:          allowed,
+			PersistentKeepalive: p.KeepaliveSeconds,
+			PresharedKey:        presharedKey,
+			Profile:             p.Profile,
+			AWG:                 accessMethodAWG(p),
+		})
+	}
+
+	return peers, dropped, nil
+}
+
+func documentTime(netmap *control.NetmapResponse, fetchedAt time.Time) time.Time {
+	if netmap.GeneratedAtUnix > 0 {
+		return time.Unix(netmap.GeneratedAtUnix, 0)
+	}
+	return fetchedAt
+}
+
+func droppedNote(dropped []string) string {
+	if len(dropped) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (%s)", strings.Join(dropped, ", "))
+}
+
+func policyNote(policy *acl.CompiledPeerPolicy) string {
+	if policy == nil {
+		// Not an aside: a document with no policy leaves the filter at default deny,
+		// so the node has peers it cannot send anything to.
+		return "absent (default deny)"
+	}
+	return fmt.Sprintf("epoch %d, %d inbound / %d outbound rule(s)",
+		policy.Epoch, len(policy.InboundRules), len(policy.OutboundRules))
+}
+
+// --- Endpoint discovery ------------------------------------------------------
+
+// discoverEndpoints lists the addresses a peer could plausibly dial this node at.
+//
+// Loopback, link-local and unspecified addresses are left out: they mean something
+// different on every machine that reads them, so handing one to a peer sends it to
+// itself. The control plane rejects them as well, and doing it here too keeps the
+// heartbeat honest rather than relying on the far side to clean up.
+func discoverEndpoints(listenPort uint16, stunServer string) []control.EndpointDesc {
+	if listenPort == 0 {
+		return nil
+	}
+
+	var out []control.EndpointDesc
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		log.Printf("[SOVEREIGN-NODE] Could not enumerate interfaces for endpoint discovery: %v", err)
+	}
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addrs, addrErr := iface.Addrs()
+		if addrErr != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipNet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			addr, ok := netip.AddrFromSlice(ipNet.IP)
+			if !ok {
+				continue
+			}
+			addr = addr.Unmap()
+			if addr.IsLoopback() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
+				continue
+			}
+			// The overlay addresses are inside the tunnel. Advertising one as a place
+			// to reach the tunnel would be a loop.
+			if isOverlayAddr(addr) {
+				continue
+			}
+			out = append(out, control.EndpointDesc{
+				IPAddress: addr.String(),
+				Port:      uint32(listenPort),
+				Protocol:  "udp",
+			})
+		}
+	}
+
+	if stunServer != "" {
+		if reflexive, stunErr := nat.QuerySTUN(stunServer, 3*time.Second, nil); stunErr == nil && reflexive != nil {
+			addr, ok := netip.AddrFromSlice(reflexive.IP)
+			if ok && !addr.Unmap().IsUnspecified() {
+				// The reflexive *address* is measured; the port is not. STUN mapped a
+				// probe socket, not the WireGuard socket, so its mapped port belongs
+				// to the probe. Pairing the measured address with the configured
+				// listen port is a candidate, which is what an endpoint is, and it is
+				// only correct through a NAT that preserves ports. Discovering the
+				// WireGuard socket's own mapping needs the bind that WP-204 adds.
+				out = append(out, control.EndpointDesc{
+					IPAddress:        addr.Unmap().String(),
+					Port:             uint32(listenPort),
+					Protocol:         "udp",
+					IsSTUNDiscovered: true,
+				})
+			}
+		} else if stunErr != nil {
+			log.Printf("[SOVEREIGN-NODE] STUN endpoint discovery against %s failed: %v", stunServer, stunErr)
+		}
+	}
+
+	return out
+}
+
+// overlayRanges are the mesh's own address ranges, which are inside the tunnel.
+var overlayRanges = []netip.Prefix{
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("fd7a:115c:a1e0::/48"),
+}
+
+func isOverlayAddr(addr netip.Addr) bool {
+	for _, prefix := range overlayRanges {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}

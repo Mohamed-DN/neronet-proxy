@@ -60,10 +60,10 @@ jobs:
       # AmneziaWG on the profile gateway (ADR 0036) sits behind the awg build tag, which the
       # node image uses. These run the interop tests against a real amneziawg-go client.
       - name: go vet, awg build tag
-        run: go vet -tags awg ./pkg/dataplane/ ./cmd/sovereign-node/
+        run: go vet -tags awg ./pkg/dataplane/ ./pkg/meshnode/ ./cmd/sovereign-node/
 
       - name: go test -race, awg build tag
-        run: go test -tags awg ./pkg/dataplane/ ./cmd/sovereign-node/ -race -count=1 -run 'AWG|Awg|SetPeers|Gateway'
+        run: go test -tags awg ./pkg/dataplane/ ./pkg/meshnode/ ./cmd/sovereign-node/ -race -count=1 -run 'AWG|Awg|SetPeers|Gateway'
 
       # Code carved from upstream projects, not yet imported by any binary. Its own
       # tests run without the race detector: several of Tailscale's DERP tests assert

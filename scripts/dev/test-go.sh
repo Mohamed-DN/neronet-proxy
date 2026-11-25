@@ -22,8 +22,8 @@ exec $ENGINE run --rm \
     echo "== go test -race (our packages)"
     go test $(go list ./... | grep -v /third_party/) -race -count=1 || rc=1
     echo "== awg build tag: vet and the AmneziaWG interop tests (-race)"
-    go vet -tags awg ./pkg/dataplane/ ./cmd/sovereign-node/ || rc=1
-    go test -tags awg ./pkg/dataplane/ ./cmd/sovereign-node/ -race -count=1 -run "AWG|Awg|SetPeers|Gateway" || rc=1
+    go vet -tags awg ./pkg/dataplane/ ./pkg/meshnode/ ./cmd/sovereign-node/ || rc=1
+    go test -tags awg ./pkg/dataplane/ ./pkg/meshnode/ ./cmd/sovereign-node/ -race -count=1 -run "AWG|Awg|SetPeers|Gateway" || rc=1
     echo "== third_party tests (no race detector)"
     go test ./third_party/... -count=1 || rc=1
     echo "== cmd/sovereign-security-daemon (own module)"
