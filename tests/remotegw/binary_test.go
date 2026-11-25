@@ -11,11 +11,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"math/big"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -239,8 +239,10 @@ func TestGatewayBinaryReportsThePublicPortBindsLoopbackAndConsumesItsKey(t *test
 		Inbounds []struct {
 			Listen         string
 			Port           int
-			StreamSettings struct{ Sockopt struct{ AcceptProxyProtocol bool } }
-			Settings       struct{ Clients []struct{ ID string } }
+			StreamSettings struct {
+				Sockopt struct{ AcceptProxyProtocol bool }
+			}
+			Settings struct{ Clients []struct{ ID string } }
 		}
 	}
 	if err := json.Unmarshal(raw, &cfg); err != nil {

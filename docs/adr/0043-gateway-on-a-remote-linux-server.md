@@ -30,7 +30,8 @@ inbound port. ADR 0036 gave the gateway VLESS + REALITY, which needs 443 to look
    (sha256 checked at build, against the digest on the release page) run as two units under two
    dedicated users, hardened (no capabilities, `ProtectSystem=strict`, restricted address families
    and system calls, memory, CPU and IO limits so the host's other services come first). Xray reads
-   its configuration as a systemd credential, not from the node's state. A path unit restarts Xray
+   a private 0400 copy of its configuration that systemd stages for it as root before each start, and has
+   no access to the node's state. A path unit restarts Xray
    when the node rewrites the file and stops it when the file disappears. Installing starts, enables
    and opens nothing; the scripts never touch another service, a firewall or a port. Purge, and only
    purge, removes state.

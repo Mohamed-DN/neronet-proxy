@@ -307,7 +307,8 @@ apply)
 		exit 0
 	fi
 	mkdir -p "$(dirname "$ROUTER_CONF")" || die "cannot create the router directory"
-	render_conf >"$ROUTER_CONF.new" && mv "$ROUTER_CONF.new" "$ROUTER_CONF" || die "cannot write $ROUTER_CONF"
+	render_conf >"$ROUTER_CONF.new" || die "cannot write $ROUTER_CONF"
+	mv "$ROUTER_CONF.new" "$ROUTER_CONF" || die "cannot write $ROUTER_CONF"
 	say "swapping:"
 	t_release=$(now_ms)
 	if ! run_cmd RELEASE_CMD "$RELEASE_CMD"; then

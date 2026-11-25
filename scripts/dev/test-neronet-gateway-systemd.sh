@@ -8,7 +8,7 @@
 #   - Xray, under its own user, runs exactly while the node's configuration file exists: not
 #     before, restarted when the file changes, stopped when it is removed, and not started at all
 #     for a unit the operator did not enable;
-#   - Xray cannot read the node's state directory, only its credential copy.
+#   - Xray cannot read the node's state directory, only its private copy.
 # The file the node writes is imitated by hand here (the node writing it is tested with the real
 # binary in tests/remotegw); everything on the systemd side is real.
 set -eu
@@ -60,7 +60,7 @@ fi
 cat >"$WORK/inner.sh" <<'EOF'
 set -eu
 step() { printf '\n== %s\n' "$*"; }
-die() { printf 'FAIL: %s\n' "$*" >&2; for u in neronet-gateway-node neronet-gateway-xray; do systemctl status --no-pager -n 15 "$u.service" 2>&1 | cut -c1-200 | head -30; done; journalctl -u neronet-gateway-xray.service --no-pager -n 12 -o cat 2>&1 | cut -c1-700; exit 1; }
+die() { printf 'FAIL: %s\n' "$*" >&2; for u in neronet-gateway-node neronet-gateway-xray; do systemctl status --no-pager -n 15 "$u.service" 2>&1 | cut -c1-200 | head -30; done; journalctl -u neronet-gateway-xray.service --no-pager -n 12 -o cat 2>&1 | cut -c1-700; ls -laR /run/neronet-gateway-xray 2>&1 | head -20; ls -la /var/lib/neronet-gateway/xray 2>&1; exit 1; }
 active(){ systemctl is-active --quiet "$1"; }
 wait_until() { # seconds description command...
 	n=$1; d=$2; shift 2
@@ -142,9 +142,10 @@ ss -Hltn | awk '{print $4}' | grep -E ':8445$' | grep -v '^127.0.0.1:' && die "x
 echo "xray main pid $x1, user neronet-xray, listening on 127.0.0.1:8445"
 [ "$(systemctl show -p MemoryMax --value neronet-gateway-xray.service)" = 536870912 ] || die "xray MemoryMax not applied"
 
-step "xray cannot read the node's state; it holds only a credential copy"
+step "xray cannot read the node's state; it holds only a private copy"
 if runuser -u neronet-xray -- cat /var/lib/neronet-gateway/xray/config.json >/dev/null 2>&1; then die "neronet-xray can read the node's file"; fi
-ls -l /run/credentials/neronet-gateway-xray.service/ 2>&1 | head -3 || true
+ls -l /run/neronet-gateway-xray/ 2>&1 | head -3
+[ "$(stat -c "%U %a" /run/neronet-gateway-xray/config.json)" = "neronet-xray 400" ] || die "the private copy is not neronet-xray 0400"
 
 step "a changed file restarts Xray"
 put fedcba9876543210

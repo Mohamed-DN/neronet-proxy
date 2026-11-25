@@ -13,10 +13,14 @@ StartLimitBurst=5
 Type=simple
 User=neronet-xray
 Group=neronet-xray
-# systemd (as root) copies the file into a private credential directory that only this
-# service's user can read: Xray never needs access to the node's state directory.
-LoadCredential=config.json:/var/lib/neronet-gateway/xray/config.json
-ExecStart=/usr/lib/neronet-gateway/xray run -c %d/config.json
+# Xray never gets access to the node's state directory (mode 0700, owned by the node's user).
+# Before each start, systemd runs the "+" command with full privileges and puts a private copy
+# of the file in this unit's runtime directory, readable by neronet-xray only. The directory
+# is removed when the unit stops.
+RuntimeDirectory=neronet-gateway-xray
+RuntimeDirectoryMode=0700
+ExecStartPre=+/usr/bin/install -o neronet-xray -g neronet-xray -m 0400 /var/lib/neronet-gateway/xray/config.json /run/neronet-gateway-xray/config.json
+ExecStart=/usr/lib/neronet-gateway/xray run -c /run/neronet-gateway-xray/config.json
 Restart=on-failure
 RestartSec=5s
 

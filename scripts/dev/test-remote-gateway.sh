@@ -10,6 +10,7 @@
 # Container tests are serial on this machine: it waits while any container other than darknero-web
 # is running, and every run has a timeout.
 set -eu
+# shellcheck source=engine.sh
 . "$(dirname "$0")/engine.sh"
 
 XRAY_VERSION=v26.11.9
@@ -24,7 +25,8 @@ while [ -n "$($ENGINE ps --format '{{.Names}}' | grep -v '^darknero-web$' || tru
   waited=$((waited + 30))
 done
 
-exec timeout "$LIMIT" $ENGINE run --rm \
+# shellcheck disable=SC2016
+exec timeout "$LIMIT" "$ENGINE" run --rm \
   -e XRAY_VERSION="$XRAY_VERSION" -e XRAY_SHA256="$XRAY_SHA256" \
   -v "$(HOST_PATH "$REPO_ROOT"):/src" \
   -v neronet-gomod:/go/pkg/mod \
