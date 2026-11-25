@@ -581,9 +581,14 @@ describe('Live truth: location, round trip, connection test', () => {
       const events = [];
       subscribeTopologyEvents((e) => events.push(e));
       const dev = await profileDevice(ORG_A, fx.ids.memberA);
-      NodeLive.notifyNodeUpdated(dev, { immediate: true });
-      await sleep(200);
-      const event = events.find((e) => e.event === 'node:updated' && e.node_id === dev);
+      // Publish/subscribe keeps nothing for a listener that is not connected yet, and the subscription
+      // above is made in the background: announce until the first one is heard, within a deadline.
+      let event;
+      for (const until = Date.now() + 10_000; !event && Date.now() < until; ) {
+        NodeLive.notifyNodeUpdated(dev, { immediate: true });
+        await sleep(50);
+        event = events.find((e) => e.event === 'node:updated' && e.node_id === dev);
+      }
       assert.ok(event, 'no node:updated published');
       assert.deepEqual(Object.keys(event.node).sort(), ['id', 'organization_id', 'user_id']);
       const as = (id, org, orgRole) => ({ id, role: 'user', organization_id: org, org_role: orgRole });
